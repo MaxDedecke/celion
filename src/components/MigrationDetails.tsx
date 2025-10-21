@@ -1,4 +1,4 @@
-import { Database, Settings as SettingsIcon } from "lucide-react";
+import { Database, Settings as SettingsIcon, Trash2, Check } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import CircularProgress from "./CircularProgress";
 import ActivityTimeline, { Activity } from "./ActivityTimeline";
@@ -23,6 +23,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
@@ -57,6 +67,8 @@ interface MigrationDetailsProps {
 
 const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
   const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [deleteType, setDeleteType] = useState<'in' | 'out'>('in');
   const [configType, setConfigType] = useState<'in' | 'out'>('in');
   const [formData, setFormData] = useState({
     apiUrl: '',
@@ -213,17 +225,31 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
     // Implement test logic here
   };
 
-  const handleDelete = async (type: 'in' | 'out') => {
+  const handleDeleteClick = (type: 'in' | 'out') => {
+    setDeleteType(type);
+    setIsDeleteDialogOpen(true);
+  };
+
+  const confirmDelete = async () => {
     try {
       const { error } = await supabase
         .from('connectors')
         .delete()
         .eq('migration_id', project.id)
-        .eq('connector_type', type);
+        .eq('connector_type', deleteType);
 
       if (error) throw error;
 
-      toast.success(`${type === 'in' ? 'Inconnector' : 'Outconnector'} gelöscht`);
+      // Add system activity
+      await supabase.from('migration_activities').insert({
+        migration_id: project.id,
+        type: 'system',
+        title: `${deleteType === 'in' ? 'Inconnector' : 'Outconnector'} gelöscht`,
+        timestamp: new Date().toISOString(),
+      });
+
+      toast.success(`${deleteType === 'in' ? 'Inconnector' : 'Outconnector'} gelöscht`);
+      setIsDeleteDialogOpen(false);
       window.location.reload(); // Reload to refresh data
     } catch (error: any) {
       toast.error("Fehler beim Löschen");
@@ -282,6 +308,15 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
           .eq('id', connector.id);
 
         if (error) throw error;
+
+        // Add system activity
+        await supabase.from('migration_activities').insert({
+          migration_id: project.id,
+          type: 'system',
+          title: `${configType === 'in' ? 'Inconnector' : 'Outconnector'} aktualisiert`,
+          timestamp: new Date().toISOString(),
+        });
+
         toast.success("Connector aktualisiert");
       } else {
         // Create new connector
@@ -290,6 +325,15 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
           .insert(connectorData);
 
         if (error) throw error;
+
+        // Add system activity
+        await supabase.from('migration_activities').insert({
+          migration_id: project.id,
+          type: 'system',
+          title: `${configType === 'in' ? 'Inconnector' : 'Outconnector'} erstellt`,
+          timestamp: new Date().toISOString(),
+        });
+
         toast.success("Connector erstellt");
       }
 
@@ -319,34 +363,47 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
               {/* Inconnector Card */}
               <Card className="bg-card border-border">
                 <CardHeader className="flex flex-row items-center justify-between">
-                  <div>
-                    <CardTitle className="text-base">Inconnector</CardTitle>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {project.inConnectorDetail}
-                    </p>
+                  <div className="flex items-center gap-2">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <CardTitle className="text-base">Inconnector</CardTitle>
+                        {hasInConnector && (
+                          <Check className="h-4 w-4 text-green-500" />
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {project.inConnectorDetail}
+                      </p>
+                    </div>
                   </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon">
-                        <SettingsIcon className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => handleEdit('in')}>
-                        {hasInConnector ? 'Bearbeiten' : 'Erstellen'}
-                      </DropdownMenuItem>
-                      {hasInConnector && (
-                        <>
+                  <div className="flex items-center gap-1">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon">
+                          <SettingsIcon className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleEdit('in')}>
+                          {hasInConnector ? 'Bearbeiten' : 'Erstellen'}
+                        </DropdownMenuItem>
+                        {hasInConnector && (
                           <DropdownMenuItem onClick={() => handleTest('in')}>
                             Test
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDelete('in')} className="text-destructive">
-                            Löschen
-                          </DropdownMenuItem>
-                        </>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    {hasInConnector && (
+                      <Button 
+                        variant="ghost" 
+                        size="icon"
+                        onClick={() => handleDeleteClick('in')}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-2 text-sm">
@@ -363,34 +420,47 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
               {/* Outconnector Card */}
               <Card className="bg-card border-border">
                 <CardHeader className="flex flex-row items-center justify-between">
-                  <div>
-                    <CardTitle className="text-base">Outconnector</CardTitle>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {project.outConnectorDetail}
-                    </p>
+                  <div className="flex items-center gap-2">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <CardTitle className="text-base">Outconnector</CardTitle>
+                        {hasOutConnector && (
+                          <Check className="h-4 w-4 text-green-500" />
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground mt-1">
+                        {project.outConnectorDetail}
+                      </p>
+                    </div>
                   </div>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button variant="ghost" size="icon">
-                        <SettingsIcon className="h-4 w-4" />
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      <DropdownMenuItem onClick={() => handleEdit('out')}>
-                        {hasOutConnector ? 'Bearbeiten' : 'Erstellen'}
-                      </DropdownMenuItem>
-                      {hasOutConnector && (
-                        <>
+                  <div className="flex items-center gap-1">
+                    <DropdownMenu>
+                      <DropdownMenuTrigger asChild>
+                        <Button variant="ghost" size="icon">
+                          <SettingsIcon className="h-4 w-4" />
+                        </Button>
+                      </DropdownMenuTrigger>
+                      <DropdownMenuContent align="end">
+                        <DropdownMenuItem onClick={() => handleEdit('out')}>
+                          {hasOutConnector ? 'Bearbeiten' : 'Erstellen'}
+                        </DropdownMenuItem>
+                        {hasOutConnector && (
                           <DropdownMenuItem onClick={() => handleTest('out')}>
                             Test
                           </DropdownMenuItem>
-                          <DropdownMenuItem onClick={() => handleDelete('out')} className="text-destructive">
-                            Löschen
-                          </DropdownMenuItem>
-                        </>
-                      )}
-                    </DropdownMenuContent>
-                  </DropdownMenu>
+                        )}
+                      </DropdownMenuContent>
+                    </DropdownMenu>
+                    {hasOutConnector && (
+                      <Button 
+                        variant="ghost" 
+                        size="icon"
+                        onClick={() => handleDeleteClick('out')}
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </Button>
+                    )}
+                  </div>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-2 text-sm">
@@ -750,6 +820,26 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {deleteType === 'in' ? 'Inconnector' : 'Outconnector'} löschen?
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              Sind Sie sicher, dass Sie diesen Connector löschen möchten? Diese Aktion kann nicht rückgängig gemacht werden.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDelete} className="bg-destructive text-destructive-foreground hover:bg-destructive/90">
+              Löschen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
