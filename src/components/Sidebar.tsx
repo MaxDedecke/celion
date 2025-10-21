@@ -1,4 +1,4 @@
-import { Plus, Trash2 } from "lucide-react";
+import { Plus, Trash2, Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Logo from "./Logo";
 import { cn } from "@/lib/utils";
@@ -9,9 +9,10 @@ interface SidebarProps {
   onSelectProject: (id: string) => void;
   onNewMigration: () => void;
   onDeleteProject: (id: string) => void;
+  onEditProject: (id: string) => void;
 }
 
-const Sidebar = ({ projects, selectedProject, onSelectProject, onNewMigration, onDeleteProject }: SidebarProps) => {
+const Sidebar = ({ projects, selectedProject, onSelectProject, onNewMigration, onDeleteProject, onEditProject }: SidebarProps) => {
   return (
     <div className="w-80 bg-background border-r border-sidebar-border h-screen flex flex-col p-6">
       <Logo className="mb-8" />
@@ -41,16 +42,28 @@ const Sidebar = ({ projects, selectedProject, onSelectProject, onNewMigration, o
             >
               {project.name}
             </button>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                onDeleteProject(project.id);
-              }}
-              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:text-destructive"
-              aria-label="Delete migration"
-            >
-              <Trash2 className="h-4 w-4" />
-            </button>
+            <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onEditProject(project.id);
+                }}
+                className="p-1 hover:text-primary"
+                aria-label="Edit migration"
+              >
+                <Pencil className="h-4 w-4" />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDeleteProject(project.id);
+                }}
+                className="p-1 hover:text-destructive"
+                aria-label="Delete migration"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
+            </div>
           </div>
         ))}
       </nav>

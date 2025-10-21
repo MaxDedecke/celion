@@ -4,6 +4,7 @@ import Sidebar from "@/components/Sidebar";
 import UserMenu from "@/components/UserMenu";
 import AccountDialog from "@/components/dialogs/AccountDialog";
 import AddMigrationDialog from "@/components/dialogs/AddMigrationDialog";
+import EditMigrationDialog from "@/components/dialogs/EditMigrationDialog";
 import MigrationDetails from "@/components/MigrationDetails";
 import { Button } from "@/components/ui/button";
 import { Database } from "lucide-react";
@@ -19,6 +20,8 @@ const Dashboard = () => {
   const [activeProjectTab, setActiveProjectTab] = useState<"general" | "mapping">("general");
   const [projects, setProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editingProject, setEditingProject] = useState<any>(null);
+  const [showEditDialog, setShowEditDialog] = useState(false);
 
   // Check auth and load projects
   useEffect(() => {
@@ -160,6 +163,33 @@ const Dashboard = () => {
     }
   };
 
+  const handleEditProject = (projectId: string) => {
+    const project = projects.find((p) => p.id === projectId);
+    if (project) {
+      setEditingProject(project);
+      setShowEditDialog(true);
+    }
+  };
+
+  const handleUpdateMigration = async (name: string) => {
+    try {
+      const { error } = await supabase
+        .from('migrations')
+        .update({ name })
+        .eq('id', editingProject.id);
+
+      if (error) throw error;
+
+      toast.success(`Migration updated to "${name}"`);
+      setShowEditDialog(false);
+      setEditingProject(null);
+      loadProjects();
+    } catch (error: any) {
+      toast.error("Failed to update migration");
+      console.error(error);
+    }
+  };
+
   const currentProject = projects.find((p) => p.id === selectedProject);
 
   if (loading) {
@@ -178,6 +208,7 @@ const Dashboard = () => {
         onSelectProject={setSelectedProject}
         onNewMigration={() => setShowAddDialog(true)}
         onDeleteProject={handleDeleteProject}
+        onEditProject={handleEditProject}
       />
 
       <div className="flex-1 flex flex-col min-h-0">
@@ -247,6 +278,12 @@ const Dashboard = () => {
         open={showAddDialog}
         onOpenChange={setShowAddDialog}
         onAdd={handleAddMigration}
+      />
+      <EditMigrationDialog
+        open={showEditDialog}
+        onOpenChange={setShowEditDialog}
+        onUpdate={handleUpdateMigration}
+        currentName={editingProject?.name || ""}
       />
     </div>
   );
