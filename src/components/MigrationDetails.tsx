@@ -1,6 +1,5 @@
 import { Database, Settings as SettingsIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CircularProgress from "./CircularProgress";
 import ActivityTimeline, { Activity } from "./ActivityTimeline";
 import { Button } from "./ui/button";
@@ -36,9 +35,10 @@ interface MigrationProject {
 
 interface MigrationDetailsProps {
   project: MigrationProject;
+  activeTab: "general" | "mapping";
 }
 
-const MigrationDetails = ({ project }: MigrationDetailsProps) => {
+const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
   const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false);
   const [configType, setConfigType] = useState<'in' | 'out'>('in');
 
@@ -59,13 +59,8 @@ const MigrationDetails = ({ project }: MigrationDetailsProps) => {
 
   return (
     <div className="h-full p-8 space-y-6">
-      <Tabs defaultValue="general" className="w-full">
-        <TabsList className="bg-muted">
-          <TabsTrigger value="general">General</TabsTrigger>
-          <TabsTrigger value="mapping">Mapping UI</TabsTrigger>
-        </TabsList>
-
-        <TabsContent value="general" className="space-y-6 mt-6 pb-6">
+      {activeTab === "general" && (
+        <div className="space-y-6">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Left column - Cards */}
             <div className="lg:col-span-2 space-y-6">
@@ -190,14 +185,14 @@ const MigrationDetails = ({ project }: MigrationDetailsProps) => {
               </Card>
             </div>
           </div>
-        </TabsContent>
+        </div>
+      )}
 
-        <TabsContent value="mapping" className="mt-6 pb-6">
-          <div className="bg-card border-border rounded-lg p-8 min-h-[500px] flex items-center justify-center">
-            <p className="text-muted-foreground">Mapping UI visualization area</p>
-          </div>
-        </TabsContent>
-      </Tabs>
+      {activeTab === "mapping" && (
+        <div className="bg-card border-border rounded-lg p-8 min-h-[500px] flex items-center justify-center">
+          <p className="text-muted-foreground">Mapping UI visualization area</p>
+        </div>
+      )}
 
       <Dialog open={isConfigDialogOpen} onOpenChange={setIsConfigDialogOpen}>
         <DialogContent className="sm:max-w-[500px]">

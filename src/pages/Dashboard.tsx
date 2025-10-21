@@ -5,6 +5,7 @@ import UserMenu from "@/components/UserMenu";
 import AccountDialog from "@/components/dialogs/AccountDialog";
 import AddMigrationDialog from "@/components/dialogs/AddMigrationDialog";
 import MigrationDetails from "@/components/MigrationDetails";
+import { Button } from "@/components/ui/button";
 import { Database } from "lucide-react";
 import { toast } from "sonner";
 
@@ -76,6 +77,7 @@ const Dashboard = () => {
   const [showAccountDialog, setShowAccountDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [activeDialogTab, setActiveDialogTab] = useState<"account" | "settings">("account");
+  const [activeProjectTab, setActiveProjectTab] = useState<"general" | "mapping">("general");
   const [projects, setProjects] = useState(mockProjects);
 
   const handleLogout = () => {
@@ -114,7 +116,25 @@ const Dashboard = () => {
       />
 
       <div className="flex-1 flex flex-col min-h-0">
-        <header className="h-16 border-b border-sidebar-border flex items-center justify-end px-6 flex-shrink-0">
+        <header className="h-16 border-b border-sidebar-border flex items-center justify-between px-6 flex-shrink-0">
+          {currentProject && (
+            <div className="flex gap-2">
+              <Button
+                variant={activeProjectTab === "general" ? "secondary" : "ghost"}
+                onClick={() => setActiveProjectTab("general")}
+                size="sm"
+              >
+                General
+              </Button>
+              <Button
+                variant={activeProjectTab === "mapping" ? "secondary" : "ghost"}
+                onClick={() => setActiveProjectTab("mapping")}
+                size="sm"
+              >
+                Mapping UI
+              </Button>
+            </div>
+          )}
           <UserMenu
             onAccountClick={() => {
               setActiveDialogTab("account");
@@ -130,7 +150,7 @@ const Dashboard = () => {
 
         <div className="flex-1 overflow-auto">
           {currentProject ? (
-            <MigrationDetails project={currentProject} />
+            <MigrationDetails project={currentProject} activeTab={activeProjectTab} />
           ) : (
             <div className="h-full flex items-center justify-center">
               <div className="text-center space-y-6">
