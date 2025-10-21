@@ -745,7 +745,9 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
               </Card>
 
               {/* Inconnector Card */}
-              <Card className="bg-card border-border">
+              <Card className={`bg-card border-border transition-shadow duration-300 ${
+                getCurrentStep() === "Inconnector" ? "shadow-[0_0_20px_rgba(255,255,255,0.3)]" : ""
+              }`}>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div>
@@ -761,6 +763,16 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
+                    {isMetaModelApproved && (
+                      <Button 
+                        variant="ghost" 
+                        size="icon"
+                        className="text-success hover:text-success animate-bounce"
+                        title="Import starten"
+                      >
+                        <Download className="h-4 w-4" />
+                      </Button>
+                    )}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon">
@@ -807,17 +819,13 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                   <p className="text-xs text-muted-foreground mt-2">
                     Objects transferred {project.objectsTransferred}
                   </p>
-                  {isMetaModelApproved && (
-                    <Button className="w-full mt-3 bg-success hover:bg-success/90 text-success-foreground">
-                      <Download className="h-4 w-4 mr-2" />
-                      Import
-                    </Button>
-                  )}
                 </CardContent>
               </Card>
 
               {/* Outconnector Card */}
-              <Card className="bg-card border-border">
+              <Card className={`bg-card border-border transition-shadow duration-300 ${
+                getCurrentStep() === "Outconnector" ? "shadow-[0_0_20px_rgba(255,255,255,0.3)]" : ""
+              }`}>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div>
@@ -898,7 +906,9 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
               </Card>
 
               {/* Meta Model Approval Card - Always visible */}
-              <Card className="bg-card border-border">
+              <Card className={`bg-card border-border transition-shadow duration-300 ${
+                getCurrentStep() === "Mapping (MetaModel)" ? "shadow-[0_0_20px_rgba(255,255,255,0.3)]" : ""
+              }`}>
                 <CardHeader>
                   <CardTitle className="text-base">Meta Modell</CardTitle>
                 </CardHeader>
