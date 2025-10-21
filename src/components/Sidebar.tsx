@@ -1,4 +1,4 @@
-import { Plus, Trash2, Pencil, PanelLeftClose, PanelLeft, Settings } from "lucide-react";
+import { Plus, Trash2, Pencil, PanelLeftClose, PanelLeft, Plug } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Logo from "./Logo";
 import { cn } from "@/lib/utils";
@@ -31,19 +31,7 @@ const Sidebar = ({ projects, selectedProject, onSelectProject, onNewMigration, o
         >
           <Logo />
         </button>
-        <div className="flex items-center gap-1">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            className="flex-shrink-0"
-          >
-            {isCollapsed ? (
-              <PanelLeft className="h-4 w-4" />
-            ) : (
-              <PanelLeftClose className="h-4 w-4" />
-            )}
-          </Button>
+        <div className="flex items-center gap-1 justify-between flex-1">
           {!isCollapsed && (
             <Button
               variant="ghost"
@@ -51,9 +39,21 @@ const Sidebar = ({ projects, selectedProject, onSelectProject, onNewMigration, o
               onClick={() => navigate("/data-sources")}
               className="flex-shrink-0"
             >
-              <Settings className="h-4 w-4" />
+              <Plug className="h-4 w-4" />
             </Button>
           )}
+          <Button
+            variant="ghost"
+            size="icon"
+            onClick={() => setIsCollapsed(!isCollapsed)}
+            className="flex-shrink-0 ml-auto"
+          >
+            {isCollapsed ? (
+              <PanelLeft className="h-4 w-4" />
+            ) : (
+              <PanelLeftClose className="h-4 w-4" />
+            )}
+          </Button>
         </div>
       </div>
 
