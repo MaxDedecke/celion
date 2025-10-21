@@ -2,7 +2,7 @@ import { Check, X, Edit, Plus, Download, Settings as SettingsIcon, Play } from "
 
 export interface Activity {
   id: string;
-  type: "success" | "error" | "info" | "warning";
+  type: "success" | "error" | "info" | "warning" | "system";
   title: string;
   timestamp: string;
 }
@@ -22,6 +22,8 @@ const ActivityTimeline = ({ activities }: ActivityTimelineProps) => {
         return <Download className="h-4 w-4" />;
       case "warning":
         return <Edit className="h-4 w-4" />;
+      case "system":
+        return <SettingsIcon className="h-4 w-4" />;
       default:
         return <Plus className="h-4 w-4" />;
     }
@@ -37,6 +39,8 @@ const ActivityTimeline = ({ activities }: ActivityTimelineProps) => {
         return "text-info";
       case "warning":
         return "text-warning";
+      case "system":
+        return "text-primary";
       default:
         return "text-muted-foreground";
     }

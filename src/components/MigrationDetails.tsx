@@ -63,9 +63,10 @@ interface MigrationProject {
 interface MigrationDetailsProps {
   project: MigrationProject;
   activeTab: "general" | "mapping";
+  onRefresh: () => Promise<void>;
 }
 
-const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
+const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsProps) => {
   const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [deleteType, setDeleteType] = useState<'in' | 'out'>('in');
@@ -250,7 +251,7 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
 
       toast.success(`${deleteType === 'in' ? 'Inconnector' : 'Outconnector'} gelöscht`);
       setIsDeleteDialogOpen(false);
-      window.location.reload(); // Reload to refresh data
+      await onRefresh();
     } catch (error: any) {
       toast.error("Fehler beim Löschen");
       console.error(error);
@@ -338,7 +339,7 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
       }
 
       setIsConfigDialogOpen(false);
-      window.location.reload(); // Reload to refresh data
+      await onRefresh();
     } catch (error: any) {
       toast.error(error.message || "Fehler beim Speichern");
       console.error(error);

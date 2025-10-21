@@ -276,7 +276,11 @@ const Dashboard = () => {
 
         <div className="flex-1 overflow-auto">
           {currentProject ? (
-            <MigrationDetails project={currentProject} activeTab={activeProjectTab} />
+            <MigrationDetails 
+              project={currentProject} 
+              activeTab={activeProjectTab} 
+              onRefresh={loadProjects}
+            />
           ) : (
             <div className="h-full flex items-center justify-center">
               <div className="text-center space-y-8">
