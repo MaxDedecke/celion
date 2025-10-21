@@ -877,14 +877,14 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
               {hasInConnector && hasOutConnector && (
                 <Card className="bg-card border-border">
                   <CardHeader>
-                    <CardTitle className="text-base">Meta-Modell Freigabe</CardTitle>
+                    <CardTitle className="text-base">Meta Modell</CardTitle>
                   </CardHeader>
                   <CardContent>
                     <div className="flex items-center justify-between">
                       <div>
-                        <p className="text-sm font-medium">Meta-Modell freigeben</p>
+                        <p className="text-sm font-medium">Freigeben</p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          Geben Sie das Meta-Modell frei, um mit dem Transfer zu beginnen
+                          Um das Modell zu bearbeiten, wechsel zu Mapping UI
                         </p>
                       </div>
                       <Switch
