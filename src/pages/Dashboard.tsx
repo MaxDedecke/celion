@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Sidebar from "@/components/Sidebar";
 import UserMenu from "@/components/UserMenu";
@@ -8,74 +8,7 @@ import MigrationDetails from "@/components/MigrationDetails";
 import { Button } from "@/components/ui/button";
 import { Database } from "lucide-react";
 import { toast } from "sonner";
-
-const mockProjects = [
-  {
-    id: "1",
-    name: "Project Docta",
-    progress: 60,
-    sourceSystem: "Jira Atlassian (Cloud)",
-    targetSystem: "Asana",
-    inConnector: "Jira Atlassian (Cloud)",
-    inConnectorDetail: "Jira Atlassian (Cloud)",
-    outConnector: "Asana",
-    outConnectorDetail: "Asana",
-    objectsTransferred: "13490/13490",
-    mappedObjects: "8855/13490",
-    activities: [
-      { id: "1", type: "success" as const, title: "Migration finished", timestamp: "24.04.2025" },
-      { id: "2", type: "info" as const, title: "Transferred data to Asana", timestamp: "24.04.2025" },
-      { id: "3", type: "error" as const, title: "Failed testing Outconnector", timestamp: "24.04.2025" },
-      { id: "4", type: "warning" as const, title: "Edited meta model", timestamp: "24.04.2025" },
-      { id: "5", type: "success" as const, title: "Created new meta model", timestamp: "23.04.2025" },
-      { id: "6", type: "info" as const, title: "Data loaded from Jira", timestamp: "23.04.2025" },
-      { id: "7", type: "success" as const, title: "Configured Outconnector", timestamp: "24.04.2025" },
-      { id: "8", type: "success" as const, title: "Successfully tested Inconnector", timestamp: "23.04.2025" },
-      { id: "9", type: "warning" as const, title: "Configured Inconnector", timestamp: "23.04.2025" },
-      { id: "10", type: "info" as const, title: "New project created", timestamp: "23.04.2025" },
-    ],
-  },
-  {
-    id: "2",
-    name: "Agil Scrum Nexis",
-    progress: 100,
-    sourceSystem: "Jira Atlassian (Cloud)",
-    targetSystem: "Asana",
-    inConnector: "Jira Atlassian (Cloud)",
-    inConnectorDetail: "Jira Atlassian (Cloud)",
-    outConnector: "Asana",
-    outConnectorDetail: "Asana",
-    objectsTransferred: "13490/13490",
-    mappedObjects: "13490/13490",
-    activities: [
-      { id: "1", type: "success" as const, title: "Migration finished", timestamp: "24.04.2025" },
-      { id: "2", type: "info" as const, title: "Transferred data to Asana", timestamp: "24.04.2025" },
-      { id: "3", type: "success" as const, title: "Edited meta model", timestamp: "24.04.2025" },
-      { id: "4", type: "success" as const, title: "Created new meta model", timestamp: "23.04.2025" },
-      { id: "5", type: "info" as const, title: "Data loaded from Jira", timestamp: "23.04.2025" },
-      { id: "6", type: "success" as const, title: "Configured Outconnector", timestamp: "24.04.2025" },
-      { id: "7", type: "success" as const, title: "Successfully tested Inconnector", timestamp: "23.04.2025" },
-      { id: "8", type: "success" as const, title: "Configured Inconnector", timestamp: "23.04.2025" },
-      { id: "9", type: "info" as const, title: "New project created", timestamp: "23.04.2025" },
-    ],
-  },
-  {
-    id: "3",
-    name: "Fujitsu Migration",
-    progress: 0,
-    sourceSystem: "Jira Atlassian (Cloud)",
-    targetSystem: "Asana",
-    inConnector: "Jira Atlassian (Cloud)",
-    inConnectorDetail: "Jira Atlassian (Cloud)",
-    outConnector: "Asana",
-    outConnectorDetail: "Asana",
-    objectsTransferred: "0/0",
-    mappedObjects: "0/0",
-    activities: [
-      { id: "1", type: "info" as const, title: "New project created", timestamp: "25.04.2025" },
-    ],
-  },
-];
+import { supabase } from "@/integrations/supabase/client";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -84,44 +17,146 @@ const Dashboard = () => {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [activeDialogTab, setActiveDialogTab] = useState<"account" | "settings">("account");
   const [activeProjectTab, setActiveProjectTab] = useState<"general" | "mapping">("general");
-  const [projects, setProjects] = useState(mockProjects);
+  const [projects, setProjects] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  const handleLogout = () => {
+  // Check auth and load projects
+  useEffect(() => {
+    checkAuth();
+    loadProjects();
+  }, []);
+
+  const checkAuth = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (!session) {
+      navigate("/");
+    }
+  };
+
+  const loadProjects = async () => {
+    try {
+      const { data: migrationsData, error: migrationsError } = await supabase
+        .from('migrations')
+        .select('*')
+        .order('created_at', { ascending: false });
+
+      if (migrationsError) throw migrationsError;
+
+      // Load activities for each migration
+      const projectsWithActivities = await Promise.all(
+        (migrationsData || []).map(async (migration) => {
+          const { data: activitiesData } = await supabase
+            .from('migration_activities')
+            .select('*')
+            .eq('migration_id', migration.id)
+            .order('created_at', { ascending: false });
+
+          return {
+            id: migration.id,
+            name: migration.name,
+            progress: migration.progress,
+            sourceSystem: migration.source_system,
+            targetSystem: migration.target_system,
+            inConnector: migration.in_connector,
+            inConnectorDetail: migration.in_connector_detail,
+            outConnector: migration.out_connector,
+            outConnectorDetail: migration.out_connector_detail,
+            objectsTransferred: migration.objects_transferred,
+            mappedObjects: migration.mapped_objects,
+            activities: activitiesData || [],
+          };
+        })
+      );
+
+      setProjects(projectsWithActivities);
+    } catch (error: any) {
+      toast.error("Failed to load migrations");
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
     toast.success("Logged out successfully");
     navigate("/");
   };
 
-  const handleAddMigration = (name: string, sourceSystem: string, targetSystem: string) => {
-    const newProject = {
-      id: String(projects.length + 1),
-      name,
-      progress: 0,
-      sourceSystem,
-      targetSystem,
-      inConnector: sourceSystem,
-      inConnectorDetail: sourceSystem,
-      outConnector: targetSystem,
-      outConnectorDetail: targetSystem,
-      objectsTransferred: "0/0",
-      mappedObjects: "0/0",
-      activities: [
-        { id: "1", type: "info" as const, title: "New project created", timestamp: new Date().toLocaleDateString() },
-      ],
-    };
-    setProjects([...projects, newProject]);
-    toast.success(`Migration "${name}" created`);
+  const handleAddMigration = async (name: string, sourceSystem: string, targetSystem: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Not authenticated");
+
+      const { data: migration, error: migrationError } = await supabase
+        .from('migrations')
+        .insert({
+          user_id: user.id,
+          name,
+          source_system: sourceSystem,
+          target_system: targetSystem,
+          in_connector: sourceSystem,
+          in_connector_detail: sourceSystem,
+          out_connector: targetSystem,
+          out_connector_detail: targetSystem,
+        })
+        .select()
+        .single();
+
+      if (migrationError) throw migrationError;
+
+      // Create initial activity
+      const { error: activityError } = await supabase
+        .from('migration_activities')
+        .insert({
+          migration_id: migration.id,
+          type: 'info',
+          title: 'New project created',
+          timestamp: new Date().toLocaleDateString(),
+        });
+
+      if (activityError) throw activityError;
+
+      toast.success(`Migration "${name}" created`);
+      loadProjects();
+    } catch (error: any) {
+      toast.error(error.message || "Failed to create migration");
+      console.error(error);
+    }
   };
 
-  const handleDeleteProject = (projectId: string) => {
-    const projectToDelete = projects.find((p) => p.id === projectId);
-    setProjects(projects.filter((p) => p.id !== projectId));
-    if (selectedProject === projectId) {
-      setSelectedProject(null);
+  const handleDeleteProject = async (projectId: string) => {
+    try {
+      const projectToDelete = projects.find((p) => p.id === projectId);
+      
+      const { error } = await supabase
+        .from('migrations')
+        .delete()
+        .eq('id', projectId);
+
+      if (error) throw error;
+
+      if (selectedProject === projectId) {
+        setSelectedProject(null);
+      }
+      
+      toast.success(`Migration "${projectToDelete?.name}" deleted`);
+      loadProjects();
+    } catch (error: any) {
+      toast.error("Failed to delete migration");
+      console.error(error);
     }
-    toast.success(`Migration "${projectToDelete?.name}" deleted`);
   };
 
   const currentProject = projects.find((p) => p.id === selectedProject);
+
+  if (loading) {
+    return (
+      <div className="flex h-screen bg-background items-center justify-center">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-background">
