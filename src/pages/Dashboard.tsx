@@ -10,6 +10,16 @@ import { Button } from "@/components/ui/button";
 import { Database } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -22,6 +32,8 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [editingProject, setEditingProject] = useState<any>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
 
   // Check auth and load projects
   useEffect(() => {
@@ -140,26 +152,36 @@ const Dashboard = () => {
     }
   };
 
-  const handleDeleteProject = async (projectId: string) => {
+  const handleDeleteProject = (projectId: string) => {
+    setProjectToDelete(projectId);
+    setShowDeleteDialog(true);
+  };
+
+  const confirmDeleteProject = async () => {
+    if (!projectToDelete) return;
+
     try {
-      const projectToDelete = projects.find((p) => p.id === projectId);
+      const projectToDeleteData = projects.find((p) => p.id === projectToDelete);
       
       const { error } = await supabase
         .from('migrations')
         .delete()
-        .eq('id', projectId);
+        .eq('id', projectToDelete);
 
       if (error) throw error;
 
-      if (selectedProject === projectId) {
+      if (selectedProject === projectToDelete) {
         setSelectedProject(null);
       }
       
-      toast.success(`Migration "${projectToDelete?.name}" deleted`);
+      toast.success(`Migration "${projectToDeleteData?.name}" deleted`);
       loadProjects();
     } catch (error: any) {
       toast.error("Failed to delete migration");
       console.error(error);
+    } finally {
+      setShowDeleteDialog(false);
+      setProjectToDelete(null);
     }
   };
 
@@ -285,6 +307,23 @@ const Dashboard = () => {
         onUpdate={handleUpdateMigration}
         currentName={editingProject?.name || ""}
       />
+      
+      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Sind Sie sicher?</AlertDialogTitle>
+            <AlertDialogDescription>
+              Diese Aktion kann nicht rückgängig gemacht werden. Die Migration "{projects.find(p => p.id === projectToDelete)?.name}" wird permanent gelöscht.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Abbrechen</AlertDialogCancel>
+            <AlertDialogAction onClick={confirmDeleteProject} className="bg-destructive hover:bg-destructive/90">
+              Löschen
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 };
