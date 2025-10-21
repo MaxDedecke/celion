@@ -1,11 +1,28 @@
-// Update this page (the content is just a fallback if you fail to update the page)
+import { useNavigate } from "react-router-dom";
+import { useEffect } from "react";
+import { supabase } from "@/integrations/supabase/client";
 
 const Index = () => {
+  const navigate = useNavigate();
+
+  useEffect(() => {
+    checkUser();
+  }, []);
+
+  const checkUser = async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    if (session) {
+      navigate("/projects");
+    } else {
+      navigate("/");
+    }
+  };
+
   return (
-    <div className="flex min-h-screen items-center justify-center bg-background">
+    <div className="flex items-center justify-center min-h-screen">
       <div className="text-center">
-        <h1 className="mb-4 text-4xl font-bold">Welcome to Your Blank App</h1>
-        <p className="text-xl text-muted-foreground">Start building your amazing project here!</p>
+        <h1 className="text-4xl font-bold mb-4">Willkommen bei Celion</h1>
+        <p className="text-muted-foreground mb-8">Lädt...</p>
       </div>
     </div>
   );

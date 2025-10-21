@@ -33,7 +33,7 @@ const Login = () => {
         if (error) throw error;
         
         toast.success("Account created successfully!");
-        navigate("/dashboard");
+        navigate("/projects");
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email,
@@ -43,7 +43,7 @@ const Login = () => {
         if (error) throw error;
         
         toast.success("Login successful");
-        navigate("/dashboard");
+        navigate("/projects");
       }
     } catch (error: any) {
       toast.error(error.message || "An error occurred");
