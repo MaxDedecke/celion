@@ -1,4 +1,4 @@
-import { Database, Settings as SettingsIcon, Trash2, Check, Link, Download } from "lucide-react";
+import { Database, Settings as SettingsIcon, Trash2, Check, Link, Download, RefreshCw, Loader2 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import CircularProgress from "./CircularProgress";
@@ -83,6 +83,8 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   const [dataSources, setDataSources] = useState<any[]>([]);
   const [selectedDataSourceId, setSelectedDataSourceId] = useState<string>('');
   const [isMetaModelApproved, setIsMetaModelApproved] = useState(false);
+  const [isImporting, setIsImporting] = useState(false);
+  const [hasImported, setHasImported] = useState(false);
   const [formData, setFormData] = useState({
     apiUrl: '',
     apiKey: '',
@@ -147,6 +149,15 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
     syncObjectCounts();
   }, [project.id, project.objectsTransferred, project.mappedObjects]);
+
+  // Check if import was already completed
+  useEffect(() => {
+    const [transferred] = project.objectsTransferred.split('/');
+    const transferredCount = parseInt(transferred);
+    if (transferredCount > 0) {
+      setHasImported(true);
+    }
+  }, [project.objectsTransferred]);
 
 
   // Fetch available data sources for linking
@@ -615,6 +626,59 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
     }
   };
 
+  const handleImportStart = async () => {
+    try {
+      setIsImporting(true);
+      
+      // Get the target count from mapped_objects
+      const [, targetCountStr] = project.mappedObjects.split('/');
+      const targetCount = parseInt(targetCountStr) || 0;
+      
+      if (targetCount === 0) {
+        toast.error("Keine Objekte zum Importieren gefunden");
+        setIsImporting(false);
+        return;
+      }
+
+      // Simulate gradual import process
+      const steps = 10;
+      const incrementPerStep = Math.floor(targetCount / steps);
+      let currentCount = 0;
+
+      for (let i = 1; i <= steps; i++) {
+        await new Promise(resolve => setTimeout(resolve, 300)); // 300ms delay between steps
+        
+        currentCount = i === steps ? targetCount : currentCount + incrementPerStep;
+        
+        await supabase
+          .from('migrations')
+          .update({ 
+            objects_transferred: `${currentCount}/${targetCount}`,
+            progress: Math.min(project.progress + (i === steps ? 20 : 0), 100)
+          })
+          .eq('id', project.id);
+        
+        await onRefresh();
+      }
+
+      // Add activity when import completes
+      await supabase.from('migration_activities').insert({
+        migration_id: project.id,
+        type: 'system',
+        title: `Import abgeschlossen: ${targetCount} Objekte übertragen`,
+        timestamp: new Date().toLocaleString('de-DE'),
+      });
+
+      setHasImported(true);
+      toast.success("Import erfolgreich abgeschlossen");
+    } catch (error: any) {
+      toast.error("Fehler beim Import");
+      console.error(error);
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
   const handleSaveConnector = async () => {
     try {
       const connector = configType === 'in' ? project.connectors?.in : project.connectors?.out;
@@ -782,7 +846,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
               {/* Inconnector Card */}
               <Card className={`bg-card border-border transition-shadow duration-300 ${
                 getCurrentStep() === "Inconnector" || (isMetaModelApproved && getCurrentStep() === "Transfer") 
-                  ? "shadow-[0_0_20px_rgba(255,255,255,0.3)]" 
+                  ? "shadow-[0_0_20px_rgba(59,130,246,0.5)] dark:shadow-[0_0_20px_rgba(255,255,255,0.3)]" 
                   : ""
               }`}>
                 <CardHeader className="flex flex-row items-center justify-between">
@@ -801,14 +865,25 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                   </div>
                   <div className="flex items-center gap-1">
                     {isMetaModelApproved && (
-                      <Button 
-                        variant="ghost" 
-                        size="icon"
-                        className="text-success hover:text-success animate-gentle-bounce"
-                        title="Import starten"
-                      >
-                        <Download className="h-4 w-4" />
-                      </Button>
+                      <>
+                        {isImporting && (
+                          <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                        )}
+                        <Button 
+                          variant="ghost" 
+                          size="icon"
+                          className="text-success hover:text-success animate-gentle-bounce"
+                          title={hasImported ? "Import wiederholen" : "Import starten"}
+                          onClick={handleImportStart}
+                          disabled={isImporting}
+                        >
+                          {hasImported ? (
+                            <RefreshCw className="h-4 w-4" />
+                          ) : (
+                            <Download className="h-4 w-4" />
+                          )}
+                        </Button>
+                      </>
                     )}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
@@ -861,7 +936,9 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
               {/* Outconnector Card */}
               <Card className={`bg-card border-border transition-shadow duration-300 ${
-                getCurrentStep() === "Outconnector" ? "shadow-[0_0_20px_rgba(255,255,255,0.3)]" : ""
+                getCurrentStep() === "Outconnector" 
+                  ? "shadow-[0_0_20px_rgba(59,130,246,0.5)] dark:shadow-[0_0_20px_rgba(255,255,255,0.3)]" 
+                  : ""
               }`}>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <div className="flex items-center gap-2">
@@ -944,7 +1021,9 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
               {/* Meta Model Approval Card - Always visible */}
               <Card className={`bg-card border-border transition-shadow duration-300 ${
-                getCurrentStep() === "Mapping (MetaModel)" ? "shadow-[0_0_20px_rgba(255,255,255,0.3)]" : ""
+                getCurrentStep() === "Mapping (MetaModel)" 
+                  ? "shadow-[0_0_20px_rgba(59,130,246,0.5)] dark:shadow-[0_0_20px_rgba(255,255,255,0.3)]" 
+                  : ""
               }`}>
                 <CardHeader>
                   <CardTitle className="text-base">Meta Modell</CardTitle>
