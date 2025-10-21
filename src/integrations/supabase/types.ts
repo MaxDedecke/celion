@@ -165,6 +165,7 @@ export type Database = {
           out_connector: string
           out_connector_detail: string
           progress: number
+          project_id: string | null
           source_system: string
           target_system: string
           updated_at: string
@@ -181,6 +182,7 @@ export type Database = {
           out_connector: string
           out_connector_detail: string
           progress?: number
+          project_id?: string | null
           source_system: string
           target_system: string
           updated_at?: string
@@ -197,8 +199,44 @@ export type Database = {
           out_connector?: string
           out_connector_detail?: string
           progress?: number
+          project_id?: string | null
           source_system?: string
           target_system?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "migrations_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      projects: {
+        Row: {
+          created_at: string
+          description: string | null
+          id: string
+          name: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          id?: string
+          name?: string
           updated_at?: string
           user_id?: string
         }

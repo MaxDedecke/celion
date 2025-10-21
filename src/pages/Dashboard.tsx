@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 import Sidebar from "@/components/Sidebar";
 import UserMenu from "@/components/UserMenu";
 import AccountDialog from "@/components/dialogs/AccountDialog";
@@ -23,23 +23,30 @@ import {
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const [selectedProject, setSelectedProject] = useState<string | null>(null);
+  const { projectName } = useParams<{ projectName: string }>();
+  const [currentProject, setCurrentProject] = useState<any>(null);
+  const [selectedMigration, setSelectedMigration] = useState<string | null>(null);
   const [showAccountDialog, setShowAccountDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [activeDialogTab, setActiveDialogTab] = useState<"account" | "settings">("account");
-  const [activeProjectTab, setActiveProjectTab] = useState<"general" | "mapping">("general");
-  const [projects, setProjects] = useState<any[]>([]);
+  const [activeMigrationTab, setActiveMigrationTab] = useState<"general" | "mapping">("general");
+  const [migrations, setMigrations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editingProject, setEditingProject] = useState<any>(null);
+  const [editingMigration, setEditingMigration] = useState<any>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
+  const [migrationToDelete, setMigrationToDelete] = useState<string | null>(null);
 
-  // Check auth and load projects
+  // Check auth and load project data
   useEffect(() => {
     checkAuth();
-    loadProjects();
   }, []);
+
+  useEffect(() => {
+    if (projectName) {
+      loadProjectAndMigrations();
+    }
+  }, [projectName]);
 
   const checkAuth = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -48,17 +55,37 @@ const Dashboard = () => {
     }
   };
 
-  const loadProjects = async () => {
+  const loadProjectAndMigrations = async () => {
     try {
+      setLoading(true);
+      
+      // Find project by name
+      const { data: projectData, error: projectError } = await supabase
+        .from('projects')
+        .select('*')
+        .eq('name', decodeURIComponent(projectName || ''))
+        .maybeSingle();
+
+      if (projectError) throw projectError;
+      if (!projectData) {
+        toast.error("Projekt nicht gefunden");
+        navigate("/projects");
+        return;
+      }
+
+      setCurrentProject(projectData);
+
+      // Load migrations for this project
       const { data: migrationsData, error: migrationsError } = await supabase
         .from('migrations')
         .select('*')
+        .eq('project_id', projectData.id)
         .order('created_at', { ascending: false });
 
       if (migrationsError) throw migrationsError;
 
       // Load activities and connectors for each migration
-      const projectsWithActivities = await Promise.all(
+      const migrationsWithDetails = await Promise.all(
         (migrationsData || []).map(async (migration) => {
           const { data: activitiesData } = await supabase
             .from('migration_activities')
@@ -95,9 +122,9 @@ const Dashboard = () => {
         })
       );
 
-      setProjects(projectsWithActivities);
+      setMigrations(migrationsWithDetails);
     } catch (error: any) {
-      toast.error("Failed to load migrations");
+      toast.error("Fehler beim Laden der Migrationen");
       console.error(error);
     } finally {
       setLoading(false);
@@ -106,19 +133,25 @@ const Dashboard = () => {
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
-    toast.success("Logged out successfully");
+    toast.success("Erfolgreich abgemeldet");
     navigate("/");
   };
 
   const handleAddMigration = async (name: string, sourceSystem: string, targetSystem: string) => {
     try {
+      if (!currentProject) {
+        toast.error("Kein Projekt ausgewählt");
+        return;
+      }
+
       const { data: { user } } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
+      if (!user) throw new Error("Nicht authentifiziert");
 
       const { data: migration, error: migrationError } = await supabase
         .from('migrations')
         .insert({
           user_id: user.id,
+          project_id: currentProject.id,
           name,
           source_system: sourceSystem,
           target_system: targetSystem,
@@ -133,62 +166,60 @@ const Dashboard = () => {
       if (migrationError) throw migrationError;
 
       // Create initial activity
-      const { error: activityError } = await supabase
+      await supabase
         .from('migration_activities')
         .insert({
           migration_id: migration.id,
           type: 'info',
-          title: 'New project created',
-          timestamp: new Date().toLocaleDateString(),
+          title: 'Neues Migrationsprojekt erstellt',
+          timestamp: new Date().toLocaleString('de-DE'),
         });
 
-      if (activityError) throw activityError;
-
-      toast.success(`Migration "${name}" created`);
-      loadProjects();
+      toast.success(`Migration "${name}" erstellt`);
+      loadProjectAndMigrations();
     } catch (error: any) {
-      toast.error(error.message || "Failed to create migration");
+      toast.error(error.message || "Fehler beim Erstellen der Migration");
       console.error(error);
     }
   };
 
-  const handleDeleteProject = (projectId: string) => {
-    setProjectToDelete(projectId);
+  const handleDeleteMigration = (migrationId: string) => {
+    setMigrationToDelete(migrationId);
     setShowDeleteDialog(true);
   };
 
-  const confirmDeleteProject = async () => {
-    if (!projectToDelete) return;
+  const confirmDeleteMigration = async () => {
+    if (!migrationToDelete) return;
 
     try {
-      const projectToDeleteData = projects.find((p) => p.id === projectToDelete);
+      const migrationToDeleteData = migrations.find((m) => m.id === migrationToDelete);
       
       const { error } = await supabase
         .from('migrations')
         .delete()
-        .eq('id', projectToDelete);
+        .eq('id', migrationToDelete);
 
       if (error) throw error;
 
-      if (selectedProject === projectToDelete) {
-        setSelectedProject(null);
+      if (selectedMigration === migrationToDelete) {
+        setSelectedMigration(null);
       }
       
-      toast.success(`Migration "${projectToDeleteData?.name}" deleted`);
-      loadProjects();
+      toast.success(`Migration "${migrationToDeleteData?.name}" gelöscht`);
+      loadProjectAndMigrations();
     } catch (error: any) {
-      toast.error("Failed to delete migration");
+      toast.error("Fehler beim Löschen der Migration");
       console.error(error);
     } finally {
       setShowDeleteDialog(false);
-      setProjectToDelete(null);
+      setMigrationToDelete(null);
     }
   };
 
-  const handleEditProject = (projectId: string) => {
-    const project = projects.find((p) => p.id === projectId);
-    if (project) {
-      setEditingProject(project);
+  const handleEditMigration = (migrationId: string) => {
+    const migration = migrations.find((m) => m.id === migrationId);
+    if (migration) {
+      setEditingMigration(migration);
       setShowEditDialog(true);
     }
   };
@@ -198,26 +229,26 @@ const Dashboard = () => {
       const { error } = await supabase
         .from('migrations')
         .update({ name })
-        .eq('id', editingProject.id);
+        .eq('id', editingMigration.id);
 
       if (error) throw error;
 
-      toast.success(`Migration updated to "${name}"`);
+      toast.success(`Migration aktualisiert auf "${name}"`);
       setShowEditDialog(false);
-      setEditingProject(null);
-      loadProjects();
+      setEditingMigration(null);
+      loadProjectAndMigrations();
     } catch (error: any) {
-      toast.error("Failed to update migration");
+      toast.error("Fehler beim Aktualisieren der Migration");
       console.error(error);
     }
   };
 
-  const currentProject = projects.find((p) => p.id === selectedProject);
+  const currentMigration = migrations.find((m) => m.id === selectedMigration);
 
   if (loading) {
     return (
       <div className="flex h-screen bg-background items-center justify-center">
-        <p className="text-muted-foreground">Loading...</p>
+        <p className="text-muted-foreground">Lädt...</p>
       </div>
     );
   }
@@ -225,41 +256,42 @@ const Dashboard = () => {
   return (
     <div className="flex h-screen bg-background">
       <Sidebar
-        projects={projects}
-        selectedProject={selectedProject}
-        onSelectProject={setSelectedProject}
+        projects={[{ id: currentProject?.id || '', name: currentProject?.name || '' }]}
+        migrations={migrations}
+        selectedMigration={selectedMigration}
+        onSelectMigration={setSelectedMigration}
         onNewMigration={() => setShowAddDialog(true)}
-        onDeleteProject={handleDeleteProject}
-        onEditProject={handleEditProject}
-        onLogoClick={() => setSelectedProject(null)}
+        onDeleteMigration={handleDeleteMigration}
+        onEditMigration={handleEditMigration}
+        onLogoClick={() => navigate("/projects")}
       />
 
       <div className="flex-1 flex flex-col min-h-0">
         <header className="h-20 flex items-center justify-between px-6 flex-shrink-0">
-          {currentProject ? (
+          {currentMigration ? (
             <div className="flex items-center gap-6">
               <div className="flex gap-2">
                 <Button
-                  variant={activeProjectTab === "general" ? "secondary" : "ghost"}
-                  onClick={() => setActiveProjectTab("general")}
+                  variant={activeMigrationTab === "general" ? "secondary" : "ghost"}
+                  onClick={() => setActiveMigrationTab("general")}
                   size="sm"
                 >
                   General
                 </Button>
                 <Button
-                  variant={activeProjectTab === "mapping" ? "secondary" : "ghost"}
-                  onClick={() => setActiveProjectTab("mapping")}
+                  variant={activeMigrationTab === "mapping" ? "secondary" : "ghost"}
+                  onClick={() => setActiveMigrationTab("mapping")}
                   size="sm"
                 >
                   Mapping UI
                 </Button>
               </div>
               <div className="text-lg font-semibold text-foreground">
-                {currentProject.sourceSystem} → {currentProject.targetSystem}
+                {currentMigration.sourceSystem} → {currentMigration.targetSystem}
               </div>
             </div>
           ) : (
-            <div />
+            <h1 className="text-2xl font-semibold">{currentProject?.name}</h1>
           )}
           <UserMenu
             onAccountClick={() => {
@@ -275,11 +307,11 @@ const Dashboard = () => {
         </header>
 
         <div className="flex-1 overflow-auto">
-          {currentProject ? (
+          {currentMigration ? (
             <MigrationDetails 
-              project={currentProject} 
-              activeTab={activeProjectTab} 
-              onRefresh={loadProjects}
+              project={currentMigration} 
+              activeTab={activeMigrationTab} 
+              onRefresh={loadProjectAndMigrations}
             />
           ) : (
             <div className="h-full flex items-center justify-center">
@@ -327,7 +359,7 @@ const Dashboard = () => {
         open={showEditDialog}
         onOpenChange={setShowEditDialog}
         onUpdate={handleUpdateMigration}
-        currentName={editingProject?.name || ""}
+        currentName={editingMigration?.name || ""}
       />
       
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
@@ -335,12 +367,12 @@ const Dashboard = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Sind Sie sicher?</AlertDialogTitle>
             <AlertDialogDescription>
-              Diese Aktion kann nicht rückgängig gemacht werden. Die Migration "{projects.find(p => p.id === projectToDelete)?.name}" wird permanent gelöscht.
+              Diese Aktion kann nicht rückgängig gemacht werden. Die Migration "{migrations.find(m => m.id === migrationToDelete)?.name}" wird permanent gelöscht.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Abbrechen</AlertDialogCancel>
-            <AlertDialogAction onClick={confirmDeleteProject} className="bg-destructive hover:bg-destructive/90">
+            <AlertDialogAction onClick={confirmDeleteMigration} className="bg-destructive hover:bg-destructive/90">
               Löschen
             </AlertDialogAction>
           </AlertDialogFooter>

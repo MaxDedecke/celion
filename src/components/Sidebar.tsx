@@ -1,4 +1,4 @@
-import { Plus, Trash2, Pencil, PanelLeftClose, PanelLeft, Plug } from "lucide-react";
+import { Plus, Trash2, Pencil, PanelLeftClose, PanelLeft, Plug, ChevronDown, ChevronRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Logo from "./Logo";
 import { cn } from "@/lib/utils";
@@ -7,17 +7,38 @@ import { useNavigate } from "react-router-dom";
 
 interface SidebarProps {
   projects: Array<{ id: string; name: string }>;
-  selectedProject: string | null;
-  onSelectProject: (id: string) => void;
+  migrations?: Array<{ id: string; name: string }>;
+  selectedMigration?: string | null;
+  onSelectMigration?: (id: string) => void;
   onNewMigration: () => void;
-  onDeleteProject: (id: string) => void;
-  onEditProject: (id: string) => void;
+  onDeleteMigration?: (id: string) => void;
+  onEditMigration?: (id: string) => void;
   onLogoClick: () => void;
 }
 
-const Sidebar = ({ projects, selectedProject, onSelectProject, onNewMigration, onDeleteProject, onEditProject, onLogoClick }: SidebarProps) => {
+const Sidebar = ({ 
+  projects, 
+  migrations = [],
+  selectedMigration, 
+  onSelectMigration, 
+  onNewMigration, 
+  onDeleteMigration, 
+  onEditMigration, 
+  onLogoClick 
+}: SidebarProps) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set(projects.map(p => p.id)));
   const navigate = useNavigate();
+
+  const toggleProject = (projectId: string) => {
+    const newExpanded = new Set(expandedProjects);
+    if (newExpanded.has(projectId)) {
+      newExpanded.delete(projectId);
+    } else {
+      newExpanded.add(projectId);
+    }
+    setExpandedProjects(newExpanded);
+  };
 
   return (
     <div className={cn(
@@ -68,45 +89,67 @@ const Sidebar = ({ projects, selectedProject, onSelectProject, onNewMigration, o
       )}
 
       {!isCollapsed && (
-        <nav className="flex-1 space-y-2">
+        <nav className="flex-1 space-y-2 overflow-auto">
           {projects.map((project) => (
-            <div
-              key={project.id}
-              className={cn(
-                "group flex items-center justify-between w-full px-4 py-2 rounded-lg transition-colors text-sm",
-                selectedProject === project.id
-                  ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                  : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground"
-              )}
-            >
-              <button
-                onClick={() => onSelectProject(project.id)}
-                className="flex-1 text-left"
-              >
-                {project.name}
-              </button>
-              <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+            <div key={project.id} className="space-y-1">
+              <div className="flex items-center justify-between w-full px-2 py-2 rounded-lg transition-colors text-sm">
                 <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onEditProject(project.id);
-                  }}
-                  className="p-1 hover:text-primary"
-                  aria-label="Edit migration"
+                  onClick={() => toggleProject(project.id)}
+                  className="flex items-center gap-2 flex-1 text-left font-medium"
                 >
-                  <Pencil className="h-4 w-4" />
-                </button>
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onDeleteProject(project.id);
-                  }}
-                  className="p-1 hover:text-destructive"
-                  aria-label="Delete migration"
-                >
-                  <Trash2 className="h-4 w-4" />
+                  {expandedProjects.has(project.id) ? (
+                    <ChevronDown className="h-4 w-4" />
+                  ) : (
+                    <ChevronRight className="h-4 w-4" />
+                  )}
+                  {project.name}
                 </button>
               </div>
+
+              {expandedProjects.has(project.id) && migrations.length > 0 && (
+                <div className="ml-6 space-y-1">
+                  {migrations.map((migration) => (
+                    <div
+                      key={migration.id}
+                      className={cn(
+                        "group flex items-center justify-between w-full px-4 py-2 rounded-lg transition-colors text-sm",
+                        selectedMigration === migration.id
+                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                          : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground"
+                      )}
+                    >
+                      <button
+                        onClick={() => onSelectMigration?.(migration.id)}
+                        className="flex-1 text-left"
+                      >
+                        {migration.name}
+                      </button>
+                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onEditMigration?.(migration.id);
+                          }}
+                          className="p-1 hover:text-primary"
+                          aria-label="Migration bearbeiten"
+                        >
+                          <Pencil className="h-4 w-4" />
+                        </button>
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            onDeleteMigration?.(migration.id);
+                          }}
+                          className="p-1 hover:text-destructive"
+                          aria-label="Migration löschen"
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </nav>

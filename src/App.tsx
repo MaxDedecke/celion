@@ -5,6 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import Login from "./pages/Login";
+import Projects from "./pages/Projects";
 import Dashboard from "./pages/Dashboard";
 import DataSources from "./pages/DataSources";
 import NotFound from "./pages/NotFound";
@@ -20,7 +21,8 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Login />} />
-            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/projects" element={<Projects />} />
+            <Route path="/celion/:projectName" element={<Dashboard />} />
             <Route path="/data-sources" element={<DataSources />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
