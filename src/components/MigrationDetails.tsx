@@ -384,7 +384,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                         <p className="text-sm font-medium">Meta modell</p>
                       </div>
                       <div>
-                        <p className="text-sm text-muted-foreground">Mapped Jira Objects</p>
+                        <p className="text-sm text-muted-foreground">Mapped objects</p>
                         <p className="text-foreground font-medium">{project.mappedObjects}</p>
                       </div>
                     </div>
