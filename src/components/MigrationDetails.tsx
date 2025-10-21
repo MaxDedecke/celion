@@ -223,7 +223,7 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
 
       if (error) throw error;
 
-      toast.success(`${type === 'in' ? 'Interconnector' : 'Outconnector'} gelöscht`);
+      toast.success(`${type === 'in' ? 'Inconnector' : 'Outconnector'} gelöscht`);
       window.location.reload(); // Reload to refresh data
     } catch (error: any) {
       toast.error("Fehler beim Löschen");
@@ -316,11 +316,11 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
                 </div>
               </div>
 
-              {/* Interconnector Card */}
+              {/* Inconnector Card */}
               <Card className="bg-card border-border">
                 <CardHeader className="flex flex-row items-center justify-between">
                   <div>
-                    <CardTitle className="text-base">Interconnector</CardTitle>
+                    <CardTitle className="text-base">Inconnector</CardTitle>
                     <p className="text-sm text-muted-foreground mt-1">
                       {project.inConnectorDetail}
                     </p>
@@ -496,10 +496,10 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
         <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
-              {configType === 'in' ? 'Interconnector' : 'Outconnector'} {hasInConnector || hasOutConnector ? 'Bearbeiten' : 'Erstellen'}
+              {configType === 'in' ? 'Inconnector' : 'Outconnector'} {(configType === 'in' ? hasInConnector : hasOutConnector) ? 'bearbeiten' : 'erstellen'}
             </DialogTitle>
             <DialogDescription>
-              Konfigurieren Sie die API-Verbindungseinstellungen für den {configType === 'in' ? 'Interconnector' : 'Outconnector'}.
+              Konfigurieren Sie die API-Verbindungseinstellungen für den {configType === 'in' ? 'Inconnector' : 'Outconnector'}.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-6 py-4">
