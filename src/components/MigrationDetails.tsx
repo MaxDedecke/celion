@@ -65,7 +65,7 @@ const MigrationDetails = ({ project }: MigrationDetailsProps) => {
           <TabsTrigger value="mapping">Mapping UI</TabsTrigger>
         </TabsList>
 
-        <TabsContent value="general" className="space-y-6 mt-6">
+        <TabsContent value="general" className="space-y-6 mt-6 pb-6">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Left column - Cards */}
             <div className="lg:col-span-2 space-y-6">
@@ -192,7 +192,7 @@ const MigrationDetails = ({ project }: MigrationDetailsProps) => {
           </div>
         </TabsContent>
 
-        <TabsContent value="mapping" className="mt-6">
+        <TabsContent value="mapping" className="mt-6 pb-6">
           <div className="bg-card border-border rounded-lg p-8 min-h-[500px] flex items-center justify-center">
             <p className="text-muted-foreground">Mapping UI visualization area</p>
           </div>
