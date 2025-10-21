@@ -1,5 +1,6 @@
 import { Database, Settings as SettingsIcon, Trash2, Check, Link } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import CircularProgress from "./CircularProgress";
 import ActivityTimeline, { Activity } from "./ActivityTimeline";
 import { Button } from "./ui/button";
@@ -736,8 +737,10 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                 <CardHeader>
                   <CardTitle className="text-base">Activity</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <ActivityTimeline activities={project.activities} />
+                <CardContent className="p-0">
+                  <ScrollArea className="h-[400px] px-6 py-4">
+                    <ActivityTimeline activities={project.activities} />
+                  </ScrollArea>
                 </CardContent>
               </Card>
             </div>
