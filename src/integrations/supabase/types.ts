@@ -14,7 +14,92 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      migration_activities: {
+        Row: {
+          created_at: string
+          id: string
+          migration_id: string
+          timestamp: string
+          title: string
+          type: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          migration_id: string
+          timestamp: string
+          title: string
+          type: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          migration_id?: string
+          timestamp?: string
+          title?: string
+          type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "migration_activities_migration_id_fkey"
+            columns: ["migration_id"]
+            isOneToOne: false
+            referencedRelation: "migrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      migrations: {
+        Row: {
+          created_at: string
+          id: string
+          in_connector: string
+          in_connector_detail: string
+          mapped_objects: string
+          name: string
+          objects_transferred: string
+          out_connector: string
+          out_connector_detail: string
+          progress: number
+          source_system: string
+          target_system: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          in_connector: string
+          in_connector_detail: string
+          mapped_objects?: string
+          name: string
+          objects_transferred?: string
+          out_connector: string
+          out_connector_detail: string
+          progress?: number
+          source_system: string
+          target_system: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          in_connector?: string
+          in_connector_detail?: string
+          mapped_objects?: string
+          name?: string
+          objects_transferred?: string
+          out_connector?: string
+          out_connector_detail?: string
+          progress?: number
+          source_system?: string
+          target_system?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
