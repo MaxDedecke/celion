@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -13,9 +13,17 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  SelectSeparator,
 } from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { AlertCircle } from "lucide-react";
+import { supabase } from "@/integrations/supabase/client";
+
+interface DataSource {
+  id: string;
+  name: string;
+  source_type: string;
+}
 
 interface AddMigrationDialogProps {
   open: boolean;
@@ -28,6 +36,42 @@ const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogPro
   const [sourceSystem, setSourceSystem] = useState("");
   const [targetSystem, setTargetSystem] = useState("");
   const [error, setError] = useState(false);
+  const [dataSources, setDataSources] = useState<DataSource[]>([]);
+
+  useEffect(() => {
+    const loadDataSources = async () => {
+      const { data } = await supabase
+        .from("data_sources")
+        .select("id, name, source_type")
+        .eq("is_active", true);
+      
+      if (data) {
+        setDataSources(data);
+      }
+    };
+
+    if (open) {
+      loadDataSources();
+    }
+  }, [open]);
+
+  const defaultSources = [
+    "Jira Atlassian (Cloud)",
+    "Jira Atlassian (Server)",
+    "Azure DevOps",
+    "Monday.com",
+    "ClickUp",
+  ];
+
+  const defaultTargets = [
+    "Asana",
+    "Jira Atlassian (Cloud)",
+    "Trello",
+    "Notion",
+    "Linear",
+  ];
+
+  const availableTargets = defaultTargets.filter(target => target !== sourceSystem);
 
   const handleSubmit = () => {
     if (!name.trim() || !sourceSystem || !targetSystem) {
@@ -73,11 +117,21 @@ const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogPro
                 <SelectValue placeholder="Select source system" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Jira Atlassian (Cloud)">Jira Atlassian (Cloud)</SelectItem>
-                <SelectItem value="Jira Atlassian (Server)">Jira Atlassian (Server)</SelectItem>
-                <SelectItem value="Azure DevOps">Azure DevOps</SelectItem>
-                <SelectItem value="Monday.com">Monday.com</SelectItem>
-                <SelectItem value="ClickUp">ClickUp</SelectItem>
+                {defaultSources.map((source) => (
+                  <SelectItem key={source} value={source}>
+                    {source}
+                  </SelectItem>
+                ))}
+                {dataSources.length > 0 && (
+                  <>
+                    <SelectSeparator />
+                    {dataSources.map((source) => (
+                      <SelectItem key={source.id} value={source.name}>
+                        {source.name}
+                      </SelectItem>
+                    ))}
+                  </>
+                )}
               </SelectContent>
             </Select>
           </div>
@@ -92,11 +146,23 @@ const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogPro
                 <SelectValue placeholder="Select target system" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="Asana">Asana</SelectItem>
-                <SelectItem value="Jira Atlassian (Cloud)">Jira Atlassian (Cloud)</SelectItem>
-                <SelectItem value="Trello">Trello</SelectItem>
-                <SelectItem value="Notion">Notion</SelectItem>
-                <SelectItem value="Linear">Linear</SelectItem>
+                {availableTargets.map((target) => (
+                  <SelectItem key={target} value={target}>
+                    {target}
+                  </SelectItem>
+                ))}
+                {dataSources.filter(source => source.name !== sourceSystem).length > 0 && (
+                  <>
+                    <SelectSeparator />
+                    {dataSources
+                      .filter(source => source.name !== sourceSystem)
+                      .map((source) => (
+                        <SelectItem key={source.id} value={source.name}>
+                          {source.name}
+                        </SelectItem>
+                      ))}
+                  </>
+                )}
               </SelectContent>
             </Select>
           </div>
