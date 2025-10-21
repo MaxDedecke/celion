@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -25,7 +25,13 @@ const AccountDialog = ({ open, onOpenChange, activeTab = "account" }: AccountDia
   const [role, setRole] = useState("Consultant");
   const [notifications, setNotifications] = useState(true);
   const [emailUpdates, setEmailUpdates] = useState(false);
+  const [currentTab, setCurrentTab] = useState(activeTab);
   const { theme, setTheme } = useTheme();
+
+  // Update tab when activeTab prop changes
+  useEffect(() => {
+    setCurrentTab(activeTab);
+  }, [activeTab]);
 
   const handleSave = () => {
     setIsEditing(false);
@@ -38,7 +44,7 @@ const AccountDialog = ({ open, onOpenChange, activeTab = "account" }: AccountDia
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-popover border-border max-w-xl">
-        <Tabs value={activeTab} defaultValue={activeTab} className="w-full mt-8">
+        <Tabs value={currentTab} onValueChange={(value) => setCurrentTab(value as "account" | "settings")} className="w-full mt-8">
           <TabsList className="grid w-full grid-cols-2 bg-muted">
             <TabsTrigger value="account">Account</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
