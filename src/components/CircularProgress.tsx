@@ -15,8 +15,8 @@ const CircularProgress = ({ progress, size = 200, strokeWidth = 8 }: CircularPro
   };
 
   return (
-    <div className="flex flex-col items-center gap-4">
-      <svg width={size} height={size} className="transform -rotate-90">
+    <div className="relative inline-flex items-center justify-center" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="transform -rotate-90 absolute">
         <circle
           cx={size / 2}
           cy={size / 2}
@@ -38,9 +38,7 @@ const CircularProgress = ({ progress, size = 200, strokeWidth = 8 }: CircularPro
           className="transition-all duration-500"
         />
       </svg>
-      <div className="absolute inset-0 flex items-center justify-center">
-        <span className="text-4xl font-bold">{progress} %</span>
-      </div>
+      <span className="text-4xl font-bold absolute">{progress} %</span>
     </div>
   );
 };
