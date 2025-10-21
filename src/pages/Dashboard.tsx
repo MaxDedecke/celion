@@ -75,6 +75,7 @@ const Dashboard = () => {
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [showAccountDialog, setShowAccountDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [activeDialogTab, setActiveDialogTab] = useState<"account" | "settings">("account");
   const [projects, setProjects] = useState(mockProjects);
 
   const handleLogout = () => {
@@ -115,8 +116,14 @@ const Dashboard = () => {
       <div className="flex-1 flex flex-col min-h-0">
         <header className="h-16 border-b border-sidebar-border flex items-center justify-end px-6 flex-shrink-0">
           <UserMenu
-            onAccountClick={() => setShowAccountDialog(true)}
-            onSettingsClick={() => setShowAccountDialog(true)}
+            onAccountClick={() => {
+              setActiveDialogTab("account");
+              setShowAccountDialog(true);
+            }}
+            onSettingsClick={() => {
+              setActiveDialogTab("settings");
+              setShowAccountDialog(true);
+            }}
             onLogout={handleLogout}
           />
         </header>
@@ -146,7 +153,11 @@ const Dashboard = () => {
         </div>
       </div>
 
-      <AccountDialog open={showAccountDialog} onOpenChange={setShowAccountDialog} />
+      <AccountDialog 
+        open={showAccountDialog} 
+        onOpenChange={setShowAccountDialog}
+        activeTab={activeDialogTab}
+      />
       <AddMigrationDialog
         open={showAddDialog}
         onOpenChange={setShowAddDialog}

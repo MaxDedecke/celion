@@ -16,9 +16,10 @@ import { useTheme } from "next-themes";
 interface AccountDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  activeTab?: "account" | "settings";
 }
 
-const AccountDialog = ({ open, onOpenChange }: AccountDialogProps) => {
+const AccountDialog = ({ open, onOpenChange, activeTab = "account" }: AccountDialogProps) => {
   const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState("Max Musterman");
   const [role, setRole] = useState("Consultant");
@@ -37,7 +38,7 @@ const AccountDialog = ({ open, onOpenChange }: AccountDialogProps) => {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-popover border-border max-w-xl">
-        <Tabs defaultValue="account" className="w-full mt-8">
+        <Tabs value={activeTab} defaultValue={activeTab} className="w-full mt-8">
           <TabsList className="grid w-full grid-cols-2 bg-muted">
             <TabsTrigger value="account">Account</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
