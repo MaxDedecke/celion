@@ -207,7 +207,7 @@ const Projects = () => {
       // Find first migration in this project and navigate to it
       const projectMigration = migrations.find(m => m.projectId === projectId);
       if (projectMigration) {
-        navigate(`/migration/${projectMigration.id}`);
+        navigate(`/projects/${projectId}/migration/${projectMigration.id}`);
       } else {
         navigate('/dashboard');
       }
@@ -306,6 +306,14 @@ const Projects = () => {
         projects={projects}
         projectMigrations={migrations}
         standaloneMigrations={standaloneMigrations}
+        onSelectMigration={(id) => {
+          const migration = [...migrations, ...standaloneMigrations].find(m => m.id === id);
+          if (migration && migration.projectId) {
+            navigate(`/projects/${migration.projectId}/migration/${id}`);
+          } else {
+            navigate(`/migration/${id}`);
+          }
+        }}
         onNewMigration={() => {
           setProjectIdForNewMigration(null);
           setShowAddMigrationDialog(true);

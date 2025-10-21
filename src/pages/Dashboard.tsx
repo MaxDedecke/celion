@@ -23,7 +23,7 @@ import {
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { migrationId } = useParams<{ migrationId?: string }>();
+  const { migrationId, projectId } = useParams<{ migrationId?: string; projectId?: string }>();
   const [selectedMigration, setSelectedMigration] = useState<string | null>(migrationId || null);
   const [showAccountDialog, setShowAccountDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
@@ -275,7 +275,14 @@ const Dashboard = () => {
         projectMigrations={migrations}
         standaloneMigrations={standaloneMigrations}
         selectedMigration={selectedMigration}
-        onSelectMigration={(id) => navigate(`/migration/${id}`)}
+        onSelectMigration={(id) => {
+          const migration = [...migrations, ...standaloneMigrations].find(m => m.id === id);
+          if (migration && migration.projectId) {
+            navigate(`/projects/${migration.projectId}/migration/${id}`);
+          } else {
+            navigate(`/migration/${id}`);
+          }
+        }}
         onNewMigration={() => {
           setProjectIdForNewMigration(null);
           setShowAddDialog(true);

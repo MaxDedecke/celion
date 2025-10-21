@@ -129,7 +129,7 @@ const Sidebar = ({
                       )}
                     >
                       <button
-                        onClick={() => navigate(`/migration/${migration.id}`)}
+                        onClick={() => navigate(`/projects/${project.id}/migration/${migration.id}`)}
                         className="flex-1 text-left"
                       >
                         {migration.name}
