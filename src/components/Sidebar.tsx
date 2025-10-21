@@ -31,7 +31,7 @@ const Sidebar = ({ projects, selectedProject, onSelectProject, onNewMigration, o
         >
           <Logo />
         </button>
-        <div className="flex items-center gap-1 justify-between flex-1">
+        <div className="flex items-center gap-1">
           {!isCollapsed && (
             <Button
               variant="ghost"
@@ -46,7 +46,7 @@ const Sidebar = ({ projects, selectedProject, onSelectProject, onNewMigration, o
             variant="ghost"
             size="icon"
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="flex-shrink-0 ml-auto"
+            className="flex-shrink-0"
           >
             {isCollapsed ? (
               <PanelLeft className="h-4 w-4" />
