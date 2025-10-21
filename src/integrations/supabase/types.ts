@@ -67,6 +67,54 @@ export type Database = {
           },
         ]
       }
+      data_sources: {
+        Row: {
+          additional_config: Json | null
+          api_key: string | null
+          api_url: string | null
+          auth_type: string
+          created_at: string
+          id: string
+          is_active: boolean
+          name: string
+          password: string | null
+          source_type: string
+          updated_at: string
+          user_id: string
+          username: string | null
+        }
+        Insert: {
+          additional_config?: Json | null
+          api_key?: string | null
+          api_url?: string | null
+          auth_type?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name: string
+          password?: string | null
+          source_type: string
+          updated_at?: string
+          user_id: string
+          username?: string | null
+        }
+        Update: {
+          additional_config?: Json | null
+          api_key?: string | null
+          api_url?: string | null
+          auth_type?: string
+          created_at?: string
+          id?: string
+          is_active?: boolean
+          name?: string
+          password?: string | null
+          source_type?: string
+          updated_at?: string
+          user_id?: string
+          username?: string | null
+        }
+        Relationships: []
+      }
       migration_activities: {
         Row: {
           created_at: string
