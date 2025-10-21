@@ -40,6 +40,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
+import TestConnectionDialog from "./dialogs/TestConnectionDialog";
 
 interface MigrationProject {
   id: string;
@@ -69,8 +70,10 @@ interface MigrationDetailsProps {
 const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsProps) => {
   const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isTestDialogOpen, setIsTestDialogOpen] = useState(false);
   const [deleteType, setDeleteType] = useState<'in' | 'out'>('in');
   const [configType, setConfigType] = useState<'in' | 'out'>('in');
+  const [testType, setTestType] = useState<'in' | 'out'>('in');
   const [formData, setFormData] = useState({
     apiUrl: '',
     apiKey: '',
@@ -222,8 +225,46 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   };
 
   const handleTest = (type: 'in' | 'out') => {
-    console.log(`Testing ${type}connector connection...`);
-    // Implement test logic here
+    setTestType(type);
+    setIsTestDialogOpen(true);
+  };
+
+  const handleTestComplete = async () => {
+    try {
+      const connector = testType === 'in' ? project.connectors?.in : project.connectors?.out;
+      if (!connector) return;
+
+      // Update connector to mark as tested
+      const { error: updateError } = await supabase
+        .from('connectors')
+        .update({ is_tested: true })
+        .eq('id', connector.id);
+
+      if (updateError) throw updateError;
+
+      // Update migration progress by 2.5%
+      const newProgress = Math.min(project.progress + 2.5, 100);
+      const { error: progressError } = await supabase
+        .from('migrations')
+        .update({ progress: newProgress })
+        .eq('id', project.id);
+
+      if (progressError) throw progressError;
+
+      // Add system activity
+      await supabase.from('migration_activities').insert({
+        migration_id: project.id,
+        type: 'system',
+        title: `${testType === 'in' ? 'Inconnector' : 'Outconnector'} erfolgreich getestet`,
+        timestamp: new Date().toLocaleString('de-DE'),
+      });
+
+      toast.success("Test erfolgreich abgeschlossen");
+      await onRefresh();
+    } catch (error: any) {
+      toast.error("Fehler beim Test");
+      console.error(error);
+    }
   };
 
   const handleDeleteClick = (type: 'in' | 'out') => {
@@ -233,6 +274,13 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
   const confirmDelete = async () => {
     try {
+      const connector = deleteType === 'in' ? project.connectors?.in : project.connectors?.out;
+      
+      // Calculate progress decrease based on whether it was tested
+      const progressDecrease = connector?.is_tested ? 5 : 2.5;
+      const newProgress = Math.max(project.progress - progressDecrease, 0);
+
+      // Delete connector
       const { error } = await supabase
         .from('connectors')
         .delete()
@@ -240,6 +288,14 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
         .eq('connector_type', deleteType);
 
       if (error) throw error;
+
+      // Update migration progress
+      const { error: progressError } = await supabase
+        .from('migrations')
+        .update({ progress: newProgress })
+        .eq('id', project.id);
+
+      if (progressError) throw progressError;
 
       // Add system activity
       const { error: activityError } = await supabase.from('migration_activities').insert({
@@ -265,6 +321,8 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   const handleSaveConnector = async () => {
     try {
       const connector = configType === 'in' ? project.connectors?.in : project.connectors?.out;
+      const isCreating = !connector;
+      const wasTested = connector?.is_tested || false;
       
       const additionalConfig: Record<string, any> = {
         ssl_verification: formData.sslVerification,
@@ -305,11 +363,19 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
         additional_config: additionalConfig,
       };
 
+      // Calculate progress change
+      let progressChange = 0;
+      if (isCreating) {
+        progressChange = 2.5; // New connector
+      } else if (wasTested) {
+        progressChange = -5; // Editing a tested connector removes both config and test progress
+      }
+
       if (connector) {
-        // Update existing connector
+        // Update existing connector - reset is_tested to false
         const { error } = await supabase
           .from('connectors')
-          .update(connectorData)
+          .update({ ...connectorData, is_tested: false })
           .eq('id', connector.id);
 
         if (error) throw error;
@@ -350,6 +416,19 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
         }
 
         toast.success("Connector erstellt");
+      }
+
+      // Update migration progress
+      if (progressChange !== 0) {
+        const newProgress = Math.max(0, Math.min(100, project.progress + progressChange));
+        const { error: progressError } = await supabase
+          .from('migrations')
+          .update({ progress: newProgress })
+          .eq('id', project.id);
+
+        if (progressError) {
+          console.error('Error updating progress:', progressError);
+        }
       }
 
       setIsConfigDialogOpen(false);
@@ -444,8 +523,8 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-2 text-sm">
-                    <span className={project.progress > 0 ? "text-success" : "text-muted-foreground"}>
-                      Connection {project.progress > 0 ? "✓" : "—"}
+                    <span className={project.connectors?.in?.is_tested ? "text-success" : "text-muted-foreground"}>
+                      Connection {project.connectors?.in?.is_tested ? "✓" : "—"}
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">
@@ -501,8 +580,8 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-2 text-sm">
-                    <span className={project.progress === 100 ? "text-success" : "text-muted-foreground"}>
-                      Connection {project.progress === 100 ? "✓" : "—"}
+                    <span className={project.connectors?.out?.is_tested ? "text-success" : "text-muted-foreground"}>
+                      Connection {project.connectors?.out?.is_tested ? "✓" : "—"}
                     </span>
                   </div>
                   <p className="text-xs text-muted-foreground mt-2">
@@ -858,6 +937,14 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Test Connection Dialog */}
+      <TestConnectionDialog
+        open={isTestDialogOpen}
+        onOpenChange={setIsTestDialogOpen}
+        connectorType={testType}
+        onTestComplete={handleTestComplete}
+      />
     </div>
   );
 };

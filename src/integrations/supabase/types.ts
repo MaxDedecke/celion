@@ -24,6 +24,7 @@ export type Database = {
           created_at: string
           endpoint: string | null
           id: string
+          is_tested: boolean
           migration_id: string
           password: string | null
           updated_at: string
@@ -38,6 +39,7 @@ export type Database = {
           created_at?: string
           endpoint?: string | null
           id?: string
+          is_tested?: boolean
           migration_id: string
           password?: string | null
           updated_at?: string
@@ -52,6 +54,7 @@ export type Database = {
           created_at?: string
           endpoint?: string | null
           id?: string
+          is_tested?: boolean
           migration_id?: string
           password?: string | null
           updated_at?: string
