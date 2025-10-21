@@ -1,4 +1,4 @@
-import { Plus } from "lucide-react";
+import { Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Logo from "./Logo";
 import { cn } from "@/lib/utils";
@@ -8,9 +8,10 @@ interface SidebarProps {
   selectedProject: string | null;
   onSelectProject: (id: string) => void;
   onNewMigration: () => void;
+  onDeleteProject: (id: string) => void;
 }
 
-const Sidebar = ({ projects, selectedProject, onSelectProject, onNewMigration }: SidebarProps) => {
+const Sidebar = ({ projects, selectedProject, onSelectProject, onNewMigration, onDeleteProject }: SidebarProps) => {
   return (
     <div className="w-80 bg-background border-r border-sidebar-border h-screen flex flex-col p-6">
       <Logo className="mb-8" />
@@ -25,18 +26,32 @@ const Sidebar = ({ projects, selectedProject, onSelectProject, onNewMigration }:
 
       <nav className="flex-1 space-y-2">
         {projects.map((project) => (
-          <button
+          <div
             key={project.id}
-            onClick={() => onSelectProject(project.id)}
             className={cn(
-              "w-full text-left px-4 py-2 rounded-lg transition-colors text-sm",
+              "group flex items-center justify-between w-full px-4 py-2 rounded-lg transition-colors text-sm",
               selectedProject === project.id
                 ? "bg-sidebar-accent text-sidebar-accent-foreground"
                 : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground"
             )}
           >
-            {project.name}
-          </button>
+            <button
+              onClick={() => onSelectProject(project.id)}
+              className="flex-1 text-left"
+            >
+              {project.name}
+            </button>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                onDeleteProject(project.id);
+              }}
+              className="opacity-0 group-hover:opacity-100 transition-opacity p-1 hover:text-destructive"
+              aria-label="Delete migration"
+            >
+              <Trash2 className="h-4 w-4" />
+            </button>
+          </div>
         ))}
       </nav>
     </div>

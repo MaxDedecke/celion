@@ -112,6 +112,15 @@ const Dashboard = () => {
     toast.success(`Migration "${name}" created`);
   };
 
+  const handleDeleteProject = (projectId: string) => {
+    const projectToDelete = projects.find((p) => p.id === projectId);
+    setProjects(projects.filter((p) => p.id !== projectId));
+    if (selectedProject === projectId) {
+      setSelectedProject(null);
+    }
+    toast.success(`Migration "${projectToDelete?.name}" deleted`);
+  };
+
   const currentProject = projects.find((p) => p.id === selectedProject);
 
   return (
@@ -121,6 +130,7 @@ const Dashboard = () => {
         selectedProject={selectedProject}
         onSelectProject={setSelectedProject}
         onNewMigration={() => setShowAddDialog(true)}
+        onDeleteProject={handleDeleteProject}
       />
 
       <div className="flex-1 flex flex-col min-h-0">
