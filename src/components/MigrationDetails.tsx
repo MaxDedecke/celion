@@ -625,7 +625,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
       {activeTab === "general" && (
         <div className="space-y-6 pb-6">
           {/* Progress Card - Full width */}
-          <div className="flex justify-center items-center gap-16 py-4">
+          <div className="flex justify-start items-center gap-16 py-4">
             <div className="text-center">
               <p className="text-sm font-semibold text-foreground mb-1">Nächster Schritt:</p>
               <p className="text-lg font-bold text-primary">{getCurrentStep()}</p>
