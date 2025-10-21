@@ -14,6 +14,8 @@ const mockProjects = [
     id: "1",
     name: "Project Docta",
     progress: 60,
+    sourceSystem: "Jira Atlassian (Cloud)",
+    targetSystem: "Asana",
     inConnector: "Jira Atlassian (Cloud)",
     inConnectorDetail: "Jira Atlassian (Cloud)",
     outConnector: "Asana",
@@ -37,6 +39,8 @@ const mockProjects = [
     id: "2",
     name: "Agil Scrum Nexis",
     progress: 100,
+    sourceSystem: "Jira Atlassian (Cloud)",
+    targetSystem: "Asana",
     inConnector: "Jira Atlassian (Cloud)",
     inConnectorDetail: "Jira Atlassian (Cloud)",
     outConnector: "Asana",
@@ -59,6 +63,8 @@ const mockProjects = [
     id: "3",
     name: "Fujitsu Migration",
     progress: 0,
+    sourceSystem: "Jira Atlassian (Cloud)",
+    targetSystem: "Asana",
     inConnector: "Jira Atlassian (Cloud)",
     inConnectorDetail: "Jira Atlassian (Cloud)",
     outConnector: "Asana",
@@ -85,15 +91,17 @@ const Dashboard = () => {
     navigate("/");
   };
 
-  const handleAddMigration = (name: string) => {
+  const handleAddMigration = (name: string, sourceSystem: string, targetSystem: string) => {
     const newProject = {
       id: String(projects.length + 1),
       name,
       progress: 0,
-      inConnector: "Not configured",
-      inConnectorDetail: "Not configured",
-      outConnector: "Not configured",
-      outConnectorDetail: "Not configured",
+      sourceSystem,
+      targetSystem,
+      inConnector: sourceSystem,
+      inConnectorDetail: sourceSystem,
+      outConnector: targetSystem,
+      outConnectorDetail: targetSystem,
       objectsTransferred: "0/0",
       mappedObjects: "0/0",
       activities: [

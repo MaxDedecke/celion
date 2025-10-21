@@ -31,6 +31,8 @@ interface MigrationProject {
   id: string;
   name: string;
   progress: number;
+  sourceSystem: string;
+  targetSystem: string;
   inConnector: string;
   inConnectorDetail: string;
   outConnector: string;
@@ -48,6 +50,76 @@ interface MigrationDetailsProps {
 const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
   const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false);
   const [configType, setConfigType] = useState<'in' | 'out'>('in');
+
+  // Define objects based on system type
+  const getSystemObjects = (system: string) => {
+    const systemObjects: Record<string, { value: string; label: string }[]> = {
+      "Jira Atlassian (Cloud)": [
+        { value: "task", label: "Task" },
+        { value: "issue", label: "Issue" },
+        { value: "epic", label: "Epic" },
+        { value: "story", label: "Story" },
+        { value: "bug", label: "Bug" },
+        { value: "subtask", label: "Subtask" },
+      ],
+      "Jira Atlassian (Server)": [
+        { value: "task", label: "Task" },
+        { value: "issue", label: "Issue" },
+        { value: "epic", label: "Epic" },
+        { value: "story", label: "Story" },
+        { value: "bug", label: "Bug" },
+        { value: "subtask", label: "Subtask" },
+      ],
+      "Azure DevOps": [
+        { value: "user-story", label: "User Story" },
+        { value: "task", label: "Task" },
+        { value: "bug", label: "Bug" },
+        { value: "feature", label: "Feature" },
+        { value: "epic", label: "Epic" },
+      ],
+      "Monday.com": [
+        { value: "item", label: "Item" },
+        { value: "task", label: "Task" },
+        { value: "project", label: "Project" },
+        { value: "milestone", label: "Milestone" },
+      ],
+      "ClickUp": [
+        { value: "task", label: "Task" },
+        { value: "subtask", label: "Subtask" },
+        { value: "checklist", label: "Checklist" },
+        { value: "doc", label: "Doc" },
+      ],
+      "Asana": [
+        { value: "project", label: "Project" },
+        { value: "task", label: "Task" },
+        { value: "section", label: "Section" },
+        { value: "milestone", label: "Milestone" },
+        { value: "tag", label: "Tag" },
+      ],
+      "Trello": [
+        { value: "board", label: "Board" },
+        { value: "card", label: "Card" },
+        { value: "list", label: "List" },
+        { value: "label", label: "Label" },
+      ],
+      "Notion": [
+        { value: "page", label: "Page" },
+        { value: "database", label: "Database" },
+        { value: "task", label: "Task" },
+        { value: "project", label: "Project" },
+      ],
+      "Linear": [
+        { value: "issue", label: "Issue" },
+        { value: "project", label: "Project" },
+        { value: "cycle", label: "Cycle" },
+        { value: "milestone", label: "Milestone" },
+      ],
+    };
+    return systemObjects[system] || [];
+  };
+
+  const sourceObjects = getSystemObjects(project.sourceSystem);
+  const targetObjects = getSystemObjects(project.targetSystem);
 
   const handleEdit = (type: 'in' | 'out') => {
     setConfigType(type);
@@ -199,41 +271,40 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
         <div className="space-y-6 pb-6">
           {/* Dropdowns Section */}
           <div className="grid grid-cols-2 gap-6">
-            {/* Left Dropdown - Inconnector Objects */}
+            {/* Left Dropdown - Source System Objects */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">
-                {project.inConnector} Objects
+                {project.sourceSystem} Objects
               </label>
               <Select>
                 <SelectTrigger className="w-full bg-background">
                   <SelectValue placeholder="Select source object" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="task">Task</SelectItem>
-                  <SelectItem value="issue">Issue</SelectItem>
-                  <SelectItem value="epic">Epic</SelectItem>
-                  <SelectItem value="story">Story</SelectItem>
-                  <SelectItem value="bug">Bug</SelectItem>
-                  <SelectItem value="subtask">Subtask</SelectItem>
+                  {sourceObjects.map((obj) => (
+                    <SelectItem key={obj.value} value={obj.value}>
+                      {obj.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
 
-            {/* Right Dropdown - Outconnector Objects */}
+            {/* Right Dropdown - Target System Objects */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">
-                {project.outConnector} Objects
+                {project.targetSystem} Objects
               </label>
               <Select>
                 <SelectTrigger className="w-full bg-background">
                   <SelectValue placeholder="Select target object" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="project">Project</SelectItem>
-                  <SelectItem value="task">Task</SelectItem>
-                  <SelectItem value="section">Section</SelectItem>
-                  <SelectItem value="milestone">Milestone</SelectItem>
-                  <SelectItem value="tag">Tag</SelectItem>
+                  {targetObjects.map((obj) => (
+                    <SelectItem key={obj.value} value={obj.value}>
+                      {obj.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
