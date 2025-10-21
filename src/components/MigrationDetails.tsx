@@ -127,6 +127,28 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
     loadMetaModelStatus();
   }, [project.id]);
 
+  // Sync objects_transferred with mapped_objects if needed
+  useEffect(() => {
+    const syncObjectCounts = async () => {
+      // Check if objects_transferred is "0/0" but mapped_objects has a value
+      if (project.objectsTransferred === "0/0" && 
+          project.mappedObjects && 
+          project.mappedObjects !== "0/0") {
+        const { error } = await supabase
+          .from('migrations')
+          .update({ objects_transferred: project.mappedObjects })
+          .eq('id', project.id);
+        
+        if (!error) {
+          await onRefresh();
+        }
+      }
+    };
+
+    syncObjectCounts();
+  }, [project.id, project.objectsTransferred, project.mappedObjects]);
+
+
   // Fetch available data sources for linking
   useEffect(() => {
     const fetchDataSources = async () => {
