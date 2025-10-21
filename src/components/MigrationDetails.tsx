@@ -58,7 +58,7 @@ const MigrationDetails = ({ project }: MigrationDetailsProps) => {
   };
 
   return (
-    <div className="flex-1 p-8 space-y-6">
+    <div className="h-full p-8 space-y-6">
       <Tabs defaultValue="general" className="w-full">
         <TabsList className="bg-muted">
           <TabsTrigger value="general">General</TabsTrigger>

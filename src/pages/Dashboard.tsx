@@ -112,8 +112,8 @@ const Dashboard = () => {
         onNewMigration={() => setShowAddDialog(true)}
       />
 
-      <div className="flex-1 flex flex-col">
-        <header className="h-16 border-b border-sidebar-border flex items-center justify-end px-6">
+      <div className="flex-1 flex flex-col min-h-0">
+        <header className="h-16 border-b border-sidebar-border flex items-center justify-end px-6 flex-shrink-0">
           <UserMenu
             onAccountClick={() => setShowAccountDialog(true)}
             onSettingsClick={() => setShowAccountDialog(true)}
@@ -121,27 +121,29 @@ const Dashboard = () => {
           />
         </header>
 
-        {currentProject ? (
-          <MigrationDetails project={currentProject} />
-        ) : (
-          <div className="flex-1 flex items-center justify-center">
-            <div className="text-center space-y-6">
-              <div className="flex justify-center">
-                <div className="relative">
-                  <Database className="h-32 w-32 text-primary" strokeWidth={1.5} />
-                  <Database className="h-24 w-24 text-secondary absolute top-8 left-8" strokeWidth={1.5} />
-                  <div className="absolute inset-0 flex items-center justify-center">
-                    <div className="flex flex-col items-center gap-2">
-                      <div className="h-8 w-1 bg-primary" />
-                      <div className="h-8 w-1 bg-secondary" />
+        <div className="flex-1 overflow-auto">
+          {currentProject ? (
+            <MigrationDetails project={currentProject} />
+          ) : (
+            <div className="h-full flex items-center justify-center">
+              <div className="text-center space-y-6">
+                <div className="flex justify-center">
+                  <div className="relative">
+                    <Database className="h-32 w-32 text-primary" strokeWidth={1.5} />
+                    <Database className="h-24 w-24 text-secondary absolute top-8 left-8" strokeWidth={1.5} />
+                    <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="flex flex-col items-center gap-2">
+                        <div className="h-8 w-1 bg-primary" />
+                        <div className="h-8 w-1 bg-secondary" />
+                      </div>
                     </div>
                   </div>
                 </div>
+                <p className="text-muted-foreground text-lg">Nothing selected</p>
               </div>
-              <p className="text-muted-foreground text-lg">Nothing selected</p>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <AccountDialog open={showAccountDialog} onOpenChange={setShowAccountDialog} />
