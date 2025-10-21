@@ -146,6 +146,38 @@ const Dashboard = () => {
       );
   };
 
+  // Optimized refresh for only the current migration
+  const refreshCurrentMigration = async () => {
+    if (!selectedMigration) return;
+    
+    try {
+      // Load only the selected migration
+      const { data: migrationData, error: migrationError } = await supabase
+        .from('migrations')
+        .select('*')
+        .eq('id', selectedMigration)
+        .single();
+
+      if (migrationError) throw migrationError;
+
+      const details = await loadMigrationDetails([migrationData], migrationData.project_id);
+      const updatedMigration = details[0];
+
+      // Update only the affected migration in state
+      if (migrationData.project_id) {
+        setMigrations(prev => 
+          prev.map(m => m.id === selectedMigration ? updatedMigration : m)
+        );
+      } else {
+        setStandaloneMigrations(prev => 
+          prev.map(m => m.id === selectedMigration ? updatedMigration : m)
+        );
+      }
+    } catch (error: any) {
+      console.error("Fehler beim Aktualisieren der Migration:", error);
+    }
+  };
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     toast.success("Erfolgreich abgemeldet");
@@ -255,7 +287,7 @@ const Dashboard = () => {
       toast.success(`Migration aktualisiert auf "${name}"`);
       setShowEditDialog(false);
       setEditingMigration(null);
-      loadAllData();
+      await refreshCurrentMigration();
     } catch (error: any) {
       toast.error("Fehler beim Aktualisieren der Migration");
       console.error(error);
@@ -346,7 +378,7 @@ const Dashboard = () => {
             <MigrationDetails 
               project={currentMigration} 
               activeTab={activeMigrationTab} 
-              onRefresh={loadAllData}
+              onRefresh={refreshCurrentMigration}
             />
           ) : (
             <div className="p-8 space-y-6">
