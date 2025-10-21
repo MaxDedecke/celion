@@ -263,6 +263,12 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   const targetObjects = getSystemObjects(project.targetSystem);
 
   const handleEdit = (type: 'in' | 'out') => {
+    // Check if inconnector is tested before allowing outconnector edit
+    if (type === 'out' && !project.connectors?.in?.is_tested) {
+      toast.error("Bitte erstellen und testen Sie zuerst den Inconnector");
+      return;
+    }
+    
     setConfigType(type);
     
     // Load existing connector data if available
@@ -415,6 +421,12 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   };
 
   const handleLinkDataSource = (type: 'in' | 'out') => {
+    // Check if inconnector is tested before allowing outconnector link
+    if (type === 'out' && !project.connectors?.in?.is_tested) {
+      toast.error("Bitte erstellen und testen Sie zuerst den Inconnector");
+      return;
+    }
+    
     setLinkType(type);
     setSelectedDataSourceId('');
     setIsLinkDialogOpen(true);
@@ -523,8 +535,8 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
       setIsMetaModelApproved(approved);
       
       if (approved) {
-        // Increase progress by 10% when meta model is approved
-        const newProgress = Math.min(project.progress + 10, 100);
+        // Increase progress by 20% when meta model is approved
+        const newProgress = Math.min(project.progress + 20, 100);
         const { error: updateError } = await supabase
           .from('migrations')
           .update({ 
@@ -873,28 +885,32 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                 </CardContent>
               </Card>
 
-              {/* Meta Model Approval Card */}
-              {hasInConnector && hasOutConnector && (
-                <Card className="bg-card border-border">
-                  <CardHeader>
-                    <CardTitle className="text-base">Meta Modell</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-sm font-medium">Freigeben</p>
-                        <p className="text-xs text-muted-foreground mt-1">
-                          Um das Modell zu bearbeiten, wechsel zu Mapping UI
-                        </p>
-                      </div>
-                      <Switch
-                        checked={isMetaModelApproved}
-                        onCheckedChange={handleMetaModelApproval}
-                      />
+              {/* Meta Model Approval Card - Always visible */}
+              <Card className="bg-card border-border">
+                <CardHeader>
+                  <CardTitle className="text-base">Meta Modell</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="text-sm font-medium">Freigeben</p>
+                      <p className="text-xs text-muted-foreground mt-1">
+                        Um das Modell zu bearbeiten, wechsel zu Mapping UI
+                      </p>
                     </div>
-                  </CardContent>
-                </Card>
-              )}
+                    <Switch
+                      checked={isMetaModelApproved}
+                      onCheckedChange={handleMetaModelApproval}
+                      disabled={!hasOutConnector || !project.connectors?.out?.is_tested}
+                    />
+                  </div>
+                  {(!hasOutConnector || !project.connectors?.out?.is_tested) && (
+                    <p className="text-xs text-muted-foreground mt-3">
+                      Outconnector muss erstellt und getestet werden
+                    </p>
+                  )}
+                </CardContent>
+              </Card>
             </div>
           </div>
         </div>
