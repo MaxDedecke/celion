@@ -1,4 +1,4 @@
-import { Database, Settings as SettingsIcon, Trash2, Check, Link } from "lucide-react";
+import { Database, Settings as SettingsIcon, Trash2, Check, Link, Download } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import CircularProgress from "./CircularProgress";
@@ -558,13 +558,19 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
         toast.success("Meta-Modell freigegeben");
         await onRefresh();
       } else {
-        // Update database when unchecking
+        // Decrease progress by 20% when meta model approval is revoked
+        const newProgress = Math.max(project.progress - 20, 0);
         const { error: updateError } = await supabase
           .from('migrations')
-          .update({ meta_model_approved: false })
+          .update({ 
+            meta_model_approved: false,
+            progress: newProgress
+          })
           .eq('id', project.id);
 
         if (updateError) throw updateError;
+        
+        toast.success("Meta Modell Freigabe wurde zurückgezogen");
         await onRefresh();
       }
     } catch (error: any) {
@@ -801,6 +807,12 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                   <p className="text-xs text-muted-foreground mt-2">
                     Objects transferred {project.objectsTransferred}
                   </p>
+                  {isMetaModelApproved && (
+                    <Button className="w-full mt-3 bg-success hover:bg-success/90 text-success-foreground">
+                      <Download className="h-4 w-4 mr-2" />
+                      Import
+                    </Button>
+                  )}
                 </CardContent>
               </Card>
 
@@ -895,7 +907,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                     <div>
                       <p className="text-sm font-medium">Freigeben</p>
                       <p className="text-xs text-muted-foreground mt-1">
-                        Um das Modell zu bearbeiten, wechsel zu Mapping UI
+                        Bearbeite das Modell in der Mapping UI
                       </p>
                     </div>
                     <Switch
