@@ -10,6 +10,13 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -189,8 +196,55 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
       )}
 
       {activeTab === "mapping" && (
-        <div className="bg-card border-border rounded-lg p-8 min-h-[500px] flex items-center justify-center mb-6">
-          <p className="text-muted-foreground">Mapping UI visualization area</p>
+        <div className="space-y-6 pb-6">
+          {/* Dropdowns Section */}
+          <div className="grid grid-cols-2 gap-6">
+            {/* Left Dropdown - Inconnector Objects */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                {project.inConnector} Objects
+              </label>
+              <Select>
+                <SelectTrigger className="w-full bg-background">
+                  <SelectValue placeholder="Select source object" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="task">Task</SelectItem>
+                  <SelectItem value="issue">Issue</SelectItem>
+                  <SelectItem value="epic">Epic</SelectItem>
+                  <SelectItem value="story">Story</SelectItem>
+                  <SelectItem value="bug">Bug</SelectItem>
+                  <SelectItem value="subtask">Subtask</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Right Dropdown - Outconnector Objects */}
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-foreground">
+                {project.outConnector} Objects
+              </label>
+              <Select>
+                <SelectTrigger className="w-full bg-background">
+                  <SelectValue placeholder="Select target object" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="project">Project</SelectItem>
+                  <SelectItem value="task">Task</SelectItem>
+                  <SelectItem value="section">Section</SelectItem>
+                  <SelectItem value="milestone">Milestone</SelectItem>
+                  <SelectItem value="tag">Tag</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          {/* Whiteboard Canvas Area */}
+          <div className="bg-background border-2 border-border rounded-lg min-h-[600px] p-4">
+            <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+              Mapping canvas area
+            </div>
+          </div>
         </div>
       )}
 
