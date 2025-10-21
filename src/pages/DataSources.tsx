@@ -234,7 +234,7 @@ const DataSources = () => {
             const SourceIcon = getSourceIcon(source.source_type);
             return (
               <Card key={source.id} className="bg-card border-border">
-                <CardHeader className="flex flex-row items-start gap-4">
+                <CardHeader className="flex flex-row items-center gap-4 pb-3">
                   <div className="flex-shrink-0">
                     <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
                       <SourceIcon className="h-6 w-6 text-primary" />
@@ -263,28 +263,28 @@ const DataSources = () => {
                     </Button>
                   </div>
                 </CardHeader>
-              <CardContent>
-                <div className="space-y-2 text-sm">
-                  {source.api_url && (
-                    <p className="text-muted-foreground truncate">
-                      URL: {source.api_url}
+                <CardContent>
+                  <div className="space-y-2 text-sm ml-16">
+                    {source.api_url && (
+                      <p className="text-muted-foreground truncate">
+                        URL: {source.api_url}
+                      </p>
+                    )}
+                    <p className="text-muted-foreground">
+                      Auth: {source.auth_type}
                     </p>
-                  )}
-                  <p className="text-muted-foreground">
-                    Auth: {source.auth_type}
-                  </p>
-                  <div className="flex items-center gap-2">
-                    <span className="text-muted-foreground">Status:</span>
-                    <span
-                      className={
-                        source.is_active ? "text-success" : "text-muted-foreground"
-                      }
-                    >
-                      {source.is_active ? "Aktiv" : "Inaktiv"}
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Status:</span>
+                      <span
+                        className={
+                          source.is_active ? "text-success" : "text-muted-foreground"
+                        }
+                      >
+                        {source.is_active ? "Aktiv" : "Inaktiv"}
+                      </span>
+                    </div>
                   </div>
-                </div>
-              </CardContent>
+                </CardContent>
             </Card>
             );
           })}
