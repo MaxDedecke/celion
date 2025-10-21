@@ -7,10 +7,12 @@ import { useNavigate } from "react-router-dom";
 
 interface SidebarProps {
   projects: Array<{ id: string; name: string }>;
-  migrations?: Array<{ id: string; name: string }>;
+  projectMigrations?: Array<{ id: string; name: string; projectId: string | null }>;
+  standaloneMigrations?: Array<{ id: string; name: string }>;
   selectedMigration?: string | null;
   onSelectMigration?: (id: string) => void;
   onNewMigration: () => void;
+  onNewProjectMigration?: (projectId: string) => void;
   onDeleteMigration?: (id: string) => void;
   onEditMigration?: (id: string) => void;
   onLogoClick: () => void;
@@ -18,10 +20,12 @@ interface SidebarProps {
 
 const Sidebar = ({ 
   projects, 
-  migrations = [],
+  projectMigrations = [],
+  standaloneMigrations = [],
   selectedMigration, 
   onSelectMigration, 
-  onNewMigration, 
+  onNewMigration,
+  onNewProjectMigration,
   onDeleteMigration, 
   onEditMigration, 
   onLogoClick 
@@ -79,41 +83,39 @@ const Sidebar = ({
       </div>
 
       {!isCollapsed && (
-        <nav className="flex-1 space-y-2 overflow-auto">
-          <Button
-            onClick={onNewMigration}
-            variant="outline"
-            className="w-full justify-start gap-2 mb-4"
-          >
-            <Plus className="h-4 w-4" />
-            Migration
-          </Button>
-          {projects.map((project) => (
-            <div key={project.id} className="space-y-1">
-              <div className="flex items-center justify-between w-full px-2 py-2 rounded-lg transition-colors text-sm">
-                <button
-                  onClick={() => toggleProject(project.id)}
-                  className="flex items-center gap-2 flex-1 text-left font-medium"
-                >
-                  {expandedProjects.has(project.id) ? (
-                    <ChevronDown className="h-4 w-4" />
-                  ) : (
-                    <ChevronRight className="h-4 w-4" />
-                  )}
-                  {project.name}
-                </button>
-                <button
-                  onClick={onNewMigration}
-                  className="p-1 hover:bg-sidebar-accent rounded transition-colors"
-                  aria-label="Neue Migration"
-                >
-                  <Plus className="h-4 w-4" />
-                </button>
-              </div>
+        <nav className="flex-1 space-y-4 overflow-auto">
+          <div className="space-y-2">
+            <div className="flex items-center justify-between px-2">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase">Projekte</h3>
+            </div>
+            {projects.map((project) => {
+              const projectMigs = projectMigrations.filter(m => m.projectId === project.id);
+              return (
+                <div key={project.id} className="space-y-1">
+                  <div className="flex items-center justify-between w-full px-2 py-2 rounded-lg transition-colors text-sm">
+                    <button
+                      onClick={() => toggleProject(project.id)}
+                      className="flex items-center gap-2 flex-1 text-left font-medium"
+                    >
+                      {expandedProjects.has(project.id) ? (
+                        <ChevronDown className="h-4 w-4" />
+                      ) : (
+                        <ChevronRight className="h-4 w-4" />
+                      )}
+                      {project.name}
+                    </button>
+                    <button
+                      onClick={() => onNewProjectMigration?.(project.id)}
+                      className="p-1 hover:bg-sidebar-accent rounded transition-colors"
+                      aria-label="Neue Migration"
+                    >
+                      <Plus className="h-4 w-4" />
+                    </button>
+                  </div>
 
-              {expandedProjects.has(project.id) && migrations.length > 0 && (
-                <div className="ml-6 space-y-1">
-                  {migrations.map((migration) => (
+                  {expandedProjects.has(project.id) && projectMigs.length > 0 && (
+                    <div className="ml-6 space-y-1">
+                      {projectMigs.map((migration) => (
                     <div
                       key={migration.id}
                       className={cn(
@@ -151,12 +153,74 @@ const Sidebar = ({
                           <Trash2 className="h-4 w-4" />
                         </button>
                       </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+          </div>
+
+          <div className="space-y-2 pt-4 border-t border-sidebar-border">
+            <div className="flex items-center justify-between px-2">
+              <h3 className="text-xs font-semibold text-muted-foreground uppercase">Migrationen</h3>
+              <Button
+                onClick={onNewMigration}
+                variant="ghost"
+                size="icon"
+                className="h-6 w-6"
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
             </div>
-          ))}
+            {standaloneMigrations.length > 0 ? (
+              <div className="space-y-1">
+                {standaloneMigrations.map((migration) => (
+                  <div
+                    key={migration.id}
+                    className={cn(
+                      "group flex items-center justify-between w-full px-4 py-2 rounded-lg transition-colors text-sm",
+                      selectedMigration === migration.id
+                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                        : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground"
+                    )}
+                  >
+                    <button
+                      onClick={() => onSelectMigration?.(migration.id)}
+                      className="flex-1 text-left"
+                    >
+                      {migration.name}
+                    </button>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onEditMigration?.(migration.id);
+                        }}
+                        className="p-1 hover:text-primary"
+                        aria-label="Migration bearbeiten"
+                      >
+                        <Pencil className="h-4 w-4" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDeleteMigration?.(migration.id);
+                        }}
+                        className="p-1 hover:text-destructive"
+                        aria-label="Migration löschen"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="px-4 py-2 text-xs text-muted-foreground">Keine Migrationen</p>
+            )}
+          </div>
         </nav>
       )}
     </div>

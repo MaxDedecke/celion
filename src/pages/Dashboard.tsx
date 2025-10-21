@@ -31,11 +31,14 @@ const Dashboard = () => {
   const [activeDialogTab, setActiveDialogTab] = useState<"account" | "settings">("account");
   const [activeMigrationTab, setActiveMigrationTab] = useState<"general" | "mapping">("general");
   const [migrations, setMigrations] = useState<any[]>([]);
+  const [standaloneMigrations, setStandaloneMigrations] = useState<any[]>([]);
+  const [allProjects, setAllProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingMigration, setEditingMigration] = useState<any>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [migrationToDelete, setMigrationToDelete] = useState<string | null>(null);
+  const [projectIdForNewMigration, setProjectIdForNewMigration] = useState<string | null>(null);
 
   // Check auth and load project data
   useEffect(() => {
@@ -43,9 +46,7 @@ const Dashboard = () => {
   }, []);
 
   useEffect(() => {
-    if (projectName) {
-      loadProjectAndMigrations();
-    }
+    loadAllData();
   }, [projectName]);
 
   const checkAuth = async () => {
@@ -55,49 +56,70 @@ const Dashboard = () => {
     }
   };
 
-  const loadProjectAndMigrations = async () => {
+  const loadAllData = async () => {
     try {
       setLoading(true);
       
-      let projectData = null;
-      let migrationsQuery = supabase
-        .from('migrations')
+      // Load all projects first
+      const { data: projectsData, error: projectsError } = await supabase
+        .from('projects')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (projectName) {
-        // Find project by name
-        const { data: foundProject, error: projectError } = await supabase
-          .from('projects')
-          .select('*')
-          .eq('name', decodeURIComponent(projectName))
-          .maybeSingle();
+      if (projectsError) throw projectsError;
+      setAllProjects(projectsData || []);
 
-        if (projectError) throw projectError;
-        if (!foundProject) {
+      let projectData = null;
+      if (projectName) {
+        // Find specific project by name
+        projectData = projectsData?.find(p => p.name === decodeURIComponent(projectName));
+        
+        if (!projectData) {
           toast.error("Projekt nicht gefunden");
           navigate("/projects");
           return;
         }
-
-        projectData = foundProject;
         setCurrentProject(projectData);
 
-        // Filter migrations by project
-        migrationsQuery = migrationsQuery.eq('project_id', projectData.id);
+        // Load migrations for this project
+        const { data: migrationsData, error: migrationsError } = await supabase
+          .from('migrations')
+          .select('*')
+          .eq('project_id', projectData.id)
+          .order('created_at', { ascending: false });
+
+        if (migrationsError) throw migrationsError;
+
+        const migrationsWithDetails = await loadMigrationDetails(migrationsData || [], projectData.id);
+        setMigrations(migrationsWithDetails);
       } else {
-        // Load standalone migrations (no project)
-        migrationsQuery = migrationsQuery.is('project_id', null);
+        // No project selected - show standalone migrations
+        setCurrentProject(null);
+        setMigrations([]);
       }
 
-      // Load migrations
-      const { data: migrationsData, error: migrationsError } = await migrationsQuery;
+      // Always load standalone migrations
+      const { data: standaloneData, error: standaloneError } = await supabase
+        .from('migrations')
+        .select('*')
+        .is('project_id', null)
+        .order('created_at', { ascending: false });
 
-      if (migrationsError) throw migrationsError;
+      if (standaloneError) throw standaloneError;
 
-      // Load activities and connectors for each migration
-      const migrationsWithDetails = await Promise.all(
-        (migrationsData || []).map(async (migration) => {
+      const standaloneWithDetails = await loadMigrationDetails(standaloneData || [], null);
+      setStandaloneMigrations(standaloneWithDetails);
+    } catch (error: any) {
+      toast.error("Fehler beim Laden der Daten");
+      console.error(error);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const loadMigrationDetails = async (migrationsData: any[], projectId: string | null) => {
+    return await Promise.all(
+        migrationsData.map(async (migration) => {
           const { data: activitiesData } = await supabase
             .from('migration_activities')
             .select('*')
@@ -124,7 +146,7 @@ const Dashboard = () => {
             outConnectorDetail: migration.out_connector_detail,
             objectsTransferred: migration.objects_transferred,
             mappedObjects: migration.mapped_objects,
-            projectId: projectData?.id || null,
+            projectId: projectId,
             activities: activitiesData || [],
             connectors: {
               in: inConnector,
@@ -133,14 +155,6 @@ const Dashboard = () => {
           };
         })
       );
-
-      setMigrations(migrationsWithDetails);
-    } catch (error: any) {
-      toast.error("Fehler beim Laden der Migrationen");
-      console.error(error);
-    } finally {
-      setLoading(false);
-    }
   };
 
   const handleLogout = async () => {
@@ -158,7 +172,7 @@ const Dashboard = () => {
         .from('migrations')
         .insert({
           user_id: user.id,
-          project_id: currentProject?.id || null,
+          project_id: projectIdForNewMigration,
           name,
           source_system: sourceSystem,
           target_system: targetSystem,
@@ -183,7 +197,8 @@ const Dashboard = () => {
         });
 
       toast.success(`Migration "${name}" erstellt`);
-      loadProjectAndMigrations();
+      setProjectIdForNewMigration(null);
+      loadAllData();
     } catch (error: any) {
       toast.error(error.message || "Fehler beim Erstellen der Migration");
       console.error(error);
@@ -213,7 +228,7 @@ const Dashboard = () => {
       }
       
       toast.success(`Migration "${migrationToDeleteData?.name}" gelöscht`);
-      loadProjectAndMigrations();
+      loadAllData();
     } catch (error: any) {
       toast.error("Fehler beim Löschen der Migration");
       console.error(error);
@@ -243,14 +258,16 @@ const Dashboard = () => {
       toast.success(`Migration aktualisiert auf "${name}"`);
       setShowEditDialog(false);
       setEditingMigration(null);
-      loadProjectAndMigrations();
+      loadAllData();
     } catch (error: any) {
       toast.error("Fehler beim Aktualisieren der Migration");
       console.error(error);
     }
   };
 
-  const currentMigration = migrations.find((m) => m.id === selectedMigration);
+  const currentMigration = selectedMigration 
+    ? [...migrations, ...standaloneMigrations].find((m) => m.id === selectedMigration)
+    : null;
 
   if (loading) {
     return (
@@ -263,11 +280,19 @@ const Dashboard = () => {
   return (
     <div className="flex h-screen bg-background">
       <Sidebar
-        projects={[{ id: currentProject?.id || '', name: currentProject?.name || '' }]}
-        migrations={migrations}
+        projects={allProjects}
+        projectMigrations={migrations}
+        standaloneMigrations={standaloneMigrations}
         selectedMigration={selectedMigration}
         onSelectMigration={setSelectedMigration}
-        onNewMigration={() => setShowAddDialog(true)}
+        onNewMigration={() => {
+          setProjectIdForNewMigration(null);
+          setShowAddDialog(true);
+        }}
+        onNewProjectMigration={(projectId) => {
+          setProjectIdForNewMigration(projectId);
+          setShowAddDialog(true);
+        }}
         onDeleteMigration={handleDeleteMigration}
         onEditMigration={handleEditMigration}
         onLogoClick={() => navigate("/projects")}
@@ -318,7 +343,7 @@ const Dashboard = () => {
             <MigrationDetails 
               project={currentMigration} 
               activeTab={activeMigrationTab} 
-              onRefresh={loadProjectAndMigrations}
+              onRefresh={loadAllData}
             />
           ) : (
             <div className="h-full flex items-center justify-center">
