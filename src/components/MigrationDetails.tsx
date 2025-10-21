@@ -378,17 +378,20 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
               {/* Meta model Card */}
               <Card className="bg-card border-border">
                 <CardContent className="pt-6">
-                  <div className="grid grid-cols-2 gap-6">
-                    <div>
-                      <p className="text-sm font-medium mb-1">Meta modell</p>
-                      <div className="flex items-center gap-2">
-                        <Database className="h-5 w-5 text-muted-foreground" />
-                        <span className="text-sm text-muted-foreground">Configured</span>
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-8">
+                      <div>
+                        <p className="text-sm font-medium">Meta modell</p>
+                      </div>
+                      <div>
+                        <p className="text-sm text-muted-foreground">Mapped Jira Objects</p>
+                        <p className="text-foreground font-medium">{project.mappedObjects}</p>
                       </div>
                     </div>
-                    <div>
-                      <p className="text-sm font-medium mb-1">Mapped Jira Objects</p>
-                      <p className="text-foreground">{project.mappedObjects}</p>
+                    <div className={`w-12 h-12 rounded-full border-4 ${
+                      project.progress === 100 ? "border-success" : "border-muted"
+                    } flex items-center justify-center`}>
+                      <Database className="h-5 w-5" />
                     </div>
                   </div>
                 </CardContent>
