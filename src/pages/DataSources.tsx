@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectSeparator } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 
 interface DataSource {
@@ -40,6 +40,49 @@ const DataSources = () => {
     auth_type: "api_key",
     is_active: true,
   });
+
+  const defaultSourceTypes = [
+    "Jira Server / Jira Data Center",
+    "Azure DevOps Server (früher TFS)",
+    "GitLab (Self-Managed Edition)",
+    "GitHub Enterprise Server",
+    "Redmine",
+    "OpenProject",
+    "Taiga",
+    "YouTrack (Self-Hosted)",
+    "Targetprocess",
+    "Planisware",
+    "Tuleap",
+    "Trac",
+    "Phabricator",
+    "Bugzilla",
+    "MantisBT",
+    "Easy Redmine",
+    "Odoo Project",
+    "ClickUp",
+    "Wrike Enterprise",
+    "Monday.com",
+    "Smartsheet",
+    "Asana",
+    "Trello",
+    "Notion",
+    "Basecamp",
+    "Celoxis",
+    "Orangescrum",
+    "Zoho Projects",
+    "ProjeQtOr",
+    "Hansoft",
+    "Rational Team Concert",
+    "Polarion ALM",
+    "Micro Focus ALM / Octane",
+    "SAP Project System",
+    "HP Project and Portfolio Management",
+    "Clarizen One",
+    "Sciforma",
+    "Leankit",
+    "MeisterTask",
+    "Airtable",
+  ];
 
   useEffect(() => {
     checkAuth();
@@ -278,12 +321,25 @@ const DataSources = () => {
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="jira">Jira</SelectItem>
-                    <SelectItem value="azure-devops">Azure DevOps</SelectItem>
-                    <SelectItem value="github">GitHub</SelectItem>
-                    <SelectItem value="gitlab">GitLab</SelectItem>
-                    <SelectItem value="servicenow">ServiceNow</SelectItem>
-                    <SelectItem value="salesforce">Salesforce</SelectItem>
+                    {dataSources.length > 0 && (
+                      <>
+                        {dataSources.map((source) => (
+                          <SelectItem 
+                            key={source.id} 
+                            value={source.source_type}
+                            className="font-bold text-primary"
+                          >
+                            {source.source_type}
+                          </SelectItem>
+                        ))}
+                        <SelectSeparator />
+                      </>
+                    )}
+                    {defaultSourceTypes.map((type) => (
+                      <SelectItem key={type} value={type}>
+                        {type}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
