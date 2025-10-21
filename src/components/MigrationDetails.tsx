@@ -630,9 +630,11 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
               <p className="text-sm font-semibold text-foreground mb-1">Nächster Schritt:</p>
               <p className="text-lg font-bold text-primary">{getCurrentStep()}</p>
             </div>
-            <div className="relative">
-              <CircularProgress progress={project.progress} />
-              <p className="text-center mt-4 text-sm text-muted-foreground">Progress</p>
+            <div className="flex-1 flex justify-center">
+              <div className="relative">
+                <CircularProgress progress={project.progress} />
+                <p className="text-center mt-4 text-sm text-muted-foreground">Progress</p>
+              </div>
             </div>
           </div>
 
