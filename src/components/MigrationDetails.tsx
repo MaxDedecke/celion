@@ -262,6 +262,9 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
       const connector = testType === 'in' ? project.connectors?.in : project.connectors?.out;
       if (!connector) return;
 
+      // Check if connector was already tested
+      const wasAlreadyTested = connector.is_tested;
+
       // Update connector to mark as tested
       const { error: updateError } = await supabase
         .from('connectors')
@@ -270,14 +273,16 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
       if (updateError) throw updateError;
 
-      // Update migration progress by 2.5%
-      const newProgress = Math.min(project.progress + 2.5, 100);
-      const { error: progressError } = await supabase
-        .from('migrations')
-        .update({ progress: newProgress })
-        .eq('id', project.id);
+      // Only update migration progress by 2.5% if not already tested
+      if (!wasAlreadyTested) {
+        const newProgress = Math.min(project.progress + 2.5, 100);
+        const { error: progressError } = await supabase
+          .from('migrations')
+          .update({ progress: newProgress })
+          .eq('id', project.id);
 
-      if (progressError) throw progressError;
+        if (progressError) throw progressError;
+      }
 
       // Add system activity
       await supabase.from('migration_activities').insert({
