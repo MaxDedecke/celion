@@ -70,6 +70,42 @@ export type Database = {
           },
         ]
       }
+      data_source_projects: {
+        Row: {
+          created_at: string
+          data_source_id: string
+          id: string
+          project_id: string
+        }
+        Insert: {
+          created_at?: string
+          data_source_id: string
+          id?: string
+          project_id: string
+        }
+        Update: {
+          created_at?: string
+          data_source_id?: string
+          id?: string
+          project_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "data_source_projects_data_source_id_fkey"
+            columns: ["data_source_id"]
+            isOneToOne: false
+            referencedRelation: "data_sources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "data_source_projects_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       data_sources: {
         Row: {
           additional_config: Json | null
@@ -79,6 +115,7 @@ export type Database = {
           created_at: string
           id: string
           is_active: boolean
+          is_global: boolean
           name: string
           password: string | null
           source_type: string
@@ -94,6 +131,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean
+          is_global?: boolean
           name: string
           password?: string | null
           source_type: string
@@ -109,6 +147,7 @@ export type Database = {
           created_at?: string
           id?: string
           is_active?: boolean
+          is_global?: boolean
           name?: string
           password?: string | null
           source_type?: string

@@ -56,6 +56,7 @@ interface MigrationProject {
   outConnectorDetail: string;
   objectsTransferred: string;
   mappedObjects: string;
+  projectId?: string;
   activities: Activity[];
   connectors?: {
     in?: any;
@@ -110,18 +111,60 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   // Fetch available data sources for linking
   useEffect(() => {
     const fetchDataSources = async () => {
-      const { data, error } = await supabase
+      if (!project.projectId) {
+        // If no project ID, load all active data sources (fallback)
+        const { data, error } = await supabase
+          .from('data_sources')
+          .select('*')
+          .eq('is_active', true);
+        
+        if (!error && data) {
+          setDataSources(data);
+        }
+        return;
+      }
+
+      // Load data sources that are either global or assigned to this project
+      const { data: globalSources, error: globalError } = await supabase
         .from('data_sources')
         .select('*')
-        .eq('is_active', true);
+        .eq('is_active', true)
+        .eq('is_global', true);
+
+      const { data: projectAssignments, error: assignmentError } = await supabase
+        .from('data_source_projects')
+        .select('data_source_id')
+        .eq('project_id', project.projectId);
+
+      if (globalError || assignmentError) {
+        console.error('Error loading data sources:', globalError || assignmentError);
+        return;
+      }
+
+      const assignedSourceIds = projectAssignments?.map(a => a.data_source_id) || [];
       
-      if (!error && data) {
-        setDataSources(data);
+      if (assignedSourceIds.length > 0) {
+        const { data: assignedSources, error: assignedError } = await supabase
+          .from('data_sources')
+          .select('*')
+          .eq('is_active', true)
+          .in('id', assignedSourceIds);
+
+        if (!assignedError) {
+          // Combine global and assigned sources, remove duplicates
+          const allSources = [...(globalSources || []), ...(assignedSources || [])];
+          const uniqueSources = Array.from(
+            new Map(allSources.map(s => [s.id, s])).values()
+          );
+          setDataSources(uniqueSources);
+        }
+      } else {
+        setDataSources(globalSources || []);
       }
     };
 
     fetchDataSources();
-  }, []);
+  }, [project.projectId]);
 
   // Filter data sources by connector type
   const getAvailableDataSources = (type: 'in' | 'out') => {

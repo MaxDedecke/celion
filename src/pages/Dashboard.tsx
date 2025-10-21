@@ -113,6 +113,7 @@ const Dashboard = () => {
             outConnectorDetail: migration.out_connector_detail,
             objectsTransferred: migration.objects_transferred,
             mappedObjects: migration.mapped_objects,
+            projectId: projectData.id,
             activities: activitiesData || [],
             connectors: {
               in: inConnector,

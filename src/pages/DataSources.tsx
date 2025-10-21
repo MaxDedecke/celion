@@ -21,15 +21,19 @@ interface DataSource {
   password?: string;
   auth_type: string;
   is_active: boolean;
+  is_global: boolean;
   created_at: string;
+  assigned_projects?: string[];
 }
 
 const DataSources = () => {
   const navigate = useNavigate();
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
+  const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSource, setEditingSource] = useState<DataSource | null>(null);
+  const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [formData, setFormData] = useState({
     name: "",
     source_type: "jira",
@@ -39,6 +43,7 @@ const DataSources = () => {
     password: "",
     auth_type: "api_key",
     is_active: true,
+    is_global: false,
   });
 
   const defaultSourceTypes = [
@@ -86,6 +91,7 @@ const DataSources = () => {
 
   useEffect(() => {
     checkAuth();
+    loadProjects();
     loadDataSources();
   }, []);
 
@@ -106,6 +112,20 @@ const DataSources = () => {
     return Box;
   };
 
+  const loadProjects = async () => {
+    try {
+      const { data, error } = await supabase
+        .from("projects")
+        .select("id, name")
+        .order("name", { ascending: true });
+
+      if (error) throw error;
+      setProjects(data || []);
+    } catch (error: any) {
+      console.error("Fehler beim Laden der Projekte:", error);
+    }
+  };
+
   const loadDataSources = async () => {
     try {
       const { data, error } = await supabase
@@ -114,7 +134,23 @@ const DataSources = () => {
         .order("created_at", { ascending: false });
 
       if (error) throw error;
-      setDataSources(data || []);
+
+      // Load project assignments for each data source
+      const sourcesWithProjects = await Promise.all(
+        (data || []).map(async (source) => {
+          const { data: assignments } = await supabase
+            .from("data_source_projects")
+            .select("project_id")
+            .eq("data_source_id", source.id);
+
+          return {
+            ...source,
+            assigned_projects: assignments?.map((a) => a.project_id) || [],
+          };
+        })
+      );
+
+      setDataSources(sourcesWithProjects);
     } catch (error: any) {
       toast.error("Fehler beim Laden der Datenquellen");
       console.error(error);
@@ -135,7 +171,9 @@ const DataSources = () => {
         password: source.password || "",
         auth_type: source.auth_type,
         is_active: source.is_active,
+        is_global: source.is_global,
       });
+      setSelectedProjects(source.assigned_projects || []);
     } else {
       setEditingSource(null);
       setFormData({
@@ -147,7 +185,9 @@ const DataSources = () => {
         password: "",
         auth_type: "api_key",
         is_active: true,
+        is_global: false,
       });
+      setSelectedProjects([]);
     }
     setIsDialogOpen(true);
   };
@@ -157,6 +197,8 @@ const DataSources = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Nicht authentifiziert");
 
+      let sourceId: string;
+
       if (editingSource) {
         const { error } = await supabase
           .from("data_sources")
@@ -164,14 +206,39 @@ const DataSources = () => {
           .eq("id", editingSource.id);
 
         if (error) throw error;
+        sourceId = editingSource.id;
+        
+        // Delete existing project assignments
+        await supabase
+          .from("data_source_projects")
+          .delete()
+          .eq("data_source_id", sourceId);
+        
         toast.success("Datenquelle aktualisiert");
       } else {
-        const { error } = await supabase
+        const { data, error } = await supabase
           .from("data_sources")
-          .insert({ ...formData, user_id: user.id });
+          .insert({ ...formData, user_id: user.id })
+          .select()
+          .single();
 
         if (error) throw error;
+        sourceId = data.id;
         toast.success("Datenquelle erstellt");
+      }
+
+      // Add new project assignments (only if not global)
+      if (!formData.is_global && selectedProjects.length > 0) {
+        const assignments = selectedProjects.map((projectId) => ({
+          data_source_id: sourceId,
+          project_id: projectId,
+        }));
+
+        const { error: assignmentError } = await supabase
+          .from("data_source_projects")
+          .insert(assignments);
+
+        if (assignmentError) throw assignmentError;
       }
 
       setIsDialogOpen(false);
@@ -273,6 +340,16 @@ const DataSources = () => {
                     <p className="text-muted-foreground">
                       Auth: {source.auth_type}
                     </p>
+                    <div className="flex items-center gap-2">
+                      <span className="text-muted-foreground">Verfügbarkeit:</span>
+                      <span className="text-foreground">
+                        {source.is_global
+                          ? "Global"
+                          : source.assigned_projects && source.assigned_projects.length > 0
+                          ? `${source.assigned_projects.length} ${source.assigned_projects.length === 1 ? 'Projekt' : 'Projekte'}`
+                          : "Kein Zugriff"}
+                      </span>
+                    </div>
                     <div className="flex items-center gap-2">
                       <span className="text-muted-foreground">Status:</span>
                       <span
@@ -435,16 +512,75 @@ const DataSources = () => {
               </div>
             )}
 
-            <div className="flex items-center space-x-2">
-              <Switch
-                id="is_active"
-                checked={formData.is_active}
-                onCheckedChange={(checked) =>
-                  setFormData({ ...formData, is_active: checked })
-                }
-              />
-              <Label htmlFor="is_active">Aktiv</Label>
+            <div className="flex items-center justify-between">
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="is_active"
+                  checked={formData.is_active}
+                  onCheckedChange={(checked) =>
+                    setFormData({ ...formData, is_active: checked })
+                  }
+                />
+                <Label htmlFor="is_active">Aktiv</Label>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Switch
+                  id="is_global"
+                  checked={formData.is_global}
+                  onCheckedChange={(checked) => {
+                    setFormData({ ...formData, is_global: checked });
+                    if (checked) {
+                      setSelectedProjects([]);
+                    }
+                  }}
+                />
+                <Label htmlFor="is_global">Global verfügbar</Label>
+              </div>
             </div>
+
+            {!formData.is_global && (
+              <div className="space-y-2">
+                <Label>Verfügbar für Projekte</Label>
+                <div className="border rounded-md p-3 max-h-48 overflow-y-auto space-y-2">
+                  {projects.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">
+                      Keine Projekte vorhanden
+                    </p>
+                  ) : (
+                    projects.map((project) => (
+                      <div key={project.id} className="flex items-center space-x-2">
+                        <input
+                          type="checkbox"
+                          id={`project-${project.id}`}
+                          checked={selectedProjects.includes(project.id)}
+                          onChange={(e) => {
+                            if (e.target.checked) {
+                              setSelectedProjects([...selectedProjects, project.id]);
+                            } else {
+                              setSelectedProjects(
+                                selectedProjects.filter((id) => id !== project.id)
+                              );
+                            }
+                          }}
+                          className="rounded border-input"
+                        />
+                        <label
+                          htmlFor={`project-${project.id}`}
+                          className="text-sm cursor-pointer flex-1"
+                        >
+                          {project.name}
+                        </label>
+                      </div>
+                    ))
+                  )}
+                </div>
+                {!formData.is_global && selectedProjects.length === 0 && (
+                  <p className="text-sm text-muted-foreground">
+                    ⚠️ Warnung: Ohne Projektzuweisung hat niemand Zugriff auf diese Datenquelle
+                  </p>
+                )}
+              </div>
+            )}
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
