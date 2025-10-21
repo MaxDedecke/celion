@@ -1,6 +1,6 @@
-const Logo = ({ className = "" }: { className?: string }) => {
+const Logo = ({ className = "", onClick }: { className?: string; onClick?: () => void }) => {
   return (
-    <div className={`flex items-center gap-2 ${className}`}>
+    <div className={`flex items-center gap-2 ${className}`} onClick={onClick}>
       <svg width="40" height="40" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg">
         <path d="M20 5C11.7157 5 5 11.7157 5 20C5 28.2843 11.7157 35 20 35" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="text-primary"/>
         <path d="M20 35C28.2843 35 35 28.2843 35 20C35 11.7157 28.2843 5 20 5" stroke="currentColor" strokeWidth="3" strokeLinecap="round" className="text-secondary"/>

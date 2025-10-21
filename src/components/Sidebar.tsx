@@ -48,12 +48,10 @@ const Sidebar = ({
       isCollapsed ? "w-20" : "w-80"
     )}>
       <div className="mb-8 flex items-center justify-between gap-2">
-        <button 
+        <Logo 
           onClick={() => navigate("/dashboard")} 
           className={cn("cursor-pointer transition-opacity", isCollapsed && "opacity-0 w-0 overflow-hidden")}
-        >
-          <Logo />
-        </button>
+        />
         <div className="flex items-center gap-1">
           {!isCollapsed && (
             <Button
