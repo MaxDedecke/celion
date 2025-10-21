@@ -31,7 +31,7 @@ const AccountDialog = ({ open, onOpenChange }: AccountDialogProps) => {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-popover border-border max-w-xl">
-        <Tabs defaultValue="account" className="w-full">
+        <Tabs defaultValue="account" className="w-full mt-8">
           <TabsList className="grid w-full grid-cols-2 bg-muted">
             <TabsTrigger value="account">Account</TabsTrigger>
             <TabsTrigger value="settings">Settings</TabsTrigger>
