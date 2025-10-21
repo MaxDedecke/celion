@@ -14,6 +14,56 @@ export type Database = {
   }
   public: {
     Tables: {
+      connectors: {
+        Row: {
+          additional_config: Json | null
+          api_key: string | null
+          api_url: string | null
+          connector_type: string
+          created_at: string
+          endpoint: string | null
+          id: string
+          migration_id: string
+          password: string | null
+          updated_at: string
+          username: string | null
+        }
+        Insert: {
+          additional_config?: Json | null
+          api_key?: string | null
+          api_url?: string | null
+          connector_type: string
+          created_at?: string
+          endpoint?: string | null
+          id?: string
+          migration_id: string
+          password?: string | null
+          updated_at?: string
+          username?: string | null
+        }
+        Update: {
+          additional_config?: Json | null
+          api_key?: string | null
+          api_url?: string | null
+          connector_type?: string
+          created_at?: string
+          endpoint?: string | null
+          id?: string
+          migration_id?: string
+          password?: string | null
+          updated_at?: string
+          username?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "connectors_migration_id_fkey"
+            columns: ["migration_id"]
+            isOneToOne: false
+            referencedRelation: "migrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       migration_activities: {
         Row: {
           created_at: string

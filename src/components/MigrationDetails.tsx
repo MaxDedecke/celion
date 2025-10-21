@@ -26,6 +26,8 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useState } from "react";
+import { supabase } from "@/integrations/supabase/client";
+import { toast } from "sonner";
 
 interface MigrationProject {
   id: string;
@@ -40,6 +42,10 @@ interface MigrationProject {
   objectsTransferred: string;
   mappedObjects: string;
   activities: Activity[];
+  connectors?: {
+    in?: any;
+    out?: any;
+  };
 }
 
 interface MigrationDetailsProps {
@@ -50,6 +56,16 @@ interface MigrationDetailsProps {
 const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
   const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false);
   const [configType, setConfigType] = useState<'in' | 'out'>('in');
+  const [formData, setFormData] = useState({
+    apiUrl: '',
+    apiKey: '',
+    username: '',
+    password: '',
+    endpoint: '',
+  });
+
+  const hasInConnector = !!project.connectors?.in;
+  const hasOutConnector = !!project.connectors?.out;
 
   // Define objects based on system type
   const getSystemObjects = (system: string) => {
@@ -123,6 +139,27 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
 
   const handleEdit = (type: 'in' | 'out') => {
     setConfigType(type);
+    
+    // Load existing connector data if available
+    const connector = type === 'in' ? project.connectors?.in : project.connectors?.out;
+    if (connector) {
+      setFormData({
+        apiUrl: connector.api_url || '',
+        apiKey: connector.api_key || '',
+        username: connector.username || '',
+        password: connector.password || '',
+        endpoint: connector.endpoint || '',
+      });
+    } else {
+      setFormData({
+        apiUrl: '',
+        apiKey: '',
+        username: '',
+        password: '',
+        endpoint: '',
+      });
+    }
+    
     setIsConfigDialogOpen(true);
   };
 
@@ -131,9 +168,63 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
     // Implement test logic here
   };
 
-  const handleDelete = (type: 'in' | 'out') => {
-    console.log(`Deleting ${type}connector configuration...`);
-    // Implement delete logic here
+  const handleDelete = async (type: 'in' | 'out') => {
+    try {
+      const { error } = await supabase
+        .from('connectors')
+        .delete()
+        .eq('migration_id', project.id)
+        .eq('connector_type', type);
+
+      if (error) throw error;
+
+      toast.success(`${type === 'in' ? 'Interconnector' : 'Outconnector'} gelöscht`);
+      window.location.reload(); // Reload to refresh data
+    } catch (error: any) {
+      toast.error("Fehler beim Löschen");
+      console.error(error);
+    }
+  };
+
+  const handleSaveConnector = async () => {
+    try {
+      const connector = configType === 'in' ? project.connectors?.in : project.connectors?.out;
+      
+      const connectorData = {
+        migration_id: project.id,
+        connector_type: configType,
+        api_url: formData.apiUrl,
+        api_key: formData.apiKey,
+        username: formData.username,
+        password: formData.password,
+        endpoint: formData.endpoint,
+      };
+
+      if (connector) {
+        // Update existing connector
+        const { error } = await supabase
+          .from('connectors')
+          .update(connectorData)
+          .eq('id', connector.id);
+
+        if (error) throw error;
+        toast.success("Connector aktualisiert");
+      } else {
+        // Create new connector
+        const { error } = await supabase
+          .from('connectors')
+          .insert(connectorData);
+
+        if (error) throw error;
+        toast.success("Connector erstellt");
+      }
+
+      setIsConfigDialogOpen(false);
+      window.location.reload(); // Reload to refresh data
+    } catch (error: any) {
+      toast.error(error.message || "Fehler beim Speichern");
+      console.error(error);
+    }
   };
 
   return (
@@ -168,14 +259,18 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => handleEdit('in')}>
-                        Bearbeiten
+                        {hasInConnector ? 'Bearbeiten' : 'Erstellen'}
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleTest('in')}>
-                        Test
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleDelete('in')} className="text-destructive">
-                        Löschen
-                      </DropdownMenuItem>
+                      {hasInConnector && (
+                        <>
+                          <DropdownMenuItem onClick={() => handleTest('in')}>
+                            Test
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleDelete('in')} className="text-destructive">
+                            Löschen
+                          </DropdownMenuItem>
+                        </>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </CardHeader>
@@ -208,14 +303,18 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
                       <DropdownMenuItem onClick={() => handleEdit('out')}>
-                        Bearbeiten
+                        {hasOutConnector ? 'Bearbeiten' : 'Erstellen'}
                       </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleTest('out')}>
-                        Test
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => handleDelete('out')} className="text-destructive">
-                        Löschen
-                      </DropdownMenuItem>
+                      {hasOutConnector && (
+                        <>
+                          <DropdownMenuItem onClick={() => handleTest('out')}>
+                            Test
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleDelete('out')} className="text-destructive">
+                            Löschen
+                          </DropdownMenuItem>
+                        </>
+                      )}
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </CardHeader>
@@ -323,7 +422,7 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
         <DialogContent className="sm:max-w-[500px]">
           <DialogHeader>
             <DialogTitle>
-              {configType === 'in' ? 'Interconnector' : 'Outconnector'} Konfiguration
+              {configType === 'in' ? 'Interconnector' : 'Outconnector'} {hasInConnector || hasOutConnector ? 'Bearbeiten' : 'Erstellen'}
             </DialogTitle>
             <DialogDescription>
               Konfigurieren Sie die API-Verbindungseinstellungen für den {configType === 'in' ? 'Interconnector' : 'Outconnector'}.
@@ -336,6 +435,8 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
                 id="api-url"
                 placeholder="https://api.example.com"
                 type="url"
+                value={formData.apiUrl}
+                onChange={(e) => setFormData({ ...formData, apiUrl: e.target.value })}
               />
             </div>
             <div className="space-y-2">
@@ -344,6 +445,8 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
                 id="api-key"
                 placeholder="Enter API key"
                 type="password"
+                value={formData.apiKey}
+                onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
               />
             </div>
             <div className="space-y-2">
@@ -351,6 +454,8 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
               <Input
                 id="username"
                 placeholder="Enter username"
+                value={formData.username}
+                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
               />
             </div>
             <div className="space-y-2">
@@ -359,6 +464,8 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
                 id="password"
                 placeholder="Enter password"
                 type="password"
+                value={formData.password}
+                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
               />
             </div>
             <div className="space-y-2">
@@ -366,6 +473,8 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
               <Input
                 id="endpoint"
                 placeholder="/api/v1/data"
+                value={formData.endpoint}
+                onChange={(e) => setFormData({ ...formData, endpoint: e.target.value })}
               />
             </div>
           </div>
@@ -373,7 +482,7 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
             <Button variant="outline" onClick={() => setIsConfigDialogOpen(false)}>
               Abbrechen
             </Button>
-            <Button onClick={() => setIsConfigDialogOpen(false)}>
+            <Button onClick={handleSaveConnector}>
               Speichern
             </Button>
           </div>

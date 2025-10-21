@@ -42,7 +42,7 @@ const Dashboard = () => {
 
       if (migrationsError) throw migrationsError;
 
-      // Load activities for each migration
+      // Load activities and connectors for each migration
       const projectsWithActivities = await Promise.all(
         (migrationsData || []).map(async (migration) => {
           const { data: activitiesData } = await supabase
@@ -50,6 +50,14 @@ const Dashboard = () => {
             .select('*')
             .eq('migration_id', migration.id)
             .order('created_at', { ascending: false });
+
+          const { data: connectorsData } = await supabase
+            .from('connectors')
+            .select('*')
+            .eq('migration_id', migration.id);
+
+          const inConnector = connectorsData?.find(c => c.connector_type === 'in');
+          const outConnector = connectorsData?.find(c => c.connector_type === 'out');
 
           return {
             id: migration.id,
@@ -64,6 +72,10 @@ const Dashboard = () => {
             objectsTransferred: migration.objects_transferred,
             mappedObjects: migration.mapped_objects,
             activities: activitiesData || [],
+            connectors: {
+              in: inConnector,
+              out: outConnector,
+            },
           };
         })
       );
