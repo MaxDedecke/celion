@@ -79,16 +79,6 @@ const Sidebar = ({
       </div>
 
       {!isCollapsed && (
-        <Button
-          onClick={onNewMigration}
-          className="mb-6 rounded-full bg-secondary hover:bg-secondary/90 text-secondary-foreground justify-start gap-2"
-        >
-          <Plus className="h-4 w-4" />
-          Migration
-        </Button>
-      )}
-
-      {!isCollapsed && (
         <nav className="flex-1 space-y-2 overflow-auto">
           {projects.map((project) => (
             <div key={project.id} className="space-y-1">
@@ -103,6 +93,13 @@ const Sidebar = ({
                     <ChevronRight className="h-4 w-4" />
                   )}
                   {project.name}
+                </button>
+                <button
+                  onClick={onNewMigration}
+                  className="p-1 hover:bg-sidebar-accent rounded transition-colors"
+                  aria-label="Neue Migration"
+                >
+                  <Plus className="h-4 w-4" />
                 </button>
               </div>
 
