@@ -1,4 +1,4 @@
-import { Database, Settings as SettingsIcon, Trash2, Check } from "lucide-react";
+import { Database, Settings as SettingsIcon, Trash2, Check, Link } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import CircularProgress from "./CircularProgress";
 import ActivityTimeline, { Activity } from "./ActivityTimeline";
@@ -7,6 +7,7 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -37,7 +38,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Checkbox } from "@/components/ui/checkbox";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import TestConnectionDialog from "./dialogs/TestConnectionDialog";
@@ -71,9 +72,13 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isTestDialogOpen, setIsTestDialogOpen] = useState(false);
+  const [isLinkDialogOpen, setIsLinkDialogOpen] = useState(false);
   const [deleteType, setDeleteType] = useState<'in' | 'out'>('in');
   const [configType, setConfigType] = useState<'in' | 'out'>('in');
   const [testType, setTestType] = useState<'in' | 'out'>('in');
+  const [linkType, setLinkType] = useState<'in' | 'out'>('in');
+  const [dataSources, setDataSources] = useState<any[]>([]);
+  const [selectedDataSourceId, setSelectedDataSourceId] = useState<string>('');
   const [formData, setFormData] = useState({
     apiUrl: '',
     apiKey: '',
@@ -100,6 +105,28 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
   const hasInConnector = !!project.connectors?.in;
   const hasOutConnector = !!project.connectors?.out;
+
+  // Fetch available data sources for linking
+  useEffect(() => {
+    const fetchDataSources = async () => {
+      const { data, error } = await supabase
+        .from('data_sources')
+        .select('*')
+        .eq('is_active', true);
+      
+      if (!error && data) {
+        setDataSources(data);
+      }
+    };
+
+    fetchDataSources();
+  }, []);
+
+  // Filter data sources by connector type
+  const getAvailableDataSources = (type: 'in' | 'out') => {
+    const systemType = type === 'in' ? project.sourceSystem : project.targetSystem;
+    return dataSources.filter(ds => ds.source_type === systemType);
+  };
 
   // Define objects based on system type
   const getSystemObjects = (system: string) => {
@@ -318,6 +345,99 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
     }
   };
 
+  const handleLinkDataSource = (type: 'in' | 'out') => {
+    setLinkType(type);
+    setSelectedDataSourceId('');
+    setIsLinkDialogOpen(true);
+  };
+
+  const confirmLinkDataSource = async () => {
+    try {
+      const dataSource = dataSources.find(ds => ds.id === selectedDataSourceId);
+      if (!dataSource) {
+        toast.error("Keine Datenquelle ausgewählt");
+        return;
+      }
+
+      const connector = linkType === 'in' ? project.connectors?.in : project.connectors?.out;
+      const isCreating = !connector;
+      const wasTested = connector?.is_tested || false;
+
+      const additionalConfig = dataSource.additional_config || {};
+
+      const connectorData = {
+        migration_id: project.id,
+        connector_type: linkType,
+        api_url: dataSource.api_url,
+        api_key: dataSource.api_key,
+        username: dataSource.username,
+        password: dataSource.password,
+        auth_type: dataSource.auth_type,
+        additional_config: additionalConfig,
+      };
+
+      // Calculate progress change
+      let progressChange = 0;
+      if (isCreating) {
+        progressChange = 2.5; // New connector
+      } else if (wasTested) {
+        progressChange = -5; // Editing a tested connector removes both config and test progress
+      }
+
+      if (connector) {
+        // Update existing connector - reset is_tested to false
+        const { error } = await supabase
+          .from('connectors')
+          .update({ ...connectorData, is_tested: false })
+          .eq('id', connector.id);
+
+        if (error) throw error;
+
+        // Add system activity
+        await supabase.from('migration_activities').insert({
+          migration_id: project.id,
+          type: 'system',
+          title: `${linkType === 'in' ? 'Inconnector' : 'Outconnector'} mit Datenquelle verknüpft`,
+          timestamp: new Date().toLocaleString('de-DE'),
+        });
+
+        toast.success("Connector mit Datenquelle verknüpft");
+      } else {
+        // Create new connector
+        const { error } = await supabase
+          .from('connectors')
+          .insert(connectorData);
+
+        if (error) throw error;
+
+        // Add system activity
+        await supabase.from('migration_activities').insert({
+          migration_id: project.id,
+          type: 'system',
+          title: `${linkType === 'in' ? 'Inconnector' : 'Outconnector'} mit Datenquelle erstellt`,
+          timestamp: new Date().toLocaleString('de-DE'),
+        });
+
+        toast.success("Connector mit Datenquelle erstellt");
+      }
+
+      // Update migration progress
+      if (progressChange !== 0) {
+        const newProgress = Math.max(0, Math.min(100, project.progress + progressChange));
+        await supabase
+          .from('migrations')
+          .update({ progress: newProgress })
+          .eq('id', project.id);
+      }
+
+      setIsLinkDialogOpen(false);
+      await onRefresh();
+    } catch (error: any) {
+      toast.error(error.message || "Fehler beim Verknüpfen");
+      console.error(error);
+    }
+  };
+
   const handleSaveConnector = async () => {
     try {
       const connector = configType === 'in' ? project.connectors?.in : project.connectors?.out;
@@ -508,6 +628,15 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                             Test
                           </DropdownMenuItem>
                         )}
+                        {getAvailableDataSources('in').length > 0 && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => handleLinkDataSource('in')}>
+                              <Link className="h-4 w-4 mr-2" />
+                              Datenquelle verknüpfen
+                            </DropdownMenuItem>
+                          </>
+                        )}
                       </DropdownMenuContent>
                     </DropdownMenu>
                     {hasInConnector && (
@@ -564,6 +693,15 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                           <DropdownMenuItem onClick={() => handleTest('out')}>
                             Test
                           </DropdownMenuItem>
+                        )}
+                        {getAvailableDataSources('out').length > 0 && (
+                          <>
+                            <DropdownMenuSeparator />
+                            <DropdownMenuItem onClick={() => handleLinkDataSource('out')}>
+                              <Link className="h-4 w-4 mr-2" />
+                              Datenquelle verknüpfen
+                            </DropdownMenuItem>
+                          </>
                         )}
                       </DropdownMenuContent>
                     </DropdownMenu>
@@ -945,6 +1083,58 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
         connectorType={testType}
         onTestComplete={handleTestComplete}
       />
+
+      {/* Link Data Source Dialog */}
+      <Dialog open={isLinkDialogOpen} onOpenChange={setIsLinkDialogOpen}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Datenquelle verknüpfen</DialogTitle>
+            <DialogDescription>
+              Wählen Sie eine vorkonfigurierte Datenquelle für den {linkType === 'in' ? 'Inconnector' : 'Outconnector'} aus.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Verfügbare Datenquellen</Label>
+              <Select value={selectedDataSourceId} onValueChange={setSelectedDataSourceId}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Datenquelle auswählen" />
+                </SelectTrigger>
+                <SelectContent>
+                  {getAvailableDataSources(linkType).map((ds) => (
+                    <SelectItem key={ds.id} value={ds.id}>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{ds.name}</span>
+                        <span className="text-xs text-muted-foreground">{ds.source_type}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {selectedDataSourceId && (
+              <div className="bg-muted/50 p-3 rounded-lg space-y-1 text-sm">
+                {(() => {
+                  const ds = dataSources.find(d => d.id === selectedDataSourceId);
+                  return (
+                    <>
+                      <p><span className="font-medium">Auth:</span> {ds?.auth_type}</p>
+                      {ds?.api_url && <p><span className="font-medium">URL:</span> {ds.api_url}</p>}
+                    </>
+                  );
+                })()}
+              </div>
+            )}
+            <Button 
+              onClick={confirmLinkDataSource} 
+              className="w-full"
+              disabled={!selectedDataSourceId}
+            >
+              Verknüpfen
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
