@@ -10,12 +10,15 @@ interface SidebarProps {
   onNewMigration: () => void;
   onDeleteProject: (id: string) => void;
   onEditProject: (id: string) => void;
+  onLogoClick: () => void;
 }
 
-const Sidebar = ({ projects, selectedProject, onSelectProject, onNewMigration, onDeleteProject, onEditProject }: SidebarProps) => {
+const Sidebar = ({ projects, selectedProject, onSelectProject, onNewMigration, onDeleteProject, onEditProject, onLogoClick }: SidebarProps) => {
   return (
     <div className="w-80 bg-background border-r border-sidebar-border h-screen flex flex-col p-6">
-      <Logo className="mb-8" />
+      <button onClick={onLogoClick} className="mb-8 cursor-pointer">
+        <Logo />
+      </button>
 
       <Button
         onClick={onNewMigration}

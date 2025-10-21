@@ -7,7 +7,7 @@ import AddMigrationDialog from "@/components/dialogs/AddMigrationDialog";
 import EditMigrationDialog from "@/components/dialogs/EditMigrationDialog";
 import MigrationDetails from "@/components/MigrationDetails";
 import { Button } from "@/components/ui/button";
-import { Database } from "lucide-react";
+import { Database, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -231,27 +231,35 @@ const Dashboard = () => {
         onNewMigration={() => setShowAddDialog(true)}
         onDeleteProject={handleDeleteProject}
         onEditProject={handleEditProject}
+        onLogoClick={() => setSelectedProject(null)}
       />
 
       <div className="flex-1 flex flex-col min-h-0">
         <header className="h-16 border-b border-sidebar-border flex items-center justify-between px-6 flex-shrink-0">
-          {currentProject && (
-            <div className="flex gap-2">
-              <Button
-                variant={activeProjectTab === "general" ? "secondary" : "ghost"}
-                onClick={() => setActiveProjectTab("general")}
-                size="sm"
-              >
-                General
-              </Button>
-              <Button
-                variant={activeProjectTab === "mapping" ? "secondary" : "ghost"}
-                onClick={() => setActiveProjectTab("mapping")}
-                size="sm"
-              >
-                Mapping UI
-              </Button>
+          {currentProject ? (
+            <div className="flex items-center gap-6">
+              <div className="text-lg font-semibold text-foreground">
+                {currentProject.sourceSystem} → {currentProject.targetSystem}
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant={activeProjectTab === "general" ? "secondary" : "ghost"}
+                  onClick={() => setActiveProjectTab("general")}
+                  size="sm"
+                >
+                  General
+                </Button>
+                <Button
+                  variant={activeProjectTab === "mapping" ? "secondary" : "ghost"}
+                  onClick={() => setActiveProjectTab("mapping")}
+                  size="sm"
+                >
+                  Mapping UI
+                </Button>
+              </div>
             </div>
+          ) : (
+            <div />
           )}
           <UserMenu
             onAccountClick={() => {
@@ -271,7 +279,7 @@ const Dashboard = () => {
             <MigrationDetails project={currentProject} activeTab={activeProjectTab} />
           ) : (
             <div className="h-full flex items-center justify-center">
-              <div className="text-center space-y-6">
+              <div className="text-center space-y-8">
                 <div className="flex justify-center">
                   <div className="relative">
                     <Database className="h-32 w-32 text-primary" strokeWidth={1.5} />
@@ -284,7 +292,17 @@ const Dashboard = () => {
                     </div>
                   </div>
                 </div>
-                <p className="text-muted-foreground text-lg">Nothing selected</p>
+                <div className="space-y-4">
+                  <p className="text-foreground text-2xl font-semibold">Starte noch heute deine Migration</p>
+                  <Button
+                    onClick={() => setShowAddDialog(true)}
+                    className="rounded-full bg-secondary hover:bg-secondary/90 text-secondary-foreground gap-2"
+                    size="lg"
+                  >
+                    <Plus className="h-5 w-5" />
+                    Migration
+                  </Button>
+                </div>
               </div>
             </div>
           )}
