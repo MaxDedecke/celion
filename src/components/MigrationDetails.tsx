@@ -242,12 +242,16 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
       if (error) throw error;
 
       // Add system activity
-      await supabase.from('migration_activities').insert({
+      const { error: activityError } = await supabase.from('migration_activities').insert({
         migration_id: project.id,
         type: 'system',
         title: `${deleteType === 'in' ? 'Inconnector' : 'Outconnector'} gelöscht`,
-        timestamp: new Date().toISOString(),
+        timestamp: new Date().toLocaleString('de-DE'),
       });
+
+      if (activityError) {
+        console.error('Error creating activity:', activityError);
+      }
 
       toast.success(`${deleteType === 'in' ? 'Inconnector' : 'Outconnector'} gelöscht`);
       setIsDeleteDialogOpen(false);
@@ -311,12 +315,17 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
         if (error) throw error;
 
         // Add system activity
-        await supabase.from('migration_activities').insert({
+        const { error: activityError } = await supabase.from('migration_activities').insert({
           migration_id: project.id,
           type: 'system',
           title: `${configType === 'in' ? 'Inconnector' : 'Outconnector'} aktualisiert`,
-          timestamp: new Date().toISOString(),
+          timestamp: new Date().toLocaleString('de-DE'),
         });
+
+        if (activityError) {
+          console.error('Error creating activity:', activityError);
+          toast.error('Fehler beim Protokollieren der Aktivität');
+        }
 
         toast.success("Connector aktualisiert");
       } else {
@@ -328,12 +337,17 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
         if (error) throw error;
 
         // Add system activity
-        await supabase.from('migration_activities').insert({
+        const { error: activityError } = await supabase.from('migration_activities').insert({
           migration_id: project.id,
           type: 'system',
           title: `${configType === 'in' ? 'Inconnector' : 'Outconnector'} erstellt`,
-          timestamp: new Date().toISOString(),
+          timestamp: new Date().toLocaleString('de-DE'),
         });
+
+        if (activityError) {
+          console.error('Error creating activity:', activityError);
+          toast.error('Fehler beim Protokollieren der Aktivität');
+        }
 
         toast.success("Connector erstellt");
       }
