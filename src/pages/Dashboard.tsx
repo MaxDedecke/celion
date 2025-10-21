@@ -49,9 +49,7 @@ const Dashboard = () => {
   }, []);
 
   useEffect(() => {
-    if (migrationId) {
-      setSelectedMigration(migrationId);
-    }
+    setSelectedMigration(migrationId ?? null);
   }, [migrationId]);
 
   const checkAuth = async () => {
