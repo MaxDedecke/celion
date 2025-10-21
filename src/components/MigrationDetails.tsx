@@ -564,17 +564,17 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
     <div className="h-full p-8 pb-6 space-y-6">
       {activeTab === "general" && (
         <div className="space-y-6 pb-6">
+          {/* Progress Card - Full width */}
+          <div className="flex justify-center items-center py-4">
+            <div className="relative">
+              <CircularProgress progress={project.progress} />
+              <p className="text-center mt-4 text-sm text-muted-foreground">Progress</p>
+            </div>
+          </div>
+
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Left column - Cards */}
             <div className="lg:col-span-2 space-y-6">
-              {/* Progress Card */}
-              <div className="flex justify-center">
-                <div className="relative">
-                  <CircularProgress progress={project.progress} />
-                  <p className="text-center mt-4 text-sm text-muted-foreground">Progress</p>
-                </div>
-              </div>
-
               {/* Meta model Card */}
               <Card className="bg-card border-border">
                 <CardContent className="pt-6">
