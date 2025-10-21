@@ -375,6 +375,25 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                 </div>
               </div>
 
+              {/* Meta model Card */}
+              <Card className="bg-card border-border">
+                <CardContent className="pt-6">
+                  <div className="grid grid-cols-2 gap-6">
+                    <div>
+                      <p className="text-sm font-medium mb-1">Meta modell</p>
+                      <div className="flex items-center gap-2">
+                        <Database className="h-5 w-5 text-muted-foreground" />
+                        <span className="text-sm text-muted-foreground">Configured</span>
+                      </div>
+                    </div>
+                    <div>
+                      <p className="text-sm font-medium mb-1">Mapped Jira Objects</p>
+                      <p className="text-foreground">{project.mappedObjects}</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
               {/* Inconnector Card */}
               <Card className="bg-card border-border">
                 <CardHeader className="flex flex-row items-center justify-between">
@@ -489,25 +508,6 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                 </CardContent>
               </Card>
 
-              {/* Meta model Card */}
-              <Card className="bg-card border-border">
-                <CardHeader>
-                  <CardTitle className="text-base">Meta model</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between">
-                    <p className="text-sm text-muted-foreground">
-                      Mapped Jira Objects<br />
-                      <span className="text-foreground">{project.mappedObjects}</span>
-                    </p>
-                    <div className={`w-12 h-12 rounded-full border-4 ${
-                      project.progress === 100 ? "border-success" : "border-muted"
-                    } flex items-center justify-center`}>
-                      <Database className="h-5 w-5" />
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
             </div>
 
             {/* Right column - Activity Timeline */}
