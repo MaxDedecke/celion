@@ -19,6 +19,7 @@ export type Database = {
           additional_config: Json | null
           api_key: string | null
           api_url: string | null
+          auth_type: string
           connector_type: string
           created_at: string
           endpoint: string | null
@@ -32,6 +33,7 @@ export type Database = {
           additional_config?: Json | null
           api_key?: string | null
           api_url?: string | null
+          auth_type?: string
           connector_type: string
           created_at?: string
           endpoint?: string | null
@@ -45,6 +47,7 @@ export type Database = {
           additional_config?: Json | null
           api_key?: string | null
           api_url?: string | null
+          auth_type?: string
           connector_type?: string
           created_at?: string
           endpoint?: string | null

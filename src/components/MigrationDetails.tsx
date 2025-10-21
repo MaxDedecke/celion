@@ -25,6 +25,8 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useState } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -62,6 +64,22 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
     username: '',
     password: '',
     endpoint: '',
+    authType: 'api_key',
+    // OAuth2 fields
+    clientId: '',
+    clientSecret: '',
+    authUrl: '',
+    tokenUrl: '',
+    scope: '',
+    redirectUri: '',
+    // Custom/Keycloak fields
+    realm: '',
+    issuer: '',
+    // Infrastructure fields
+    sslVerification: true,
+    proxyHost: '',
+    proxyPort: '',
+    vpnSettings: '',
   });
 
   const hasInConnector = !!project.connectors?.in;
@@ -143,12 +161,26 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
     // Load existing connector data if available
     const connector = type === 'in' ? project.connectors?.in : project.connectors?.out;
     if (connector) {
+      const config = connector.additional_config || {};
       setFormData({
         apiUrl: connector.api_url || '',
         apiKey: connector.api_key || '',
         username: connector.username || '',
         password: connector.password || '',
         endpoint: connector.endpoint || '',
+        authType: connector.auth_type || 'api_key',
+        clientId: config.client_id || '',
+        clientSecret: config.client_secret || '',
+        authUrl: config.auth_url || '',
+        tokenUrl: config.token_url || '',
+        scope: config.scope || '',
+        redirectUri: config.redirect_uri || '',
+        realm: config.realm || '',
+        issuer: config.issuer || '',
+        sslVerification: config.ssl_verification ?? true,
+        proxyHost: config.proxy_host || '',
+        proxyPort: config.proxy_port || '',
+        vpnSettings: config.vpn_settings || '',
       });
     } else {
       setFormData({
@@ -157,6 +189,19 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
         username: '',
         password: '',
         endpoint: '',
+        authType: 'api_key',
+        clientId: '',
+        clientSecret: '',
+        authUrl: '',
+        tokenUrl: '',
+        scope: '',
+        redirectUri: '',
+        realm: '',
+        issuer: '',
+        sslVerification: true,
+        proxyHost: '',
+        proxyPort: '',
+        vpnSettings: '',
       });
     }
     
@@ -190,6 +235,33 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
     try {
       const connector = configType === 'in' ? project.connectors?.in : project.connectors?.out;
       
+      const additionalConfig: Record<string, any> = {
+        ssl_verification: formData.sslVerification,
+      };
+
+      // Add OAuth2 fields if auth type is oauth2
+      if (formData.authType === 'oauth2') {
+        additionalConfig.client_id = formData.clientId;
+        additionalConfig.client_secret = formData.clientSecret;
+        additionalConfig.auth_url = formData.authUrl;
+        additionalConfig.token_url = formData.tokenUrl;
+        additionalConfig.scope = formData.scope;
+        additionalConfig.redirect_uri = formData.redirectUri;
+      }
+
+      // Add custom/Keycloak fields if auth type is custom
+      if (formData.authType === 'custom') {
+        additionalConfig.realm = formData.realm;
+        additionalConfig.issuer = formData.issuer;
+        additionalConfig.client_id = formData.clientId;
+        additionalConfig.client_secret = formData.clientSecret;
+      }
+
+      // Add infrastructure fields if provided
+      if (formData.proxyHost) additionalConfig.proxy_host = formData.proxyHost;
+      if (formData.proxyPort) additionalConfig.proxy_port = formData.proxyPort;
+      if (formData.vpnSettings) additionalConfig.vpn_settings = formData.vpnSettings;
+
       const connectorData = {
         migration_id: project.id,
         connector_type: configType,
@@ -198,6 +270,8 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
         username: formData.username,
         password: formData.password,
         endpoint: formData.endpoint,
+        auth_type: formData.authType,
+        additional_config: additionalConfig,
       };
 
       if (connector) {
@@ -419,7 +493,7 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
       )}
 
       <Dialog open={isConfigDialogOpen} onOpenChange={setIsConfigDialogOpen}>
-        <DialogContent className="sm:max-w-[500px]">
+        <DialogContent className="sm:max-w-[600px] max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {configType === 'in' ? 'Interconnector' : 'Outconnector'} {hasInConnector || hasOutConnector ? 'Bearbeiten' : 'Erstellen'}
@@ -428,61 +502,249 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
               Konfigurieren Sie die API-Verbindungseinstellungen für den {configType === 'in' ? 'Interconnector' : 'Outconnector'}.
             </DialogDescription>
           </DialogHeader>
-          <div className="space-y-4 py-4">
-            <div className="space-y-2">
-              <Label htmlFor="api-url">API URL</Label>
-              <Input
-                id="api-url"
-                placeholder="https://api.example.com"
-                type="url"
-                value={formData.apiUrl}
-                onChange={(e) => setFormData({ ...formData, apiUrl: e.target.value })}
-              />
+          <div className="space-y-6 py-4">
+            {/* Basisdaten Section */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-foreground">🔧 Basisdaten</h3>
+              <div className="space-y-2">
+                <Label htmlFor="api-url">API URL</Label>
+                <Input
+                  id="api-url"
+                  placeholder="https://api.example.com"
+                  type="url"
+                  value={formData.apiUrl}
+                  onChange={(e) => setFormData({ ...formData, apiUrl: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="endpoint">Endpoint</Label>
+                <Input
+                  id="endpoint"
+                  placeholder="/api/v1/data"
+                  value={formData.endpoint}
+                  onChange={(e) => setFormData({ ...formData, endpoint: e.target.value })}
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="api-key">API Key</Label>
-              <Input
-                id="api-key"
-                placeholder="Enter API key"
-                type="password"
-                value={formData.apiKey}
-                onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
-              />
+
+            {/* Authentifizierung Section */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-foreground">🔑 Authentifizierung</h3>
+              <div className="space-y-2">
+                <Label htmlFor="auth-type">Authentifizierungstyp</Label>
+                <Select
+                  value={formData.authType}
+                  onValueChange={(value) => setFormData({ ...formData, authType: value })}
+                >
+                  <SelectTrigger id="auth-type" className="w-full">
+                    <SelectValue placeholder="Wählen Sie einen Typ" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="api_key">API Key</SelectItem>
+                    <SelectItem value="basic">Basic Auth</SelectItem>
+                    <SelectItem value="oauth2">OAuth2</SelectItem>
+                    <SelectItem value="custom">Custom (Keycloak)</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Conditional fields based on auth type */}
+              {formData.authType === 'api_key' && (
+                <div className="space-y-2">
+                  <Label htmlFor="api-key">API Key</Label>
+                  <Input
+                    id="api-key"
+                    placeholder="Enter API key"
+                    type="password"
+                    value={formData.apiKey}
+                    onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
+                  />
+                </div>
+              )}
+
+              {formData.authType === 'basic' && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="username">Username</Label>
+                    <Input
+                      id="username"
+                      placeholder="Enter username"
+                      value={formData.username}
+                      onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Password</Label>
+                    <Input
+                      id="password"
+                      placeholder="Enter password"
+                      type="password"
+                      value={formData.password}
+                      onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                    />
+                  </div>
+                </>
+              )}
+
+              {formData.authType === 'oauth2' && (
+                <>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="client-id">Client ID</Label>
+                      <Input
+                        id="client-id"
+                        placeholder="Client ID"
+                        value={formData.clientId}
+                        onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="client-secret">Client Secret</Label>
+                      <Input
+                        id="client-secret"
+                        placeholder="Client Secret"
+                        type="password"
+                        value={formData.clientSecret}
+                        onChange={(e) => setFormData({ ...formData, clientSecret: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="auth-url">Authorization URL</Label>
+                    <Input
+                      id="auth-url"
+                      placeholder="https://auth.example.com/oauth/authorize"
+                      value={formData.authUrl}
+                      onChange={(e) => setFormData({ ...formData, authUrl: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="token-url">Token URL</Label>
+                    <Input
+                      id="token-url"
+                      placeholder="https://auth.example.com/oauth/token"
+                      value={formData.tokenUrl}
+                      onChange={(e) => setFormData({ ...formData, tokenUrl: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="scope">Scope</Label>
+                    <Input
+                      id="scope"
+                      placeholder="read write"
+                      value={formData.scope}
+                      onChange={(e) => setFormData({ ...formData, scope: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="redirect-uri">Redirect URI</Label>
+                    <Input
+                      id="redirect-uri"
+                      placeholder="https://app.example.com/callback"
+                      value={formData.redirectUri}
+                      onChange={(e) => setFormData({ ...formData, redirectUri: e.target.value })}
+                    />
+                  </div>
+                </>
+              )}
+
+              {formData.authType === 'custom' && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="realm">Realm</Label>
+                    <Input
+                      id="realm"
+                      placeholder="master"
+                      value={formData.realm}
+                      onChange={(e) => setFormData({ ...formData, realm: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="issuer">Issuer URL</Label>
+                    <Input
+                      id="issuer"
+                      placeholder="https://keycloak.example.com/auth/realms/master"
+                      value={formData.issuer}
+                      onChange={(e) => setFormData({ ...formData, issuer: e.target.value })}
+                    />
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="custom-client-id">Client ID</Label>
+                      <Input
+                        id="custom-client-id"
+                        placeholder="Client ID"
+                        value={formData.clientId}
+                        onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="custom-client-secret">Client Secret</Label>
+                      <Input
+                        id="custom-client-secret"
+                        placeholder="Client Secret"
+                        type="password"
+                        value={formData.clientSecret}
+                        onChange={(e) => setFormData({ ...formData, clientSecret: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                placeholder="Enter username"
-                value={formData.username}
-                onChange={(e) => setFormData({ ...formData, username: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                placeholder="Enter password"
-                type="password"
-                value={formData.password}
-                onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="endpoint">Endpoint</Label>
-              <Input
-                id="endpoint"
-                placeholder="/api/v1/data"
-                value={formData.endpoint}
-                onChange={(e) => setFormData({ ...formData, endpoint: e.target.value })}
-              />
-            </div>
-          </div>
-          <div className="flex justify-end gap-3">
-            <Button variant="outline" onClick={() => setIsConfigDialogOpen(false)}>
-              Abbrechen
-            </Button>
-            <Button onClick={handleSaveConnector}>
+
+            {/* Infrastruktur Section - Collapsible */}
+            <Collapsible>
+              <CollapsibleTrigger className="flex items-center gap-2 w-full">
+                <h3 className="text-sm font-semibold text-foreground">🧱 Infrastruktur (optional)</h3>
+                <span className="text-xs text-muted-foreground ml-auto">▼</span>
+              </CollapsibleTrigger>
+              <CollapsibleContent className="space-y-4 mt-4">
+                <div className="flex items-center space-x-2">
+                  <Checkbox
+                    id="ssl-verification"
+                    checked={formData.sslVerification}
+                    onCheckedChange={(checked) => 
+                      setFormData({ ...formData, sslVerification: checked as boolean })
+                    }
+                  />
+                  <Label htmlFor="ssl-verification" className="text-sm">
+                    SSL Verification aktivieren
+                  </Label>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="proxy-host">Proxy Host</Label>
+                    <Input
+                      id="proxy-host"
+                      placeholder="proxy.example.com"
+                      value={formData.proxyHost}
+                      onChange={(e) => setFormData({ ...formData, proxyHost: e.target.value })}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="proxy-port">Proxy Port</Label>
+                    <Input
+                      id="proxy-port"
+                      placeholder="8080"
+                      value={formData.proxyPort}
+                      onChange={(e) => setFormData({ ...formData, proxyPort: e.target.value })}
+                    />
+                  </div>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="vpn-settings">VPN / Tunnel Settings</Label>
+                  <Input
+                    id="vpn-settings"
+                    placeholder="VPN configuration details"
+                    value={formData.vpnSettings}
+                    onChange={(e) => setFormData({ ...formData, vpnSettings: e.target.value })}
+                  />
+                </div>
+              </CollapsibleContent>
+            </Collapsible>
+
+            <Button onClick={handleSaveConnector} className="w-full">
               Speichern
             </Button>
           </div>
