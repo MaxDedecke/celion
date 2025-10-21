@@ -345,9 +345,19 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
       // Only update migration progress by 2.5% if not already tested
       if (!wasAlreadyTested) {
         const newProgress = Math.min(project.progress + 2.5, 100);
+        
+        // If it's an inconnector test, also update mapped_objects
+        let updateData: any = { progress: newProgress };
+        
+        if (testType === 'in') {
+          // Generate realistic number of objects found (50-200)
+          const foundObjects = Math.floor(Math.random() * 151) + 50; // Random between 50 and 200
+          updateData.mapped_objects = `0/${foundObjects}`;
+        }
+        
         const { error: progressError } = await supabase
           .from('migrations')
-          .update({ progress: newProgress })
+          .update(updateData)
           .eq('id', project.id);
 
         if (progressError) throw progressError;
@@ -767,7 +777,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                       <Button 
                         variant="ghost" 
                         size="icon"
-                        className="text-success hover:text-success animate-bounce"
+                        className="text-success hover:text-success animate-gentle-bounce"
                         title="Import starten"
                       >
                         <Download className="h-4 w-4" />
