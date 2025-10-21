@@ -862,12 +862,12 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
             {/* Right column - Activity Timeline and Meta Model Approval */}
             <div className="lg:col-span-1 flex flex-col gap-6">
-              <Card className="bg-card border-border flex-1">
+              <Card className="bg-card border-border">
                 <CardHeader>
                   <CardTitle className="text-base">Activity</CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <ScrollArea className="h-[300px] px-6 py-4">
+                  <ScrollArea className="h-[240px] px-6 py-4">
                     <ActivityTimeline activities={project.activities} />
                   </ScrollArea>
                 </CardContent>
