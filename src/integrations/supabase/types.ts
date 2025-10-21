@@ -199,6 +199,7 @@ export type Database = {
           in_connector: string
           in_connector_detail: string
           mapped_objects: string
+          meta_model_approved: boolean
           name: string
           objects_transferred: string
           out_connector: string
@@ -216,6 +217,7 @@ export type Database = {
           in_connector: string
           in_connector_detail: string
           mapped_objects?: string
+          meta_model_approved?: boolean
           name: string
           objects_transferred?: string
           out_connector: string
@@ -233,6 +235,7 @@ export type Database = {
           in_connector?: string
           in_connector_detail?: string
           mapped_objects?: string
+          meta_model_approved?: boolean
           name?: string
           objects_transferred?: string
           out_connector?: string

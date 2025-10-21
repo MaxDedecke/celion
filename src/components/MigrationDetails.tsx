@@ -110,6 +110,23 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   const hasInConnector = !!project.connectors?.in;
   const hasOutConnector = !!project.connectors?.out;
 
+  // Load meta model approval status from database
+  useEffect(() => {
+    const loadMetaModelStatus = async () => {
+      const { data, error } = await supabase
+        .from('migrations')
+        .select('meta_model_approved')
+        .eq('id', project.id)
+        .single();
+      
+      if (!error && data) {
+        setIsMetaModelApproved(data.meta_model_approved);
+      }
+    };
+
+    loadMetaModelStatus();
+  }, [project.id]);
+
   // Fetch available data sources for linking
   useEffect(() => {
     const fetchDataSources = async () => {
@@ -508,12 +525,15 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
       if (approved) {
         // Increase progress by 10% when meta model is approved
         const newProgress = Math.min(project.progress + 10, 100);
-        const { error: progressError } = await supabase
+        const { error: updateError } = await supabase
           .from('migrations')
-          .update({ progress: newProgress })
+          .update({ 
+            progress: newProgress,
+            meta_model_approved: true 
+          })
           .eq('id', project.id);
 
-        if (progressError) throw progressError;
+        if (updateError) throw updateError;
 
         // Add system activity
         await supabase.from('migration_activities').insert({
@@ -524,6 +544,15 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
         });
 
         toast.success("Meta-Modell freigegeben");
+        await onRefresh();
+      } else {
+        // Update database when unchecking
+        const { error: updateError } = await supabase
+          .from('migrations')
+          .update({ meta_model_approved: false })
+          .eq('id', project.id);
+
+        if (updateError) throw updateError;
         await onRefresh();
       }
     } catch (error: any) {
@@ -831,14 +860,14 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
             </div>
 
-            {/* Right column - Activity Timeline */}
-            <div className="lg:col-span-1">
-              <Card className="bg-card border-border h-full">
+            {/* Right column - Activity Timeline and Meta Model Approval */}
+            <div className="lg:col-span-1 flex flex-col gap-6">
+              <Card className="bg-card border-border flex-1">
                 <CardHeader>
                   <CardTitle className="text-base">Activity</CardTitle>
                 </CardHeader>
                 <CardContent className="p-0">
-                  <ScrollArea className="h-[400px] px-6 py-4">
+                  <ScrollArea className="h-[300px] px-6 py-4">
                     <ActivityTimeline activities={project.activities} />
                   </ScrollArea>
                 </CardContent>
@@ -846,7 +875,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
               {/* Meta Model Approval Card */}
               {hasInConnector && hasOutConnector && (
-                <Card className="bg-card border-border mt-6">
+                <Card className="bg-card border-border">
                   <CardHeader>
                     <CardTitle className="text-base">Meta-Modell Freigabe</CardTitle>
                   </CardHeader>
