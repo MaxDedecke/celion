@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Plus, Trash2, Pencil } from "lucide-react";
+import { ArrowLeft, Plus, Trash2, Pencil, Database, GitBranch, Github, Gitlab, Cloud, Box } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
@@ -94,6 +94,16 @@ const DataSources = () => {
     if (!session) {
       navigate("/");
     }
+  };
+
+  const getSourceIcon = (sourceType: string) => {
+    const type = sourceType.toLowerCase();
+    if (type.includes('jira')) return Database;
+    if (type.includes('azure') || type.includes('devops')) return Cloud;
+    if (type.includes('github')) return Github;
+    if (type.includes('gitlab')) return Gitlab;
+    if (type.includes('git')) return GitBranch;
+    return Box;
   };
 
   const loadDataSources = async () => {
@@ -220,32 +230,39 @@ const DataSources = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {dataSources.map((source) => (
-            <Card key={source.id} className="bg-card border-border">
-              <CardHeader className="flex flex-row items-start justify-between">
-                <div className="flex-1">
-                  <CardTitle className="text-lg">{source.name}</CardTitle>
-                  <p className="text-sm text-muted-foreground mt-1">
-                    {source.source_type}
-                  </p>
-                </div>
-                <div className="flex gap-1">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleOpenDialog(source)}
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    onClick={() => handleDelete(source.id)}
-                  >
-                    <Trash2 className="h-4 w-4 text-destructive" />
-                  </Button>
-                </div>
-              </CardHeader>
+          {dataSources.map((source) => {
+            const SourceIcon = getSourceIcon(source.source_type);
+            return (
+              <Card key={source.id} className="bg-card border-border">
+                <CardHeader className="flex flex-row items-start gap-4">
+                  <div className="flex-shrink-0">
+                    <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
+                      <SourceIcon className="h-6 w-6 text-primary" />
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <CardTitle className="text-lg">{source.name}</CardTitle>
+                    <p className="text-sm text-muted-foreground mt-1">
+                      {source.source_type}
+                    </p>
+                  </div>
+                  <div className="flex gap-1 flex-shrink-0">
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleOpenDialog(source)}
+                    >
+                      <Pencil className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleDelete(source.id)}
+                    >
+                      <Trash2 className="h-4 w-4 text-destructive" />
+                    </Button>
+                  </div>
+                </CardHeader>
               <CardContent>
                 <div className="space-y-2 text-sm">
                   {source.api_url && (
@@ -269,7 +286,8 @@ const DataSources = () => {
                 </div>
               </CardContent>
             </Card>
-          ))}
+            );
+          })}
 
           {dataSources.length === 0 && (
             <div className="col-span-full text-center py-12">
