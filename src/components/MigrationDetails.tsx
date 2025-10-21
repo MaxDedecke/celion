@@ -346,13 +346,14 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
       if (!wasAlreadyTested) {
         const newProgress = Math.min(project.progress + 2.5, 100);
         
-        // If it's an inconnector test, also update mapped_objects
+        // If it's an inconnector test, also update mapped_objects and objects_transferred
         let updateData: any = { progress: newProgress };
         
         if (testType === 'in') {
           // Generate realistic number of objects found (50-200)
           const foundObjects = Math.floor(Math.random() * 151) + 50; // Random between 50 and 200
           updateData.mapped_objects = `0/${foundObjects}`;
+          updateData.objects_transferred = `0/${foundObjects}`;
         }
         
         const { error: progressError } = await supabase
@@ -534,7 +535,9 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
     if (!hasInConnector) return "Inconnector";
     if (!hasOutConnector) return "Outconnector";
     if (!isMetaModelApproved) return "Mapping (MetaModel)";
-    if (project.objectsTransferred === "0") return "Transfer";
+    // Check if objects have been transferred (starts with "0/")
+    const hasFoundObjects = project.objectsTransferred && project.objectsTransferred.startsWith("0/");
+    if (hasFoundObjects && project.objectsTransferred.split("/")[0] === "0") return "Transfer";
     if (project.progress < 80) return "Validierung";
     if (project.progress < 100) return "Abschluss";
     return "Insights";
@@ -756,7 +759,9 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
               {/* Inconnector Card */}
               <Card className={`bg-card border-border transition-shadow duration-300 ${
-                getCurrentStep() === "Inconnector" ? "shadow-[0_0_20px_rgba(255,255,255,0.3)]" : ""
+                getCurrentStep() === "Inconnector" || (isMetaModelApproved && getCurrentStep() === "Transfer") 
+                  ? "shadow-[0_0_20px_rgba(255,255,255,0.3)]" 
+                  : ""
               }`}>
                 <CardHeader className="flex flex-row items-center justify-between">
                   <div className="flex items-center gap-2">
