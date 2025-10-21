@@ -187,21 +187,25 @@ const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogPro
                 <SelectValue placeholder="Select source system" />
               </SelectTrigger>
               <SelectContent>
+                {dataSources.length > 0 && (
+                  <>
+                    {dataSources.map((source) => (
+                      <SelectItem 
+                        key={source.id} 
+                        value={source.name}
+                        className="font-bold text-primary"
+                      >
+                        {source.name}
+                      </SelectItem>
+                    ))}
+                    <SelectSeparator />
+                  </>
+                )}
                 {defaultSources.map((source) => (
                   <SelectItem key={source} value={source}>
                     {source}
                   </SelectItem>
                 ))}
-                {dataSources.length > 0 && (
-                  <>
-                    <SelectSeparator />
-                    {dataSources.map((source) => (
-                      <SelectItem key={source.id} value={source.name}>
-                        {source.name}
-                      </SelectItem>
-                    ))}
-                  </>
-                )}
               </SelectContent>
             </Select>
           </div>
@@ -216,23 +220,27 @@ const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogPro
                 <SelectValue placeholder="Select target system" />
               </SelectTrigger>
               <SelectContent>
+                {dataSources.filter(source => source.name !== sourceSystem).length > 0 && (
+                  <>
+                    {dataSources
+                      .filter(source => source.name !== sourceSystem)
+                      .map((source) => (
+                        <SelectItem 
+                          key={source.id} 
+                          value={source.name}
+                          className="font-bold text-primary"
+                        >
+                          {source.name}
+                        </SelectItem>
+                      ))}
+                    <SelectSeparator />
+                  </>
+                )}
                 {availableTargets.map((target) => (
                   <SelectItem key={target} value={target}>
                     {target}
                   </SelectItem>
                 ))}
-                {dataSources.filter(source => source.name !== sourceSystem).length > 0 && (
-                  <>
-                    <SelectSeparator />
-                    {dataSources
-                      .filter(source => source.name !== sourceSystem)
-                      .map((source) => (
-                        <SelectItem key={source.id} value={source.name}>
-                          {source.name}
-                        </SelectItem>
-                      ))}
-                  </>
-                )}
               </SelectContent>
             </Select>
           </div>
