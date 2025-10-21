@@ -58,7 +58,7 @@ const Sidebar = ({
               variant="ghost"
               size="icon"
               onClick={() => navigate("/data-sources")}
-              className="flex-shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+              className="flex-shrink-0 hover:bg-transparent hover:opacity-80"
             >
               <Plug className="h-4 w-4" />
             </Button>
@@ -67,7 +67,7 @@ const Sidebar = ({
             variant="ghost"
             size="icon"
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="flex-shrink-0 hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
+            className="flex-shrink-0 hover:bg-transparent hover:opacity-80"
           >
             {isCollapsed ? (
               <PanelLeft className="h-4 w-4" />
