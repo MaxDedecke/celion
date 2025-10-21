@@ -4,7 +4,9 @@ import Sidebar from "@/components/Sidebar";
 import UserMenu from "@/components/UserMenu";
 import AccountDialog from "@/components/dialogs/AccountDialog";
 import AddProjectDialog from "@/components/dialogs/AddProjectDialog";
+import AddMigrationDialog from "@/components/dialogs/AddMigrationDialog";
 import EditProjectDialog from "@/components/dialogs/EditProjectDialog";
+import EditMigrationDialog from "@/components/dialogs/EditMigrationDialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FolderOpen, Plus } from "lucide-react";
@@ -26,17 +28,24 @@ const Projects = () => {
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
   const [showAccountDialog, setShowAccountDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showAddMigrationDialog, setShowAddMigrationDialog] = useState(false);
   const [activeDialogTab, setActiveDialogTab] = useState<"account" | "settings">("account");
   const [projects, setProjects] = useState<any[]>([]);
+  const [migrations, setMigrations] = useState<any[]>([]);
+  const [standaloneMigrations, setStandaloneMigrations] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingProject, setEditingProject] = useState<any>(null);
+  const [editingMigration, setEditingMigration] = useState<any>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showEditMigrationDialog, setShowEditMigrationDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
+  const [migrationToDelete, setMigrationToDelete] = useState<string | null>(null);
+  const [projectIdForNewMigration, setProjectIdForNewMigration] = useState<string | null>(null);
 
   useEffect(() => {
     checkAuth();
-    loadProjects();
+    loadAllData();
   }, []);
 
   const checkAuth = async () => {
@@ -46,15 +55,17 @@ const Projects = () => {
     }
   };
 
-  const loadProjects = async () => {
+  const loadAllData = async () => {
     try {
       setLoading(true);
-      const { data: projectsData, error } = await supabase
+      
+      // Load all projects
+      const { data: projectsData, error: projectsError } = await supabase
         .from('projects')
         .select('*')
         .order('created_at', { ascending: false });
 
-      if (error) throw error;
+      if (projectsError) throw projectsError;
 
       // Load migrations count for each project
       const projectsWithCounts = await Promise.all(
@@ -75,8 +86,43 @@ const Projects = () => {
       );
 
       setProjects(projectsWithCounts);
+
+      // Load all migrations with project_id
+      const allMigrationsWithProjects: any[] = [];
+      for (const project of projectsData || []) {
+        const { data: migrationsData, error: migrationsError } = await supabase
+          .from('migrations')
+          .select('*')
+          .eq('project_id', project.id)
+          .order('created_at', { ascending: false });
+
+        if (migrationsError) throw migrationsError;
+        
+        const migrationsFormatted = (migrationsData || []).map(m => ({
+          id: m.id,
+          name: m.name,
+          projectId: m.project_id
+        }));
+        allMigrationsWithProjects.push(...migrationsFormatted);
+      }
+      setMigrations(allMigrationsWithProjects);
+
+      // Load standalone migrations
+      const { data: standaloneData, error: standaloneError } = await supabase
+        .from('migrations')
+        .select('*')
+        .is('project_id', null)
+        .order('created_at', { ascending: false });
+
+      if (standaloneError) throw standaloneError;
+
+      const standaloneFormatted = (standaloneData || []).map(m => ({
+        id: m.id,
+        name: m.name
+      }));
+      setStandaloneMigrations(standaloneFormatted);
     } catch (error: any) {
-      toast.error("Fehler beim Laden der Projekte");
+      toast.error("Fehler beim Laden der Daten");
       console.error(error);
     } finally {
       setLoading(false);
@@ -104,7 +150,7 @@ const Projects = () => {
       if (error) throw error;
 
       toast.success("Projekt erfolgreich erstellt");
-      await loadProjects();
+      await loadAllData();
     } catch (error: any) {
       toast.error(error.message || "Fehler beim Erstellen des Projekts");
       console.error(error);
@@ -126,7 +172,7 @@ const Projects = () => {
       if (error) throw error;
 
       toast.success("Projekt aktualisiert");
-      await loadProjects();
+      await loadAllData();
       setEditingProject(null);
     } catch (error: any) {
       toast.error(error.message || "Fehler beim Aktualisieren");
@@ -148,7 +194,7 @@ const Projects = () => {
       toast.success("Projekt gelöscht");
       setShowDeleteDialog(false);
       setProjectToDelete(null);
-      await loadProjects();
+      await loadAllData();
     } catch (error: any) {
       toast.error("Fehler beim Löschen");
       console.error(error);
@@ -158,20 +204,118 @@ const Projects = () => {
   const handleProjectClick = (projectId: string) => {
     const project = projects.find(p => p.id === projectId);
     if (project) {
-      navigate(`/celion/${encodeURIComponent(project.name)}`);
+      // Find first migration in this project and navigate to it
+      const projectMigration = migrations.find(m => m.projectId === projectId);
+      if (projectMigration) {
+        navigate(`/migration/${projectMigration.id}`);
+      } else {
+        navigate('/dashboard');
+      }
     }
   };
 
-  const handleLogoClick = () => {
-    setSelectedProject(null);
+  const handleAddMigration = async (name: string, sourceSystem: string, targetSystem: string) => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) throw new Error("Nicht authentifiziert");
+
+      const { data: migration, error: migrationError } = await supabase
+        .from('migrations')
+        .insert({
+          user_id: user.id,
+          project_id: projectIdForNewMigration,
+          name,
+          source_system: sourceSystem,
+          target_system: targetSystem,
+          in_connector: sourceSystem,
+          in_connector_detail: sourceSystem,
+          out_connector: targetSystem,
+          out_connector_detail: targetSystem,
+        })
+        .select()
+        .single();
+
+      if (migrationError) throw migrationError;
+
+      // Create initial activity
+      await supabase
+        .from('migration_activities')
+        .insert({
+          migration_id: migration.id,
+          type: 'info',
+          title: 'Neues Migrationsprojekt erstellt',
+          timestamp: new Date().toLocaleString('de-DE'),
+        });
+
+      toast.success(`Migration "${name}" erstellt`);
+      setProjectIdForNewMigration(null);
+      loadAllData();
+    } catch (error: any) {
+      toast.error(error.message || "Fehler beim Erstellen der Migration");
+      console.error(error);
+    }
+  };
+
+  const handleDeleteMigration = async (migrationId: string) => {
+    try {
+      const { error } = await supabase
+        .from('migrations')
+        .delete()
+        .eq('id', migrationId);
+
+      if (error) throw error;
+
+      toast.success("Migration gelöscht");
+      loadAllData();
+    } catch (error: any) {
+      toast.error("Fehler beim Löschen der Migration");
+      console.error(error);
+    }
+  };
+
+  const handleEditMigration = (migrationId: string) => {
+    const migration = [...migrations, ...standaloneMigrations].find((m) => m.id === migrationId);
+    if (migration) {
+      setEditingMigration(migration);
+      setShowEditMigrationDialog(true);
+    }
+  };
+
+  const handleUpdateMigration = async (name: string) => {
+    try {
+      const { error } = await supabase
+        .from('migrations')
+        .update({ name })
+        .eq('id', editingMigration.id);
+
+      if (error) throw error;
+
+      toast.success(`Migration aktualisiert auf "${name}"`);
+      setShowEditMigrationDialog(false);
+      setEditingMigration(null);
+      loadAllData();
+    } catch (error: any) {
+      toast.error("Fehler beim Aktualisieren der Migration");
+      console.error(error);
+    }
   };
 
   return (
     <div className="flex h-screen bg-background">
       <Sidebar
-        projects={[]}
-        onNewMigration={() => setShowAddDialog(true)}
-        onLogoClick={handleLogoClick}
+        projects={projects}
+        projectMigrations={migrations}
+        standaloneMigrations={standaloneMigrations}
+        onNewMigration={() => {
+          setProjectIdForNewMigration(null);
+          setShowAddMigrationDialog(true);
+        }}
+        onNewProjectMigration={(projectId) => {
+          setProjectIdForNewMigration(projectId);
+          setShowAddMigrationDialog(true);
+        }}
+        onDeleteMigration={handleDeleteMigration}
+        onEditMigration={handleEditMigration}
       />
 
       <div className="flex-1 flex flex-col min-h-0">
@@ -257,11 +401,24 @@ const Projects = () => {
         onSave={handleAddProject}
       />
 
+      <AddMigrationDialog
+        open={showAddMigrationDialog}
+        onOpenChange={setShowAddMigrationDialog}
+        onAdd={handleAddMigration}
+      />
+
       <EditProjectDialog
         open={showEditDialog}
         onOpenChange={setShowEditDialog}
         project={editingProject}
         onSave={handleEditProject}
+      />
+
+      <EditMigrationDialog
+        open={showEditMigrationDialog}
+        onOpenChange={setShowEditMigrationDialog}
+        onUpdate={handleUpdateMigration}
+        currentName={editingMigration?.name || ""}
       />
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>

@@ -15,7 +15,6 @@ interface SidebarProps {
   onNewProjectMigration?: (projectId: string) => void;
   onDeleteMigration?: (id: string) => void;
   onEditMigration?: (id: string) => void;
-  onLogoClick: () => void;
 }
 
 const Sidebar = ({ 
@@ -27,8 +26,7 @@ const Sidebar = ({
   onNewMigration,
   onNewProjectMigration,
   onDeleteMigration, 
-  onEditMigration, 
-  onLogoClick 
+  onEditMigration
 }: SidebarProps) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set(projects.map(p => p.id)));
@@ -51,7 +49,7 @@ const Sidebar = ({
     )}>
       <div className="mb-8 flex items-center justify-between gap-2">
         <button 
-          onClick={onLogoClick} 
+          onClick={() => navigate("/dashboard")} 
           className={cn("cursor-pointer transition-opacity", isCollapsed && "opacity-0 w-0 overflow-hidden")}
         >
           <Logo />
@@ -86,7 +84,12 @@ const Sidebar = ({
         <nav className="flex-1 space-y-4 overflow-auto">
           <div className="space-y-2">
             <div className="flex items-center justify-between px-2">
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase">Projekte</h3>
+              <h3 
+                className="text-xs font-semibold text-muted-foreground uppercase cursor-pointer hover:text-foreground transition-colors"
+                onClick={() => navigate("/projects")}
+              >
+                Projekte
+              </h3>
             </div>
             {projects.map((project) => {
               const projectMigs = projectMigrations.filter(m => m.projectId === project.id);
@@ -126,7 +129,7 @@ const Sidebar = ({
                       )}
                     >
                       <button
-                        onClick={() => onSelectMigration?.(migration.id)}
+                        onClick={() => navigate(`/migration/${migration.id}`)}
                         className="flex-1 text-left"
                       >
                         {migration.name}
@@ -187,7 +190,7 @@ const Sidebar = ({
                     )}
                   >
                     <button
-                      onClick={() => onSelectMigration?.(migration.id)}
+                      onClick={() => navigate(`/migration/${migration.id}`)}
                       className="flex-1 text-left"
                     >
                       {migration.name}

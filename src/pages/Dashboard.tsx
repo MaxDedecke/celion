@@ -23,9 +23,8 @@ import {
 
 const Dashboard = () => {
   const navigate = useNavigate();
-  const { projectName } = useParams<{ projectName: string }>();
-  const [currentProject, setCurrentProject] = useState<any>(null);
-  const [selectedMigration, setSelectedMigration] = useState<string | null>(null);
+  const { migrationId } = useParams<{ migrationId?: string }>();
+  const [selectedMigration, setSelectedMigration] = useState<string | null>(migrationId || null);
   const [showAccountDialog, setShowAccountDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [activeDialogTab, setActiveDialogTab] = useState<"account" | "settings">("account");
@@ -47,7 +46,13 @@ const Dashboard = () => {
 
   useEffect(() => {
     loadAllData();
-  }, [projectName]);
+  }, []);
+
+  useEffect(() => {
+    if (migrationId) {
+      setSelectedMigration(migrationId);
+    }
+  }, [migrationId]);
 
   const checkAuth = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -60,7 +65,7 @@ const Dashboard = () => {
     try {
       setLoading(true);
       
-      // Load all projects first
+      // Load all projects
       const { data: projectsData, error: projectsError } = await supabase
         .from('projects')
         .select('*')
@@ -69,36 +74,22 @@ const Dashboard = () => {
       if (projectsError) throw projectsError;
       setAllProjects(projectsData || []);
 
-      let projectData = null;
-      if (projectName) {
-        // Find specific project by name
-        projectData = projectsData?.find(p => p.name === decodeURIComponent(projectName));
-        
-        if (!projectData) {
-          toast.error("Projekt nicht gefunden");
-          navigate("/projects");
-          return;
-        }
-        setCurrentProject(projectData);
-
-        // Load migrations for this project
+      // Load all migrations with project_id
+      const allMigrationsWithProjects: any[] = [];
+      for (const project of projectsData || []) {
         const { data: migrationsData, error: migrationsError } = await supabase
           .from('migrations')
           .select('*')
-          .eq('project_id', projectData.id)
+          .eq('project_id', project.id)
           .order('created_at', { ascending: false });
 
         if (migrationsError) throw migrationsError;
-
-        const migrationsWithDetails = await loadMigrationDetails(migrationsData || [], projectData.id);
-        setMigrations(migrationsWithDetails);
-      } else {
-        // No project selected - show standalone migrations
-        setCurrentProject(null);
-        setMigrations([]);
+        const migrationsWithDetails = await loadMigrationDetails(migrationsData || [], project.id);
+        allMigrationsWithProjects.push(...migrationsWithDetails);
       }
+      setMigrations(allMigrationsWithProjects);
 
-      // Always load standalone migrations
+      // Load standalone migrations
       const { data: standaloneData, error: standaloneError } = await supabase
         .from('migrations')
         .select('*')
@@ -284,7 +275,7 @@ const Dashboard = () => {
         projectMigrations={migrations}
         standaloneMigrations={standaloneMigrations}
         selectedMigration={selectedMigration}
-        onSelectMigration={setSelectedMigration}
+        onSelectMigration={(id) => navigate(`/migration/${id}`)}
         onNewMigration={() => {
           setProjectIdForNewMigration(null);
           setShowAddDialog(true);
@@ -295,7 +286,6 @@ const Dashboard = () => {
         }}
         onDeleteMigration={handleDeleteMigration}
         onEditMigration={handleEditMigration}
-        onLogoClick={() => navigate("/projects")}
       />
 
       <div className="flex-1 flex flex-col min-h-0">
@@ -323,7 +313,7 @@ const Dashboard = () => {
               </div>
             </div>
           ) : (
-            <h1 className="text-2xl font-semibold">{currentProject?.name || "Standalone Migrationen"}</h1>
+            <h1 className="text-2xl font-semibold">Dashboard</h1>
           )}
           <UserMenu
             onAccountClick={() => {

@@ -21,9 +21,9 @@ const App = () => (
         <BrowserRouter>
           <Routes>
             <Route path="/" element={<Login />} />
+            <Route path="/dashboard" element={<Dashboard />} />
+            <Route path="/migration/:migrationId" element={<Dashboard />} />
             <Route path="/projects" element={<Projects />} />
-            <Route path="/celion/:projectName" element={<Dashboard />} />
-            <Route path="/dashboard" element={<Projects />} />
             <Route path="/data-sources" element={<DataSources />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />
