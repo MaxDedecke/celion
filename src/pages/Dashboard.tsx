@@ -59,28 +59,39 @@ const Dashboard = () => {
     try {
       setLoading(true);
       
-      // Find project by name
-      const { data: projectData, error: projectError } = await supabase
-        .from('projects')
-        .select('*')
-        .eq('name', decodeURIComponent(projectName || ''))
-        .maybeSingle();
-
-      if (projectError) throw projectError;
-      if (!projectData) {
-        toast.error("Projekt nicht gefunden");
-        navigate("/projects");
-        return;
-      }
-
-      setCurrentProject(projectData);
-
-      // Load migrations for this project
-      const { data: migrationsData, error: migrationsError } = await supabase
+      let projectData = null;
+      let migrationsQuery = supabase
         .from('migrations')
         .select('*')
-        .eq('project_id', projectData.id)
         .order('created_at', { ascending: false });
+
+      if (projectName) {
+        // Find project by name
+        const { data: foundProject, error: projectError } = await supabase
+          .from('projects')
+          .select('*')
+          .eq('name', decodeURIComponent(projectName))
+          .maybeSingle();
+
+        if (projectError) throw projectError;
+        if (!foundProject) {
+          toast.error("Projekt nicht gefunden");
+          navigate("/projects");
+          return;
+        }
+
+        projectData = foundProject;
+        setCurrentProject(projectData);
+
+        // Filter migrations by project
+        migrationsQuery = migrationsQuery.eq('project_id', projectData.id);
+      } else {
+        // Load standalone migrations (no project)
+        migrationsQuery = migrationsQuery.is('project_id', null);
+      }
+
+      // Load migrations
+      const { data: migrationsData, error: migrationsError } = await migrationsQuery;
 
       if (migrationsError) throw migrationsError;
 
@@ -113,7 +124,7 @@ const Dashboard = () => {
             outConnectorDetail: migration.out_connector_detail,
             objectsTransferred: migration.objects_transferred,
             mappedObjects: migration.mapped_objects,
-            projectId: projectData.id,
+            projectId: projectData?.id || null,
             activities: activitiesData || [],
             connectors: {
               in: inConnector,
@@ -140,11 +151,6 @@ const Dashboard = () => {
 
   const handleAddMigration = async (name: string, sourceSystem: string, targetSystem: string) => {
     try {
-      if (!currentProject) {
-        toast.error("Kein Projekt ausgewählt");
-        return;
-      }
-
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Nicht authentifiziert");
 
@@ -152,7 +158,7 @@ const Dashboard = () => {
         .from('migrations')
         .insert({
           user_id: user.id,
-          project_id: currentProject.id,
+          project_id: currentProject?.id || null,
           name,
           source_system: sourceSystem,
           target_system: targetSystem,
@@ -292,7 +298,7 @@ const Dashboard = () => {
               </div>
             </div>
           ) : (
-            <h1 className="text-2xl font-semibold">{currentProject?.name}</h1>
+            <h1 className="text-2xl font-semibold">{currentProject?.name || "Standalone Migrationen"}</h1>
           )}
           <UserMenu
             onAccountClick={() => {

@@ -80,6 +80,14 @@ const Sidebar = ({
 
       {!isCollapsed && (
         <nav className="flex-1 space-y-2 overflow-auto">
+          <Button
+            onClick={onNewMigration}
+            variant="outline"
+            className="w-full justify-start gap-2 mb-4"
+          >
+            <Plus className="h-4 w-4" />
+            Migration
+          </Button>
           {projects.map((project) => (
             <div key={project.id} className="space-y-1">
               <div className="flex items-center justify-between w-full px-2 py-2 rounded-lg transition-colors text-sm">

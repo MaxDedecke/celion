@@ -112,11 +112,12 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   useEffect(() => {
     const fetchDataSources = async () => {
       if (!project.projectId) {
-        // If no project ID, load all active data sources (fallback)
+        // If no project ID, only show global data sources
         const { data, error } = await supabase
           .from('data_sources')
           .select('*')
-          .eq('is_active', true);
+          .eq('is_active', true)
+          .eq('is_global', true);
         
         if (!error && data) {
           setDataSources(data);
