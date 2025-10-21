@@ -4,6 +4,12 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import CircularProgress from "./CircularProgress";
 import ActivityTimeline, { Activity } from "./ActivityTimeline";
 import { Button } from "./ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 interface MigrationProject {
   id: string;
@@ -52,9 +58,16 @@ const MigrationDetails = ({ project }: MigrationDetailsProps) => {
                       {project.inConnectorDetail}
                     </p>
                   </div>
-                  <Button variant="ghost" size="icon">
-                    <SettingsIcon className="h-4 w-4" />
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon">
+                        <SettingsIcon className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem>Bearbeiten</DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-2 text-sm">
