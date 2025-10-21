@@ -21,16 +21,17 @@ const CircularProgress = ({ progress, size = 200, strokeWidth = 8 }: CircularPro
           cx={size / 2}
           cy={size / 2}
           r={radius}
-          stroke="hsl(var(--muted))"
+          stroke="hsl(var(--border))"
           strokeWidth={strokeWidth}
           fill="none"
+          opacity="0.3"
         />
         <circle
           cx={size / 2}
           cy={size / 2}
           r={radius}
           stroke={getColor()}
-          strokeWidth={strokeWidth}
+          strokeWidth={strokeWidth + 2}
           fill="none"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
