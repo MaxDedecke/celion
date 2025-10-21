@@ -916,11 +916,6 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                       disabled={!hasOutConnector || !project.connectors?.out?.is_tested}
                     />
                   </div>
-                  {(!hasOutConnector || !project.connectors?.out?.is_tested) && (
-                    <p className="text-xs text-muted-foreground mt-3">
-                      Outconnector muss erstellt und getestet werden
-                    </p>
-                  )}
                 </CardContent>
               </Card>
             </div>
