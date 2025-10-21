@@ -488,6 +488,17 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
     }
   };
 
+  // Determine current migration step
+  const getCurrentStep = () => {
+    if (!hasInConnector) return "Inconnector";
+    if (!hasOutConnector) return "Outconnector";
+    if (project.mappedObjects === "0") return "Mapping (MetaModel)";
+    if (project.objectsTransferred === "0") return "Transfer";
+    if (project.progress < 80) return "Validierung";
+    if (project.progress < 100) return "Abschluss";
+    return "Insights";
+  };
+
   const handleSaveConnector = async () => {
     try {
       const connector = configType === 'in' ? project.connectors?.in : project.connectors?.out;
@@ -614,7 +625,11 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
       {activeTab === "general" && (
         <div className="space-y-6 pb-6">
           {/* Progress Card - Full width */}
-          <div className="flex justify-center items-center py-4">
+          <div className="flex justify-center items-center gap-8 py-4">
+            <div className="text-center">
+              <p className="text-sm font-semibold text-foreground mb-1">Nächster Schritt:</p>
+              <p className="text-lg font-bold text-primary">{getCurrentStep()}</p>
+            </div>
             <div className="relative">
               <CircularProgress progress={project.progress} />
               <p className="text-center mt-4 text-sm text-muted-foreground">Progress</p>
