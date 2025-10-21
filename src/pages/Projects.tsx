@@ -249,6 +249,14 @@ const Projects = () => {
 
       toast.success(`Migration "${name}" erstellt`);
       setProjectIdForNewMigration(null);
+      
+      // Navigate to the new migration
+      if (projectIdForNewMigration) {
+        navigate(`/projects/${projectIdForNewMigration}/migration/${migration.id}`);
+      } else {
+        navigate(`/migration/${migration.id}`);
+      }
+      
       loadAllData();
     } catch (error: any) {
       toast.error(error.message || "Fehler beim Erstellen der Migration");
