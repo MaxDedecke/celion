@@ -39,6 +39,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Switch } from "@/components/ui/switch";
 import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -81,6 +82,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   const [linkType, setLinkType] = useState<'in' | 'out'>('in');
   const [dataSources, setDataSources] = useState<any[]>([]);
   const [selectedDataSourceId, setSelectedDataSourceId] = useState<string>('');
+  const [isMetaModelApproved, setIsMetaModelApproved] = useState(false);
   const [formData, setFormData] = useState({
     apiUrl: '',
     apiKey: '',
@@ -492,11 +494,43 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   const getCurrentStep = () => {
     if (!hasInConnector) return "Inconnector";
     if (!hasOutConnector) return "Outconnector";
-    if (project.mappedObjects === "0") return "Mapping (MetaModel)";
+    if (!isMetaModelApproved) return "Mapping (MetaModel)";
     if (project.objectsTransferred === "0") return "Transfer";
     if (project.progress < 80) return "Validierung";
     if (project.progress < 100) return "Abschluss";
     return "Insights";
+  };
+
+  const handleMetaModelApproval = async (approved: boolean) => {
+    try {
+      setIsMetaModelApproved(approved);
+      
+      if (approved) {
+        // Increase progress by 10% when meta model is approved
+        const newProgress = Math.min(project.progress + 10, 100);
+        const { error: progressError } = await supabase
+          .from('migrations')
+          .update({ progress: newProgress })
+          .eq('id', project.id);
+
+        if (progressError) throw progressError;
+
+        // Add system activity
+        await supabase.from('migration_activities').insert({
+          migration_id: project.id,
+          type: 'system',
+          title: 'Meta-Modell freigegeben',
+          timestamp: new Date().toLocaleString('de-DE'),
+        });
+
+        toast.success("Meta-Modell freigegeben");
+        await onRefresh();
+      }
+    } catch (error: any) {
+      toast.error("Fehler beim Freigeben des Meta-Modells");
+      console.error(error);
+      setIsMetaModelApproved(false);
+    }
   };
 
   const handleSaveConnector = async () => {
@@ -809,6 +843,29 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                   </ScrollArea>
                 </CardContent>
               </Card>
+
+              {/* Meta Model Approval Card */}
+              {hasInConnector && hasOutConnector && (
+                <Card className="bg-card border-border mt-6">
+                  <CardHeader>
+                    <CardTitle className="text-base">Meta-Modell Freigabe</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium">Meta-Modell freigeben</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Geben Sie das Meta-Modell frei, um mit dem Transfer zu beginnen
+                        </p>
+                      </div>
+                      <Switch
+                        checked={isMetaModelApproved}
+                        onCheckedChange={handleMetaModelApproval}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
             </div>
           </div>
         </div>
