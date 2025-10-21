@@ -58,9 +58,9 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
   };
 
   return (
-    <div className="h-full p-8 space-y-6">
+    <div className="h-full p-8 pb-6 space-y-6">
       {activeTab === "general" && (
-        <div className="space-y-6">
+        <div className="space-y-6 pb-6">
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
             {/* Left column - Cards */}
             <div className="lg:col-span-2 space-y-6">
@@ -189,7 +189,7 @@ const MigrationDetails = ({ project, activeTab }: MigrationDetailsProps) => {
       )}
 
       {activeTab === "mapping" && (
-        <div className="bg-card border-border rounded-lg p-8 min-h-[500px] flex items-center justify-center">
+        <div className="bg-card border-border rounded-lg p-8 min-h-[500px] flex items-center justify-center mb-6">
           <p className="text-muted-foreground">Mapping UI visualization area</p>
         </div>
       )}
