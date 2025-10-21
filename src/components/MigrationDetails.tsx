@@ -10,6 +10,16 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useState } from "react";
 
 interface MigrationProject {
   id: string;
@@ -29,6 +39,24 @@ interface MigrationDetailsProps {
 }
 
 const MigrationDetails = ({ project }: MigrationDetailsProps) => {
+  const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false);
+  const [configType, setConfigType] = useState<'in' | 'out'>('in');
+
+  const handleEdit = (type: 'in' | 'out') => {
+    setConfigType(type);
+    setIsConfigDialogOpen(true);
+  };
+
+  const handleTest = (type: 'in' | 'out') => {
+    console.log(`Testing ${type}connector connection...`);
+    // Implement test logic here
+  };
+
+  const handleDelete = (type: 'in' | 'out') => {
+    console.log(`Deleting ${type}connector configuration...`);
+    // Implement delete logic here
+  };
+
   return (
     <div className="flex-1 p-8 space-y-6">
       <Tabs defaultValue="general" className="w-full">
@@ -65,7 +93,15 @@ const MigrationDetails = ({ project }: MigrationDetailsProps) => {
                       </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end">
-                      <DropdownMenuItem>Bearbeiten</DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleEdit('in')}>
+                        Bearbeiten
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleTest('in')}>
+                        Test
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleDelete('in')} className="text-destructive">
+                        Löschen
+                      </DropdownMenuItem>
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </CardHeader>
@@ -90,9 +126,24 @@ const MigrationDetails = ({ project }: MigrationDetailsProps) => {
                       {project.outConnectorDetail}
                     </p>
                   </div>
-                  <Button variant="ghost" size="icon">
-                    <SettingsIcon className="h-4 w-4" />
-                  </Button>
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button variant="ghost" size="icon">
+                        <SettingsIcon className="h-4 w-4" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end">
+                      <DropdownMenuItem onClick={() => handleEdit('out')}>
+                        Bearbeiten
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleTest('out')}>
+                        Test
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => handleDelete('out')} className="text-destructive">
+                        Löschen
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
                 </CardHeader>
                 <CardContent>
                   <div className="flex items-center gap-2 text-sm">
@@ -147,6 +198,67 @@ const MigrationDetails = ({ project }: MigrationDetailsProps) => {
           </div>
         </TabsContent>
       </Tabs>
+
+      <Dialog open={isConfigDialogOpen} onOpenChange={setIsConfigDialogOpen}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>
+              {configType === 'in' ? 'Interconnector' : 'Outconnector'} Konfiguration
+            </DialogTitle>
+            <DialogDescription>
+              Konfigurieren Sie die API-Verbindungseinstellungen für den {configType === 'in' ? 'Interconnector' : 'Outconnector'}.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label htmlFor="api-url">API URL</Label>
+              <Input
+                id="api-url"
+                placeholder="https://api.example.com"
+                type="url"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="api-key">API Key</Label>
+              <Input
+                id="api-key"
+                placeholder="Enter API key"
+                type="password"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="username">Username</Label>
+              <Input
+                id="username"
+                placeholder="Enter username"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                placeholder="Enter password"
+                type="password"
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="endpoint">Endpoint</Label>
+              <Input
+                id="endpoint"
+                placeholder="/api/v1/data"
+              />
+            </div>
+          </div>
+          <div className="flex justify-end gap-3">
+            <Button variant="outline" onClick={() => setIsConfigDialogOpen(false)}>
+              Abbrechen
+            </Button>
+            <Button onClick={() => setIsConfigDialogOpen(false)}>
+              Speichern
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
