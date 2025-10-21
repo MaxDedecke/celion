@@ -238,9 +238,6 @@ const Dashboard = () => {
         <header className="h-16 border-b border-sidebar-border flex items-center justify-between px-6 flex-shrink-0">
           {currentProject ? (
             <div className="flex items-center gap-6">
-              <div className="text-lg font-semibold text-foreground">
-                {currentProject.sourceSystem} → {currentProject.targetSystem}
-              </div>
               <div className="flex gap-2">
                 <Button
                   variant={activeProjectTab === "general" ? "secondary" : "ghost"}
@@ -256,6 +253,9 @@ const Dashboard = () => {
                 >
                   Mapping UI
                 </Button>
+              </div>
+              <div className="text-lg font-semibold text-foreground">
+                {currentProject.sourceSystem} → {currentProject.targetSystem}
               </div>
             </div>
           ) : (
