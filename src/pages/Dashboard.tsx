@@ -50,6 +50,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     setSelectedMigration(migrationId ?? null);
+    setActiveMigrationTab("general"); // Reset tab to general when switching migrations
   }, [migrationId]);
 
   const checkAuth = async () => {
