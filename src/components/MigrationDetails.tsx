@@ -88,6 +88,8 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   const [hasImported, setHasImported] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [hasExported, setHasExported] = useState(false);
+  const [isValidating, setIsValidating] = useState(false);
+  const [hasValidated, setHasValidated] = useState(false);
   const [selectedSourceObject, setSelectedSourceObject] = useState<string>('');
   const [selectedTargetObject, setSelectedTargetObject] = useState<string>('');
   const [formData, setFormData] = useState({
@@ -581,7 +583,8 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
     if (hasFoundObjects && project.objectsTransferred.split("/")[0] === "0") return "Transfer";
     // Step 5: Export to target
     if (!hasExported) return "Export";
-    if (project.progress < 80) return "Validierung";
+    // Step 6: Validation
+    if (!hasValidated) return "Validierung";
     if (project.progress < 100) return "Abschluss";
     return "Insights";
   };
@@ -729,6 +732,72 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
       console.error(error);
     } finally {
       setIsExporting(false);
+    }
+  };
+
+  const handleValidationStart = async () => {
+    try {
+      setIsValidating(true);
+      
+      // Get the current mapped objects
+      const [currentMapped, totalMapped] = project.mappedObjects.split('/').map(n => parseInt(n) || 0);
+      
+      if (totalMapped === 0) {
+        toast.error("Keine Objekte zum Validieren gefunden");
+        setIsValidating(false);
+        return;
+      }
+
+      // Simulate gradual validation process
+      const steps = 10;
+      const incrementPerStep = Math.floor(totalMapped / steps);
+      let validatedCount = currentMapped;
+
+      for (let i = 1; i <= steps; i++) {
+        await new Promise(resolve => setTimeout(resolve, 300)); // 300ms delay between steps
+        
+        validatedCount = i === steps ? totalMapped : validatedCount + incrementPerStep;
+        
+        await supabase
+          .from('migrations')
+          .update({ 
+            mapped_objects: `${validatedCount}/${totalMapped}`,
+          })
+          .eq('id', project.id);
+        
+        await onRefresh();
+      }
+
+      // Generate random count for outconnector objects_transferred (80-100% of total)
+      const randomPercentage = 0.8 + Math.random() * 0.2; // Random between 80% and 100%
+      const randomCount = Math.floor(totalMapped * randomPercentage);
+
+      // Update progress by 20% and set random objects_transferred
+      const newProgress = Math.min(project.progress + 20, 100);
+      await supabase
+        .from('migrations')
+        .update({ 
+          progress: newProgress,
+          objects_transferred: `${randomCount}/${totalMapped}`
+        })
+        .eq('id', project.id);
+
+      // Add activity when validation completes
+      await supabase.from('migration_activities').insert({
+        migration_id: project.id,
+        type: 'success',
+        title: `Validierung abgeschlossen: ${randomCount} von ${totalMapped} Objekten erfolgreich validiert`,
+        timestamp: new Date().toLocaleString('de-DE'),
+      });
+
+      setHasValidated(true);
+      toast.success("Validierung erfolgreich abgeschlossen");
+      await onRefresh();
+    } catch (error: any) {
+      toast.error("Fehler bei der Validierung");
+      console.error(error);
+    } finally {
+      setIsValidating(false);
     }
   };
 
@@ -886,9 +955,29 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                         <p className="text-sm text-muted-foreground">Mapped objects</p>
                         <p className="text-foreground font-medium">{project.mappedObjects}</p>
                       </div>
+                      {getCurrentStep() === "Validierung" && (
+                        <Button 
+                          onClick={handleValidationStart}
+                          disabled={isValidating}
+                          className="bg-success hover:bg-success/90 text-white"
+                        >
+                          {isValidating ? (
+                            <>
+                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                              Validiere...
+                            </>
+                          ) : (
+                            "Validieren"
+                          )}
+                        </Button>
+                      )}
                     </div>
-                    <div className={`w-12 h-12 rounded-full border-4 ${
-                      project.progress === 100 ? "border-success" : "border-muted"
+                    <div className={`w-12 h-12 rounded-full border-4 transition-all duration-500 ${
+                      project.progress === 100 
+                        ? "border-success" 
+                        : isValidating || (getCurrentStep() === "Validierung" && !hasValidated)
+                        ? "border-primary"
+                        : "border-muted"
                     } flex items-center justify-center`}>
                       <Database className="h-5 w-5" />
                     </div>
