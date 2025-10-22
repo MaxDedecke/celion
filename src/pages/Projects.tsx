@@ -9,7 +9,7 @@ import EditProjectDialog from "@/components/dialogs/EditProjectDialog";
 import EditMigrationDialog from "@/components/dialogs/EditMigrationDialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { FolderOpen, Plus, Trash2 } from "lucide-react";
+import { FolderOpen, Plus, Trash2, Sparkles, ClipboardList, Users } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -337,9 +337,14 @@ const Projects = () => {
 
         <div className="flex flex-1 flex-col gap-6">
           <header className="app-surface flex items-center justify-between rounded-3xl px-6 py-5">
-            <div>
-              <h1 className="text-xl font-semibold text-foreground">Projekte</h1>
-              <p className="text-sm text-muted-foreground">Behalte den Überblick über deine Migrationsvorhaben.</p>
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-foreground/5">
+                <Sparkles className="h-6 w-6 text-foreground" />
+              </div>
+              <div>
+                <h1 className="text-xl font-semibold text-foreground">Projekte</h1>
+                <p className="text-sm text-muted-foreground">Behalte den Überblick über deine Migrationsvorhaben.</p>
+              </div>
             </div>
             <UserMenu
               onAccountClick={() => {
@@ -415,15 +420,25 @@ const Projects = () => {
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
-                          <CardTitle className="text-xl text-foreground">{project.name}</CardTitle>
-                          <CardDescription className="text-sm text-muted-foreground">
-                            {project.description || "Keine Beschreibung"}
-                          </CardDescription>
+                          <div className="flex items-start gap-3 pr-10">
+                            <div className="mt-1 flex h-9 w-9 items-center justify-center rounded-full bg-foreground/5">
+                              <ClipboardList className="h-4 w-4 text-foreground" />
+                            </div>
+                            <div>
+                              <CardTitle className="text-xl text-foreground">{project.name}</CardTitle>
+                              <CardDescription className="text-sm text-muted-foreground">
+                                {project.description || "Keine Beschreibung"}
+                              </CardDescription>
+                            </div>
+                          </div>
                         </CardHeader>
                         <CardContent>
-                          <p className="text-sm text-muted-foreground">
-                            {project.migrationsCount} {project.migrationsCount === 1 ? "Migration" : "Migrationen"}
-                          </p>
+                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                            <Users className="h-4 w-4 text-foreground/80" />
+                            <span>
+                              {project.migrationsCount} {project.migrationsCount === 1 ? "Migration" : "Migrationen"}
+                            </span>
+                          </div>
                         </CardContent>
                       </Card>
                     ))}
