@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Puzzle, ArrowRight, Wand2 } from "lucide-react";
+import { Puzzle, ArrowRight, Wand2, Maximize2, Minimize2, X } from "lucide-react";
 import { Button } from "./ui/button";
 import { toast } from "sonner";
 
@@ -473,6 +473,7 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
   const [mappings, setMappings] = useState<FieldMapping[]>([]);
   const [draggedField, setDraggedField] = useState<{ side: 'source' | 'target', fieldId: string } | null>(null);
   const [hoveredField, setHoveredField] = useState<string | null>(null);
+  const [isFullscreen, setIsFullscreen] = useState(false);
 
   const sourceFields = getFieldsForObject(sourceSystem, sourceObject);
   const targetFields = getFieldsForObject(targetSystem, targetObject);
@@ -590,21 +591,47 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
   };
 
   return (
-    <div className="space-y-4">
-      {/* Auto-Map Button */}
-      <div className="flex justify-end">
-        <Button
-          onClick={handleAutoMap}
-          variant="outline"
-          size="sm"
-          className="gap-2"
-        >
-          <Wand2 className="h-4 w-4" />
-          Auto Map
-        </Button>
-      </div>
+    <>
+      <div className={`${isFullscreen ? 'fixed inset-0 z-50 bg-background p-6 overflow-auto' : 'space-y-4'}`}>
+        {/* Header with Auto-Map and Fullscreen Buttons */}
+        <div className="flex justify-between items-center mb-4">
+          {isFullscreen && (
+            <h2 className="text-lg font-semibold">
+              Field Mapping: {sourceSystem} {sourceObject} → {targetSystem} {targetObject}
+            </h2>
+          )}
+          <div className={`flex gap-2 ${isFullscreen ? 'ml-auto' : 'ml-auto'}`}>
+            <Button
+              onClick={handleAutoMap}
+              variant="outline"
+              size="sm"
+              className="gap-2"
+            >
+              <Wand2 className="h-4 w-4" />
+              Auto Map
+            </Button>
+            <Button
+              onClick={() => setIsFullscreen(!isFullscreen)}
+              variant="outline"
+              size="sm"
+              className="gap-2"
+            >
+              {isFullscreen ? (
+                <>
+                  <Minimize2 className="h-4 w-4" />
+                  Exit Fullscreen
+                </>
+              ) : (
+                <>
+                  <Maximize2 className="h-4 w-4" />
+                  Fullscreen
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
 
-      <div className="grid grid-cols-2 gap-8 relative">
+        <div className="grid grid-cols-2 gap-8 relative">
         {/* Source System Block */}
         <Card className="bg-card border-border">
         <CardHeader>
@@ -735,40 +762,41 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
         </CardContent>
       </Card>
 
-        {/* Mapping Summary */}
-        <div className="col-span-2 mt-4">
-          <Card className="bg-card/50 border-border">
-            <CardHeader>
-              <CardTitle className="text-sm">Mapped Fields ({mappings.length})</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-2">
-                {mappings.map((mapping, index) => {
-                  const sourceField = sourceFields.find(f => f.id === mapping.sourceFieldId);
-                  const targetField = targetFields.find(f => f.id === mapping.targetFieldId);
-                  
-                  return (
-                    <div 
-                      key={index}
-                      className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 rounded-full text-xs border border-primary/30"
-                    >
-                      <span>{sourceField?.name}</span>
-                      <ArrowRight className="h-3 w-3" />
-                      <span>{targetField?.name}</span>
-                      <button
-                        onClick={() => handleRemoveMapping(mapping.sourceFieldId, mapping.targetFieldId)}
-                        className="ml-1 hover:text-destructive"
+          {/* Mapping Summary */}
+          <div className="col-span-2 mt-4">
+            <Card className="bg-card/50 border-border">
+              <CardHeader>
+                <CardTitle className="text-sm">Mapped Fields ({mappings.length})</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  {mappings.map((mapping, index) => {
+                    const sourceField = sourceFields.find(f => f.id === mapping.sourceFieldId);
+                    const targetField = targetFields.find(f => f.id === mapping.targetFieldId);
+                    
+                    return (
+                      <div 
+                        key={index}
+                        className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 rounded-full text-xs border border-primary/30"
                       >
-                        ×
-                      </button>
-                    </div>
-                  );
-                })}
-              </div>
-            </CardContent>
-          </Card>
+                        <span>{sourceField?.name}</span>
+                        <ArrowRight className="h-3 w-3" />
+                        <span>{targetField?.name}</span>
+                        <button
+                          onClick={() => handleRemoveMapping(mapping.sourceFieldId, mapping.targetFieldId)}
+                          className="ml-1 hover:text-destructive"
+                        >
+                          ×
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
         </div>
       </div>
-    </div>
+    </>
   );
 };

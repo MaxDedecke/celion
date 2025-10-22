@@ -1096,7 +1096,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
           </div>
 
           {/* Field Mapping Area */}
-          <div className="bg-background border-2 border-border rounded-lg min-h-[600px]">
+          <div className="bg-background border-transparent rounded-lg min-h-[600px]">
             {selectedSourceObject && selectedTargetObject ? (
               <FieldMapper
                 sourceSystem={project.sourceSystem}
