@@ -9,7 +9,7 @@ import EditProjectDialog from "@/components/dialogs/EditProjectDialog";
 import EditMigrationDialog from "@/components/dialogs/EditMigrationDialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { FolderOpen, Plus, Trash2 } from "lucide-react";
+import { FolderKanban, FolderOpen, GitBranch, Lightbulb, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -337,8 +337,11 @@ const Projects = () => {
 
         <div className="flex flex-1 flex-col gap-6">
           <header className="app-surface flex items-center justify-between rounded-3xl px-6 py-5">
-            <div>
-              <h1 className="text-xl font-semibold text-foreground">Projekte</h1>
+            <div className="space-y-1">
+              <div className="flex items-center gap-3">
+                <FolderKanban className="h-6 w-6 text-primary" />
+                <h1 className="text-xl font-semibold text-foreground">Projekte</h1>
+              </div>
               <p className="text-sm text-muted-foreground">Behalte den Überblick über deine Migrationsvorhaben.</p>
             </div>
             <UserMenu
@@ -357,10 +360,9 @@ const Projects = () => {
           <div className="flex-1 overflow-hidden">
             <div className="app-surface flex h-full flex-col overflow-hidden rounded-3xl">
               <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 px-6 py-5">
-                <div>
-                  <p className="text-sm text-muted-foreground">
-                    Lege neue Projekte an oder öffne bestehende Migrationen.
-                  </p>
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Lightbulb className="h-4 w-4 text-primary" />
+                  <span>Lege neue Projekte an oder öffne bestehende Migrationen.</span>
                 </div>
                 <Button
                   onClick={() => setShowAddDialog(true)}
@@ -415,15 +417,23 @@ const Projects = () => {
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
-                          <CardTitle className="text-xl text-foreground">{project.name}</CardTitle>
+                          <CardTitle className="text-xl text-foreground">
+                            <div className="flex items-center gap-2">
+                              <FolderOpen className="h-5 w-5 text-primary" />
+                              {project.name}
+                            </div>
+                          </CardTitle>
                           <CardDescription className="text-sm text-muted-foreground">
                             {project.description || "Keine Beschreibung"}
                           </CardDescription>
                         </CardHeader>
                         <CardContent>
-                          <p className="text-sm text-muted-foreground">
-                            {project.migrationsCount} {project.migrationsCount === 1 ? "Migration" : "Migrationen"}
-                          </p>
+                          <div className="mt-1 flex items-center gap-2 text-sm text-muted-foreground">
+                            <GitBranch className="h-4 w-4 text-primary" />
+                            <span>
+                              {project.migrationsCount} {project.migrationsCount === 1 ? "Migration" : "Migrationen"}
+                            </span>
+                          </div>
                         </CardContent>
                       </Card>
                     ))}
