@@ -1,4 +1,4 @@
-import { Database, Settings as SettingsIcon, Trash2, Check, Link, Download, RefreshCw, Loader2 } from "lucide-react";
+import { Database, Settings as SettingsIcon, Trash2, Check, Link, Download, RefreshCw, Loader2, Upload } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import CircularProgress from "./CircularProgress";
@@ -86,6 +86,8 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   const [isMetaModelApproved, setIsMetaModelApproved] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [hasImported, setHasImported] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [hasExported, setHasExported] = useState(false);
   const [selectedSourceObject, setSelectedSourceObject] = useState<string>('');
   const [selectedTargetObject, setSelectedTargetObject] = useState<string>('');
   const [formData, setFormData] = useState({
@@ -568,12 +570,17 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
   // Determine current migration step
   const getCurrentStep = () => {
-    if (!hasInConnector) return "Inconnector";
-    if (!hasOutConnector) return "Outconnector";
+    // Step 1: Inconnector must be tested
+    if (!hasInConnector || !project.connectors?.in?.is_tested) return "Inconnector";
+    // Step 2: Outconnector must be tested
+    if (!hasOutConnector || !project.connectors?.out?.is_tested) return "Outconnector";
+    // Step 3: Meta model must be approved
     if (!isMetaModelApproved) return "Mapping (MetaModel)";
-    // Check if objects have been transferred (starts with "0/")
+    // Step 4: Transfer (import from source)
     const hasFoundObjects = project.objectsTransferred && project.objectsTransferred.startsWith("0/");
     if (hasFoundObjects && project.objectsTransferred.split("/")[0] === "0") return "Transfer";
+    // Step 5: Export to target
+    if (!hasExported) return "Export";
     if (project.progress < 80) return "Validierung";
     if (project.progress < 100) return "Abschluss";
     return "Insights";
@@ -679,6 +686,49 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
       console.error(error);
     } finally {
       setIsImporting(false);
+    }
+  };
+
+  const handleExportStart = async () => {
+    try {
+      setIsExporting(true);
+      
+      // Get the target count from objects_transferred
+      const [transferredCountStr] = project.objectsTransferred.split('/');
+      const transferredCount = parseInt(transferredCountStr) || 0;
+      
+      if (transferredCount === 0) {
+        toast.error("Keine Objekte zum Exportieren gefunden");
+        setIsExporting(false);
+        return;
+      }
+
+      // Simulate export process
+      await new Promise(resolve => setTimeout(resolve, 2000)); // 2 second export simulation
+
+      // Add activity when export completes
+      await supabase.from('migration_activities').insert({
+        migration_id: project.id,
+        type: 'success',
+        title: `Export abgeschlossen: ${transferredCount} Objekte exportiert`,
+        timestamp: new Date().toLocaleString('de-DE'),
+      });
+
+      // Update progress
+      const newProgress = Math.min(project.progress + 20, 100);
+      await supabase
+        .from('migrations')
+        .update({ progress: newProgress })
+        .eq('id', project.id);
+
+      setHasExported(true);
+      toast.success("Export erfolgreich abgeschlossen");
+      await onRefresh();
+    } catch (error: any) {
+      toast.error("Fehler beim Export");
+      console.error(error);
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -848,7 +898,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
               {/* Inconnector Card */}
               <Card className={`bg-card border-border transition-shadow duration-300 ${
-                getCurrentStep() === "Inconnector" || (isMetaModelApproved && getCurrentStep() === "Transfer") 
+                getCurrentStep() === "Inconnector" || getCurrentStep() === "Transfer"
                   ? "shadow-[0_0_20px_rgba(59,130,246,0.5)] dark:shadow-[0_0_20px_rgba(255,255,255,0.3)]" 
                   : ""
               }`}>
@@ -867,7 +917,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
-                    {isMetaModelApproved && (
+                    {isMetaModelApproved && getCurrentStep() === "Transfer" && (
                       <>
                         {isImporting && (
                           <Loader2 className="h-4 w-4 text-primary animate-spin" />
@@ -875,7 +925,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                         <Button 
                           variant="ghost" 
                           size="icon"
-                          className="text-success hover:text-success animate-gentle-bounce"
+                          className={`text-success hover:text-success ${!hasImported ? "animate-gentle-bounce" : ""}`}
                           title={hasImported ? "Import wiederholen" : "Import starten"}
                           onClick={handleImportStart}
                           disabled={isImporting}
@@ -939,7 +989,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
               {/* Outconnector Card */}
               <Card className={`bg-card border-border transition-shadow duration-300 ${
-                getCurrentStep() === "Outconnector" 
+                getCurrentStep() === "Outconnector" || getCurrentStep() === "Export"
                   ? "shadow-[0_0_20px_rgba(59,130,246,0.5)] dark:shadow-[0_0_20px_rgba(255,255,255,0.3)]" 
                   : ""
               }`}>
@@ -958,6 +1008,23 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
+                    {hasImported && getCurrentStep() === "Export" && (
+                      <>
+                        {isExporting && (
+                          <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                        )}
+                        <Button 
+                          variant="ghost" 
+                          size="icon"
+                          className={`text-success hover:text-success ${!hasExported ? "animate-gentle-bounce" : ""}`}
+                          title={hasExported ? "Export wiederholen" : "Export starten"}
+                          onClick={handleExportStart}
+                          disabled={isExporting}
+                        >
+                          <Upload className="h-4 w-4" />
+                        </Button>
+                      </>
+                    )}
                     <DropdownMenu>
                       <DropdownMenuTrigger asChild>
                         <Button variant="ghost" size="icon">
