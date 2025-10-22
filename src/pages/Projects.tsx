@@ -309,112 +309,130 @@ const Projects = () => {
   };
 
   return (
-    <div className="flex h-screen bg-background">
-      <Sidebar
-        projects={projects}
-        projectMigrations={migrations}
-        standaloneMigrations={standaloneMigrations}
-        onSelectMigration={(id) => {
-          const migration = [...migrations, ...standaloneMigrations].find(m => m.id === id);
-          if (migration && migration.projectId) {
-            navigate(`/projects/${migration.projectId}/migration/${id}`);
-          } else {
-            navigate(`/migration/${id}`);
-          }
-        }}
-        onNewMigration={() => {
-          setProjectIdForNewMigration(null);
-          setShowAddMigrationDialog(true);
-        }}
-        onNewProjectMigration={(projectId) => {
-          setProjectIdForNewMigration(projectId);
-          setShowAddMigrationDialog(true);
-        }}
-        onDeleteMigration={handleDeleteMigration}
-        onEditMigration={handleEditMigration}
-      />
+    <div className="app-shell flex min-h-screen flex-col p-6">
+      <div className="flex flex-1 gap-6">
+        <Sidebar
+          projects={projects}
+          projectMigrations={migrations}
+          standaloneMigrations={standaloneMigrations}
+          onSelectMigration={(id) => {
+            const migration = [...migrations, ...standaloneMigrations].find(m => m.id === id);
+            if (migration && migration.projectId) {
+              navigate(`/projects/${migration.projectId}/migration/${id}`);
+            } else {
+              navigate(`/migration/${id}`);
+            }
+          }}
+          onNewMigration={() => {
+            setProjectIdForNewMigration(null);
+            setShowAddMigrationDialog(true);
+          }}
+          onNewProjectMigration={(projectId) => {
+            setProjectIdForNewMigration(projectId);
+            setShowAddMigrationDialog(true);
+          }}
+          onDeleteMigration={handleDeleteMigration}
+          onEditMigration={handleEditMigration}
+        />
 
-      <div className="flex-1 flex flex-col min-h-0">
-        <header className="h-20 flex items-center justify-between px-6 flex-shrink-0">
-          <h1 className="text-2xl font-semibold">Projekte</h1>
-          <UserMenu
-            onAccountClick={() => {
-              setActiveDialogTab("account");
-              setShowAccountDialog(true);
-            }}
-            onSettingsClick={() => {
-              setActiveDialogTab("settings");
-              setShowAccountDialog(true);
-            }}
-            onLogout={handleLogout}
-          />
-        </header>
-
-        <main className="flex-1 overflow-auto p-6">
-          <div className="mb-6">
-            <Button
-              onClick={() => setShowAddDialog(true)}
-              className="gap-2"
-            >
-              <Plus className="h-4 w-4" />
-              Neues Projekt
-            </Button>
-          </div>
-
-          {loading ? (
-            <div className="text-center py-12 text-muted-foreground">
-              Projekte werden geladen...
+        <div className="flex flex-1 flex-col gap-6">
+          <header className="app-surface flex items-center justify-between rounded-3xl px-6 py-5">
+            <div>
+              <h1 className="text-xl font-semibold text-foreground">Projekte</h1>
+              <p className="text-sm text-muted-foreground">Behalte den Überblick über deine Migrationsvorhaben.</p>
             </div>
-          ) : projects.length === 0 ? (
-            <Card className="border-dashed">
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <FolderOpen className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">Noch keine Projekte</h3>
-                <p className="text-muted-foreground mb-4">
-                  Erstellen Sie Ihr erstes Projekt, um Migrationen zu verwalten
-                </p>
-                <Button onClick={() => setShowAddDialog(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Projekt erstellen
-                </Button>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {projects.map((project) => (
-                <Card
-                  key={project.id}
-                  className="cursor-pointer hover:shadow-md transition-shadow relative"
-                  onClick={() => handleProjectClick(project.id)}
+            <UserMenu
+              onAccountClick={() => {
+                setActiveDialogTab("account");
+                setShowAccountDialog(true);
+              }}
+              onSettingsClick={() => {
+                setActiveDialogTab("settings");
+                setShowAccountDialog(true);
+              }}
+              onLogout={handleLogout}
+            />
+          </header>
+
+          <div className="flex-1 overflow-hidden">
+            <div className="app-surface flex h-full flex-col overflow-hidden rounded-3xl">
+              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 px-6 py-5">
+                <div>
+                  <p className="text-sm text-muted-foreground">
+                    Lege neue Projekte an oder öffne bestehende Migrationen.
+                  </p>
+                </div>
+                <Button
+                  onClick={() => setShowAddDialog(true)}
+                  className="gap-2 rounded-full px-5 py-2 text-sm font-medium"
                 >
-                  <CardHeader>
+                  <Plus className="h-4 w-4" />
+                  Neues Projekt
+                </Button>
+              </div>
+
+              <div className="flex-1 overflow-auto px-6 py-6">
+                {loading ? (
+                  <div className="flex h-full items-center justify-center text-muted-foreground">
+                    Projekte werden geladen...
+                  </div>
+                ) : projects.length === 0 ? (
+                  <div className="app-subtle flex h-full flex-col items-center justify-center gap-4 px-10 py-12 text-center">
+                    <FolderOpen className="h-12 w-12 text-muted-foreground" />
+                    <div className="space-y-2">
+                      <h3 className="text-lg font-semibold text-foreground">Noch keine Projekte</h3>
+                      <p className="text-sm text-muted-foreground">
+                        Erstelle dein erstes Projekt, um Migrationen zu verwalten.
+                      </p>
+                    </div>
                     <Button
-                      variant="ghost"
-                      size="icon"
-                      className="absolute top-4 right-4 h-8 w-8 text-muted-foreground hover:text-destructive"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setProjectToDelete(project.id);
-                        setShowDeleteDialog(true);
-                      }}
+                      onClick={() => setShowAddDialog(true)}
+                      variant="outline"
+                      className="rounded-full px-5"
                     >
-                      <Trash2 className="h-4 w-4" />
+                      <Plus className="mr-2 h-4 w-4" />
+                      Projekt erstellen
                     </Button>
-                    <CardTitle>{project.name}</CardTitle>
-                    <CardDescription>
-                      {project.description || "Keine Beschreibung"}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground">
-                      {project.migrationsCount} {project.migrationsCount === 1 ? 'Migration' : 'Migrationen'}
-                    </p>
-                  </CardContent>
-                </Card>
-              ))}
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+                    {projects.map((project) => (
+                      <Card
+                        key={project.id}
+                        className="app-subtle relative cursor-pointer transition-colors hover:border-border/70"
+                        onClick={() => handleProjectClick(project.id)}
+                      >
+                        <CardHeader>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="absolute right-4 top-4 h-8 w-8 rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setProjectToDelete(project.id);
+                              setShowDeleteDialog(true);
+                            }}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                          <CardTitle className="text-xl text-foreground">{project.name}</CardTitle>
+                          <CardDescription className="text-sm text-muted-foreground">
+                            {project.description || "Keine Beschreibung"}
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent>
+                          <p className="text-sm text-muted-foreground">
+                            {project.migrationsCount} {project.migrationsCount === 1 ? "Migration" : "Migrationen"}
+                          </p>
+                        </CardContent>
+                      </Card>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
-          )}
-        </main>
+          </div>
+        </div>
       </div>
 
       <AccountDialog
@@ -454,7 +472,8 @@ const Projects = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Projekt löschen</AlertDialogTitle>
             <AlertDialogDescription>
-              Sind Sie sicher, dass Sie dieses Projekt löschen möchten? Alle zugehörigen Migrationen werden ebenfalls gelöscht. Diese Aktion kann nicht rückgängig gemacht werden.
+              Sind Sie sicher, dass Sie dieses Projekt löschen möchten? Alle zugehörigen Migrationen werden ebenfalls gelöscht.
+              Diese Aktion kann nicht rückgängig gemacht werden.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
