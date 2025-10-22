@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Puzzle, ArrowRight } from "lucide-react";
+import { Puzzle, ArrowRight, Wand2 } from "lucide-react";
 import { Button } from "./ui/button";
+import { toast } from "sonner";
 
 interface Field {
   id: string;
@@ -476,6 +477,66 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
   const sourceFields = getFieldsForObject(sourceSystem, sourceObject);
   const targetFields = getFieldsForObject(targetSystem, targetObject);
 
+  // Auto-map fields with exact matching names
+  const handleAutoMap = () => {
+    const newMappings: FieldMapping[] = [];
+    
+    sourceFields.forEach(sourceField => {
+      const matchingTargetField = targetFields.find(
+        targetField => targetField.name.toLowerCase() === sourceField.name.toLowerCase()
+      );
+      
+      if (matchingTargetField) {
+        // Check if this exact mapping already exists
+        const exists = mappings.some(
+          m => m.sourceFieldId === sourceField.id && m.targetFieldId === matchingTargetField.id
+        );
+        if (!exists) {
+          newMappings.push({
+            sourceFieldId: sourceField.id,
+            targetFieldId: matchingTargetField.id
+          });
+        }
+      }
+    });
+
+    if (newMappings.length > 0) {
+      setMappings(prev => [...prev, ...newMappings]);
+      toast.success(`Auto-mapped ${newMappings.length} field${newMappings.length > 1 ? 's' : ''}`);
+    } else {
+      toast.info("No matching fields found");
+    }
+  };
+
+  // Get all mapped target fields for a source field (or vice versa)
+  const getMappedFields = (side: 'source' | 'target', fieldId: string): string[] => {
+    return mappings
+      .filter(m => side === 'source' ? m.sourceFieldId === fieldId : m.targetFieldId === fieldId)
+      .map(m => side === 'source' ? m.targetFieldId : m.sourceFieldId);
+  };
+
+  // Check if field is involved in hover highlighting
+  const isHighlighted = (side: 'source' | 'target', fieldId: string): boolean => {
+    if (!hoveredField) return false;
+    
+    // If this field is hovered
+    if (hoveredField === fieldId) return true;
+    
+    // Check if this field is connected to the hovered field
+    const hoveredInSource = mappings.some(m => m.sourceFieldId === hoveredField);
+    const hoveredInTarget = mappings.some(m => m.targetFieldId === hoveredField);
+    
+    if (hoveredInSource) {
+      // Hovered field is a source field, highlight all its targets
+      return mappings.some(m => m.sourceFieldId === hoveredField && m.targetFieldId === fieldId);
+    } else if (hoveredInTarget) {
+      // Hovered field is a target field, highlight all its sources
+      return mappings.some(m => m.targetFieldId === hoveredField && m.sourceFieldId === fieldId);
+    }
+    
+    return false;
+  };
+
   const handleDragStart = (side: 'source' | 'target', fieldId: string) => {
     setDraggedField({ side, fieldId });
   };
@@ -496,38 +557,30 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
     const sourceFieldId = draggedField.side === 'source' ? draggedField.fieldId : fieldId;
     const targetFieldId = draggedField.side === 'target' ? draggedField.fieldId : fieldId;
 
-    // Check if mapping already exists
-    const existingMapping = mappings.find(
-      m => m.sourceFieldId === sourceFieldId || m.targetFieldId === targetFieldId
+    // Check if this exact mapping already exists
+    const exactMappingExists = mappings.some(
+      m => m.sourceFieldId === sourceFieldId && m.targetFieldId === targetFieldId
     );
 
-    if (existingMapping) {
-      // Remove existing mapping and add new one
-      setMappings(prev => [
-        ...prev.filter(m => m.sourceFieldId !== sourceFieldId && m.targetFieldId !== targetFieldId),
-        { sourceFieldId, targetFieldId }
-      ]);
+    if (exactMappingExists) {
+      // Remove this specific mapping
+      setMappings(prev => prev.filter(
+        m => !(m.sourceFieldId === sourceFieldId && m.targetFieldId === targetFieldId)
+      ));
+      toast.info("Mapping removed");
     } else {
+      // Add new mapping (allowing multiple mappings per field)
       setMappings(prev => [...prev, { sourceFieldId, targetFieldId }]);
+      toast.success("Mapping added");
     }
 
     setDraggedField(null);
-    setHoveredField(null);
   };
 
-  const handleQuickMap = (sourceFieldId: string, targetFieldId: string) => {
-    const existingMapping = mappings.find(
-      m => m.sourceFieldId === sourceFieldId || m.targetFieldId === targetFieldId
-    );
-
-    if (existingMapping) {
-      setMappings(prev => [
-        ...prev.filter(m => m.sourceFieldId !== sourceFieldId && m.targetFieldId !== targetFieldId),
-        { sourceFieldId, targetFieldId }
-      ]);
-    } else {
-      setMappings(prev => [...prev, { sourceFieldId, targetFieldId }]);
-    }
+  const handleRemoveMapping = (sourceFieldId: string, targetFieldId: string) => {
+    setMappings(prev => prev.filter(
+      m => !(m.sourceFieldId === sourceFieldId && m.targetFieldId === targetFieldId)
+    ));
   };
 
   const isMapped = (side: 'source' | 'target', fieldId: string) => {
@@ -536,22 +589,24 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
     );
   };
 
-  const getMappedField = (side: 'source' | 'target', fieldId: string) => {
-    const mapping = mappings.find(m => 
-      side === 'source' ? m.sourceFieldId === fieldId : m.targetFieldId === fieldId
-    );
-    if (!mapping) return null;
-    return side === 'source' ? mapping.targetFieldId : mapping.sourceFieldId;
-  };
-
-  const removeMapping = (sourceFieldId: string) => {
-    setMappings(prev => prev.filter(m => m.sourceFieldId !== sourceFieldId));
-  };
-
   return (
-    <div className="grid grid-cols-2 gap-8 relative">
-      {/* Source System Block */}
-      <Card className="bg-card border-border">
+    <div className="space-y-4">
+      {/* Auto-Map Button */}
+      <div className="flex justify-end">
+        <Button
+          onClick={handleAutoMap}
+          variant="outline"
+          size="sm"
+          className="gap-2"
+        >
+          <Wand2 className="h-4 w-4" />
+          Auto Map
+        </Button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-8 relative">
+        {/* Source System Block */}
+        <Card className="bg-card border-border">
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
             {sourceSystem} {sourceObject}
@@ -559,8 +614,9 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
         </CardHeader>
         <CardContent className="space-y-2">
           {sourceFields.map((field) => {
-            const mappedTargetId = getMappedField('source', field.id);
-            const mappedTarget = targetFields.find(f => f.id === mappedTargetId);
+            const mappedTargetIds = getMappedFields('source', field.id);
+            const mappedTargets = targetFields.filter(f => mappedTargetIds.includes(f.id));
+            const highlighted = isHighlighted('source', field.id);
             
             return (
               <div
@@ -572,36 +628,40 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
                 onMouseEnter={() => setHoveredField(field.id)}
                 onMouseLeave={() => setHoveredField(null)}
                 className={`
-                  flex items-center justify-between gap-2 p-3 rounded-lg border
+                  flex flex-col gap-2 p-3 rounded-lg border
                   ${isMapped('source', field.id) 
                     ? 'bg-primary/10 border-primary' 
                     : 'bg-muted/50 border-border'
                   }
-                  ${hoveredField === field.id ? 'ring-2 ring-primary/50' : ''}
+                  ${highlighted ? 'bg-purple-200/40 border-purple-400 dark:bg-purple-900/30 dark:border-purple-600' : ''}
                   cursor-grab active:cursor-grabbing transition-all
                   hover:shadow-md
                 `}
               >
-                <div className="flex items-center gap-2 flex-1">
+                <div className="flex items-center gap-2">
                   <Puzzle className="h-4 w-4 text-primary" />
                   <span className="text-sm font-medium">{field.name}</span>
                 </div>
                 
-                {isMapped('source', field.id) && mappedTarget && (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <ArrowRight className="h-3 w-3" />
-                    <span>{mappedTarget.name}</span>
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-5 w-5 p-0"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        removeMapping(field.id);
-                      }}
-                    >
-                      ×
-                    </Button>
+                {mappedTargets.length > 0 && (
+                  <div className="flex flex-col gap-1 pl-6">
+                    {mappedTargets.map(target => (
+                      <div key={target.id} className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <ArrowRight className="h-3 w-3" />
+                        <span>{target.name}</span>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-4 w-4 p-0 hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveMapping(field.id, target.id);
+                          }}
+                        >
+                          ×
+                        </Button>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -619,8 +679,9 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
         </CardHeader>
         <CardContent className="space-y-2">
           {targetFields.map((field) => {
-            const mappedSourceId = getMappedField('target', field.id);
-            const mappedSource = sourceFields.find(f => f.id === mappedSourceId);
+            const mappedSourceIds = getMappedFields('target', field.id);
+            const mappedSources = sourceFields.filter(f => mappedSourceIds.includes(f.id));
+            const highlighted = isHighlighted('target', field.id);
             
             return (
               <div
@@ -632,25 +693,40 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
                 onMouseEnter={() => setHoveredField(field.id)}
                 onMouseLeave={() => setHoveredField(null)}
                 className={`
-                  flex items-center justify-between gap-2 p-3 rounded-lg border
+                  flex flex-col gap-2 p-3 rounded-lg border
                   ${isMapped('target', field.id) 
                     ? 'bg-primary/10 border-primary' 
                     : 'bg-muted/50 border-border'
                   }
-                  ${hoveredField === field.id ? 'ring-2 ring-primary/50' : ''}
+                  ${highlighted ? 'bg-purple-200/40 border-purple-400 dark:bg-purple-900/30 dark:border-purple-600' : ''}
                   cursor-grab active:cursor-grabbing transition-all
                   hover:shadow-md
                 `}
               >
-                <div className="flex items-center gap-2 flex-1">
+                <div className="flex items-center gap-2">
                   <Puzzle className="h-4 w-4 text-primary" />
                   <span className="text-sm font-medium">{field.name}</span>
                 </div>
                 
-                {isMapped('target', field.id) && mappedSource && (
-                  <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{mappedSource.name}</span>
-                    <ArrowRight className="h-3 w-3" />
+                {mappedSources.length > 0 && (
+                  <div className="flex flex-col gap-1 pl-6">
+                    {mappedSources.map(source => (
+                      <div key={source.id} className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span>{source.name}</span>
+                        <ArrowRight className="h-3 w-3" />
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-4 w-4 p-0 hover:text-destructive"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleRemoveMapping(source.id, field.id);
+                          }}
+                        >
+                          ×
+                        </Button>
+                      </div>
+                    ))}
                   </div>
                 )}
               </div>
@@ -659,38 +735,39 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
         </CardContent>
       </Card>
 
-      {/* Mapping Summary */}
-      <div className="col-span-2 mt-4">
-        <Card className="bg-card/50 border-border">
-          <CardHeader>
-            <CardTitle className="text-sm">Mapped Fields ({mappings.length})</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-wrap gap-2">
-              {mappings.map((mapping, index) => {
-                const sourceField = sourceFields.find(f => f.id === mapping.sourceFieldId);
-                const targetField = targetFields.find(f => f.id === mapping.targetFieldId);
-                
-                return (
-                  <div 
-                    key={index}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 rounded-full text-xs border border-primary/30"
-                  >
-                    <span>{sourceField?.name}</span>
-                    <ArrowRight className="h-3 w-3" />
-                    <span>{targetField?.name}</span>
-                    <button
-                      onClick={() => removeMapping(mapping.sourceFieldId)}
-                      className="ml-1 hover:text-destructive"
+        {/* Mapping Summary */}
+        <div className="col-span-2 mt-4">
+          <Card className="bg-card/50 border-border">
+            <CardHeader>
+              <CardTitle className="text-sm">Mapped Fields ({mappings.length})</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {mappings.map((mapping, index) => {
+                  const sourceField = sourceFields.find(f => f.id === mapping.sourceFieldId);
+                  const targetField = targetFields.find(f => f.id === mapping.targetFieldId);
+                  
+                  return (
+                    <div 
+                      key={index}
+                      className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 rounded-full text-xs border border-primary/30"
                     >
-                      ×
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </CardContent>
-        </Card>
+                      <span>{sourceField?.name}</span>
+                      <ArrowRight className="h-3 w-3" />
+                      <span>{targetField?.name}</span>
+                      <button
+                        onClick={() => handleRemoveMapping(mapping.sourceFieldId, mapping.targetFieldId)}
+                        className="ml-1 hover:text-destructive"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       </div>
     </div>
   );
