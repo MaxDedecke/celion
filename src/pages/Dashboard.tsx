@@ -301,14 +301,14 @@ const Dashboard = () => {
 
   if (loading) {
     return (
-      <div className="flex h-screen bg-background items-center justify-center">
+      <div className="flex min-h-screen items-center justify-center bg-muted/30">
         <p className="text-muted-foreground">Lädt...</p>
       </div>
     );
   }
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex min-h-screen bg-muted/30">
       <Sidebar
         projects={allProjects}
         projectMigrations={migrations}
@@ -334,8 +334,8 @@ const Dashboard = () => {
         onEditMigration={handleEditMigration}
       />
 
-      <div className="flex-1 flex flex-col min-h-0">
-        <header className="h-20 flex items-center justify-between px-6 flex-shrink-0">
+      <div className="flex flex-1 flex-col min-h-0">
+        <header className="flex h-20 flex-shrink-0 items-center justify-between border-b border-border/60 bg-card/80 px-8 backdrop-blur supports-[backdrop-filter]:bg-card/70">
           {currentMigration ? (
             <div className="flex items-center gap-6">
               <div className="flex gap-2">
@@ -374,48 +374,51 @@ const Dashboard = () => {
           />
         </header>
 
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto px-8 py-10">
           {currentMigration ? (
-            <MigrationDetails 
-              project={currentMigration} 
-              activeTab={activeMigrationTab} 
-              onRefresh={refreshCurrentMigration}
-            />
+            <div className="mx-auto w-full max-w-6xl">
+              <MigrationDetails
+                project={currentMigration}
+                activeTab={activeMigrationTab}
+                onRefresh={refreshCurrentMigration}
+              />
+            </div>
           ) : (
-            <div className="p-8 space-y-6">
+            <div className="mx-auto flex max-w-6xl flex-col gap-8">
               {/* Welcome Section */}
               <div>
-                <h2 className="text-3xl font-bold text-foreground">Willkommen zurück!</h2>
-                <p className="text-muted-foreground mt-2">Hier ist eine Übersicht deiner Migrationen</p>
+                <h2 className="text-3xl font-semibold text-foreground">Willkommen zurück!</h2>
+                <p className="mt-2 text-muted-foreground">Hier ist eine Übersicht deiner Migrationen.</p>
               </div>
 
-              {/* Statistics Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                <div className="bg-gradient-to-br from-primary/10 to-primary/5 p-6 rounded-lg border border-primary/20">
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-2xl border border-border/60 bg-card/80 p-6 shadow-sm">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-muted-foreground">Projekte</p>
-                      <p className="text-3xl font-bold text-foreground mt-2">{allProjects.length}</p>
+                      <p className="mt-2 text-3xl font-semibold text-foreground">{allProjects.length}</p>
                     </div>
                     <Database className="h-10 w-10 text-primary" />
                   </div>
                 </div>
 
-                <div className="bg-gradient-to-br from-secondary/10 to-secondary/5 p-6 rounded-lg border border-secondary/20">
+                <div className="rounded-2xl border border-border/60 bg-card/80 p-6 shadow-sm">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-muted-foreground">Migrationen</p>
-                      <p className="text-3xl font-bold text-foreground mt-2">{migrations.length + standaloneMigrations.length}</p>
+                      <p className="mt-2 text-3xl font-semibold text-foreground">
+                        {migrations.length + standaloneMigrations.length}
+                      </p>
                     </div>
                     <Database className="h-10 w-10 text-secondary" />
                   </div>
                 </div>
 
-                <div className="bg-gradient-to-br from-success/10 to-success/5 p-6 rounded-lg border border-success/20">
+                <div className="rounded-2xl border border-border/60 bg-card/80 p-6 shadow-sm">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-muted-foreground">Abgeschlossen</p>
-                      <p className="text-3xl font-bold text-foreground mt-2">
+                      <p className="mt-2 text-3xl font-semibold text-foreground">
                         {[...migrations, ...standaloneMigrations].filter(m => m.progress === 100).length}
                       </p>
                     </div>
@@ -423,11 +426,11 @@ const Dashboard = () => {
                   </div>
                 </div>
 
-                <div className="bg-gradient-to-br from-warning/10 to-warning/5 p-6 rounded-lg border border-warning/20">
+                <div className="rounded-2xl border border-border/60 bg-card/80 p-6 shadow-sm">
                   <div className="flex items-center justify-between">
                     <div>
                       <p className="text-sm text-muted-foreground">In Arbeit</p>
-                      <p className="text-3xl font-bold text-foreground mt-2">
+                      <p className="mt-2 text-3xl font-semibold text-foreground">
                         {[...migrations, ...standaloneMigrations].filter(m => m.progress > 0 && m.progress < 100).length}
                       </p>
                     </div>
@@ -437,17 +440,17 @@ const Dashboard = () => {
               </div>
 
               {/* Recent Migrations */}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="bg-card border border-border rounded-lg p-6">
-                  <h3 className="text-xl font-semibold mb-4">Aktuelle Migrationen</h3>
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <div className="rounded-2xl border border-border/60 bg-card/80 p-6 shadow-sm">
+                  <h3 className="mb-4 text-xl font-semibold">Aktuelle Migrationen</h3>
                   <div className="space-y-4">
                     {[...migrations, ...standaloneMigrations]
                       .sort((a, b) => b.progress - a.progress)
                       .slice(0, 5)
                       .map((migration) => (
-                        <div 
+                        <div
                           key={migration.id}
-                          className="flex items-center justify-between p-4 bg-background rounded-lg hover:bg-accent/50 transition-colors cursor-pointer"
+                          className="flex cursor-pointer items-center justify-between rounded-xl border border-border/60 bg-card/60 p-4 transition-colors hover:border-primary/30"
                           onClick={() => {
                             if (migration.projectId) {
                               navigate(`/projects/${migration.projectId}/migration/${migration.id}`);
@@ -464,9 +467,9 @@ const Dashboard = () => {
                           </div>
                           <div className="flex items-center gap-4">
                             <div className="text-right">
-                              <p className="text-sm font-medium">{migration.progress}%</p>
-                              <div className="w-24 h-2 bg-muted rounded-full overflow-hidden mt-1">
-                                <div 
+                              <p className="text-sm font-medium text-foreground">{migration.progress}%</p>
+                              <div className="mt-1 h-2 w-24 overflow-hidden rounded-full bg-muted">
+                                <div
                                   className="h-full bg-primary transition-all"
                                   style={{ width: `${migration.progress}%` }}
                                 />
@@ -476,14 +479,10 @@ const Dashboard = () => {
                         </div>
                       ))}
                     {[...migrations, ...standaloneMigrations].length === 0 && (
-                      <div className="text-center py-8 text-muted-foreground">
+                      <div className="rounded-xl border border-dashed border-border/60 bg-card/60 py-8 text-center text-muted-foreground">
                         <p>Noch keine Migrationen vorhanden</p>
-                        <Button
-                          onClick={() => setShowAddDialog(true)}
-                          className="mt-4"
-                          variant="outline"
-                        >
-                          <Plus className="h-4 w-4 mr-2" />
+                        <Button onClick={() => setShowAddDialog(true)} className="mt-4 gap-2" variant="outline">
+                          <Plus className="h-4 w-4" />
                           Migration erstellen
                         </Button>
                       </div>
@@ -491,28 +490,28 @@ const Dashboard = () => {
                   </div>
                 </div>
 
-                <div className="bg-card border border-border rounded-lg p-6">
-                  <h3 className="text-xl font-semibold mb-4">Fortschrittsübersicht</h3>
+                <div className="rounded-2xl border border-border/60 bg-card/80 p-6 shadow-sm">
+                  <h3 className="mb-4 text-xl font-semibold">Fortschrittsübersicht</h3>
                   <div className="space-y-4">
                     {allProjects.slice(0, 5).map((project) => {
                       const projectMigrations = migrations.filter(m => m.projectId === project.id);
                       const avgProgress = projectMigrations.length > 0
                         ? Math.round(projectMigrations.reduce((sum, m) => sum + m.progress, 0) / projectMigrations.length)
                         : 0;
-                      
+
                       return (
-                        <div key={project.id} className="p-4 bg-background rounded-lg">
-                          <div className="flex items-center justify-between mb-2">
+                        <div key={project.id} className="rounded-xl border border-border/60 bg-card/60 p-4">
+                          <div className="mb-2 flex items-center justify-between">
                             <p className="font-medium text-foreground">{project.name}</p>
-                            <p className="text-sm font-medium">{avgProgress}%</p>
+                            <p className="text-sm font-medium text-foreground">{avgProgress}%</p>
                           </div>
-                          <div className="w-full h-2 bg-muted rounded-full overflow-hidden">
-                            <div 
+                          <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
+                            <div
                               className="h-full bg-secondary transition-all"
                               style={{ width: `${avgProgress}%` }}
                             />
                           </div>
-                          <p className="text-xs text-muted-foreground mt-1">
+                          <p className="mt-1 text-xs text-muted-foreground">
                             {projectMigrations.length} Migration{projectMigrations.length !== 1 ? 'en' : ''}
                           </p>
                         </div>
@@ -528,15 +527,11 @@ const Dashboard = () => {
               </div>
 
               {/* Quick Actions */}
-              <div className="bg-gradient-to-r from-primary/20 to-secondary/20 rounded-lg p-8 text-center">
-                <h3 className="text-2xl font-semibold mb-2">Bereit für eine neue Migration?</h3>
-                <p className="text-muted-foreground mb-6">Starte jetzt und migriere deine Daten nahtlos</p>
-                <Button
-                  onClick={() => setShowAddDialog(true)}
-                  size="lg"
-                  className="bg-primary hover:bg-primary/90"
-                >
-                  <Plus className="h-5 w-5 mr-2" />
+              <div className="rounded-2xl border border-border/60 bg-card/80 p-8 text-center shadow-sm">
+                <h3 className="mb-2 text-2xl font-semibold">Bereit für eine neue Migration?</h3>
+                <p className="mb-6 text-muted-foreground">Starte jetzt und migriere deine Daten nahtlos.</p>
+                <Button onClick={() => setShowAddDialog(true)} size="lg" className="gap-2">
+                  <Plus className="h-5 w-5" />
                   Neue Migration erstellen
                 </Button>
               </div>

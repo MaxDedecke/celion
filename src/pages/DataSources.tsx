@@ -267,57 +267,57 @@ const DataSources = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="flex min-h-screen items-center justify-center bg-muted/30">
         <p className="text-muted-foreground">Laden...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background p-8">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex items-center gap-4 mb-8">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate("/dashboard")}
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div className="flex-1">
-            <h1 className="text-3xl font-bold">Datenquellen</h1>
-            <p className="text-muted-foreground mt-1">
-              Verwalten Sie Ihre Unternehmens-Datenquellen
-            </p>
+    <div className="min-h-screen bg-muted/30 px-6 py-10">
+      <div className="mx-auto flex max-w-6xl flex-col gap-8">
+        <div className="flex flex-wrap items-center justify-between gap-4 rounded-2xl border border-border/60 bg-card/80 px-6 py-5 shadow-sm supports-[backdrop-filter]:bg-card/70">
+          <div className="flex items-center gap-3">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate("/dashboard")}
+              className="h-9 w-9 rounded-full"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div>
+              <h1 className="text-2xl font-semibold text-foreground">Datenquellen</h1>
+              <p className="text-sm text-muted-foreground">
+                Verwalten Sie Ihre Unternehmens-Datenquellen.
+              </p>
+            </div>
           </div>
-          <Button onClick={() => handleOpenDialog()}>
-            <Plus className="h-4 w-4 mr-2" />
+          <Button onClick={() => handleOpenDialog()} className="gap-2">
+            <Plus className="h-4 w-4" />
             Neue Datenquelle
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+        <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
           {dataSources.map((source) => {
             const SourceIcon = getSourceIcon(source.source_type);
             return (
-              <Card key={source.id} className="bg-card border-border">
-                <CardHeader className="flex flex-row items-center gap-4 pb-3">
-                  <div className="flex-shrink-0">
-                    <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <SourceIcon className="h-6 w-6 text-primary" />
-                    </div>
+              <Card key={source.id} className="flex h-full flex-col rounded-2xl border border-border/60 bg-card/80 shadow-sm">
+                <CardHeader className="flex flex-row items-start gap-4 pb-4">
+                  <div className="flex h-12 w-12 flex-shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                    <SourceIcon className="h-6 w-6" />
                   </div>
-                  <div className="flex-1 min-w-0">
-                    <CardTitle className="text-lg">{source.name}</CardTitle>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {source.source_type}
-                    </p>
+                  <div className="min-w-0 flex-1">
+                    <CardTitle className="text-lg font-semibold text-foreground">{source.name}</CardTitle>
+                    <p className="mt-1 text-sm text-muted-foreground">{source.source_type}</p>
                   </div>
-                  <div className="flex gap-1 flex-shrink-0">
+                  <div className="flex flex-shrink-0 gap-1">
                     <Button
                       variant="ghost"
                       size="icon"
                       onClick={() => handleOpenDialog(source)}
+                      className="h-8 w-8"
                     >
                       <Pencil className="h-4 w-4" />
                     </Button>
@@ -325,58 +325,41 @@ const DataSources = () => {
                       variant="ghost"
                       size="icon"
                       onClick={() => handleDelete(source.id)}
+                      className="h-8 w-8"
                     >
                       <Trash2 className="h-4 w-4 text-destructive" />
                     </Button>
                   </div>
                 </CardHeader>
-                <CardContent>
-                  <div className="space-y-2 text-sm ml-16">
-                    {source.api_url && (
-                      <p className="text-muted-foreground truncate">
-                        URL: {source.api_url}
-                      </p>
-                    )}
-                    <p className="text-muted-foreground">
-                      Auth: {source.auth_type}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground">Verfügbarkeit:</span>
-                      <span className="text-foreground">
-                        {source.is_global
-                          ? "Global"
-                          : source.assigned_projects && source.assigned_projects.length > 0
-                          ? `${source.assigned_projects.length} ${source.assigned_projects.length === 1 ? 'Projekt' : 'Projekte'}`
-                          : "Kein Zugriff"}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground">Status:</span>
-                      <span
-                        className={
-                          source.is_active ? "text-success" : "text-muted-foreground"
-                        }
-                      >
-                        {source.is_active ? "Aktiv" : "Inaktiv"}
-                      </span>
-                    </div>
+                <CardContent className="mt-auto space-y-3 rounded-2xl bg-card/60 p-6 text-sm text-muted-foreground">
+                  {source.api_url && <p className="truncate">URL: {source.api_url}</p>}
+                  <p>Auth: {source.auth_type}</p>
+                  <div className="flex items-center gap-2 text-foreground">
+                    <span className="text-muted-foreground">Verfügbarkeit:</span>
+                    <span>
+                      {source.is_global
+                        ? "Global"
+                        : source.assigned_projects && source.assigned_projects.length > 0
+                        ? `${source.assigned_projects.length} ${source.assigned_projects.length === 1 ? 'Projekt' : 'Projekte'}`
+                        : "Kein Zugriff"}
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-muted-foreground">Status:</span>
+                    <span className={source.is_active ? "text-success" : "text-muted-foreground"}>
+                      {source.is_active ? "Aktiv" : "Inaktiv"}
+                    </span>
                   </div>
                 </CardContent>
-            </Card>
+              </Card>
             );
           })}
 
           {dataSources.length === 0 && (
-            <div className="col-span-full text-center py-12">
-              <p className="text-muted-foreground">
-                Noch keine Datenquellen vorhanden
-              </p>
-              <Button
-                onClick={() => handleOpenDialog()}
-                className="mt-4"
-                variant="outline"
-              >
-                <Plus className="h-4 w-4 mr-2" />
+            <div className="col-span-full rounded-2xl border border-dashed border-border/60 bg-card/60 py-12 text-center">
+              <p className="text-muted-foreground">Noch keine Datenquellen vorhanden</p>
+              <Button onClick={() => handleOpenDialog()} className="mt-4 gap-2" variant="outline">
+                <Plus className="h-4 w-4" />
                 Erste Datenquelle erstellen
               </Button>
             </div>

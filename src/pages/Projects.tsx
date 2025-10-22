@@ -309,7 +309,7 @@ const Projects = () => {
   };
 
   return (
-    <div className="flex h-screen bg-background">
+    <div className="flex min-h-screen bg-muted/30">
       <Sidebar
         projects={projects}
         projectMigrations={migrations}
@@ -334,9 +334,9 @@ const Projects = () => {
         onEditMigration={handleEditMigration}
       />
 
-      <div className="flex-1 flex flex-col min-h-0">
-        <header className="h-20 flex items-center justify-between px-6 flex-shrink-0">
-          <h1 className="text-2xl font-semibold">Projekte</h1>
+      <div className="flex flex-1 flex-col min-h-0">
+        <header className="flex h-20 flex-shrink-0 items-center justify-between border-b border-border/60 bg-card/80 px-8 backdrop-blur supports-[backdrop-filter]:bg-card/70">
+          <h1 className="text-2xl font-semibold text-foreground">Projekte</h1>
           <UserMenu
             onAccountClick={() => {
               setActiveDialogTab("account");
@@ -350,70 +350,77 @@ const Projects = () => {
           />
         </header>
 
-        <main className="flex-1 overflow-auto p-6">
-          <div className="mb-6">
-            <Button
-              onClick={() => setShowAddDialog(true)}
-              className="gap-2"
-            >
-              <Plus className="h-4 w-4" />
-              Neues Projekt
-            </Button>
-          </div>
+        <main className="flex-1 overflow-auto px-8 py-10">
+          <div className="mx-auto flex w-full max-w-6xl flex-col gap-8">
+            <div className="flex flex-wrap items-center justify-between gap-4">
+              <p className="text-sm text-muted-foreground">
+                Verwalten Sie Ihre Projekte und Migrationen an einem Ort.
+              </p>
+              <Button onClick={() => setShowAddDialog(true)} className="gap-2">
+                <Plus className="h-4 w-4" />
+                Neues Projekt
+              </Button>
+            </div>
 
-          {loading ? (
-            <div className="text-center py-12 text-muted-foreground">
-              Projekte werden geladen...
-            </div>
-          ) : projects.length === 0 ? (
-            <Card className="border-dashed">
-              <CardContent className="flex flex-col items-center justify-center py-12">
-                <FolderOpen className="h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">Noch keine Projekte</h3>
-                <p className="text-muted-foreground mb-4">
-                  Erstellen Sie Ihr erstes Projekt, um Migrationen zu verwalten
-                </p>
-                <Button onClick={() => setShowAddDialog(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  Projekt erstellen
-                </Button>
-              </CardContent>
-            </Card>
-          ) : (
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {projects.map((project) => (
-                <Card
-                  key={project.id}
-                  className="cursor-pointer hover:shadow-md transition-shadow relative"
-                  onClick={() => handleProjectClick(project.id)}
-                >
-                  <CardHeader>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="absolute top-4 right-4 h-8 w-8 text-muted-foreground hover:text-destructive"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setProjectToDelete(project.id);
-                        setShowDeleteDialog(true);
-                      }}
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                    <CardTitle>{project.name}</CardTitle>
-                    <CardDescription>
-                      {project.description || "Keine Beschreibung"}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground">
-                      {project.migrationsCount} {project.migrationsCount === 1 ? 'Migration' : 'Migrationen'}
+            {loading ? (
+              <div className="flex items-center justify-center rounded-2xl border border-dashed border-border/60 bg-card/60 py-12 text-muted-foreground">
+                Projekte werden geladen...
+              </div>
+            ) : projects.length === 0 ? (
+              <Card className="rounded-2xl border border-dashed border-border/60 bg-card/70 shadow-sm">
+                <CardContent className="flex flex-col items-center justify-center space-y-4 py-12 text-center">
+                  <FolderOpen className="h-12 w-12 text-muted-foreground" />
+                  <div className="space-y-2">
+                    <h3 className="text-lg font-semibold">Noch keine Projekte</h3>
+                    <p className="text-muted-foreground">
+                      Erstellen Sie Ihr erstes Projekt, um Migrationen zu verwalten.
                     </p>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
-          )}
+                  </div>
+                  <Button onClick={() => setShowAddDialog(true)}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Projekt erstellen
+                  </Button>
+                </CardContent>
+              </Card>
+            ) : (
+              <div className="grid grid-cols-1 gap-5 md:grid-cols-2 lg:grid-cols-3">
+                {projects.map((project) => (
+                  <Card
+                    key={project.id}
+                    className="relative cursor-pointer rounded-2xl border border-border/60 bg-card/80 shadow-sm transition-colors hover:border-primary/30"
+                    onClick={() => handleProjectClick(project.id)}
+                  >
+                    <CardHeader>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="absolute right-4 top-4 h-8 w-8 text-muted-foreground hover:text-destructive"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setProjectToDelete(project.id);
+                          setShowDeleteDialog(true);
+                        }}
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                      <CardTitle className="text-lg font-semibold text-foreground">{project.name}</CardTitle>
+                      <CardDescription className="text-sm text-muted-foreground">
+                        {project.description || "Keine Beschreibung"}
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent className="space-y-2 text-sm text-muted-foreground">
+                      <p>
+                        {project.migrationsCount} Migration{project.migrationsCount !== 1 ? "en" : ""}
+                      </p>
+                      <p className="text-xs">
+                        Erstellt am {new Date(project.created_at).toLocaleDateString("de-DE")}
+                      </p>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </div>
         </main>
       </div>
 

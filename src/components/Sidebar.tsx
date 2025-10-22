@@ -43,10 +43,12 @@ const Sidebar = ({
   };
 
   return (
-    <div className={cn(
-      "bg-background border-r border-sidebar-border h-screen flex flex-col p-6 transition-all duration-300",
-      isCollapsed ? "w-20" : "w-80"
-    )}>
+    <div
+      className={cn(
+        "flex h-screen flex-col border-r border-border/60 bg-card/80 p-6 backdrop-blur transition-all duration-300 supports-[backdrop-filter]:bg-card/70 dark:border-sidebar-border dark:bg-secondary/80 dark:supports-[backdrop-filter]:bg-secondary/70",
+        isCollapsed ? "w-20" : "w-80"
+      )}
+    >
       <div className="mb-8 flex items-center justify-between gap-2">
         <Logo 
           onClick={() => navigate("/dashboard")} 
