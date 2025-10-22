@@ -131,15 +131,15 @@ All colors MUST be HSL.
   }
 
   .network-line {
-    stroke-dasharray: 12 32;
+    stroke-dasharray: 6 18;
     stroke-dashoffset: 0;
-    animation: network-dash 14s linear infinite;
-    opacity: 0.55;
+    animation: network-dash 7s ease-in-out infinite;
+    opacity: 0.35;
   }
 
   .network-node {
-    animation: node-pulse 6s ease-in-out infinite;
-    filter: drop-shadow(0 0 14px rgba(56, 189, 248, 0.35));
+    animation: node-pulse 5s ease-in-out infinite;
+    filter: drop-shadow(0 0 6px hsla(259 49% 81% / 0.35));
   }
 }
 
@@ -210,25 +210,25 @@ All colors MUST be HSL.
 @keyframes network-dash {
   0% {
     stroke-dashoffset: 0;
-    opacity: 0.25;
+    opacity: 0.15;
   }
   50% {
-    opacity: 0.7;
+    opacity: 0.45;
   }
   100% {
-    stroke-dashoffset: -80;
-    opacity: 0.25;
+    stroke-dashoffset: -40;
+    opacity: 0.15;
   }
 }
 
 @keyframes node-pulse {
   0%,
   100% {
-    transform: scale(0.85);
-    opacity: 0.55;
+    transform: scale(0.9);
+    opacity: 0.6;
   }
   50% {
-    transform: scale(1.15);
+    transform: scale(1.1);
     opacity: 1;
   }
 }
