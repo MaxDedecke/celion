@@ -1,7 +1,15 @@
-const Logo = ({ className = "", onClick }: { className?: string; onClick?: () => void }) => {
+const Logo = ({
+  className = "",
+  textClassName = "text-2xl",
+  onClick,
+}: {
+  className?: string;
+  textClassName?: string;
+  onClick?: () => void;
+}) => {
   return (
-    <button 
-      className={`flex items-center gap-2 ${className}`} 
+    <button
+      className={`flex items-center gap-2 ${className}`}
       onClick={onClick}
       type="button"
     >
@@ -11,7 +19,7 @@ const Logo = ({ className = "", onClick }: { className?: string; onClick?: () =>
         <circle cx="20" cy="12" r="2" fill="currentColor" className="text-primary"/>
         <circle cx="28" cy="20" r="2" fill="currentColor" className="text-secondary"/>
       </svg>
-      <span className="text-2xl font-bold text-foreground">celion</span>
+      <span className={`font-bold text-foreground ${textClassName}`}>celion</span>
     </button>
   );
 };
