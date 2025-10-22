@@ -44,6 +44,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import TestConnectionDialog from "./dialogs/TestConnectionDialog";
+import { FieldMapper } from "./FieldMapper";
 
 interface MigrationProject {
   id: string;
@@ -85,6 +86,8 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   const [isMetaModelApproved, setIsMetaModelApproved] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
   const [hasImported, setHasImported] = useState(false);
+  const [selectedSourceObject, setSelectedSourceObject] = useState<string>('');
+  const [selectedTargetObject, setSelectedTargetObject] = useState<string>('');
   const [formData, setFormData] = useState({
     apiUrl: '',
     apiKey: '',
@@ -1058,7 +1061,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
               <label className="text-sm font-medium text-foreground">
                 {project.sourceSystem} Objects
               </label>
-              <Select>
+              <Select value={selectedSourceObject} onValueChange={setSelectedSourceObject}>
                 <SelectTrigger className="w-full bg-background">
                   <SelectValue placeholder="Select source object" />
                 </SelectTrigger>
@@ -1077,7 +1080,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
               <label className="text-sm font-medium text-foreground">
                 {project.targetSystem} Objects
               </label>
-              <Select>
+              <Select value={selectedTargetObject} onValueChange={setSelectedTargetObject}>
                 <SelectTrigger className="w-full bg-background">
                   <SelectValue placeholder="Select target object" />
                 </SelectTrigger>
@@ -1092,11 +1095,20 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
             </div>
           </div>
 
-          {/* Whiteboard Canvas Area */}
-          <div className="bg-background border-2 border-border rounded-lg min-h-[600px] p-4">
-            <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-              Mapping canvas area
-            </div>
+          {/* Field Mapping Area */}
+          <div className="bg-background border-2 border-border rounded-lg min-h-[600px] p-6">
+            {selectedSourceObject && selectedTargetObject ? (
+              <FieldMapper
+                sourceSystem={project.sourceSystem}
+                targetSystem={project.targetSystem}
+                sourceObject={selectedSourceObject}
+                targetObject={selectedTargetObject}
+              />
+            ) : (
+              <div className="w-full h-full flex items-center justify-center text-muted-foreground">
+                Wähle Source und Target Objects aus, um mit dem Mapping zu beginnen
+              </div>
+            )}
           </div>
         </div>
       )}
