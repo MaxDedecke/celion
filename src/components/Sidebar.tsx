@@ -43,10 +43,12 @@ const Sidebar = ({
   };
 
   return (
-    <div className={cn(
-      "bg-background border-r border-sidebar-border h-screen flex flex-col p-6 transition-all duration-300",
-      isCollapsed ? "w-20" : "w-80"
-    )}>
+    <div
+      className={cn(
+        "app-surface flex h-full min-h-0 flex-col overflow-hidden p-6 transition-all duration-300",
+        isCollapsed ? "w-[5.5rem]" : "w-80"
+      )}
+    >
       <div className="mb-8 flex items-center justify-between gap-2">
         <Logo 
           onClick={() => navigate("/dashboard")} 
@@ -58,7 +60,7 @@ const Sidebar = ({
               variant="ghost"
               size="icon"
               onClick={() => navigate("/data-sources")}
-              className="flex-shrink-0 hover:bg-transparent hover:opacity-80"
+              className="flex-shrink-0 hover:bg-foreground/5"
             >
               <Plug className="h-4 w-4" />
             </Button>
@@ -67,7 +69,7 @@ const Sidebar = ({
             variant="ghost"
             size="icon"
             onClick={() => setIsCollapsed(!isCollapsed)}
-            className="flex-shrink-0 hover:bg-transparent hover:opacity-80"
+            className="flex-shrink-0 hover:bg-foreground/5"
           >
             {isCollapsed ? (
               <PanelLeft className="h-4 w-4" />
@@ -93,7 +95,7 @@ const Sidebar = ({
               const projectMigs = projectMigrations.filter(m => m.projectId === project.id);
               return (
                 <div key={project.id} className="space-y-1">
-                  <div className="flex items-center justify-between w-full px-2 py-2 rounded-lg transition-colors text-sm">
+                  <div className="flex w-full items-center justify-between rounded-xl px-2 py-2 text-sm transition-colors">
                     <button
                       onClick={() => toggleProject(project.id)}
                       className="flex items-center gap-2 flex-1 text-left font-medium"
@@ -107,7 +109,7 @@ const Sidebar = ({
                     </button>
                     <button
                       onClick={() => onNewProjectMigration?.(project.id)}
-                      className="p-1 hover:bg-sidebar-accent rounded transition-colors"
+                      className="rounded p-1 transition-colors hover:bg-foreground/5"
                       aria-label="Neue Migration"
                     >
                       <Plus className="h-4 w-4" />
@@ -117,53 +119,53 @@ const Sidebar = ({
                   {expandedProjects.has(project.id) && projectMigs.length > 0 && (
                     <div className="ml-6 space-y-1">
                       {projectMigs.map((migration) => (
-                    <div
-                      key={migration.id}
-                      className={cn(
-                        "group flex items-center justify-between w-full px-4 py-2 rounded-lg transition-colors text-sm",
-                        selectedMigration === migration.id
-                          ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                          : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground"
-                      )}
-                    >
-                      <button
-                        onClick={() => navigate(`/projects/${project.id}/migration/${migration.id}`)}
-                        className="flex-1 text-left"
-                      >
-                        {migration.name}
-                      </button>
-                      <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onEditMigration?.(migration.id);
-                          }}
-                          className="p-1 hover:text-primary"
-                          aria-label="Migration bearbeiten"
+                        <div
+                          key={migration.id}
+                          className={cn(
+                            "group flex items-center justify-between w-full rounded-xl px-4 py-2 text-sm transition-colors",
+                            selectedMigration === migration.id
+                              ? "bg-sidebar-accent text-sidebar-accent-foreground"
+                              : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+                          )}
                         >
-                          <Pencil className="h-4 w-4" />
-                        </button>
-                        <button
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onDeleteMigration?.(migration.id);
-                          }}
-                          className="p-1 hover:text-destructive"
-                          aria-label="Migration löschen"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </button>
-                      </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                          <button
+                            onClick={() => navigate(`/projects/${project.id}/migration/${migration.id}`)}
+                            className="flex-1 text-left"
+                          >
+                            {migration.name}
+                          </button>
+                          <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onEditMigration?.(migration.id);
+                              }}
+                              className="rounded p-1 transition-colors hover:bg-foreground/5 hover:text-foreground"
+                              aria-label="Migration bearbeiten"
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onDeleteMigration?.(migration.id);
+                              }}
+                              className="rounded p-1 text-destructive transition-colors hover:bg-destructive/10"
+                              aria-label="Migration löschen"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
               </div>
             );
           })}
           </div>
 
-          <div className="space-y-2 pt-4 border-t border-sidebar-border">
+          <div className="space-y-2 border-t border-border/60 pt-4">
             <div className="flex items-center justify-between px-2">
               <h3 className="text-xs font-semibold text-muted-foreground uppercase">Migrationen</h3>
               <Button
@@ -181,10 +183,10 @@ const Sidebar = ({
                   <div
                     key={migration.id}
                     className={cn(
-                      "group flex items-center justify-between w-full px-4 py-2 rounded-lg transition-colors text-sm",
+                      "group flex items-center justify-between w-full rounded-xl px-4 py-2 text-sm transition-colors",
                       selectedMigration === migration.id
                         ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                        : "text-muted-foreground hover:bg-sidebar-accent/50 hover:text-foreground"
+                        : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
                     )}
                   >
                     <button
@@ -193,13 +195,13 @@ const Sidebar = ({
                     >
                       {migration.name}
                     </button>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           onEditMigration?.(migration.id);
                         }}
-                        className="p-1 hover:text-primary"
+                        className="rounded p-1 transition-colors hover:bg-foreground/5 hover:text-foreground"
                         aria-label="Migration bearbeiten"
                       >
                         <Pencil className="h-4 w-4" />
@@ -209,7 +211,7 @@ const Sidebar = ({
                           e.stopPropagation();
                           onDeleteMigration?.(migration.id);
                         }}
-                        className="p-1 hover:text-destructive"
+                        className="rounded p-1 text-destructive transition-colors hover:bg-destructive/10"
                         aria-label="Migration löschen"
                       >
                         <Trash2 className="h-4 w-4" />

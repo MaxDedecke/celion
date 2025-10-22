@@ -267,120 +267,113 @@ const DataSources = () => {
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
+      <div className="app-shell flex min-h-screen items-center justify-center p-6">
         <p className="text-muted-foreground">Laden...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-background p-8">
-      <div className="max-w-6xl mx-auto">
-        <div className="flex items-center gap-4 mb-8">
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => navigate("/dashboard")}
-          >
-            <ArrowLeft className="h-5 w-5" />
-          </Button>
-          <div className="flex-1">
-            <h1 className="text-3xl font-bold">Datenquellen</h1>
-            <p className="text-muted-foreground mt-1">
-              Verwalten Sie Ihre Unternehmens-Datenquellen
-            </p>
+    <div className="app-shell flex min-h-screen flex-col p-6">
+      <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+        <div className="app-surface flex items-center justify-between rounded-3xl px-6 py-5">
+          <div className="flex items-center gap-4">
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => navigate("/dashboard")}
+              className="rounded-full border border-border/60"
+            >
+              <ArrowLeft className="h-5 w-5" />
+            </Button>
+            <div>
+              <h1 className="text-2xl font-semibold text-foreground">Datenquellen</h1>
+              <p className="text-sm text-muted-foreground">Verwalte die Systeme, die du anbindest.</p>
+            </div>
           </div>
-          <Button onClick={() => handleOpenDialog()}>
-            <Plus className="h-4 w-4 mr-2" />
+          <Button onClick={() => handleOpenDialog()} className="rounded-full px-5 py-2">
+            <Plus className="mr-2 h-4 w-4" />
             Neue Datenquelle
           </Button>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {dataSources.map((source) => {
-            const SourceIcon = getSourceIcon(source.source_type);
-            return (
-              <Card key={source.id} className="bg-card border-border">
-                <CardHeader className="flex flex-row items-center gap-4 pb-3">
-                  <div className="flex-shrink-0">
-                    <div className="w-12 h-12 rounded-lg bg-primary/10 flex items-center justify-center">
-                      <SourceIcon className="h-6 w-6 text-primary" />
+        <div className="app-surface rounded-3xl p-6">
+          <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {dataSources.map((source) => {
+              const SourceIcon = getSourceIcon(source.source_type);
+              return (
+                <Card key={source.id} className="app-subtle border border-border/50">
+                  <CardHeader className="flex flex-row items-center gap-4 pb-3">
+                    <div className="flex-shrink-0">
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full border border-border/50 bg-foreground/5">
+                        <SourceIcon className="h-6 w-6 text-foreground" />
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <CardTitle className="text-lg">{source.name}</CardTitle>
-                    <p className="text-sm text-muted-foreground mt-1">
-                      {source.source_type}
-                    </p>
-                  </div>
-                  <div className="flex gap-1 flex-shrink-0">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleOpenDialog(source)}
-                    >
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => handleDelete(source.id)}
-                    >
-                      <Trash2 className="h-4 w-4 text-destructive" />
-                    </Button>
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="space-y-2 text-sm ml-16">
-                    {source.api_url && (
-                      <p className="text-muted-foreground truncate">
-                        URL: {source.api_url}
-                      </p>
-                    )}
-                    <p className="text-muted-foreground">
-                      Auth: {source.auth_type}
-                    </p>
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground">Verfügbarkeit:</span>
-                      <span className="text-foreground">
-                        {source.is_global
-                          ? "Global"
-                          : source.assigned_projects && source.assigned_projects.length > 0
-                          ? `${source.assigned_projects.length} ${source.assigned_projects.length === 1 ? 'Projekt' : 'Projekte'}`
-                          : "Kein Zugriff"}
-                      </span>
+                    <div className="flex-1 min-w-0">
+                      <CardTitle className="text-lg text-foreground">{source.name}</CardTitle>
+                      <p className="mt-1 text-sm text-muted-foreground">{source.source_type}</p>
                     </div>
-                    <div className="flex items-center gap-2">
-                      <span className="text-muted-foreground">Status:</span>
-                      <span
-                        className={
-                          source.is_active ? "text-success" : "text-muted-foreground"
-                        }
+                    <div className="flex gap-1">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleOpenDialog(source)}
+                        className="rounded-full hover:bg-foreground/5"
                       >
-                        {source.is_active ? "Aktiv" : "Inaktiv"}
-                      </span>
+                        <Pencil className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        onClick={() => handleDelete(source.id)}
+                        className="rounded-full text-destructive hover:bg-destructive/10"
+                      >
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
                     </div>
-                  </div>
-                </CardContent>
-            </Card>
-            );
-          })}
+                  </CardHeader>
+                  <CardContent>
+                    <div className="ml-16 space-y-2 text-sm">
+                      {source.api_url && (
+                        <p className="truncate text-muted-foreground">URL: {source.api_url}</p>
+                      )}
+                      <p className="text-muted-foreground">Auth: {source.auth_type}</p>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">Verfügbarkeit:</span>
+                        <span className="text-foreground">
+                          {source.is_global
+                            ? "Global"
+                            : source.assigned_projects && source.assigned_projects.length > 0
+                            ? `${source.assigned_projects.length} ${source.assigned_projects.length === 1 ? 'Projekt' : 'Projekte'}`
+                            : "Kein Zugriff"}
+                        </span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-muted-foreground">Status:</span>
+                        <span className={source.is_active ? "text-success" : "text-muted-foreground"}>
+                          {source.is_active ? "Aktiv" : "Inaktiv"}
+                        </span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              );
+            })}
 
-          {dataSources.length === 0 && (
-            <div className="col-span-full text-center py-12">
-              <p className="text-muted-foreground">
-                Noch keine Datenquellen vorhanden
-              </p>
-              <Button
-                onClick={() => handleOpenDialog()}
-                className="mt-4"
-                variant="outline"
-              >
-                <Plus className="h-4 w-4 mr-2" />
-                Erste Datenquelle erstellen
-              </Button>
-            </div>
-          )}
+            {dataSources.length === 0 && (
+              <div className="app-subtle col-span-full flex flex-col items-center justify-center gap-4 rounded-2xl px-10 py-16 text-center">
+                <p className="text-muted-foreground">Noch keine Datenquellen vorhanden</p>
+                <Button
+                  onClick={() => handleOpenDialog()}
+                  variant="outline"
+                  className="rounded-full px-5"
+                >
+                  <Plus className="mr-2 h-4 w-4" />
+                  Erste Datenquelle erstellen
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       </div>
 
@@ -398,38 +391,19 @@ const DataSources = () => {
                 <Input
                   id="name"
                   value={formData.name}
-                  onChange={(e) =>
-                    setFormData({ ...formData, name: e.target.value })
-                  }
-                  placeholder="z.B. Jira Production"
+                  onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                 />
               </div>
               <div className="space-y-2">
                 <Label htmlFor="source_type">Typ</Label>
                 <Select
                   value={formData.source_type}
-                  onValueChange={(value) =>
-                    setFormData({ ...formData, source_type: value })
-                  }
+                  onValueChange={(value) => setFormData({ ...formData, source_type: value })}
                 >
-                  <SelectTrigger id="source_type">
-                    <SelectValue />
+                  <SelectTrigger>
+                    <SelectValue placeholder="Quelle auswählen" />
                   </SelectTrigger>
                   <SelectContent>
-                    {dataSources.length > 0 && (
-                      <>
-                        {dataSources.map((source) => (
-                          <SelectItem 
-                            key={source.id} 
-                            value={source.source_type}
-                            className="font-bold text-primary"
-                          >
-                            {source.source_type}
-                          </SelectItem>
-                        ))}
-                        <SelectSeparator />
-                      </>
-                    )}
                     {defaultSourceTypes.map((type) => (
                       <SelectItem key={type} value={type}>
                         {type}
@@ -440,153 +414,129 @@ const DataSources = () => {
               </div>
             </div>
 
-            <div className="space-y-2">
-              <Label htmlFor="api_url">API URL</Label>
-              <Input
-                id="api_url"
-                value={formData.api_url}
-                onChange={(e) =>
-                  setFormData({ ...formData, api_url: e.target.value })
-                }
-                placeholder="https://api.example.com"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="auth_type">Authentifizierungstyp</Label>
-              <Select
-                value={formData.auth_type}
-                onValueChange={(value) =>
-                  setFormData({ ...formData, auth_type: value })
-                }
-              >
-                <SelectTrigger id="auth_type">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="api_key">API Key</SelectItem>
-                  <SelectItem value="basic">Basic Auth</SelectItem>
-                  <SelectItem value="oauth">OAuth</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {formData.auth_type === "api_key" && (
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="api_url">API URL</Label>
+                <Input
+                  id="api_url"
+                  value={formData.api_url}
+                  onChange={(e) => setFormData({ ...formData, api_url: e.target.value })}
+                />
+              </div>
               <div className="space-y-2">
                 <Label htmlFor="api_key">API Key</Label>
                 <Input
                   id="api_key"
-                  type="password"
                   value={formData.api_key}
-                  onChange={(e) =>
-                    setFormData({ ...formData, api_key: e.target.value })
-                  }
-                  placeholder="Ihr API Key"
+                  onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
                 />
               </div>
-            )}
+            </div>
 
-            {formData.auth_type === "basic" && (
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label htmlFor="username">Benutzername</Label>
-                  <Input
-                    id="username"
-                    value={formData.username}
-                    onChange={(e) =>
-                      setFormData({ ...formData, username: e.target.value })
-                    }
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Passwort</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    value={formData.password}
-                    onChange={(e) =>
-                      setFormData({ ...formData, password: e.target.value })
-                    }
-                  />
-                </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="username">Benutzername</Label>
+                <Input
+                  id="username"
+                  value={formData.username}
+                  onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                />
               </div>
-            )}
+              <div className="space-y-2">
+                <Label htmlFor="password">Passwort</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  value={formData.password}
+                  onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                />
+              </div>
+            </div>
 
-            <div className="flex items-center justify-between">
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="is_active"
-                  checked={formData.is_active}
-                  onCheckedChange={(checked) =>
-                    setFormData({ ...formData, is_active: checked })
-                  }
-                />
-                <Label htmlFor="is_active">Aktiv</Label>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>Authentifizierung</Label>
+                <Select
+                  value={formData.auth_type}
+                  onValueChange={(value) => setFormData({ ...formData, auth_type: value })}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="api_key">API Key</SelectItem>
+                    <SelectItem value="basic">Basic Auth</SelectItem>
+                    <SelectItem value="oauth2">OAuth2</SelectItem>
+                  </SelectContent>
+                </Select>
               </div>
-              <div className="flex items-center space-x-2">
-                <Switch
-                  id="is_global"
-                  checked={formData.is_global}
-                  onCheckedChange={(checked) => {
-                    setFormData({ ...formData, is_global: checked });
-                    if (checked) {
-                      setSelectedProjects([]);
-                    }
-                  }}
-                />
+              <div className="space-y-2">
                 <Label htmlFor="is_global">Global verfügbar</Label>
+                <div className="flex items-center gap-2 rounded-full border border-border/50 px-3 py-2">
+                  <Switch
+                    id="is_global"
+                    checked={formData.is_global}
+                    onCheckedChange={(checked) => setFormData({ ...formData, is_global: checked })}
+                  />
+                  <span className="text-sm text-muted-foreground">
+                    Wenn aktiviert, für alle Projekte verfügbar
+                  </span>
+                </div>
               </div>
             </div>
 
             {!formData.is_global && (
               <div className="space-y-2">
-                <Label>Verfügbar für Projekte</Label>
-                <div className="border rounded-md p-3 max-h-48 overflow-y-auto space-y-2">
-                  {projects.length === 0 ? (
-                    <p className="text-sm text-muted-foreground">
-                      Keine Projekte vorhanden
-                    </p>
-                  ) : (
-                    projects.map((project) => (
-                      <div key={project.id} className="flex items-center space-x-2">
-                        <input
-                          type="checkbox"
-                          id={`project-${project.id}`}
-                          checked={selectedProjects.includes(project.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) {
-                              setSelectedProjects([...selectedProjects, project.id]);
-                            } else {
-                              setSelectedProjects(
-                                selectedProjects.filter((id) => id !== project.id)
-                              );
-                            }
-                          }}
-                          className="rounded border-input"
-                        />
-                        <label
-                          htmlFor={`project-${project.id}`}
-                          className="text-sm cursor-pointer flex-1"
-                        >
+                <Label>Projekte</Label>
+                <div className="rounded-2xl border border-border/50 p-4">
+                  <Select
+                    value=""
+                    onValueChange={(value) => {
+                      if (!selectedProjects.includes(value)) {
+                        setSelectedProjects([...selectedProjects, value]);
+                      }
+                    }}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Projekt auswählen" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Kein Projekt</SelectItem>
+                      <SelectSeparator />
+                      {projects.map((project) => (
+                        <SelectItem key={project.id} value={project.id}>
                           {project.name}
-                        </label>
-                      </div>
-                    ))
-                  )}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {selectedProjects.map((projectId) => {
+                      const project = projects.find((p) => p.id === projectId);
+                      return (
+                        <span
+                          key={projectId}
+                          className="rounded-full border border-border/50 px-3 py-1 text-xs text-muted-foreground"
+                        >
+                          {project?.name || projectId}
+                        </span>
+                      );
+                    })}
+                    {selectedProjects.length === 0 && (
+                      <span className="text-sm text-muted-foreground">Noch keine Projekte zugewiesen</span>
+                    )}
+                  </div>
                 </div>
-                {!formData.is_global && selectedProjects.length === 0 && (
-                  <p className="text-sm text-muted-foreground">
-                    ⚠️ Warnung: Ohne Projektzuweisung hat niemand Zugriff auf diese Datenquelle
-                  </p>
-                )}
               </div>
             )}
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsDialogOpen(false)}>
+          <DialogFooter className="pt-4">
+            <Button variant="outline" onClick={() => setIsDialogOpen(false)} className="rounded-full">
               Abbrechen
             </Button>
-            <Button onClick={handleSave}>Speichern</Button>
+            <Button onClick={handleSave} className="rounded-full px-5">
+              Speichern
+            </Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
