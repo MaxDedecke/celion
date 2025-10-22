@@ -9,7 +9,7 @@ import EditProjectDialog from "@/components/dialogs/EditProjectDialog";
 import EditMigrationDialog from "@/components/dialogs/EditMigrationDialog";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { FolderOpen, Plus } from "lucide-react";
+import { FolderOpen, Plus, Trash2 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -384,10 +384,22 @@ const Projects = () => {
               {projects.map((project) => (
                 <Card
                   key={project.id}
-                  className="cursor-pointer hover:shadow-md transition-shadow"
+                  className="cursor-pointer hover:shadow-md transition-shadow relative"
                   onClick={() => handleProjectClick(project.id)}
                 >
                   <CardHeader>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="absolute top-4 right-4 h-8 w-8 text-muted-foreground hover:text-destructive"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setProjectToDelete(project.id);
+                        setShowDeleteDialog(true);
+                      }}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
                     <CardTitle>{project.name}</CardTitle>
                     <CardDescription>
                       {project.description || "Keine Beschreibung"}
