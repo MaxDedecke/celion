@@ -953,7 +953,7 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
 
         <div className={`grid grid-cols-2 gap-8 relative ${isFullscreen ? 'flex-1' : ''}`}>
           {/* Source System Block */}
-          <Card className="border-border h-full">
+          <Card className="bg-transparent border-border h-full">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 {sourceSystem} {sourceObject}
@@ -1044,7 +1044,7 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
           </Card>
 
           {/* Target System Block */}
-          <Card className="border-border h-full">
+          <Card className="bg-transparent border-border h-full">
             <CardHeader>
               <CardTitle className="text-lg flex items-center gap-2">
                 {targetSystem} {targetObject}
