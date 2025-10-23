@@ -1,4 +1,5 @@
 import { Database, Settings as SettingsIcon, Trash2, Check, Link, Download, RefreshCw, Loader2, Upload, ArrowLeftRight, Workflow } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import CircularProgress from "./CircularProgress";
@@ -91,6 +92,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   const [hasImported, setHasImported] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [hasExported, setHasExported] = useState(false);
+  const [exportProgressVisual, setExportProgressVisual] = useState(0);
   const [isValidating, setIsValidating] = useState(false);
   const [hasValidated, setHasValidated] = useState(false);
   const [selectedSourceObject, setSelectedSourceObject] = useState<string>('');
@@ -177,12 +179,55 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
   // Check if import was already completed
   useEffect(() => {
-    const [transferred] = project.objectsTransferred.split('/');
-    const transferredCount = parseInt(transferred);
-    if (transferredCount > 0) {
-      setHasImported(true);
+    const [transferredStr, totalStr] = project.objectsTransferred.split('/');
+    const transferredCount = parseInt(transferredStr) || 0;
+    const totalCount = parseInt(totalStr) || 0;
+    const hasImportActivity = project.activities?.some((activity) =>
+      activity.title?.includes('Import abgeschlossen')
+    ) ?? false;
+
+    const importCompleted = (totalCount > 0 && transferredCount >= totalCount) || hasImportActivity;
+    setHasImported(importCompleted);
+  }, [project.objectsTransferred, project.activities]);
+
+  useEffect(() => {
+    const hasExportActivity = project.activities?.some((activity) =>
+      activity.title?.includes('Export abgeschlossen')
+    ) ?? false;
+    setHasExported(hasExportActivity);
+  }, [project.activities]);
+
+  useEffect(() => {
+    if (hasExported) {
+      setExportProgressVisual(1);
+      return;
     }
-  }, [project.objectsTransferred]);
+
+    if (isExporting) {
+      const start = Date.now();
+      const duration = 2000; // Match simulated export duration
+      let animationFrame: number;
+
+      const animate = () => {
+        const progress = Math.min((Date.now() - start) / duration, 1);
+        setExportProgressVisual(progress);
+
+        if (progress < 1 && isExporting) {
+          animationFrame = requestAnimationFrame(animate);
+        }
+      };
+
+      animationFrame = requestAnimationFrame(animate);
+
+      return () => {
+        if (animationFrame) {
+          cancelAnimationFrame(animationFrame);
+        }
+      };
+    }
+
+    setExportProgressVisual(0);
+  }, [isExporting, hasExported]);
 
 
   // Fetch available data sources for linking
@@ -979,10 +1024,92 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
     }
   };
 
+  const [transferredCount, totalCount] = project.objectsTransferred
+    .split('/')
+    .map((value) => parseInt(value) || 0);
+
+  const rawImportProgress = totalCount > 0 ? transferredCount / totalCount : 0;
+  const importEdgeFill = hasImported ? 100 : Math.min(100, rawImportProgress * 100);
+  const exportEdgeFill = hasExported ? 100 : Math.min(100, exportProgressVisual * 100);
+
+  const renderNode = (
+    label: string,
+    Icon: LucideIcon,
+    isActive: boolean,
+    isProcessing: boolean
+  ) => (
+    <div className="flex flex-col items-center gap-2">
+      <div
+        className={`w-14 h-14 rounded-full border-2 flex items-center justify-center transition-all duration-500 ${
+          isActive
+            ? 'bg-primary text-primary-foreground border-primary/70 shadow-lg shadow-primary/30'
+            : 'bg-muted text-muted-foreground border-border'
+        } ${isProcessing ? 'animate-pulse' : ''}`}
+      >
+        <Icon className="h-6 w-6" />
+      </div>
+      <span className={`text-xs font-medium ${isActive ? 'text-foreground' : 'text-muted-foreground'}`}>
+        {label}
+      </span>
+    </div>
+  );
+
+  const renderEdge = (fill: number, isActive: boolean) => (
+    <div className={`flex-1 h-1.5 rounded-full bg-muted relative overflow-hidden ${isActive ? 'shadow-[0_0_12px_rgba(59,130,246,0.4)]' : ''}`}>
+      <div
+        className="absolute inset-y-0 left-0 bg-primary transition-all duration-500"
+        style={{ width: `${fill}%` }}
+      />
+    </div>
+  );
+
+  const importStatus = hasImported
+    ? 'Import abgeschlossen'
+    : isImporting
+    ? 'Import läuft'
+    : 'Bereit für Import';
+
+  const exportStatus = hasExported
+    ? 'Export abgeschlossen'
+    : isExporting
+    ? 'Export läuft'
+    : 'Bereit für Export';
+
   return (
     <div className="h-full p-8 pb-6 space-y-6">
       {activeTab === "general" && (
         <div className="space-y-6 pb-6">
+          <Card className="bg-card border-border">
+            <CardContent className="pt-6">
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Migrationsfluss</p>
+                    <p className="text-xs text-muted-foreground">
+                      Visualisierung des Datenwegs von Quelle über Celion bis zum Zielsystem.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span>{importStatus}</span>
+                    <span className="text-muted-foreground/40">•</span>
+                    <span>{exportStatus}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  {renderNode('Quelle', Download, true, isImporting && importEdgeFill < 100)}
+                  {renderEdge(importEdgeFill, isImporting || hasImported)}
+                  {renderNode('Celion', Workflow, hasImported || importEdgeFill >= 100, isImporting && importEdgeFill < 100)}
+                  {renderEdge(exportEdgeFill, isExporting || hasExported)}
+                  {renderNode('Zielsystem', Upload, hasExported || exportEdgeFill >= 100, isExporting && exportEdgeFill < 100)}
+                </div>
+                <div className="flex justify-between text-xs text-muted-foreground px-1">
+                  <span>Import: {Math.round(importEdgeFill)}%</span>
+                  <span>Export: {Math.round(exportEdgeFill)}%</span>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           {/* Progress Card - Full width */}
           <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-10 py-4">
             <div className="flex justify-center">
