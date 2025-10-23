@@ -7,10 +7,9 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/hooks/use-toast";
-import { Moon, Sun, Bell, Globe } from "lucide-react";
+import { Moon, Sun, Bell, Globe, Pencil } from "lucide-react";
 import { useTheme } from "next-themes";
 
 interface AccountDialogProps {
@@ -20,7 +19,6 @@ interface AccountDialogProps {
 }
 
 const AccountDialog = ({ open, onOpenChange, activeTab = "account" }: AccountDialogProps) => {
-  const [isEditing, setIsEditing] = useState(false);
   const [name, setName] = useState("Max Musterman");
   const [role, setRole] = useState("Consultant");
   const [notifications, setNotifications] = useState(true);
@@ -33,21 +31,27 @@ const AccountDialog = ({ open, onOpenChange, activeTab = "account" }: AccountDia
     setCurrentTab(activeTab);
   }, [activeTab]);
 
-  const handleSave = () => {
-    setIsEditing(false);
-    toast({
-      title: "Änderungen gespeichert",
-      description: "Ihre Profildaten wurden erfolgreich aktualisiert.",
-    });
-  };
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-popover border-border max-w-xl">
-        <Tabs value={currentTab} onValueChange={(value) => setCurrentTab(value as "account" | "settings")} className="w-full mt-8">
-          <TabsList className="grid w-full grid-cols-2 bg-muted">
-            <TabsTrigger value="account">Account</TabsTrigger>
-            <TabsTrigger value="settings">Settings</TabsTrigger>
+      <DialogContent className="bg-popover border-border max-w-xl min-h-[520px]">
+        <Tabs
+          value={currentTab}
+          onValueChange={(value) => setCurrentTab(value as "account" | "settings")}
+          className="mt-8 w-full"
+        >
+          <TabsList className="inline-flex items-center gap-2 rounded-full bg-foreground/5 p-1 text-sm">
+            <TabsTrigger
+              value="account"
+              className="rounded-full px-4 py-2 text-sm font-medium text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[state=active]:bg-background data-[state=active]:text-accent"
+            >
+              Account
+            </TabsTrigger>
+            <TabsTrigger
+              value="settings"
+              className="rounded-full px-4 py-2 text-sm font-medium text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[state=active]:bg-background data-[state=active]:text-accent"
+            >
+              Settings
+            </TabsTrigger>
           </TabsList>
           <TabsContent value="account" className="space-y-6 py-6">
             <div className="flex flex-col items-center gap-4">
@@ -60,39 +64,30 @@ const AccountDialog = ({ open, onOpenChange, activeTab = "account" }: AccountDia
               <div className="w-full space-y-4">
                 <div className="space-y-2">
                   <Label htmlFor="name">Name</Label>
-                  <Input
-                    id="name"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    disabled={!isEditing}
-                  />
-                </div>
-                
-                <div className="space-y-2">
-                  <Label htmlFor="role">Rolle</Label>
-                  <Input
-                    id="role"
-                    value={role}
-                    onChange={(e) => setRole(e.target.value)}
-                    disabled={!isEditing}
-                  />
+                  <div className="relative">
+                    <Input
+                      id="name"
+                      value={name}
+                      onChange={(e) => setName(e.target.value)}
+                      disabled
+                      className="pr-10"
+                    />
+                    <Pencil className="pointer-events-none absolute inset-y-0 right-3 my-auto h-4 w-4 text-muted-foreground/50" />
+                  </div>
                 </div>
 
-                <div className="flex gap-2 justify-end">
-                  {isEditing ? (
-                    <>
-                      <Button variant="outline" onClick={() => setIsEditing(false)}>
-                        Abbrechen
-                      </Button>
-                      <Button onClick={handleSave}>
-                        Speichern
-                      </Button>
-                    </>
-                  ) : (
-                    <Button onClick={() => setIsEditing(true)}>
-                      Bearbeiten
-                    </Button>
-                  )}
+                <div className="space-y-2">
+                  <Label htmlFor="role">Rolle</Label>
+                  <div className="relative">
+                    <Input
+                      id="role"
+                      value={role}
+                      onChange={(e) => setRole(e.target.value)}
+                      disabled
+                      className="pr-10"
+                    />
+                    <Pencil className="pointer-events-none absolute inset-y-0 right-3 my-auto h-4 w-4 text-muted-foreground/50" />
+                  </div>
                 </div>
               </div>
             </div>
