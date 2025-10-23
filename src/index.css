@@ -143,128 +143,128 @@ All colors MUST be HSL.
 }
 
 @layer utilities {
-  .animate-orbit {
-    animation: orbit 14s linear infinite;
+  .loader-node {
+    display: block;
+    height: 14px;
+    width: 14px;
+    border-radius: 9999px;
+    background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--accent)));
+    box-shadow: 0 0 16px hsl(var(--primary) / 0.35);
+    opacity: 0.85;
   }
 
-  .animate-glow-pulse {
-    animation: glow-pulse 6s ease-in-out infinite;
+  .loader-node-first {
+    animation: loader-node-first 0.75s ease-out forwards;
   }
 
-  .animate-particle {
-    animation-name: particle-float;
-    animation-duration: 18s;
-    animation-iteration-count: infinite;
-    animation-timing-function: linear;
+  .loader-node-second {
+    animation: loader-node-second 0.75s ease-out forwards;
   }
 
-  .animate-underline {
-    animation: underline-pulse 4s ease-in-out infinite;
+  .loader-node-third {
+    animation: loader-node-third 0.75s ease-out forwards;
   }
 
-  .animate-network-float {
-    animation: network-float 28s ease-in-out infinite;
-  }
-
-  .network-line {
-    stroke-dasharray: 6 18;
-    stroke-dashoffset: 0;
-    animation: network-dash 7s ease-in-out infinite;
-    opacity: 0.35;
-  }
-
-  .network-node {
-    animation: node-pulse 5s ease-in-out infinite;
-    filter: drop-shadow(0 0 6px hsla(259 49% 81% / 0.35));
-  }
-}
-
-@keyframes orbit {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
-}
-
-@keyframes glow-pulse {
-  0%,
-  100% {
-    opacity: 0.7;
-    transform: scale(0.95);
-    box-shadow: 0 0 30px rgba(56, 189, 248, 0.15);
-  }
-  50% {
-    opacity: 1;
-    transform: scale(1.05);
-    box-shadow: 0 0 48px rgba(56, 189, 248, 0.35);
-  }
-}
-
-@keyframes particle-float {
-  0% {
-    transform: translate3d(0, 0, 0);
+  .loader-connector {
+    display: block;
+    height: 100%;
+    width: 100%;
+    border-radius: 9999px;
+    background: linear-gradient(90deg, hsl(var(--primary)), hsl(var(--accent)));
+    transform-origin: left center;
+    transform: scaleX(0);
     opacity: 0;
   }
-  10% {
-    opacity: 1;
+
+  .loader-connector-first {
+    animation: loader-connector-first 0.75s ease-out forwards;
   }
-  70% {
-    opacity: 0.8;
-  }
-  100% {
-    transform: translate3d(0, -60px, 0);
-    opacity: 0;
+
+  .loader-connector-second {
+    animation: loader-connector-second 0.75s ease-out forwards;
   }
 }
 
-@keyframes underline-pulse {
-  0%,
-  100% {
-    transform: translateX(-50%) scaleX(0.6);
-    opacity: 0.4;
-  }
-  50% {
-    transform: translateX(-50%) scaleX(1);
-    opacity: 1;
-  }
-}
-
-@keyframes network-float {
+@keyframes loader-node-first {
   0% {
-    transform: scale(1) translateY(0);
-  }
-  50% {
-    transform: scale(1.05) translateY(-3%);
-  }
-  100% {
-    transform: scale(1) translateY(0);
-  }
-}
-
-@keyframes network-dash {
-  0% {
-    stroke-dashoffset: 0;
-    opacity: 0.15;
-  }
-  50% {
+    transform: scale(0.85);
     opacity: 0.45;
   }
+  20% {
+    transform: scale(1.05);
+    opacity: 1;
+  }
   100% {
-    stroke-dashoffset: -40;
-    opacity: 0.15;
+    transform: scale(1);
+    opacity: 0.9;
   }
 }
 
-@keyframes node-pulse {
+@keyframes loader-node-second {
   0%,
-  100% {
-    transform: scale(0.9);
-    opacity: 0.6;
+  35% {
+    transform: scale(0.85);
+    opacity: 0.5;
   }
   50% {
+    transform: scale(1.25);
+    opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0.95;
+  }
+}
+
+@keyframes loader-node-third {
+  0%,
+  70% {
+    transform: scale(0.8);
+    opacity: 0;
+  }
+  85% {
     transform: scale(1.1);
     opacity: 1;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 0.95;
+  }
+}
+
+@keyframes loader-connector-first {
+  0% {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+  15% {
+    opacity: 1;
+  }
+  40% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 0.85;
+  }
+}
+
+@keyframes loader-connector-second {
+  0%,
+  55% {
+    transform: scaleX(0);
+    opacity: 0;
+  }
+  70% {
+    opacity: 1;
+  }
+  85% {
+    transform: scaleX(1);
+    opacity: 1;
+  }
+  100% {
+    transform: scaleX(1);
+    opacity: 0.85;
   }
 }
