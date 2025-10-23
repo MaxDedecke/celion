@@ -1054,7 +1054,12 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
     </div>
   );
 
-  const renderEdge = (fill: number, isActive: boolean, label: string) => (
+  const renderEdge = (
+    fill: number,
+    isActive: boolean,
+    label: string,
+    showLabel: boolean
+  ) => (
     <div className="flex flex-1 flex-col items-center gap-1">
       <div
         className={`w-full h-1.5 rounded-full bg-muted relative overflow-hidden ${isActive ? 'shadow-[0_0_12px_rgba(59,130,246,0.4)]' : ''}`}
@@ -1064,7 +1069,9 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
           style={{ width: `${fill}%` }}
         />
       </div>
-      <span className="text-xs text-muted-foreground">{label}: {Math.round(fill)}%</span>
+      {showLabel && (
+        <span className="text-xs text-muted-foreground">{label}: {Math.round(fill)}%</span>
+      )}
     </div>
   );
 
@@ -1079,6 +1086,22 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
     : isExporting
     ? 'Export läuft'
     : 'Bereit für Export';
+
+  const connectorsReadyForTransfer = Boolean(
+    hasInConnector &&
+    hasOutConnector &&
+    project.connectors?.in?.is_tested &&
+    project.connectors?.out?.is_tested
+  );
+
+  const shouldShowStatusRow =
+    importStatus !== 'Bereit für Import' || exportStatus !== 'Bereit für Export';
+
+  const shouldShowImportLabel =
+    connectorsReadyForTransfer || isImporting || hasImported;
+
+  const shouldShowExportLabel =
+    connectorsReadyForTransfer || isExporting || hasExported;
 
   return (
     <div className="h-full p-8 pb-6 space-y-6">
@@ -1103,19 +1126,21 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
           <Card className="bg-card border-border">
             <CardContent className="pt-6">
               <div className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <p className="text-sm font-semibold text-foreground">Status</p>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    <span>{importStatus}</span>
-                    <span className="text-muted-foreground/40">•</span>
-                    <span>{exportStatus}</span>
+                {shouldShowStatusRow && (
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <p className="text-sm font-semibold text-foreground">Status</p>
+                    <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                      <span>{importStatus}</span>
+                      <span className="text-muted-foreground/40">•</span>
+                      <span>{exportStatus}</span>
+                    </div>
                   </div>
-                </div>
+                )}
                 <div className="flex items-center gap-3">
                   {renderNode('Quelle', Download, true, isImporting && importEdgeFill < 100)}
-                  {renderEdge(importEdgeFill, isImporting || hasImported, 'Import')}
+                  {renderEdge(importEdgeFill, isImporting || hasImported, 'Import', shouldShowImportLabel)}
                   {renderNode('Celion', Workflow, hasImported || importEdgeFill >= 100, isImporting && importEdgeFill < 100)}
-                  {renderEdge(exportEdgeFill, isExporting || hasExported, 'Export')}
+                  {renderEdge(exportEdgeFill, isExporting || hasExported, 'Export', shouldShowExportLabel)}
                   {renderNode('Zielsystem', Upload, hasExported || exportEdgeFill >= 100, isExporting && exportEdgeFill < 100)}
                 </div>
               </div>
