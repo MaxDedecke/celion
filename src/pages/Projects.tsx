@@ -10,7 +10,7 @@ import EditMigrationDialog from "@/components/dialogs/EditMigrationDialog";
 import DataFlowLoader from "@/components/DataFlowLoader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { FolderOpen, Plus, Trash2, Sparkles, ClipboardList, Users } from "lucide-react";
+import { Folder, FolderOpen, Plus, Trash2, ClipboardList, Users } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import {
@@ -359,7 +359,7 @@ const Projects = () => {
           <header className="app-surface flex items-center justify-between rounded-3xl px-6 py-5">
             <div className="flex items-center gap-4">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-foreground/5">
-                <Sparkles className="h-6 w-6 text-foreground" />
+                <Folder className="h-6 w-6 text-foreground" />
               </div>
               <div>
                 <h1 className="text-xl font-semibold text-foreground">Projekte</h1>
