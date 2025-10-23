@@ -7,6 +7,7 @@ import AddMigrationDialog from "@/components/dialogs/AddMigrationDialog";
 import EditMigrationDialog from "@/components/dialogs/EditMigrationDialog";
 import MigrationDetails from "@/components/MigrationDetails";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import {
   Plus,
   FolderKanban,
@@ -350,18 +351,28 @@ const Dashboard = () => {
               <div className="flex flex-wrap items-center gap-4">
                 <div className="inline-flex items-center gap-2 rounded-full bg-foreground/5 p-1 text-sm">
                   <Button
-                    variant={activeMigrationTab === "general" ? "secondary" : "ghost"}
+                    variant="ghost"
                     onClick={() => setActiveMigrationTab("general")}
                     size="sm"
-                    className="rounded-full px-4"
+                    className={cn(
+                      "rounded-full px-4 transition-colors",
+                      activeMigrationTab === "general"
+                        ? "text-accent"
+                        : "text-muted-foreground",
+                    )}
                   >
                     General
                   </Button>
                   <Button
-                    variant={activeMigrationTab === "mapping" ? "secondary" : "ghost"}
+                    variant="ghost"
                     onClick={() => setActiveMigrationTab("mapping")}
                     size="sm"
-                    className="rounded-full px-4"
+                    className={cn(
+                      "rounded-full px-4 transition-colors",
+                      activeMigrationTab === "mapping"
+                        ? "text-accent"
+                        : "text-muted-foreground",
+                    )}
                   >
                     Mapping UI
                   </Button>
