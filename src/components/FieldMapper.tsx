@@ -909,7 +909,7 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
       <div
         className={`${
           isFullscreen
-            ? 'fixed inset-0 z-50 bg-background p-6 overflow-auto'
+            ? 'fixed inset-0 z-[9999] bg-background p-6 overflow-auto'
             : ''
         } flex flex-col space-y-4`}
       >
