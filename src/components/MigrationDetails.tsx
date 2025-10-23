@@ -41,11 +41,12 @@ import { Label } from "@/components/ui/label";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import TestConnectionDialog from "./dialogs/TestConnectionDialog";
 import { FieldMapper } from "./FieldMapper";
+import { getSystemObjectOptions } from "@/lib/schema-registry";
 import { applyMappingsToRecord, buildSampleRecordFromMappings } from "@/lib/migration-pipeline";
 import { getMappingStorageKey, loadMappingsFromStorage } from "@/lib/mapping-storage";
 import type { FieldMapping } from "@/types/mapping";
@@ -295,75 +296,15 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
     return dataSources.filter(ds => ds.source_type === systemType);
   };
 
-  // Define objects based on system type
-  const getSystemObjects = (system: string) => {
-    const systemObjects: Record<string, { value: string; label: string }[]> = {
-      "Jira Atlassian (Cloud)": [
-        { value: "task", label: "Task" },
-        { value: "issue", label: "Issue" },
-        { value: "epic", label: "Epic" },
-        { value: "story", label: "Story" },
-        { value: "bug", label: "Bug" },
-        { value: "subtask", label: "Subtask" },
-      ],
-      "Jira Atlassian (Server)": [
-        { value: "task", label: "Task" },
-        { value: "issue", label: "Issue" },
-        { value: "epic", label: "Epic" },
-        { value: "story", label: "Story" },
-        { value: "bug", label: "Bug" },
-        { value: "subtask", label: "Subtask" },
-      ],
-      "Azure DevOps": [
-        { value: "user-story", label: "User Story" },
-        { value: "task", label: "Task" },
-        { value: "bug", label: "Bug" },
-        { value: "feature", label: "Feature" },
-        { value: "epic", label: "Epic" },
-      ],
-      "Monday.com": [
-        { value: "item", label: "Item" },
-        { value: "task", label: "Task" },
-        { value: "project", label: "Project" },
-        { value: "milestone", label: "Milestone" },
-      ],
-      "ClickUp": [
-        { value: "task", label: "Task" },
-        { value: "subtask", label: "Subtask" },
-        { value: "checklist", label: "Checklist" },
-        { value: "doc", label: "Doc" },
-      ],
-      "Asana": [
-        { value: "project", label: "Project" },
-        { value: "task", label: "Task" },
-        { value: "section", label: "Section" },
-        { value: "milestone", label: "Milestone" },
-        { value: "tag", label: "Tag" },
-      ],
-      "Trello": [
-        { value: "board", label: "Board" },
-        { value: "card", label: "Card" },
-        { value: "list", label: "List" },
-        { value: "label", label: "Label" },
-      ],
-      "Notion": [
-        { value: "page", label: "Page" },
-        { value: "database", label: "Database" },
-        { value: "task", label: "Task" },
-        { value: "project", label: "Project" },
-      ],
-      "Linear": [
-        { value: "issue", label: "Issue" },
-        { value: "project", label: "Project" },
-        { value: "cycle", label: "Cycle" },
-        { value: "milestone", label: "Milestone" },
-      ],
-    };
-    return systemObjects[system] || [];
-  };
-
-  const sourceObjects = getSystemObjects(project.sourceSystem);
-  const targetObjects = getSystemObjects(project.targetSystem);
+  // Load available objects for mapping
+  const sourceObjects = useMemo(
+    () => getSystemObjectOptions(project.sourceSystem),
+    [project.sourceSystem]
+  );
+  const targetObjects = useMemo(
+    () => getSystemObjectOptions(project.targetSystem),
+    [project.targetSystem]
+  );
 
   const handleEdit = (type: 'in' | 'out') => {
     // Check if inconnector is tested before allowing outconnector edit
@@ -1429,8 +1370,8 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                 </SelectTrigger>
                 <SelectContent>
                   {sourceObjects.map((obj) => (
-                    <SelectItem key={obj.value} value={obj.value}>
-                      {obj.label}
+                    <SelectItem key={obj.id} value={obj.id}>
+                      {obj.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -1454,8 +1395,8 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                 </SelectTrigger>
                 <SelectContent>
                   {targetObjects.map((obj) => (
-                    <SelectItem key={obj.value} value={obj.value}>
-                      {obj.label}
+                    <SelectItem key={obj.id} value={obj.id}>
+                      {obj.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
