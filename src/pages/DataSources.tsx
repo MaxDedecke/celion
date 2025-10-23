@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
-  Plus,
   Trash2,
   Pencil,
   Database,
@@ -313,9 +312,12 @@ const DataSources = () => {
               </div>
             </div>
           </div>
-          <Button onClick={() => handleOpenDialog()} className="rounded-full px-5 py-2">
-            <Plus className="mr-2 h-4 w-4" />
-            Neue Datenquelle
+          <Button
+            type="button"
+            onClick={() => handleOpenDialog()}
+            className="rounded-full px-5 py-2"
+          >
+            + Datenquelle
           </Button>
         </div>
 
@@ -394,12 +396,12 @@ const DataSources = () => {
                 </div>
                 <p className="text-muted-foreground">Noch keine Datenquellen vorhanden</p>
                 <Button
+                  type="button"
                   onClick={() => handleOpenDialog()}
                   variant="outline"
                   className="rounded-full px-5"
                 >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Erste Datenquelle erstellen
+                  + Datenquelle
                 </Button>
               </div>
             )}
