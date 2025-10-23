@@ -17,7 +17,8 @@ import {
   Timer,
   Activity,
   BarChart3,
-  Rocket
+  Rocket,
+  ArrowRight
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -390,7 +391,11 @@ const Dashboard = () => {
                   </Button>
                 </div>
                 <div className="text-base font-semibold text-foreground">
-                  {`${currentMigration.sourceSystem} -> ${currentMigration.targetSystem}`}
+                  <span className="inline-flex items-center gap-2">
+                    <span>{currentMigration.sourceSystem}</span>
+                    <ArrowRight className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
+                    <span>{currentMigration.targetSystem}</span>
+                  </span>
                 </div>
               </div>
             ) : (
@@ -489,7 +494,11 @@ const Dashboard = () => {
                               <div>
                                 <p className="font-medium text-foreground">{migration.name}</p>
                                 <p className="text-sm text-muted-foreground">
-                                  {`${migration.sourceSystem} -> ${migration.targetSystem}`}
+                                  <span className="inline-flex items-center gap-2">
+                                    <span>{migration.sourceSystem}</span>
+                                    <ArrowRight className="h-4 w-4" aria-hidden="true" />
+                                    <span>{migration.targetSystem}</span>
+                                  </span>
                                 </p>
                               </div>
                               <div className="text-right">
