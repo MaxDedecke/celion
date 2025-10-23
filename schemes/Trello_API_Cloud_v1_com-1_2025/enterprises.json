@@ -1,0 +1,20 @@
+{
+  "category": "Enterprise",
+  "description": "Enterprise-spezifische Endpunkte für Organisationen und Mitgliederverwaltung.",
+  "endpoints": [
+    "/enterprises",
+    "/enterprises/{id}",
+    "/enterprises/{id}/members",
+    "/enterprises/{id}/admins"
+  ],
+  "objects": {
+    "Enterprise": {
+      "id": "string",
+      "name": "string",
+      "displayName": "string",
+      "organization": "Organization",
+      "members": "Member[]",
+      "admins": "Member[]"
+    }
+  }
+}

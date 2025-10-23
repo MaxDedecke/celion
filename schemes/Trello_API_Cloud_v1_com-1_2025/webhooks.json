@@ -1,0 +1,18 @@
+{
+  "category": "Realtime & Events",
+  "description": "Webhooks API für Event-basierte Integrationen.",
+  "endpoints": [
+    "/webhooks",
+    "/webhooks/{id}"
+  ],
+  "objects": {
+    "Webhook": {
+      "id": "string",
+      "description": "string",
+      "idModel": "string",
+      "callbackURL": "string",
+      "active": "boolean",
+      "createdAt": "datetime"
+    }
+  }
+}

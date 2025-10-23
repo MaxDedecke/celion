@@ -1,0 +1,87 @@
+{
+  "category": "Organizations",
+  "description": "Teams oder Arbeitsbereiche in Trello.",
+  "endpoints": [
+    "/organizations",
+    "/organizations/{id}",
+    "/members/me/organizations",
+    "/webhooks",
+    "/webhooks/{id}",
+    "/notifications",
+    "/notifications/{id}",
+    "/search",
+    "/search/members",
+    "/enterprises",
+    "/enterprises/{id}",
+    "/enterprises/{id}/members",
+    "/plugins",
+    "/plugins/{id}",
+    "/boardPlugins",
+    "/batch",
+    "/stickers",
+    "/emoji"
+  ],
+  "objects": {
+    "Organization": {
+      "id": "string",
+      "name": "string",
+      "displayName": "string",
+      "desc": "string",
+      "url": "string",
+      "members": "Member[]"
+    },
+    "Webhook": {
+      "id": "string",
+      "description": "string",
+      "idModel": "string",
+      "callbackURL": "string",
+      "active": "boolean",
+      "createdAt": "datetime"
+    },
+    "Notification": {
+      "id": "string",
+      "type": "string",
+      "date": "datetime",
+      "unread": "boolean",
+      "memberCreator": "Member",
+      "data": "object"
+    },
+    "SearchResult": {
+      "id": "string",
+      "type": "string",
+      "name": "string",
+      "url": "string",
+      "idBoard": "string",
+      "idList": "string"
+    },
+    "Enterprise": {
+      "id": "string",
+      "name": "string",
+      "displayName": "string",
+      "idBoards": "string[]",
+      "members": "Member[]"
+    },
+    "Plugin": {
+      "id": "string",
+      "name": "string",
+      "url": "string",
+      "public": "boolean",
+      "scope": "string"
+    },
+    "BatchRequest": {
+      "requests": "object[]",
+      "responses": "object[]"
+    },
+    "Sticker": {
+      "id": "string",
+      "imageUrl": "string",
+      "top": "number",
+      "left": "number",
+      "zIndex": "number"
+    },
+    "Emoji": {
+      "name": "string",
+      "unicode": "string"
+    }
+  }
+}

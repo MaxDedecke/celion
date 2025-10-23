@@ -1,0 +1,27 @@
+{
+  "category": "Power-Ups & Plugins",
+  "description": "APIs für Board-Plugins, Power-Ups und Plugin-Daten.",
+  "endpoints": [
+    "/boardPlugins",
+    "/plugins",
+    "/plugins/{id}",
+    "/plugins/{id}/data"
+  ],
+  "objects": {
+    "Plugin": {
+      "id": "string",
+      "name": "string",
+      "url": "string",
+      "public": "boolean",
+      "author": "string",
+      "version": "string"
+    },
+    "PluginData": {
+      "id": "string",
+      "idPlugin": "string",
+      "idModel": "string",
+      "scope": "string",
+      "value": "object"
+    }
+  }
+}

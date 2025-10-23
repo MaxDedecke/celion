@@ -1,0 +1,18 @@
+{
+  "category": "User Notifications",
+  "description": "Benachrichtigungen für Nutzeraktionen (Kommentare, Einladungen, etc.).",
+  "endpoints": [
+    "/notifications",
+    "/notifications/{id}"
+  ],
+  "objects": {
+    "Notification": {
+      "id": "string",
+      "type": "string",
+      "unread": "boolean",
+      "date": "datetime",
+      "data": "object",
+      "memberCreator": "Member"
+    }
+  }
+}

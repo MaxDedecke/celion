@@ -1,0 +1,87 @@
+{
+  "category": "Members",
+  "description": "Benutzer, die Boards, Lists und Cards bearbeiten.",
+  "endpoints": [
+    "/members/me",
+    "/boards/{id}/members",
+    "/members/{id}",
+    "/webhooks",
+    "/webhooks/{id}",
+    "/notifications",
+    "/notifications/{id}",
+    "/search",
+    "/search/members",
+    "/enterprises",
+    "/enterprises/{id}",
+    "/enterprises/{id}/members",
+    "/plugins",
+    "/plugins/{id}",
+    "/boardPlugins",
+    "/batch",
+    "/stickers",
+    "/emoji"
+  ],
+  "objects": {
+    "Member": {
+      "id": "string",
+      "username": "string",
+      "fullName": "string",
+      "initials": "string",
+      "avatarUrl": "string",
+      "email": "string"
+    },
+    "Webhook": {
+      "id": "string",
+      "description": "string",
+      "idModel": "string",
+      "callbackURL": "string",
+      "active": "boolean",
+      "createdAt": "datetime"
+    },
+    "Notification": {
+      "id": "string",
+      "type": "string",
+      "date": "datetime",
+      "unread": "boolean",
+      "memberCreator": "Member",
+      "data": "object"
+    },
+    "SearchResult": {
+      "id": "string",
+      "type": "string",
+      "name": "string",
+      "url": "string",
+      "idBoard": "string",
+      "idList": "string"
+    },
+    "Enterprise": {
+      "id": "string",
+      "name": "string",
+      "displayName": "string",
+      "idBoards": "string[]",
+      "members": "Member[]"
+    },
+    "Plugin": {
+      "id": "string",
+      "name": "string",
+      "url": "string",
+      "public": "boolean",
+      "scope": "string"
+    },
+    "BatchRequest": {
+      "requests": "object[]",
+      "responses": "object[]"
+    },
+    "Sticker": {
+      "id": "string",
+      "imageUrl": "string",
+      "top": "number",
+      "left": "number",
+      "zIndex": "number"
+    },
+    "Emoji": {
+      "name": "string",
+      "unicode": "string"
+    }
+  }
+}

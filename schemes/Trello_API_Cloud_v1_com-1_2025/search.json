@@ -1,0 +1,23 @@
+{
+  "category": "Search",
+  "description": "Globale Suche nach Boards, Cards, Members oder Organizations.",
+  "endpoints": [
+    "/search",
+    "/search/members"
+  ],
+  "objects": {
+    "SearchRequest": {
+      "query": "string",
+      "modelTypes": "string[]",
+      "board_fields": "string",
+      "card_fields": "string",
+      "partial": "boolean"
+    },
+    "SearchResult": {
+      "boards": "Board[]",
+      "cards": "Card[]",
+      "members": "Member[]",
+      "organizations": "Organization[]"
+    }
+  }
+}
