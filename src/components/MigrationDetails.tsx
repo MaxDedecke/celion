@@ -40,11 +40,14 @@ import { Label } from "@/components/ui/label";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import TestConnectionDialog from "./dialogs/TestConnectionDialog";
 import { FieldMapper } from "./FieldMapper";
+import { applyMappingsToRecord, buildSampleRecordFromMappings } from "@/lib/migration-pipeline";
+import { getMappingStorageKey, loadMappingsFromStorage } from "@/lib/mapping-storage";
+import type { FieldMapping } from "@/types/mapping";
 
 interface MigrationProject {
   id: string;
@@ -118,6 +121,21 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
   const hasInConnector = !!project.connectors?.in;
   const hasOutConnector = !!project.connectors?.out;
+
+  const loadActiveMappings = useCallback((): FieldMapping[] => {
+    if (!selectedSourceObject || !selectedTargetObject) {
+      return [];
+    }
+
+    const key = getMappingStorageKey(
+      project.sourceSystem,
+      selectedSourceObject,
+      project.targetSystem,
+      selectedTargetObject
+    );
+
+    return loadMappingsFromStorage(key);
+  }, [project.sourceSystem, project.targetSystem, selectedSourceObject, selectedTargetObject]);
 
   // Load meta model approval status from database
   useEffect(() => {
@@ -642,11 +660,50 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   const handleImportStart = async () => {
     try {
       setIsImporting(true);
-      
+
+      const activeMappings = loadActiveMappings();
+
+      if (activeMappings.length > 0) {
+        const sampleRecord = buildSampleRecordFromMappings(activeMappings);
+        const populatedSample = Object.keys(sampleRecord).reduce<Record<string, unknown>>((acc, key) => {
+          acc[key] = `Sample(${key})`;
+          return acc;
+        }, {});
+
+        try {
+          const { errors, logs, result: transformedSample } = await applyMappingsToRecord(populatedSample, activeMappings, {
+            sourceSystem: project.sourceSystem,
+            targetSystem: project.targetSystem,
+            sourceObject: selectedSourceObject,
+            targetObject: selectedTargetObject,
+          });
+
+          if (logs.length) {
+            console.groupCollapsed('Mapping Pipeline Preview');
+            logs.forEach((log) => console.log(`[${log.level}] ${log.message}`, log.detail ?? ''));
+            console.groupEnd();
+          }
+
+          if (errors.length) {
+            errors.forEach((log) => console.error(`[Pipeline Error] ${log.message}`, log.detail ?? ''));
+            toast.error("Mapping-Validierung fehlgeschlagen. Bitte Konfiguration prüfen.");
+            setIsImporting(false);
+            return;
+          }
+
+          console.debug('Transformierte Pipeline-Vorschau', transformedSample);
+        } catch (error) {
+          console.error('Fehler bei der Pipeline-Ausführung', error);
+          toast.error('Fehler bei der Mapping-Auswertung in der Pipeline');
+          setIsImporting(false);
+          return;
+        }
+      }
+
       // Get the target count from mapped_objects
       const [, targetCountStr] = project.mappedObjects.split('/');
       const targetCount = parseInt(targetCountStr) || 0;
-      
+
       if (targetCount === 0) {
         toast.error("Keine Objekte zum Importieren gefunden");
         setIsImporting(false);

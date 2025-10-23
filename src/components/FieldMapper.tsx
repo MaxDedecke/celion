@@ -1,18 +1,49 @@
-import { useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Puzzle, ArrowRight, Wand2, Maximize2, Minimize2, X } from "lucide-react";
+import {
+  Puzzle,
+  ArrowRight,
+  Wand2,
+  Maximize2,
+  Minimize2,
+  Info,
+  Edit3,
+} from "lucide-react";
 import { Button } from "./ui/button";
 import { toast } from "sonner";
+import { Badge } from "./ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
+import { Label } from "./ui/label";
+import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
+import { Input } from "./ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "./ui/select";
+import type { FieldMapping, MappingType } from "@/types/mapping";
+import {
+  createMappingId,
+  getMappingStorageKey,
+  loadMappingsFromStorage,
+  saveMappingsToStorage,
+} from "@/lib/mapping-storage";
 
 interface Field {
   id: string;
   name: string;
   type?: string;
-}
-
-interface FieldMapping {
-  sourceFieldId: string;
-  targetFieldId: string;
+  children?: Field[];
 }
 
 interface FieldMapperProps {
@@ -356,10 +387,35 @@ const objectFields: Record<string, Field[]> = {
     { id: "name", name: "Name", type: "text" },
     { id: "desc", name: "Description", type: "text" },
     { id: "idList", name: "List ID", type: "text" },
-    { id: "idMembers", name: "Members", type: "array" },
-    { id: "labels", name: "Labels", type: "array" },
+    {
+      id: "idMembers",
+      name: "Members",
+      type: "array",
+      children: [
+        { id: "id", name: "Member ID", type: "text" },
+        { id: "fullName", name: "Full Name", type: "text" },
+        { id: "username", name: "Username", type: "text" },
+      ],
+    },
+    {
+      id: "labels",
+      name: "Labels",
+      type: "array",
+      children: [
+        { id: "name", name: "Label Name", type: "text" },
+        { id: "color", name: "Color", type: "text" },
+      ],
+    },
     { id: "due", name: "Due Date", type: "date" },
-    { id: "attachments", name: "Attachments", type: "array" },
+    {
+      id: "attachments",
+      name: "Attachments",
+      type: "array",
+      children: [
+        { id: "name", name: "Attachment Name", type: "text" },
+        { id: "url", name: "URL", type: "text" },
+      ],
+    },
   ],
   "trello-list": [
     { id: "id", name: "ID", type: "text" },
@@ -385,8 +441,24 @@ const objectFields: Record<string, Field[]> = {
   "trello-board": [
     { id: "id", name: "ID", type: "text" },
     { id: "name", name: "Name", type: "text" },
-    { id: "lists", name: "Lists", type: "array" },
-    { id: "members", name: "Members", type: "array" },
+    {
+      id: "lists",
+      name: "Lists",
+      type: "array",
+      children: [
+        { id: "id", name: "List ID", type: "text" },
+        { id: "name", name: "List Name", type: "text" },
+      ],
+    },
+    {
+      id: "members",
+      name: "Members",
+      type: "array",
+      children: [
+        { id: "id", name: "Member ID", type: "text" },
+        { id: "fullName", name: "Full Name", type: "text" },
+      ],
+    },
   ],
   
   // Notion
@@ -474,29 +546,81 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
   const [draggedField, setDraggedField] = useState<{ side: 'source' | 'target', fieldId: string } | null>(null);
   const [hoveredField, setHoveredField] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isStorageReady, setIsStorageReady] = useState(false);
+  const [isMappingModalOpen, setIsMappingModalOpen] = useState(false);
+  const [editingMappingId, setEditingMappingId] = useState<string | null>(null);
+  const [draftMapping, setDraftMapping] = useState<FieldMapping | null>(null);
+
+  const storageKey = useMemo(
+    () => getMappingStorageKey(sourceSystem, sourceObject, targetSystem, targetObject),
+    [sourceSystem, sourceObject, targetSystem, targetObject]
+  );
 
   const sourceFields = getFieldsForObject(sourceSystem, sourceObject);
   const targetFields = getFieldsForObject(targetSystem, targetObject);
 
+  const createDirectMapping = useCallback(
+    (sourceFieldId: string, targetFieldId: string): FieldMapping => ({
+      id: createMappingId(),
+      sourceFieldId,
+      targetFieldId,
+      mappingType: "direct",
+      updatedAt: new Date().toISOString(),
+    }),
+    []
+  );
+
+  const updateMappingEntry = useCallback((updated: FieldMapping) => {
+    setMappings((prev) =>
+      prev.map((mapping) =>
+        mapping.id === updated.id
+          ? { ...updated, updatedAt: new Date().toISOString() }
+          : mapping
+      )
+    );
+  }, []);
+
+  const getMappingsForField = useCallback(
+    (side: 'source' | 'target', fieldId: string): FieldMapping[] => {
+      return mappings.filter((mapping) =>
+        side === 'source'
+          ? mapping.sourceFieldId === fieldId
+          : mapping.targetFieldId === fieldId
+      );
+    },
+    [mappings]
+  );
+
+  useEffect(() => {
+    const storedMappings = loadMappingsFromStorage(storageKey);
+    setMappings(storedMappings);
+    setIsStorageReady(true);
+  }, [storageKey]);
+
+  useEffect(() => {
+    if (!isStorageReady) return;
+    saveMappingsToStorage(storageKey, mappings);
+  }, [isStorageReady, mappings, storageKey]);
+
   // Auto-map fields with exact matching names
   const handleAutoMap = () => {
     const newMappings: FieldMapping[] = [];
-    
+
     sourceFields.forEach(sourceField => {
       const matchingTargetField = targetFields.find(
         targetField => targetField.name.toLowerCase() === sourceField.name.toLowerCase()
       );
-      
+
       if (matchingTargetField) {
         // Check if this exact mapping already exists
         const exists = mappings.some(
-          m => m.sourceFieldId === sourceField.id && m.targetFieldId === matchingTargetField.id
+          m =>
+            m.mappingType === "direct" &&
+            m.targetFieldId === matchingTargetField.id &&
+            m.sourceFieldId === sourceField.id
         );
         if (!exists) {
-          newMappings.push({
-            sourceFieldId: sourceField.id,
-            targetFieldId: matchingTargetField.id
-          });
+          newMappings.push(createDirectMapping(sourceField.id, matchingTargetField.id));
         }
       }
     });
@@ -509,32 +633,33 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
     }
   };
 
-  // Get all mapped target fields for a source field (or vice versa)
-  const getMappedFields = (side: 'source' | 'target', fieldId: string): string[] => {
-    return mappings
-      .filter(m => side === 'source' ? m.sourceFieldId === fieldId : m.targetFieldId === fieldId)
-      .map(m => side === 'source' ? m.targetFieldId : m.sourceFieldId);
-  };
-
   // Check if field is involved in hover highlighting
   const isHighlighted = (side: 'source' | 'target', fieldId: string): boolean => {
     if (!hoveredField) return false;
-    
+
     // If this field is hovered
     if (hoveredField === fieldId) return true;
-    
+
     // Check if this field is connected to the hovered field
-    const hoveredInSource = mappings.some(m => m.sourceFieldId === hoveredField);
-    const hoveredInTarget = mappings.some(m => m.targetFieldId === hoveredField);
-    
-    if (hoveredInSource) {
-      // Hovered field is a source field, highlight all its targets
-      return mappings.some(m => m.sourceFieldId === hoveredField && m.targetFieldId === fieldId);
-    } else if (hoveredInTarget) {
-      // Hovered field is a target field, highlight all its sources
-      return mappings.some(m => m.targetFieldId === hoveredField && m.sourceFieldId === fieldId);
+    const hoveredAsSource = mappings.filter(m => m.sourceFieldId === hoveredField);
+    const hoveredAsTarget = mappings.filter(m => m.targetFieldId === hoveredField);
+
+    if (hoveredAsSource.length > 0) {
+      if (side === 'target') {
+        return hoveredAsSource.some(m => m.targetFieldId === fieldId);
+      }
+
+      return hoveredField === fieldId;
     }
-    
+
+    if (hoveredAsTarget.length > 0) {
+      if (side === 'source') {
+        return hoveredAsTarget.some(m => m.sourceFieldId === fieldId);
+      }
+
+      return hoveredField === fieldId;
+    }
+
     return false;
   };
 
@@ -558,40 +683,229 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
     const sourceFieldId = draggedField.side === 'source' ? draggedField.fieldId : fieldId;
     const targetFieldId = draggedField.side === 'target' ? draggedField.fieldId : fieldId;
 
-    // Check if this exact mapping already exists
-    const exactMappingExists = mappings.some(
-      m => m.sourceFieldId === sourceFieldId && m.targetFieldId === targetFieldId
+    const directMapping = mappings.find(
+      m =>
+        m.mappingType === "direct" &&
+        m.targetFieldId === targetFieldId &&
+        m.sourceFieldId === sourceFieldId
     );
 
-    if (exactMappingExists) {
-      // Remove this specific mapping
-      setMappings(prev => prev.filter(
-        m => !(m.sourceFieldId === sourceFieldId && m.targetFieldId === targetFieldId)
-      ));
+    if (directMapping) {
+      setMappings(prev => prev.filter(m => m.id !== directMapping.id));
       toast.info("Mapping removed");
     } else {
-      // Add new mapping (allowing multiple mappings per field)
-      setMappings(prev => [...prev, { sourceFieldId, targetFieldId }]);
+      setMappings(prev => [...prev, createDirectMapping(sourceFieldId, targetFieldId)]);
       toast.success("Mapping added");
     }
 
     setDraggedField(null);
   };
 
-  const handleRemoveMapping = (sourceFieldId: string, targetFieldId: string) => {
-    setMappings(prev => prev.filter(
-      m => !(m.sourceFieldId === sourceFieldId && m.targetFieldId === targetFieldId)
-    ));
+  const handleRemoveMapping = (mappingId: string) => {
+    setMappings(prev => prev.filter(m => m.id !== mappingId));
   };
 
+  const openMappingEditor = (mapping: FieldMapping) => {
+    setEditingMappingId(mapping.id);
+    setDraftMapping({ ...mapping });
+    setIsMappingModalOpen(true);
+  };
+
+  const closeMappingEditor = () => {
+    setIsMappingModalOpen(false);
+    setEditingMappingId(null);
+    setDraftMapping(null);
+  };
+
+  const defaultJoinWith = ", ";
+
+  const collectionCandidates = useMemo(
+    () => sourceFields.filter((field) => field.type === "array" && field.children?.length),
+    [sourceFields]
+  );
+
+  const selectedCollectionField = useMemo(() => {
+    if (!draftMapping || draftMapping.mappingType !== "collection") {
+      return undefined;
+    }
+
+    return collectionCandidates.find((field) => field.id === draftMapping.sourceFieldId);
+  }, [draftMapping, collectionCandidates]);
+
+  const handleMappingTypeChange = (value: MappingType) => {
+    if (value === "collection" && collectionCandidates.length === 0) {
+      toast.error("Für dieses Objekt stehen keine Sammlungsfelder zur Verfügung.");
+      return;
+    }
+
+    setDraftMapping((prev) => {
+      if (!prev) return prev;
+
+      if (value === "direct") {
+        return {
+          id: prev.id,
+          mappingType: "direct",
+          sourceFieldId: prev.sourceFieldId,
+          targetFieldId: prev.targetFieldId,
+          description: prev.description,
+          updatedAt: prev.updatedAt,
+        };
+      }
+
+      const previousChildId = prev.mappingType === "collection" ? prev.collectionItemFieldId : undefined;
+      const fallbackField =
+        collectionCandidates.find((field) => field.id === prev.sourceFieldId) ??
+        collectionCandidates[0];
+
+      if (!fallbackField) {
+        return prev;
+      }
+
+      const fallbackChild =
+        fallbackField.children?.find((child) => child.id === previousChildId) ??
+        fallbackField.children?.[0];
+
+      return {
+        id: prev.id,
+        mappingType: "collection",
+        sourceFieldId: fallbackField.id,
+        targetFieldId: prev.targetFieldId,
+        description: prev.description,
+        updatedAt: prev.updatedAt,
+        collectionItemFieldId: fallbackChild?.id ?? "",
+        joinWith: prev.mappingType === "collection" ? prev.joinWith ?? defaultJoinWith : defaultJoinWith,
+      };
+    });
+  };
+
+  const handleDirectSourceChange = (fieldId: string) => {
+    setDraftMapping((prev) => {
+      if (!prev || prev.mappingType !== "direct") return prev;
+
+      return { ...prev, sourceFieldId: fieldId };
+    });
+  };
+
+  const handleCollectionFieldChange = (fieldId: string) => {
+    setDraftMapping((prev) => {
+      if (!prev || prev.mappingType !== "collection") return prev;
+
+      const field = collectionCandidates.find((candidate) => candidate.id === fieldId);
+      if (!field) {
+        return prev;
+      }
+
+      const nextChild = field.children?.[0];
+
+      return {
+        ...prev,
+        sourceFieldId: field.id,
+        collectionItemFieldId: nextChild?.id ?? "",
+      };
+    });
+  };
+
+  const handleCollectionItemFieldChange = (fieldId: string) => {
+    setDraftMapping((prev) => {
+      if (!prev || prev.mappingType !== "collection") return prev;
+
+      return {
+        ...prev,
+        collectionItemFieldId: fieldId,
+      };
+    });
+  };
+
+  const handleJoinWithChange = (value: string) => {
+    setDraftMapping((prev) => {
+      if (!prev || prev.mappingType !== "collection") return prev;
+
+      return {
+        ...prev,
+        joinWith: value,
+      };
+    });
+  };
+
+  const handleSaveMappingDetails = () => {
+    if (!draftMapping) return;
+
+    if (draftMapping.mappingType === "direct") {
+      if (!draftMapping.sourceFieldId) {
+        toast.error("Bitte ein Quellfeld auswählen.");
+        return;
+      }
+
+      updateMappingEntry(draftMapping);
+      toast.success("Mapping aktualisiert");
+      closeMappingEditor();
+      return;
+    }
+
+    if (!draftMapping.sourceFieldId) {
+      toast.error("Bitte eine Sammlung auswählen.");
+      return;
+    }
+
+    if (!draftMapping.collectionItemFieldId) {
+      toast.error("Bitte ein Feld innerhalb der Sammlung wählen.");
+      return;
+    }
+
+    const sanitizedJoin = draftMapping.joinWith && draftMapping.joinWith.length > 0
+      ? draftMapping.joinWith
+      : defaultJoinWith;
+
+    const updatedMapping: FieldMapping = {
+      ...draftMapping,
+      joinWith: sanitizedJoin,
+    };
+
+    updateMappingEntry(updatedMapping);
+    toast.success("Mapping aktualisiert");
+    closeMappingEditor();
+  };
+
+  const getSourceFieldName = useCallback(
+    (fieldId: string) => sourceFields.find((field) => field.id === fieldId)?.name ?? fieldId,
+    [sourceFields]
+  );
+
+  const getCollectionItemName = useCallback(
+    (collectionId: string, childId: string) => {
+      const collectionField = sourceFields.find((field) => field.id === collectionId);
+      return collectionField?.children?.find((child) => child.id === childId)?.name ?? childId;
+    },
+    [sourceFields]
+  );
+
+  const describeMappingSource = useCallback(
+    (mapping: FieldMapping) => {
+      if (mapping.mappingType === "direct") {
+        return getSourceFieldName(mapping.sourceFieldId);
+      }
+
+      const baseName = getSourceFieldName(mapping.sourceFieldId);
+      const childName = getCollectionItemName(mapping.sourceFieldId, mapping.collectionItemFieldId);
+      return `${baseName}[].${childName}`;
+    },
+    [getSourceFieldName, getCollectionItemName]
+  );
+
+  const getMappingTypeLabel = (mapping: FieldMapping) =>
+    mapping.mappingType === "direct" ? "Direkt" : "Sammlung";
+
+  const getMappingTypeTooltip = (mapping: FieldMapping) =>
+    mapping.mappingType === "direct"
+      ? "1:1 Zuordnung ohne zusätzliche Verarbeitung"
+      : "Werte aus einer Sammlung sammeln und zusammenführen";
+
   const isMapped = (side: 'source' | 'target', fieldId: string) => {
-    return mappings.some(m => 
-      side === 'source' ? m.sourceFieldId === fieldId : m.targetFieldId === fieldId
-    );
+    return getMappingsForField(side, fieldId).length > 0;
   };
 
   return (
-    <>
+    <TooltipProvider>
       <div
         className={`${
           isFullscreen
@@ -647,8 +961,7 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
             </CardHeader>
             <CardContent className="space-y-2">
               {sourceFields.map((field) => {
-                const mappedTargetIds = getMappedFields('source', field.id);
-                const mappedTargets = targetFields.filter(f => mappedTargetIds.includes(f.id));
+                const fieldMappings = getMappingsForField('source', field.id);
                 const highlighted = isHighlighted('source', field.id);
 
                 return (
@@ -676,25 +989,52 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
                       <span className="text-sm font-medium">{field.name}</span>
                     </div>
 
-                    {mappedTargets.length > 0 && (
+                    {fieldMappings.length > 0 && (
                       <div className="flex flex-col gap-1 pl-6">
-                        {mappedTargets.map(target => (
-                          <div key={target.id} className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <ArrowRight className="h-3 w-3" />
-                            <span>{target.name}</span>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-4 w-4 p-0 hover:text-destructive"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRemoveMapping(field.id, target.id);
-                              }}
+                        {fieldMappings.map((mapping) => {
+                          const target = targetFields.find(f => f.id === mapping.targetFieldId);
+                          const badgeVariant = mapping.mappingType === 'collection' ? 'secondary' : 'outline';
+
+                          return (
+                            <div
+                              key={mapping.id}
+                              className="flex items-center gap-2 text-xs text-muted-foreground"
                             >
-                              ×
-                            </Button>
-                          </div>
-                        ))}
+                              <ArrowRight className="h-3 w-3" />
+                              <span>{target?.name ?? mapping.targetFieldId}</span>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Badge variant={badgeVariant} className="flex items-center gap-1">
+                                    {getMappingTypeLabel(mapping)}
+                                  </Badge>
+                                </TooltipTrigger>
+                                <TooltipContent>{getMappingTypeTooltip(mapping)}</TooltipContent>
+                              </Tooltip>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openMappingEditor(mapping);
+                                }}
+                              >
+                                <Edit3 className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-destructive"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveMapping(mapping.id);
+                                }}
+                              >
+                                ×
+                              </Button>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -712,8 +1052,7 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
             </CardHeader>
             <CardContent className="space-y-2">
               {targetFields.map((field) => {
-                const mappedSourceIds = getMappedFields('target', field.id);
-                const mappedSources = sourceFields.filter(f => mappedSourceIds.includes(f.id));
+                const fieldMappings = getMappingsForField('target', field.id);
                 const highlighted = isHighlighted('target', field.id);
 
                 return (
@@ -741,25 +1080,56 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
                       <span className="text-sm font-medium">{field.name}</span>
                     </div>
 
-                    {mappedSources.length > 0 && (
+                    {fieldMappings.length > 0 && (
                       <div className="flex flex-col gap-1 pl-6">
-                        {mappedSources.map(source => (
-                          <div key={source.id} className="flex items-center gap-2 text-xs text-muted-foreground">
-                            <span>{source.name}</span>
-                            <ArrowRight className="h-3 w-3" />
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              className="h-4 w-4 p-0 hover:text-destructive"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRemoveMapping(source.id, field.id);
-                              }}
+                        {fieldMappings.map((mapping) => {
+                          const sourceLabel = describeMappingSource(mapping);
+                          const badgeVariant = mapping.mappingType === 'collection' ? 'secondary' : 'outline';
+                          const joinDescription =
+                            mapping.mappingType === 'collection' && mapping.joinWith
+                              ? ` (Trenner: "${mapping.joinWith}")`
+                              : '';
+
+                          return (
+                            <div
+                              key={mapping.id}
+                              className="flex items-center gap-2 text-xs text-muted-foreground"
                             >
-                              ×
-                            </Button>
-                          </div>
-                        ))}
+                              <span>{sourceLabel}{joinDescription}</span>
+                              <ArrowRight className="h-3 w-3" />
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Badge variant={badgeVariant} className="flex items-center gap-1">
+                                    {getMappingTypeLabel(mapping)}
+                                  </Badge>
+                                </TooltipTrigger>
+                                <TooltipContent>{getMappingTypeTooltip(mapping)}</TooltipContent>
+                              </Tooltip>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  openMappingEditor(mapping);
+                                }}
+                              >
+                                <Edit3 className="h-3 w-3" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-6 w-6 text-destructive"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveMapping(mapping.id);
+                                }}
+                              >
+                                ×
+                              </Button>
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
@@ -771,38 +1141,243 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
           {/* Mapping Summary */}
           <div className="col-span-2 mt-4">
             <Card className="bg-card/50 border-border">
-              <CardHeader>
-                <CardTitle className="text-sm">Mapped Fields ({mappings.length})</CardTitle>
+              <CardHeader className="flex flex-row items-center justify-between">
+                <CardTitle className="text-sm flex items-center gap-2">
+                  Mapping-Übersicht ({mappings.length})
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-6 w-6 text-muted-foreground"
+                      >
+                        <Info className="h-4 w-4" />
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent className="max-w-xs text-xs">
+                      Kombiniere direkte Feldzuordnungen mit Sammlungs-Mappings. Wähle Sammlungen, um Werte aus
+                      verschachtelten Datensätzen zusammenzuführen und z. B. Listen von IDs in ein Textfeld zu schreiben.
+                    </TooltipContent>
+                  </Tooltip>
+                </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {mappings.map((mapping, index) => {
-                    const sourceField = sourceFields.find(f => f.id === mapping.sourceFieldId);
-                    const targetField = targetFields.find(f => f.id === mapping.targetFieldId);
+                {mappings.length === 0 ? (
+                  <p className="text-xs text-muted-foreground">
+                    Noch keine Felder gemappt. Ziehe Felder oder verwende "Auto Map", um zu starten.
+                  </p>
+                ) : (
+                  <div className="space-y-3">
+                    {mappings.map((mapping) => {
+                      const targetField = targetFields.find(f => f.id === mapping.targetFieldId);
+                      const targetName = targetField?.name ?? mapping.targetFieldId;
+                      const sourceLabel = describeMappingSource(mapping);
+                      const badgeVariant = mapping.mappingType === 'collection' ? 'secondary' : 'outline';
 
-                    return (
-                      <div
-                        key={index}
-                        className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 rounded-full text-xs border border-primary/30"
-                      >
-                        <span>{sourceField?.name}</span>
-                        <ArrowRight className="h-3 w-3" />
-                        <span>{targetField?.name}</span>
-                        <button
-                          onClick={() => handleRemoveMapping(mapping.sourceFieldId, mapping.targetFieldId)}
-                          className="ml-1 hover:text-destructive"
+                      return (
+                        <div
+                          key={mapping.id}
+                          className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3"
                         >
-                          ×
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
+                          <div className="flex flex-wrap items-center justify-between gap-2">
+                            <div className="flex flex-wrap items-center gap-2">
+                              <span className="text-sm font-medium">{targetName}</span>
+                              <Badge variant={badgeVariant} className="flex items-center gap-1">
+                                {getMappingTypeLabel(mapping)}
+                              </Badge>
+                              {mapping.mappingType === 'collection' && (
+                                <span className="text-xs text-muted-foreground">
+                                  Trenner: "{mapping.joinWith ?? defaultJoinWith}"
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                onClick={() => openMappingEditor(mapping)}
+                              >
+                                Bearbeiten
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-destructive"
+                                onClick={() => handleRemoveMapping(mapping.id)}
+                              >
+                                Entfernen
+                              </Button>
+                            </div>
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                            <span>{sourceLabel}</span>
+                            <ArrowRight className="h-3 w-3" />
+                            <span>{targetName}</span>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
         </div>
       </div>
-    </>
+
+      <Dialog open={isMappingModalOpen} onOpenChange={(open) => (open ? null : closeMappingEditor())}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Mapping konfigurieren</DialogTitle>
+            <DialogDescription>
+              Entscheide, ob der Zielwert direkt aus einem Feld übernommen oder aus einer Sammlung zusammengestellt
+              wird.
+            </DialogDescription>
+          </DialogHeader>
+
+          {draftMapping ? (
+            <div className="space-y-6">
+              <div className="space-y-3">
+                <Label>Mapping-Typ</Label>
+                <RadioGroup
+                  value={draftMapping.mappingType}
+                  onValueChange={(value) => handleMappingTypeChange(value as MappingType)}
+                  className="grid gap-3 md:grid-cols-2"
+                >
+                  <div className="flex items-start gap-3 rounded-md border border-border p-3">
+                    <RadioGroupItem value="direct" id="mapping-type-direct" />
+                    <div className="space-y-1 text-sm">
+                      <Label htmlFor="mapping-type-direct">Direktes Mapping</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Übernimmt einen Wert unverändert in das Ziel.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-start gap-3 rounded-md border border-border p-3">
+                    <RadioGroupItem
+                      value="collection"
+                      id="mapping-type-collection"
+                      disabled={collectionCandidates.length === 0}
+                    />
+                    <div className="space-y-1 text-sm">
+                      <Label htmlFor="mapping-type-collection">Sammlung transformieren</Label>
+                      <p className="text-xs text-muted-foreground">
+                        Extrahiert Werte aus einer Liste von Objekten und fügt sie zu einem Text zusammen.
+                      </p>
+                      {collectionCandidates.length === 0 && (
+                        <p className="text-xs text-destructive">
+                          Für dieses Objekt sind keine Sammlungen mit auswählbaren Feldern vorhanden.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </RadioGroup>
+              </div>
+
+              {draftMapping.mappingType === 'direct' && (
+                <div className="space-y-2">
+                  <Label htmlFor="direct-source">Quellfeld</Label>
+                  <Select value={draftMapping.sourceFieldId} onValueChange={handleDirectSourceChange}>
+                    <SelectTrigger id="direct-source">
+                      <SelectValue placeholder="Feld auswählen" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {sourceFields.map((field) => (
+                        <SelectItem key={field.id} value={field.id}>
+                          {field.name} {field.type ? `(${field.type})` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">
+                    Der ausgewählte Wert wird ohne Änderungen übernommen.
+                  </p>
+                </div>
+              )}
+
+              {draftMapping.mappingType === 'collection' && (
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="collection-source">Sammlung</Label>
+                    <Select
+                      value={draftMapping.sourceFieldId}
+                      onValueChange={handleCollectionFieldChange}
+                    >
+                      <SelectTrigger id="collection-source">
+                        <SelectValue placeholder="Sammlung auswählen" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {collectionCandidates.map((field) => (
+                          <SelectItem key={field.id} value={field.id}>
+                            {field.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Wähle das Feld, das eine Liste von Objekten enthält (z. B. Mitglieder einer Karte).
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="collection-item">Feld innerhalb der Sammlung</Label>
+                    <Select
+                      value={draftMapping.collectionItemFieldId}
+                      onValueChange={handleCollectionItemFieldChange}
+                      disabled={!selectedCollectionField || !selectedCollectionField.children?.length}
+                    >
+                      <SelectTrigger id="collection-item">
+                        <SelectValue
+                          placeholder={
+                            selectedCollectionField?.children?.length
+                              ? 'Feld auswählen'
+                              : 'Keine Felder verfügbar'
+                          }
+                        />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {(selectedCollectionField?.children ?? []).map((child) => (
+                          <SelectItem key={child.id} value={child.id}>
+                            {child.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <p className="text-xs text-muted-foreground">
+                      Dieses Feld wird aus jedem Eintrag gelesen und in das Ziel übernommen.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="collection-join">Trennzeichen</Label>
+                    <Input
+                      id="collection-join"
+                      value={draftMapping.joinWith ?? defaultJoinWith}
+                      onChange={(event) => handleJoinWithChange(event.target.value)}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Wird zwischen die einzelnen Werte gesetzt (z. B. ", " für eine kommagetrennte Liste).
+                    </p>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="py-6 text-center text-sm text-muted-foreground">
+              Kein Mapping ausgewählt.
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={closeMappingEditor}>
+              Abbrechen
+            </Button>
+            <Button onClick={handleSaveMappingDetails}>
+              Speichern
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </TooltipProvider>
   );
 };
