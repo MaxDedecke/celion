@@ -927,13 +927,15 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
       {activeTab === "general" && (
         <div className="space-y-6 pb-6">
           {/* Progress Card - Full width */}
-          <div className="flex justify-start items-center gap-16 py-4">
-            <div className="text-center">
-              <p className="text-sm font-semibold text-foreground mb-1">Nächster Schritt:</p>
-              <p className="text-lg font-bold text-primary">{getCurrentStep()}</p>
+          <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-10 py-4">
+            <div className="flex justify-center">
+              <div className="text-center">
+                <p className="text-sm font-semibold text-foreground mb-1">Nächster Schritt:</p>
+                <p className="text-lg font-bold text-primary">{getCurrentStep()}</p>
+              </div>
             </div>
-            <div className="flex-1 flex justify-center">
-              <div className="relative">
+            <div className="flex justify-center">
+              <div className="relative flex flex-col items-center">
                 <CircularProgress progress={project.progress} />
                 <p className="text-center mt-4 text-sm text-muted-foreground">Progress</p>
               </div>
