@@ -1,4 +1,4 @@
-import { Database, Settings as SettingsIcon, Trash2, Check, Link, Download, RefreshCw, Loader2, Upload } from "lucide-react";
+import { Database, Settings as SettingsIcon, Trash2, Check, Link, Download, RefreshCw, Loader2, Upload, ArrowLeftRight, Workflow } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import CircularProgress from "./CircularProgress";
@@ -1211,7 +1211,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
       {activeTab === "mapping" && (
         <div className="space-y-6 pb-6">
           {/* Dropdowns Section */}
-          <div className="grid grid-cols-2 gap-6">
+          <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-6">
             {/* Left Dropdown - Source System Objects */}
             <div className="space-y-2">
               <label className="text-sm font-medium text-foreground">
@@ -1229,6 +1229,12 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+
+            <div className="flex items-center justify-center pb-2">
+              <div className="p-2 rounded-full bg-muted text-muted-foreground">
+                <ArrowLeftRight className="h-5 w-5" />
+              </div>
             </div>
 
             {/* Right Dropdown - Target System Objects */}
@@ -1261,8 +1267,9 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                 targetObject={selectedTargetObject}
               />
             ) : (
-              <div className="w-full h-full flex items-center justify-center text-muted-foreground">
-                Wähle Source und Target Objects aus, um mit dem Mapping zu beginnen
+              <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-muted-foreground text-center py-12">
+                <Workflow className="h-10 w-10" />
+                <span>Wähle Source und Target Objects aus, um mit dem Mapping zu beginnen</span>
               </div>
             )}
           </div>

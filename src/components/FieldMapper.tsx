@@ -592,7 +592,13 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
 
   return (
     <>
-      <div className={`${isFullscreen ? 'fixed inset-0 z-50 bg-background p-6 overflow-auto' : 'space-y-4'}`}>
+      <div
+        className={`${
+          isFullscreen
+            ? 'fixed inset-0 z-50 bg-background p-6 overflow-auto'
+            : ''
+        } flex flex-col space-y-4`}
+      >
         {/* Header with Auto-Map and Fullscreen Buttons */}
         <div className="flex justify-between items-center mb-4">
           {isFullscreen && (
@@ -631,136 +637,136 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
           </div>
         </div>
 
-        <div className="grid grid-cols-2 gap-8 relative">
-        {/* Source System Block */}
-        <Card className="bg-card border-border">
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            {sourceSystem} {sourceObject}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {sourceFields.map((field) => {
-            const mappedTargetIds = getMappedFields('source', field.id);
-            const mappedTargets = targetFields.filter(f => mappedTargetIds.includes(f.id));
-            const highlighted = isHighlighted('source', field.id);
-            
-            return (
-              <div
-                key={field.id}
-                draggable
-                onDragStart={() => handleDragStart('source', field.id)}
-                onDragOver={handleDragOver}
-                onDrop={() => handleDrop('source', field.id)}
-                onMouseEnter={() => setHoveredField(field.id)}
-                onMouseLeave={() => setHoveredField(null)}
-                className={`
-                  flex flex-col gap-2 p-3 rounded-lg border
-                  ${isMapped('source', field.id) 
-                    ? 'bg-primary/10 border-primary' 
-                    : 'bg-muted/50 border-border'
-                  }
-                  ${highlighted ? 'bg-purple-200/40 border-purple-400 dark:bg-purple-900/30 dark:border-purple-600' : ''}
-                  cursor-grab active:cursor-grabbing transition-all
-                  hover:shadow-md
-                `}
-              >
-                <div className="flex items-center gap-2">
-                  <Puzzle className="h-4 w-4 text-primary" />
-                  <span className="text-sm font-medium">{field.name}</span>
-                </div>
-                
-                {mappedTargets.length > 0 && (
-                  <div className="flex flex-col gap-1 pl-6">
-                    {mappedTargets.map(target => (
-                      <div key={target.id} className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <ArrowRight className="h-3 w-3" />
-                        <span>{target.name}</span>
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-4 w-4 p-0 hover:text-destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRemoveMapping(field.id, target.id);
-                          }}
-                        >
-                          ×
-                        </Button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
+        <div className={`grid grid-cols-2 gap-8 relative ${isFullscreen ? 'flex-1' : ''}`}>
+          {/* Source System Block */}
+          <Card className="bg-card border-border h-full">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                {sourceSystem} {sourceObject}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {sourceFields.map((field) => {
+                const mappedTargetIds = getMappedFields('source', field.id);
+                const mappedTargets = targetFields.filter(f => mappedTargetIds.includes(f.id));
+                const highlighted = isHighlighted('source', field.id);
 
-      {/* Target System Block */}
-      <Card className="bg-card border-border">
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            {targetSystem} {targetObject}
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          {targetFields.map((field) => {
-            const mappedSourceIds = getMappedFields('target', field.id);
-            const mappedSources = sourceFields.filter(f => mappedSourceIds.includes(f.id));
-            const highlighted = isHighlighted('target', field.id);
-            
-            return (
-              <div
-                key={field.id}
-                draggable
-                onDragStart={() => handleDragStart('target', field.id)}
-                onDragOver={handleDragOver}
-                onDrop={() => handleDrop('target', field.id)}
-                onMouseEnter={() => setHoveredField(field.id)}
-                onMouseLeave={() => setHoveredField(null)}
-                className={`
-                  flex flex-col gap-2 p-3 rounded-lg border
-                  ${isMapped('target', field.id) 
-                    ? 'bg-primary/10 border-primary' 
-                    : 'bg-muted/50 border-border'
-                  }
-                  ${highlighted ? 'bg-purple-200/40 border-purple-400 dark:bg-purple-900/30 dark:border-purple-600' : ''}
-                  cursor-grab active:cursor-grabbing transition-all
-                  hover:shadow-md
-                `}
-              >
-                <div className="flex items-center gap-2">
-                  <Puzzle className="h-4 w-4 text-primary" />
-                  <span className="text-sm font-medium">{field.name}</span>
-                </div>
-                
-                {mappedSources.length > 0 && (
-                  <div className="flex flex-col gap-1 pl-6">
-                    {mappedSources.map(source => (
-                      <div key={source.id} className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>{source.name}</span>
-                        <ArrowRight className="h-3 w-3" />
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          className="h-4 w-4 p-0 hover:text-destructive"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleRemoveMapping(source.id, field.id);
-                          }}
-                        >
-                          ×
-                        </Button>
+                return (
+                  <div
+                    key={field.id}
+                    draggable
+                    onDragStart={() => handleDragStart('source', field.id)}
+                    onDragOver={handleDragOver}
+                    onDrop={() => handleDrop('source', field.id)}
+                    onMouseEnter={() => setHoveredField(field.id)}
+                    onMouseLeave={() => setHoveredField(null)}
+                    className={`
+                      flex flex-col gap-2 p-3 rounded-lg border
+                      ${isMapped('source', field.id)
+                        ? 'bg-primary/10 border-primary'
+                        : 'bg-muted/50 border-border'
+                      }
+                      ${highlighted ? 'bg-purple-200/40 border-purple-400 dark:bg-purple-900/30 dark:border-purple-600' : ''}
+                      cursor-grab active:cursor-grabbing transition-all
+                      hover:shadow-md
+                    `}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Puzzle className="h-4 w-4 text-primary" />
+                      <span className="text-sm font-medium">{field.name}</span>
+                    </div>
+
+                    {mappedTargets.length > 0 && (
+                      <div className="flex flex-col gap-1 pl-6">
+                        {mappedTargets.map(target => (
+                          <div key={target.id} className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <ArrowRight className="h-3 w-3" />
+                            <span>{target.name}</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-4 w-4 p-0 hover:text-destructive"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveMapping(field.id, target.id);
+                              }}
+                            >
+                              ×
+                            </Button>
+                          </div>
+                        ))}
                       </div>
-                    ))}
+                    )}
                   </div>
-                )}
-              </div>
-            );
-          })}
-        </CardContent>
-      </Card>
+                );
+              })}
+            </CardContent>
+          </Card>
+
+          {/* Target System Block */}
+          <Card className="bg-card border-border h-full">
+            <CardHeader>
+              <CardTitle className="text-lg flex items-center gap-2">
+                {targetSystem} {targetObject}
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {targetFields.map((field) => {
+                const mappedSourceIds = getMappedFields('target', field.id);
+                const mappedSources = sourceFields.filter(f => mappedSourceIds.includes(f.id));
+                const highlighted = isHighlighted('target', field.id);
+
+                return (
+                  <div
+                    key={field.id}
+                    draggable
+                    onDragStart={() => handleDragStart('target', field.id)}
+                    onDragOver={handleDragOver}
+                    onDrop={() => handleDrop('target', field.id)}
+                    onMouseEnter={() => setHoveredField(field.id)}
+                    onMouseLeave={() => setHoveredField(null)}
+                    className={`
+                      flex flex-col gap-2 p-3 rounded-lg border
+                      ${isMapped('target', field.id)
+                        ? 'bg-primary/10 border-primary'
+                        : 'bg-muted/50 border-border'
+                      }
+                      ${highlighted ? 'bg-purple-200/40 border-purple-400 dark:bg-purple-900/30 dark:border-purple-600' : ''}
+                      cursor-grab active:cursor-grabbing transition-all
+                      hover:shadow-md
+                    `}
+                  >
+                    <div className="flex items-center gap-2">
+                      <Puzzle className="h-4 w-4 text-primary" />
+                      <span className="text-sm font-medium">{field.name}</span>
+                    </div>
+
+                    {mappedSources.length > 0 && (
+                      <div className="flex flex-col gap-1 pl-6">
+                        {mappedSources.map(source => (
+                          <div key={source.id} className="flex items-center gap-2 text-xs text-muted-foreground">
+                            <span>{source.name}</span>
+                            <ArrowRight className="h-3 w-3" />
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              className="h-4 w-4 p-0 hover:text-destructive"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveMapping(source.id, field.id);
+                              }}
+                            >
+                              ×
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </CardContent>
+          </Card>
 
           {/* Mapping Summary */}
           <div className="col-span-2 mt-4">
@@ -773,9 +779,9 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
                   {mappings.map((mapping, index) => {
                     const sourceField = sourceFields.find(f => f.id === mapping.sourceFieldId);
                     const targetField = targetFields.find(f => f.id === mapping.targetFieldId);
-                    
+
                     return (
-                      <div 
+                      <div
                         key={index}
                         className="flex items-center gap-2 px-3 py-1.5 bg-primary/10 rounded-full text-xs border border-primary/30"
                       >
