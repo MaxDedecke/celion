@@ -46,7 +46,7 @@ type DataSourceFormData = Omit<
 
 const SOURCE_TYPE_OPTIONS = [
   "Jira Server / Jira Data Center",
-  "Azure DevOps Server (fr├╝her TFS)",
+  "Azure DevOps Server (früher TFS)",
   "GitLab (Self-Managed Edition)",
   "GitHub Enterprise Server",
   "Redmine",
@@ -280,10 +280,10 @@ const DataSources = () => {
         .eq("id", id);
 
       if (error) throw error;
-      toast.success("Datenquelle gel├Âscht");
+      toast.success("Datenquelle gelöscht");
       await loadDataSources();
     } catch (error: unknown) {
-      toast.error("Fehler beim L├Âschen");
+      toast.error("Fehler beim Löschen");
       console.error(error);
     }
   };
@@ -450,7 +450,7 @@ const DataSources = () => {
                   onValueChange={(value) => setFormData({ ...formData, source_type: value })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Quelle ausw├ñhlen" />
+                    <SelectValue placeholder="Quelle auswählen" />
                   </SelectTrigger>
                   <SelectContent>
                     {SOURCE_TYPE_OPTIONS.map((type) => (
@@ -520,7 +520,7 @@ const DataSources = () => {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="is_global">Global verf├╝gbar</Label>
+                <Label htmlFor="is_global">Global verfügbar</Label>
                 <div className="flex items-center gap-2 rounded-full border border-border/50 px-3 py-2">
                   <Switch
                     id="is_global"
@@ -528,7 +528,7 @@ const DataSources = () => {
                     onCheckedChange={(checked) => setFormData({ ...formData, is_global: checked })}
                   />
                   <span className="text-sm text-muted-foreground">
-                    Wenn aktiviert, f├╝r alle Projekte verf├╝gbar
+                    Wenn aktiviert, für alle Projekte verfügbar
                   </span>
                 </div>
               </div>
@@ -547,7 +547,7 @@ const DataSources = () => {
                     }}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Projekt ausw├ñhlen" />
+                      <SelectValue placeholder="Projekt auswählen" />
                     </SelectTrigger>
                     <SelectContent>
                       {projects.map((project) => (

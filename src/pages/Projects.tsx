@@ -203,12 +203,12 @@ const Projects = () => {
 
       if (error) throw error;
 
-      toast.success("Projekt gelÃ¶scht");
+      toast.success("Projekt gelöscht");
       setShowDeleteDialog(false);
       setProjectToDelete(null);
       await loadAllData();
     } catch (error: any) {
-      toast.error("Fehler beim LÃ¶schen");
+      toast.error("Fehler beim Löschen");
       console.error(error);
     }
   };
@@ -285,10 +285,10 @@ const Projects = () => {
 
       if (error) throw error;
 
-      toast.success("Migration gelÃ¶scht");
+      toast.success("Migration gelöscht");
       loadAllData();
     } catch (error: any) {
-      toast.error("Fehler beim LÃ¶schen der Migration");
+      toast.error("Fehler beim Löschen der Migration");
       console.error(error);
     }
   };
@@ -363,7 +363,7 @@ const Projects = () => {
               </div>
               <div>
                 <h1 className="text-xl font-semibold text-foreground">Projekte</h1>
-                <p className="text-sm text-muted-foreground">Behalte den Ãœberblick Ã¼ber deine Migrationsvorhaben.</p>
+                <p className="text-sm text-muted-foreground">Behalte den Überblick über deine Migrationsvorhaben.</p>
               </div>
             </div>
             <UserMenu
@@ -384,7 +384,7 @@ const Projects = () => {
               <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 px-6 py-5">
                 <div>
                   <p className="text-sm text-muted-foreground">
-                    Lege neue Projekte an oder Ã¶ffne bestehende Migrationen.
+                    Lege neue Projekte an oder öffne bestehende Migrationen.
                   </p>
                 </div>
                 <Button
@@ -505,16 +505,16 @@ const Projects = () => {
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Projekt lÃ¶schen</AlertDialogTitle>
+            <AlertDialogTitle>Projekt löschen</AlertDialogTitle>
             <AlertDialogDescription>
-              Sind Sie sicher, dass Sie dieses Projekt lÃ¶schen mÃ¶chten? Alle zugehÃ¶rigen Migrationen werden ebenfalls gelÃ¶scht.
-              Diese Aktion kann nicht rÃ¼ckgÃ¤ngig gemacht werden.
+              Sind Sie sicher, dass Sie dieses Projekt löschen möchten? Alle zugehörigen Migrationen werden ebenfalls gelöscht.
+              Diese Aktion kann nicht rückgängig gemacht werden.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Abbrechen</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteProject}>
-              LÃ¶schen
+              Löschen
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

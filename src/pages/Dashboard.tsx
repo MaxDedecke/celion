@@ -279,10 +279,10 @@ const Dashboard = () => {
         setSelectedMigration(null);
       }
       
-      toast.success(`Migration "${migrationToDeleteData?.name}" gel├Âscht`);
+      toast.success(`Migration "${migrationToDeleteData?.name}" gelöscht`);
       loadAllData();
     } catch (error: any) {
-      toast.error("Fehler beim L├Âschen der Migration");
+      toast.error("Fehler beim Löschen der Migration");
       console.error(error);
     } finally {
       setShowDeleteDialog(false);
@@ -390,13 +390,13 @@ const Dashboard = () => {
                   </Button>
                 </div>
                 <div className="text-base font-semibold text-foreground">
-                  {currentMigration.sourceSystem} ÔåÆ {currentMigration.targetSystem}
+                  {`${currentMigration.sourceSystem} -> ${currentMigration.targetSystem}`}
                 </div>
               </div>
             ) : (
               <div>
                 <h1 className="text-xl font-semibold text-foreground">Dashboard</h1>
-                <p className="text-sm text-muted-foreground">Eine kompakte ├£bersicht deiner Migrationen.</p>
+                <p className="text-sm text-muted-foreground">Eine kompakte Übersicht deiner Migrationen.</p>
               </div>
             )}
             <UserMenu
@@ -424,8 +424,8 @@ const Dashboard = () => {
             ) : (
               <div className="app-surface flex h-full flex-col gap-6 overflow-auto rounded-3xl px-8 py-8">
                 <div>
-                  <h2 className="text-2xl font-semibold text-foreground">Willkommen zur├╝ck!</h2>
-                  <p className="mt-2 text-sm text-muted-foreground">Hier ist eine ├£bersicht deiner Migrationen.</p>
+                  <h2 className="text-2xl font-semibold text-foreground">Willkommen zurück!</h2>
+                  <p className="mt-2 text-sm text-muted-foreground">Hier ist eine Übersicht deiner Migrationen.</p>
                 </div>
 
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -489,7 +489,7 @@ const Dashboard = () => {
                               <div>
                                 <p className="font-medium text-foreground">{migration.name}</p>
                                 <p className="text-sm text-muted-foreground">
-                                  {migration.sourceSystem} ÔåÆ {migration.targetSystem}
+                                  {`${migration.sourceSystem} -> ${migration.targetSystem}`}
                                 </p>
                               </div>
                               <div className="text-right">
@@ -526,7 +526,7 @@ const Dashboard = () => {
                   <div className="app-subtle rounded-2xl p-6">
                     <h3 className="flex items-center gap-2 text-lg font-semibold text-foreground">
                       <BarChart3 className="h-5 w-5 text-muted-foreground" />
-                      Fortschritts├╝bersicht
+                      Fortschrittsübersicht
                     </h3>
                     <div className="mt-4 space-y-4">
                       {allProjects.slice(0, 5).map((project) => {
@@ -566,7 +566,7 @@ const Dashboard = () => {
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-foreground/5">
                     <Rocket className="h-6 w-6 text-foreground" />
                   </div>
-                  <h3 className="text-lg font-semibold text-foreground">Bereit f├╝r eine neue Migration?</h3>
+                  <h3 className="text-lg font-semibold text-foreground">Bereit für eine neue Migration?</h3>
                   <p className="text-sm text-muted-foreground">Starte jetzt und migriere deine Daten nahtlos.</p>
                   <Button
                     onClick={() => setShowAddDialog(true)}
@@ -604,13 +604,13 @@ const Dashboard = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Sind Sie sicher?</AlertDialogTitle>
             <AlertDialogDescription>
-              Diese Aktion kann nicht r├╝ckg├ñngig gemacht werden. Die Migration "{migrations.find(m => m.id === migrationToDelete)?.name}" wird permanent gel├Âscht.
+              Diese Aktion kann nicht rückgängig gemacht werden. Die Migration "{migrations.find(m => m.id === migrationToDelete)?.name}" wird permanent gelöscht.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Abbrechen</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDeleteMigration} className="bg-destructive hover:bg-destructive/90">
-              L├Âschen
+              Löschen
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
