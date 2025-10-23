@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { createPortal } from "react-dom";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Puzzle,
@@ -551,6 +552,16 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
   const [editingMappingId, setEditingMappingId] = useState<string | null>(null);
   const [draftMapping, setDraftMapping] = useState<FieldMapping | null>(null);
 
+  // Lock background scroll while in fullscreen
+  useEffect(() => {
+    if (!isFullscreen) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [isFullscreen]);
+
   const storageKey = useMemo(
     () => getMappingStorageKey(sourceSystem, sourceObject, targetSystem, targetObject),
     [sourceSystem, sourceObject, targetSystem, targetObject]
@@ -904,12 +915,12 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
     return getMappingsForField(side, fieldId).length > 0;
   };
 
-  return (
+  const content = (
     <TooltipProvider>
       <div
         className={`${
           isFullscreen
-            ? 'fixed inset-0 z-[9999] bg-background p-6 overflow-auto'
+            ? 'fixed inset-0 z-40 bg-background p-6 overflow-auto'
             : ''
         } flex flex-col space-y-4`}
       >
@@ -1380,4 +1391,6 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
       </Dialog>
     </TooltipProvider>
   );
+
+  return isFullscreen ? createPortal(content, document.body) : content;
 };
