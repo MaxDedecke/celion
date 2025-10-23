@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -20,103 +20,102 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
+import type { Tables, TablesInsert } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SelectSeparator } from "@/components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
 
-interface DataSource {
-  id: string;
-  name: string;
-  source_type: string;
-  api_url?: string;
-  api_key?: string;
-  username?: string;
-  password?: string;
-  auth_type: string;
-  is_active: boolean;
-  is_global: boolean;
-  created_at: string;
-  assigned_projects?: string[];
-}
+type DataSourceRow = Tables<"data_sources">;
+type DataSourceWithProjects = DataSourceRow & { assigned_projects: string[] };
+type ProjectSummary = Pick<Tables<"projects">, "id" | "name">;
+
+type DataSourceFormData = Omit<
+  TablesInsert<"data_sources">,
+  "user_id" | "id" | "created_at" | "updated_at" | "additional_config"
+> & {
+  api_url: string;
+  api_key: string;
+  username: string;
+  password: string;
+};
+
+const SOURCE_TYPE_OPTIONS = [
+  "Jira Server / Jira Data Center",
+  "Azure DevOps Server (früher TFS)",
+  "GitLab (Self-Managed Edition)",
+  "GitHub Enterprise Server",
+  "Redmine",
+  "OpenProject",
+  "Taiga",
+  "YouTrack (Self-Hosted)",
+  "Targetprocess",
+  "Planisware",
+  "Tuleap",
+  "Trac",
+  "Phabricator",
+  "Bugzilla",
+  "MantisBT",
+  "Easy Redmine",
+  "Odoo Project",
+  "ClickUp",
+  "Wrike Enterprise",
+  "Monday.com",
+  "Smartsheet",
+  "Asana",
+  "Trello",
+  "Notion",
+  "Basecamp",
+  "Celoxis",
+  "Orangescrum",
+  "Zoho Projects",
+  "ProjeQtOr",
+  "Hansoft",
+  "Rational Team Concert",
+  "Polarion ALM",
+  "Micro Focus ALM / Octane",
+  "SAP Project System",
+  "HP Project and Portfolio Management",
+  "Clarizen One",
+  "Sciforma",
+  "Leankit",
+  "MeisterTask",
+  "Airtable",
+] as const;
+
+const EMPTY_FORM_DATA: DataSourceFormData = {
+  name: "",
+  source_type: SOURCE_TYPE_OPTIONS[0],
+  api_url: "",
+  api_key: "",
+  username: "",
+  password: "",
+  auth_type: "api_key",
+  is_active: true,
+  is_global: false,
+};
+
+const getErrorMessage = (error: unknown) =>
+  error instanceof Error ? error.message : "Unbekannter Fehler";
 
 const DataSources = () => {
   const navigate = useNavigate();
-  const [dataSources, setDataSources] = useState<DataSource[]>([]);
-  const [projects, setProjects] = useState<Array<{ id: string; name: string }>>([]);
+  const [dataSources, setDataSources] = useState<DataSourceWithProjects[]>([]);
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [editingSource, setEditingSource] = useState<DataSource | null>(null);
+  const [editingSource, setEditingSource] = useState<DataSourceWithProjects | null>(null);
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
-  const [formData, setFormData] = useState({
-    name: "",
-    source_type: "jira",
-    api_url: "",
-    api_key: "",
-    username: "",
-    password: "",
-    auth_type: "api_key",
-    is_active: true,
-    is_global: false,
-  });
+  const [formData, setFormData] = useState<DataSourceFormData>({ ...EMPTY_FORM_DATA });
 
-  const defaultSourceTypes = [
-    "Jira Server / Jira Data Center",
-    "Azure DevOps Server (früher TFS)",
-    "GitLab (Self-Managed Edition)",
-    "GitHub Enterprise Server",
-    "Redmine",
-    "OpenProject",
-    "Taiga",
-    "YouTrack (Self-Hosted)",
-    "Targetprocess",
-    "Planisware",
-    "Tuleap",
-    "Trac",
-    "Phabricator",
-    "Bugzilla",
-    "MantisBT",
-    "Easy Redmine",
-    "Odoo Project",
-    "ClickUp",
-    "Wrike Enterprise",
-    "Monday.com",
-    "Smartsheet",
-    "Asana",
-    "Trello",
-    "Notion",
-    "Basecamp",
-    "Celoxis",
-    "Orangescrum",
-    "Zoho Projects",
-    "ProjeQtOr",
-    "Hansoft",
-    "Rational Team Concert",
-    "Polarion ALM",
-    "Micro Focus ALM / Octane",
-    "SAP Project System",
-    "HP Project and Portfolio Management",
-    "Clarizen One",
-    "Sciforma",
-    "Leankit",
-    "MeisterTask",
-    "Airtable",
-  ];
-
-  useEffect(() => {
-    checkAuth();
-    loadProjects();
-    loadDataSources();
-  }, []);
-
-  const checkAuth = async () => {
+  const checkAuth = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {
       navigate("/");
     }
-  };
+  }, [navigate]);
 
   const getSourceIcon = (sourceType: string) => {
     const type = sourceType.toLowerCase();
@@ -128,7 +127,7 @@ const DataSources = () => {
     return Box;
   };
 
-  const loadProjects = async () => {
+  const loadProjects = useCallback(async (): Promise<void> => {
     try {
       const { data, error } = await supabase
         .from("projects")
@@ -136,13 +135,13 @@ const DataSources = () => {
         .order("name", { ascending: true });
 
       if (error) throw error;
-      setProjects(data || []);
-    } catch (error: any) {
+      setProjects(data ?? []);
+    } catch (error: unknown) {
       console.error("Fehler beim Laden der Projekte:", error);
     }
-  };
+  }, []);
 
-  const loadDataSources = async () => {
+  const loadDataSources = useCallback(async (): Promise<void> => {
     try {
       const { data, error } = await supabase
         .from("data_sources")
@@ -153,7 +152,7 @@ const DataSources = () => {
 
       // Load project assignments for each data source
       const sourcesWithProjects = await Promise.all(
-        (data || []).map(async (source) => {
+        (data ?? []).map(async (source): Promise<DataSourceWithProjects> => {
           const { data: assignments } = await supabase
             .from("data_source_projects")
             .select("project_id")
@@ -161,48 +160,44 @@ const DataSources = () => {
 
           return {
             ...source,
-            assigned_projects: assignments?.map((a) => a.project_id) || [],
+            assigned_projects: assignments?.map((assignment) => assignment.project_id) ?? [],
           };
         })
       );
 
       setDataSources(sourcesWithProjects);
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast.error("Fehler beim Laden der Datenquellen");
       console.error(error);
     } finally {
       setLoading(false);
     }
-  };
+  }, []);
 
-  const handleOpenDialog = (source?: DataSource) => {
+  useEffect(() => {
+    void checkAuth();
+    void loadProjects();
+    void loadDataSources();
+  }, [checkAuth, loadProjects, loadDataSources]);
+
+  const handleOpenDialog = (source?: DataSourceWithProjects) => {
     if (source) {
       setEditingSource(source);
       setFormData({
         name: source.name,
         source_type: source.source_type,
-        api_url: source.api_url || "",
-        api_key: source.api_key || "",
-        username: source.username || "",
-        password: source.password || "",
+        api_url: source.api_url ?? "",
+        api_key: source.api_key ?? "",
+        username: source.username ?? "",
+        password: source.password ?? "",
         auth_type: source.auth_type,
         is_active: source.is_active,
         is_global: source.is_global,
       });
-      setSelectedProjects(source.assigned_projects || []);
+      setSelectedProjects(source.assigned_projects ?? []);
     } else {
       setEditingSource(null);
-      setFormData({
-        name: "",
-        source_type: "jira",
-        api_url: "",
-        api_key: "",
-        username: "",
-        password: "",
-        auth_type: "api_key",
-        is_active: true,
-        is_global: false,
-      });
+      setFormData({ ...EMPTY_FORM_DATA });
       setSelectedProjects([]);
     }
     setIsDialogOpen(true);
@@ -215,15 +210,24 @@ const DataSources = () => {
 
       let sourceId: string;
 
+      const sanitizedFormData: TablesInsert<"data_sources"> = {
+        ...formData,
+        api_url: formData.api_url || null,
+        api_key: formData.api_key || null,
+        username: formData.username || null,
+        password: formData.password || null,
+        user_id: user.id,
+      };
+
       if (editingSource) {
         const { error } = await supabase
           .from("data_sources")
-          .update(formData)
+          .update({ ...sanitizedFormData, user_id: editingSource.user_id })
           .eq("id", editingSource.id);
 
         if (error) throw error;
         sourceId = editingSource.id;
-        
+
         // Delete existing project assignments
         await supabase
           .from("data_source_projects")
@@ -234,7 +238,7 @@ const DataSources = () => {
       } else {
         const { data, error } = await supabase
           .from("data_sources")
-          .insert({ ...formData, user_id: user.id })
+          .insert(sanitizedFormData)
           .select()
           .single();
 
@@ -258,9 +262,9 @@ const DataSources = () => {
       }
 
       setIsDialogOpen(false);
-      loadDataSources();
-    } catch (error: any) {
-      toast.error(error.message || "Fehler beim Speichern");
+      await loadDataSources();
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error) || "Fehler beim Speichern");
       console.error(error);
     }
   };
@@ -274,12 +278,22 @@ const DataSources = () => {
 
       if (error) throw error;
       toast.success("Datenquelle gelöscht");
-      loadDataSources();
-    } catch (error: any) {
+      await loadDataSources();
+    } catch (error: unknown) {
       toast.error("Fehler beim Löschen");
       console.error(error);
     }
   };
+
+  const handleRemoveProject = (projectId: string) => {
+    setSelectedProjects((current) => current.filter((id) => id !== projectId));
+  };
+
+  useEffect(() => {
+    if (formData.is_global) {
+      setSelectedProjects([]);
+    }
+  }, [formData.is_global]);
 
   if (loading) {
     return (
@@ -436,7 +450,7 @@ const DataSources = () => {
                     <SelectValue placeholder="Quelle auswählen" />
                   </SelectTrigger>
                   <SelectContent>
-                    {defaultSourceTypes.map((type) => (
+                    {SOURCE_TYPE_OPTIONS.map((type) => (
                       <SelectItem key={type} value={type}>
                         {type}
                       </SelectItem>
@@ -524,8 +538,8 @@ const DataSources = () => {
                   <Select
                     value=""
                     onValueChange={(value) => {
-                      if (!selectedProjects.includes(value)) {
-                        setSelectedProjects([...selectedProjects, value]);
+                      if (value && !selectedProjects.includes(value)) {
+                        setSelectedProjects((current) => [...current, value]);
                       }
                     }}
                   >
@@ -533,8 +547,6 @@ const DataSources = () => {
                       <SelectValue placeholder="Projekt auswählen" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Kein Projekt</SelectItem>
-                      <SelectSeparator />
                       {projects.map((project) => (
                         <SelectItem key={project.id} value={project.id}>
                           {project.name}
@@ -546,12 +558,16 @@ const DataSources = () => {
                     {selectedProjects.map((projectId) => {
                       const project = projects.find((p) => p.id === projectId);
                       return (
-                        <span
+                        <button
                           key={projectId}
-                          className="rounded-full border border-border/50 px-3 py-1 text-xs text-muted-foreground"
+                          type="button"
+                          onClick={() => handleRemoveProject(projectId)}
+                          className="flex items-center gap-1 rounded-full border border-border/50 px-3 py-1 text-xs text-muted-foreground transition hover:bg-foreground/5"
+                          aria-label={`${project?.name ?? projectId} entfernen`}
                         >
-                          {project?.name || projectId}
-                        </span>
+                          <span>{project?.name || projectId}</span>
+                          <Trash2 className="h-3 w-3" />
+                        </button>
                       );
                     })}
                     {selectedProjects.length === 0 && (
