@@ -1077,133 +1077,133 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                     </p>
                   </CardContent>
                 </Card>
-              </div>
 
-              <Card className="bg-card border-border h-full flex flex-col">
-                <CardHeader>
-                  <CardTitle className="text-base">Activity</CardTitle>
-                </CardHeader>
-                <CardContent className="p-0 flex-1">
-                  <ScrollArea className="h-full max-h-[260px] px-6 py-4">
-                    <ActivityTimeline activities={project.activities} />
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-            </div>
-
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Outconnector Card */}
-              <Card className={`bg-card border-border transition-shadow duration-300 ${
-                getCurrentStep() === "Outconnector" || getCurrentStep() === "Export"
-                  ? "shadow-[0_0_20px_rgba(59,130,246,0.5)] dark:shadow-[0_0_20px_rgba(255,255,255,0.3)]"
-                  : ""
-              }`}>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <CardTitle className="text-base">Outconnector</CardTitle>
-                        {hasOutConnector && (
-                          <Check className="h-4 w-4 text-green-500" />
-                        )}
+                {/* Outconnector Card */}
+                <Card className={`bg-card border-border transition-shadow duration-300 ${
+                  getCurrentStep() === "Outconnector" || getCurrentStep() === "Export"
+                    ? "shadow-[0_0_20px_rgba(59,130,246,0.5)] dark:shadow-[0_0_20px_rgba(255,255,255,0.3)]"
+                    : ""
+                }`}>
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <CardTitle className="text-base">Outconnector</CardTitle>
+                          {hasOutConnector && (
+                            <Check className="h-4 w-4 text-green-500" />
+                          )}
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {project.outConnectorDetail}
+                        </p>
                       </div>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {project.outConnectorDetail}
-                      </p>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {hasImported && getCurrentStep() === "Export" && (
-                      <>
-                        {isExporting && (
-                          <Loader2 className="h-4 w-4 text-primary animate-spin" />
-                        )}
+                    <div className="flex items-center gap-1">
+                      {hasImported && getCurrentStep() === "Export" && (
+                        <>
+                          {isExporting && (
+                            <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`text-success hover:text-success ${!hasExported ? "animate-gentle-bounce" : ""}`}
+                            title={hasExported ? "Export wiederholen" : "Export starten"}
+                            onClick={handleExportStart}
+                            disabled={isExporting}
+                          >
+                            <Upload className="h-4 w-4" />
+                          </Button>
+                        </>
+                      )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <SettingsIcon className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleEdit('out')}>
+                            {hasOutConnector ? 'Bearbeiten' : 'Erstellen'}
+                          </DropdownMenuItem>
+                          {hasOutConnector && (
+                            <DropdownMenuItem onClick={() => handleTest('out')}>
+                              Test
+                            </DropdownMenuItem>
+                          )}
+                          {getAvailableDataSources('out').length > 0 && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => handleLinkDataSource('out')}>
+                                <Link className="h-4 w-4 mr-2" />
+                                Datenquelle verknüpfen
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      {hasOutConnector && (
                         <Button
                           variant="ghost"
                           size="icon"
-                          className={`text-success hover:text-success ${!hasExported ? "animate-gentle-bounce" : ""}`}
-                          title={hasExported ? "Export wiederholen" : "Export starten"}
-                          onClick={handleExportStart}
-                          disabled={isExporting}
+                          onClick={() => handleDeleteClick('out')}
                         >
-                          <Upload className="h-4 w-4" />
+                          <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
-                      </>
-                    )}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
-                          <SettingsIcon className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleEdit('out')}>
-                          {hasOutConnector ? 'Bearbeiten' : 'Erstellen'}
-                        </DropdownMenuItem>
-                        {hasOutConnector && (
-                          <DropdownMenuItem onClick={() => handleTest('out')}>
-                            Test
-                          </DropdownMenuItem>
-                        )}
-                        {getAvailableDataSources('out').length > 0 && (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => handleLinkDataSource('out')}>
-                              <Link className="h-4 w-4 mr-2" />
-                              Datenquelle verknüpfen
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    {hasOutConnector && (
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        onClick={() => handleDeleteClick('out')}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    )}
-                  </div>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className={project.connectors?.out?.is_tested ? "text-success" : "text-muted-foreground"}>
-                      Connection {project.connectors?.out?.is_tested ? "✓" : "—"}
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Objects transferred {project.progress === 100 ? project.objectsTransferred : "0/0"}
-                  </p>
-                </CardContent>
-              </Card>
-
-              {/* Meta Model Approval Card - Always visible */}
-              <Card className={`bg-card border-border transition-shadow duration-300 ${
-                getCurrentStep() === "Mapping (MetaModel)"
-                  ? "shadow-[0_0_20px_rgba(59,130,246,0.5)] dark:shadow-[0_0_20px_rgba(255,255,255,0.3)]"
-                  : ""
-              }`}>
-                <CardHeader>
-                  <CardTitle className="text-base">Meta Modell</CardTitle>
-                </CardHeader>
-                <CardContent>
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="text-sm font-medium">Freigeben</p>
-                      <p className="text-xs text-muted-foreground mt-1">
-                        Bearbeite das Modell in der Mapping UI
-                      </p>
+                      )}
                     </div>
-                    <Switch
-                      checked={isMetaModelApproved}
-                      onCheckedChange={handleMetaModelApproval}
-                      disabled={!hasOutConnector || !project.connectors?.out?.is_tested}
-                    />
-                  </div>
-                </CardContent>
-              </Card>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className={project.connectors?.out?.is_tested ? "text-success" : "text-muted-foreground"}>
+                        Connection {project.connectors?.out?.is_tested ? "✓" : "—"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Objects transferred {project.progress === 100 ? project.objectsTransferred : "0/0"}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="flex flex-col gap-6">
+                <Card className="bg-card border-border h-full flex flex-col">
+                  <CardHeader>
+                    <CardTitle className="text-base">Activity</CardTitle>
+                  </CardHeader>
+                  <CardContent className="p-0 flex-1">
+                    <ScrollArea className="h-full max-h-[260px] px-6 py-4">
+                      <ActivityTimeline activities={project.activities} />
+                    </ScrollArea>
+                  </CardContent>
+                </Card>
+
+                {/* Meta Model Approval Card - Always visible */}
+                <Card className={`bg-card border-border transition-shadow duration-300 ${
+                  getCurrentStep() === "Mapping (MetaModel)"
+                    ? "shadow-[0_0_20px_rgba(59,130,246,0.5)] dark:shadow-[0_0_20px_rgba(255,255,255,0.3)]"
+                    : ""
+                }`}>
+                  <CardHeader>
+                    <CardTitle className="text-base">Meta Modell</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <p className="text-sm font-medium">Freigeben</p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Bearbeite das Modell in der Mapping UI
+                        </p>
+                      </div>
+                      <Switch
+                        checked={isMetaModelApproved}
+                        onCheckedChange={handleMetaModelApproval}
+                        disabled={!hasOutConnector || !project.connectors?.out?.is_tested}
+                      />
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
             </div>
           </div>
         </div>
