@@ -18,7 +18,10 @@ const UserMenu = ({ onAccountClick, onSettingsClick, onLogout }: UserMenuProps) 
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="ghost" className="h-10 w-10 rounded-full p-0 hover:ring-2 hover:ring-primary transition-all">
+        <Button
+          variant="ghost"
+          className="h-10 w-10 rounded-full p-0 hover:ring-2 hover:ring-primary transition-all hover:bg-transparent hover:text-current"
+        >
           <Avatar>
             <AvatarFallback className="bg-muted">M</AvatarFallback>
           </Avatar>
