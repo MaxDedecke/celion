@@ -18,6 +18,7 @@ import {
 import { Label } from "@/components/ui/label";
 import { AlertCircle } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
+import { DATA_SOURCE_TYPE_OPTIONS } from "@/constants/sourceTypes";
 
 interface DataSource {
   id: string;
@@ -55,93 +56,9 @@ const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogPro
     }
   }, [open]);
 
-  const defaultSources = [
-    "Jira Server / Jira Data Center",
-    "Azure DevOps Server (früher TFS)",
-    "GitLab (Self-Managed Edition)",
-    "GitHub Enterprise Server",
-    "Redmine",
-    "OpenProject",
-    "Taiga",
-    "YouTrack (Self-Hosted)",
-    "Targetprocess",
-    "Planisware",
-    "Tuleap",
-    "Trac",
-    "Phabricator",
-    "Bugzilla",
-    "MantisBT",
-    "Easy Redmine",
-    "Odoo Project",
-    "ClickUp",
-    "Wrike Enterprise",
-    "Monday.com",
-    "Smartsheet",
-    "Asana",
-    "Trello",
-    "Notion",
-    "Basecamp",
-    "Celoxis",
-    "Orangescrum",
-    "Zoho Projects",
-    "ProjeQtOr",
-    "Hansoft",
-    "Rational Team Concert",
-    "Polarion ALM",
-    "Micro Focus ALM / Octane",
-    "SAP Project System",
-    "HP Project and Portfolio Management",
-    "Clarizen One",
-    "Sciforma",
-    "Leankit",
-    "MeisterTask",
-    "Airtable",
-  ];
+  const defaultSystems = DATA_SOURCE_TYPE_OPTIONS;
 
-  const defaultTargets = [
-    "Jira Server / Jira Data Center",
-    "Azure DevOps Server (früher TFS)",
-    "GitLab (Self-Managed Edition)",
-    "GitHub Enterprise Server",
-    "Redmine",
-    "OpenProject",
-    "Taiga",
-    "YouTrack (Self-Hosted)",
-    "Targetprocess",
-    "Planisware",
-    "Tuleap",
-    "Trac",
-    "Phabricator",
-    "Bugzilla",
-    "MantisBT",
-    "Easy Redmine",
-    "Odoo Project",
-    "ClickUp",
-    "Wrike Enterprise",
-    "Monday.com",
-    "Smartsheet",
-    "Asana",
-    "Trello",
-    "Notion",
-    "Basecamp",
-    "Celoxis",
-    "Orangescrum",
-    "Zoho Projects",
-    "ProjeQtOr",
-    "Hansoft",
-    "Rational Team Concert",
-    "Polarion ALM",
-    "Micro Focus ALM / Octane",
-    "SAP Project System",
-    "HP Project and Portfolio Management",
-    "Clarizen One",
-    "Sciforma",
-    "Leankit",
-    "MeisterTask",
-    "Airtable",
-  ];
-
-  const availableTargets = defaultTargets.filter(target => target !== sourceSystem);
+  const availableTargets = defaultSystems.filter(target => target !== sourceSystem);
 
   const handleSubmit = () => {
     if (!name.trim() || !sourceSystem || !targetSystem) {
@@ -201,7 +118,7 @@ const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogPro
                     <SelectSeparator />
                   </>
                 )}
-                {defaultSources.map((source) => (
+                {defaultSystems.map((source) => (
                   <SelectItem key={source} value={source}>
                     {source}
                   </SelectItem>

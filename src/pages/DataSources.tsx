@@ -29,6 +29,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { DATA_SOURCE_TYPE_OPTIONS, type DataSourceType } from "@/constants/sourceTypes";
 
 type DataSourceRow = Tables<"data_sources">;
 type DataSourceWithProjects = DataSourceRow & { assigned_projects: string[] };
@@ -44,48 +45,7 @@ type DataSourceFormData = Omit<
   password: string;
 };
 
-const SOURCE_TYPE_OPTIONS = [
-  "Jira Server / Jira Data Center",
-  "Azure DevOps Server (früher TFS)",
-  "GitLab (Self-Managed Edition)",
-  "GitHub Enterprise Server",
-  "Redmine",
-  "OpenProject",
-  "Taiga",
-  "YouTrack (Self-Hosted)",
-  "Targetprocess",
-  "Planisware",
-  "Tuleap",
-  "Trac",
-  "Phabricator",
-  "Bugzilla",
-  "MantisBT",
-  "Easy Redmine",
-  "Odoo Project",
-  "ClickUp",
-  "Wrike Enterprise",
-  "Monday.com",
-  "Smartsheet",
-  "Asana",
-  "Trello",
-  "Notion",
-  "Basecamp",
-  "Celoxis",
-  "Orangescrum",
-  "Zoho Projects",
-  "ProjeQtOr",
-  "Hansoft",
-  "Rational Team Concert",
-  "Polarion ALM",
-  "Micro Focus ALM / Octane",
-  "SAP Project System",
-  "HP Project and Portfolio Management",
-  "Clarizen One",
-  "Sciforma",
-  "Leankit",
-  "MeisterTask",
-  "Airtable",
-] as const;
+const SOURCE_TYPE_OPTIONS = DATA_SOURCE_TYPE_OPTIONS;
 
 const EMPTY_FORM_DATA: DataSourceFormData = {
   name: "",
@@ -112,6 +72,12 @@ const DataSources = () => {
   const [editingSource, setEditingSource] = useState<DataSourceWithProjects | null>(null);
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [formData, setFormData] = useState<DataSourceFormData>({ ...EMPTY_FORM_DATA });
+
+  const sourceTypeOptions = SOURCE_TYPE_OPTIONS.includes(
+    formData.source_type as DataSourceType
+  )
+    ? [...SOURCE_TYPE_OPTIONS]
+    : [formData.source_type, ...SOURCE_TYPE_OPTIONS];
 
   const checkAuth = useCallback(async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -453,7 +419,7 @@ const DataSources = () => {
                     <SelectValue placeholder="Quelle auswählen" />
                   </SelectTrigger>
                   <SelectContent>
-                    {SOURCE_TYPE_OPTIONS.map((type) => (
+                    {sourceTypeOptions.map((type) => (
                       <SelectItem key={type} value={type}>
                         {type}
                       </SelectItem>

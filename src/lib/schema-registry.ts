@@ -94,18 +94,88 @@ function extractSystemInfo(path: string): { baseKey: string; displayName: string
   const parts = path.split("/");
   const folderName = parts[parts.length - 2] ?? "";
   const tokens = folderName.split("_");
-  const baseToken = tokens[0] ?? folderName;
-  const baseKey = normalize(baseToken);
-  const displayName = humanize(baseToken);
-  const aliasTokens = [normalize(folderName)];
-  if (tokens.length > 1) {
-    aliasTokens.push(normalize(tokens.slice(0, 2).join(" ")));
-  }
+  const descriptorTokens = buildDescriptorTokens(tokens, folderName);
+
+  const baseKey = normalize(descriptorTokens.join(" ")) || normalize(folderName);
+  const displayName = formatDisplayName(descriptorTokens, folderName);
+  const aliasTokens = buildAliasTokens(descriptorTokens, folderName);
+
   return {
     baseKey,
     displayName,
-    aliases: aliasTokens,
+    aliases: Array.from(aliasTokens),
   };
+}
+
+function buildDescriptorTokens(tokens: string[], fallback: string): string[] {
+  if (tokens.length === 0) {
+    return [fallback];
+  }
+
+  const [primary, secondary] = tokens;
+  if (secondary && shouldIncludeVariantToken(secondary)) {
+    return [primary, secondary];
+  }
+
+  return [primary ?? fallback];
+}
+
+function shouldIncludeVariantToken(token: string): boolean {
+  const normalized = token.toLowerCase();
+  return ["server", "datacenter", "datacentre", "cloud"].includes(normalized);
+}
+
+function formatDisplayName(tokens: string[], fallback: string): string {
+  const formatted = tokens
+    .map((token) => humanize(token) || token)
+    .map((token) =>
+      token
+        .split(" ")
+        .filter(Boolean)
+        .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
+        .join(" ")
+    )
+    .join(" ")
+    .trim();
+
+  if (formatted) {
+    return formatted;
+  }
+
+  const normalizedFallback = humanize(fallback) || fallback;
+  return normalizedFallback.charAt(0).toUpperCase() + normalizedFallback.slice(1);
+}
+
+function buildAliasTokens(tokens: string[], folderName: string): Set<string> {
+  const aliases = new Set<string>();
+
+  const joinedTokens = tokens.join(" ");
+  const humanizedTokens = tokens.map((token) => humanize(token) || token);
+
+  aliases.add(normalize(folderName));
+  if (joinedTokens) {
+    aliases.add(normalize(joinedTokens));
+  }
+
+  if (humanizedTokens.length > 0) {
+    aliases.add(normalize(humanizedTokens.join(" ")));
+  }
+
+  if (humanizedTokens.length > 1) {
+    const expanded = humanizedTokens
+      .map((token) =>
+        token
+          .split(" ")
+          .filter(Boolean)
+          .join(" ")
+      )
+      .join(" ");
+    if (expanded) {
+      aliases.add(normalize(expanded));
+    }
+  }
+
+  return aliases;
 }
 
 function normalize(value: string): string {
