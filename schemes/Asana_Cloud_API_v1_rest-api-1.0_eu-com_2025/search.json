@@ -1,0 +1,19 @@
+{
+  "category": "Search",
+  "description": "Task-Suche mit Parametern.",
+  "endpoints": [
+    "/workspaces/{workspace_gid}/tasks/search"
+  ],
+  "objects": {
+    "SearchRequest": {
+      "projects.any": "string[]",
+      "assignee.any": "string[]",
+      "tags.any": "string[]",
+      "text": "string"
+    },
+    "SearchResult": {
+      "data": "Task[]",
+      "next_page": "string"
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "category": "Kataloge",
+  "description": "Zentrale Kataloge als eigenständige Lookups.",
+  "endpoints": [
+    "/rest/api/2/projectCategory",
+    "/rest/api/2/component",
+    "/rest/api/2/version"
+  ],
+  "objects": {
+    "ProjectCategory": {
+      "id": "string",
+      "name": "string",
+      "description": "string"
+    },
+    "Component": {
+      "id": "string",
+      "name": "string",
+      "lead": "User",
+      "description": "string"
+    },
+    "Version": {
+      "id": "string",
+      "name": "string",
+      "released": "boolean",
+      "releaseDate": "date",
+      "description": "string"
+    }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "category": "Goals & Portfolios",
+  "description": "Unternehmensweite Ziele und Portfolios (Business/Enterprise).",
+  "endpoints": [
+    "/goals",
+    "/goals/{gid}",
+    "/portfolios",
+    "/portfolios/{gid}"
+  ],
+  "objects": {
+    "Goal": {
+      "gid": "string",
+      "name": "string",
+      "metric": "Metric",
+      "owner": "User",
+      "due_on": "date",
+      "status": "string"
+    },
+    "Metric": {
+      "gid": "string",
+      "name": "string",
+      "current_value": "number",
+      "target_value": "number",
+      "unit": "string"
+    },
+    "Portfolio": {
+      "gid": "string",
+      "name": "string",
+      "owner": "User",
+      "projects": "Project[]"
+    }
+  }
+}

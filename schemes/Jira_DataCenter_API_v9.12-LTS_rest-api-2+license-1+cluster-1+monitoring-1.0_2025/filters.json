@@ -1,0 +1,27 @@
+{
+  "category": "Filter",
+  "description": "Gespeicherte JQL-Suchen und Freigaben.",
+  "endpoints": [
+    "/rest/api/2/filter",
+    "/rest/api/2/filter/{id}",
+    "/rest/api/2/filter/{id}/permission"
+  ],
+  "objects": {
+    "Filter": {
+      "id": "string",
+      "name": "string",
+      "owner": "User",
+      "jql": "string",
+      "description": "string",
+      "favourite": "boolean",
+      "sharePermissions": "SharePermission[]"
+    },
+    "SharePermission": {
+      "id": "string",
+      "type": "string",
+      "projectId": "string",
+      "groupname": "string",
+      "roleId": "string"
+    }
+  }
+}

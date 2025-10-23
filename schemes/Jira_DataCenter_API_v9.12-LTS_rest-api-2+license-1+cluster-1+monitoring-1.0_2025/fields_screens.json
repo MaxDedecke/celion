@@ -1,0 +1,70 @@
+{
+  "category": "Konfiguration",
+  "description": "Felder, Custom Fields, Screens und Screen-Schemes.",
+  "endpoints": [
+    "/rest/api/2/field",
+    "/rest/api/2/field/{id}",
+    "/rest/api/2/customFieldOption/{id}",
+    "/rest/api/2/screens",
+    "/rest/api/2/screens/{id}",
+    "/rest/api/2/screenscheme",
+    "/rest/api/2/issuetypescreenscheme",
+    "/rest/api/2/fieldconfiguration"
+  ],
+  "objects": {
+    "Field": {
+      "id": "string",
+      "name": "string",
+      "custom": "boolean",
+      "schema": "FieldSchema"
+    },
+    "FieldSchema": {
+      "type": "string",
+      "items": "string",
+      "custom": "string"
+    },
+    "CustomFieldOption": {
+      "id": "string",
+      "value": "string"
+    },
+    "Screen": {
+      "id": "string",
+      "name": "string",
+      "tabs": "ScreenTab[]"
+    },
+    "ScreenTab": {
+      "id": "string",
+      "name": "string",
+      "fields": "ScreenField[]"
+    },
+    "ScreenField": {
+      "id": "string",
+      "fieldId": "string",
+      "name": "string"
+    },
+    "ScreenScheme": {
+      "id": "string",
+      "name": "string",
+      "mappings": "ScreenSchemeMapping[]"
+    },
+    "ScreenSchemeMapping": {
+      "issueOperation": "string",
+      "screenId": "string"
+    },
+    "IssueTypeScreenScheme": {
+      "id": "string",
+      "name": "string",
+      "mappings": "IssueTypeScreenSchemeMapping[]"
+    },
+    "IssueTypeScreenSchemeMapping": {
+      "issueTypeId": "string",
+      "screenSchemeId": "string"
+    },
+    "FieldConfiguration": {
+      "id": "string",
+      "name": "string",
+      "description": "string",
+      "fields": "FieldConfigurationItem[]"
+    }
+  }
+}

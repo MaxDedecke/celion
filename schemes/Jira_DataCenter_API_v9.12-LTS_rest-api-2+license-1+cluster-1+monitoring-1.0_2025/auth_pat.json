@@ -1,0 +1,26 @@
+{
+  "category": "Authentication",
+  "description": "Personal Access Tokens (PAT) und OAuth2-Endpunkte.",
+  "endpoints": [
+    "/rest/pat/latest/tokens",
+    "/rest/pat/latest/tokens/{id}",
+    "/rest/oauth2/latest/authorization"
+  ],
+  "objects": {
+    "PersonalAccessToken": {
+      "id": "string",
+      "name": "string",
+      "user": "User",
+      "createdDate": "datetime",
+      "lastUsedDate": "datetime",
+      "expiryDate": "datetime",
+      "scopes": "string[]"
+    },
+    "OAuth2Authorization": {
+      "clientId": "string",
+      "redirectUri": "string",
+      "scopes": "string[]",
+      "state": "string"
+    }
+  }
+}

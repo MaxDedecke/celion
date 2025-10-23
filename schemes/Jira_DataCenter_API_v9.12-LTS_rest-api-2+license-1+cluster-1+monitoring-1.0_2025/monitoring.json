@@ -1,0 +1,21 @@
+{
+  "category": "Monitoring",
+  "description": "Systemmetriken, Health Checks und Statusinformationen.",
+  "endpoints": [
+    "/rest/monitoring/1.0/metrics",
+    "/rest/monitoring/1.0/health"
+  ],
+  "objects": {
+    "Metric": {
+      "name": "string",
+      "description": "string",
+      "value": "number",
+      "unit": "string"
+    },
+    "HealthCheck": {
+      "name": "string",
+      "state": "string",
+      "message": "string"
+    }
+  }
+}

@@ -1,0 +1,88 @@
+{
+  "category": "Issue Tracking",
+  "description": "Issues/Tickets mitsamt Kommentaren, Anhängen, Verknüpfungen.",
+  "endpoints": [
+    "/rest/api/2/issue",
+    "/rest/api/2/issue/{issueIdOrKey}",
+    "/rest/api/2/issue/{issueIdOrKey}/comment",
+    "/rest/api/2/issue/{issueIdOrKey}/attachment",
+    "/rest/api/2/issue/{issueIdOrKey}/transitions",
+    "/rest/api/2/issue/{issueIdOrKey}/worklog",
+    "/rest/api/2/issueLink",
+    "/rest/api/2/issueLinkType"
+  ],
+  "objects": {
+    "Issue": {
+      "id": "string",
+      "key": "string",
+      "summary": "string",
+      "description": "string",
+      "status": "Status",
+      "priority": "Priority",
+      "assignee": "User",
+      "reporter": "User",
+      "creator": "User",
+      "project": "Project",
+      "issueType": "IssueType",
+      "created": "datetime",
+      "updated": "datetime",
+      "duedate": "datetime",
+      "labels": "string[]",
+      "components": "Component[]",
+      "fixVersions": "Version[]",
+      "affectedVersions": "Version[]",
+      "comments": "Comment[]",
+      "attachments": "Attachment[]",
+      "security": "IssueSecurityLevel",
+      "customFields": "object"
+    },
+    "Comment": {
+      "id": "string",
+      "author": "User",
+      "body": "string",
+      "created": "datetime",
+      "updated": "datetime"
+    },
+    "Attachment": {
+      "id": "string",
+      "filename": "string",
+      "mimeType": "string",
+      "size": "number",
+      "author": "User",
+      "created": "datetime",
+      "content": "string"
+    },
+    "IssueLink": {
+      "id": "string",
+      "type": "IssueLinkType",
+      "inwardIssue": "IssueRef",
+      "outwardIssue": "IssueRef"
+    },
+    "IssueLinkType": {
+      "id": "string",
+      "name": "string",
+      "inward": "string",
+      "outward": "string"
+    },
+    "IssueRef": {
+      "id": "string",
+      "key": "string",
+      "summary": "string"
+    },
+    "Status": {
+      "id": "string",
+      "name": "string",
+      "statusCategory": "StatusCategory"
+    },
+    "Priority": {
+      "id": "string",
+      "name": "string",
+      "iconUrl": "string"
+    },
+    "IssueSecurityLevel": {
+      "id": "string",
+      "name": "string",
+      "description": "string"
+    }
+  }
+}

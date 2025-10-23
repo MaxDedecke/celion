@@ -1,0 +1,61 @@
+{
+  "category": "Projektmanagement",
+  "description": "Projekt-Metadaten und angrenzende Entitäten.",
+  "endpoints": [
+    "/rest/api/2/project",
+    "/rest/api/2/project/{projectIdOrKey}",
+    "/rest/api/2/project/{projectIdOrKey}/components",
+    "/rest/api/2/project/{projectIdOrKey}/versions",
+    "/rest/api/2/projectCategory",
+    "/rest/api/2/project/{projectIdOrKey}/role",
+    "/rest/api/2/project/{projectIdOrKey}/role/{id}"
+  ],
+  "objects": {
+    "Project": {
+      "id": "string",
+      "key": "string",
+      "name": "string",
+      "projectTypeKey": "string",
+      "lead": "User",
+      "url": "string",
+      "description": "string",
+      "avatarUrls": "object",
+      "components": "Component[]",
+      "versions": "Version[]",
+      "issueTypes": "IssueType[]",
+      "roles": "ProjectRole[]",
+      "category": "ProjectCategory"
+    },
+    "ProjectCategory": {
+      "id": "string",
+      "name": "string",
+      "description": "string"
+    },
+    "Component": {
+      "id": "string",
+      "name": "string",
+      "lead": "User",
+      "description": "string"
+    },
+    "Version": {
+      "id": "string",
+      "name": "string",
+      "released": "boolean",
+      "releaseDate": "date",
+      "description": "string"
+    },
+    "ProjectRole": {
+      "id": "string",
+      "name": "string",
+      "description": "string",
+      "actors": "User[]"
+    },
+    "IssueType": {
+      "id": "string",
+      "name": "string",
+      "description": "string",
+      "subtask": "boolean",
+      "avatarId": "number"
+    }
+  }
+}

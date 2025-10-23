@@ -1,0 +1,46 @@
+{
+  "category": "Tasks",
+  "description": "Asana Aufgaben und Teilaufgaben.",
+  "endpoints": [
+    "/tasks",
+    "/tasks/{gid}",
+    "/tasks/{gid}/subtasks",
+    "/tasks/{gid}/stories",
+    "/tasks/{gid}/attachments"
+  ],
+  "objects": {
+    "Task": {
+      "gid": "string",
+      "name": "string",
+      "notes": "string",
+      "assignee": "User",
+      "due_on": "date",
+      "completed": "boolean",
+      "projects": "Project[]",
+      "tags": "Tag[]",
+      "subtasks": "Task[]",
+      "attachments": "Attachment[]",
+      "custom_fields": "CustomFieldValue[]",
+      "stories": "Story[]",
+      "created_at": "datetime",
+      "modified_at": "datetime"
+    },
+    "Tag": {
+      "gid": "string",
+      "name": "string"
+    },
+    "Attachment": {
+      "gid": "string",
+      "name": "string",
+      "resource_type": "string",
+      "download_url": "string"
+    },
+    "Story": {
+      "gid": "string",
+      "type": "string",
+      "text": "string",
+      "created_by": "User",
+      "created_at": "datetime"
+    }
+  }
+}

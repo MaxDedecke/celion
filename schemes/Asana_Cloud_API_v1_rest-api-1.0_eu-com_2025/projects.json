@@ -1,0 +1,40 @@
+{
+  "category": "Projektmanagement",
+  "description": "Asana Projekte, Teams und Workspaces.",
+  "endpoints": [
+    "/projects",
+    "/projects/{gid}",
+    "/projects/{gid}/sections",
+    "/workspaces",
+    "/teams"
+  ],
+  "objects": {
+    "Project": {
+      "gid": "string",
+      "name": "string",
+      "notes": "string",
+      "owner": "User",
+      "workspace": "Workspace",
+      "team": "Team",
+      "created_at": "datetime",
+      "modified_at": "datetime",
+      "sections": "Section[]",
+      "tasks": "Task[]"
+    },
+    "Workspace": {
+      "gid": "string",
+      "name": "string",
+      "is_organization": "boolean"
+    },
+    "Team": {
+      "gid": "string",
+      "name": "string",
+      "organization": "Workspace"
+    },
+    "Section": {
+      "gid": "string",
+      "name": "string",
+      "project": "Project"
+    }
+  }
+}

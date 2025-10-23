@@ -1,0 +1,21 @@
+{
+  "category": "Search",
+  "description": "JQL-Suche zur Abfrage von Issues.",
+  "endpoints": [
+    "/rest/api/2/search"
+  ],
+  "objects": {
+    "SearchRequest": {
+      "jql": "string",
+      "startAt": "number",
+      "maxResults": "number",
+      "fields": "string[]"
+    },
+    "SearchResult": {
+      "startAt": "number",
+      "maxResults": "number",
+      "total": "number",
+      "issues": "Issue[]"
+    }
+  }
+}

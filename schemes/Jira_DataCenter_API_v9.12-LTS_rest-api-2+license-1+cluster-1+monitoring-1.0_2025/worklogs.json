@@ -1,0 +1,19 @@
+{
+  "category": "Zeiterfassung",
+  "description": "Arbeitszeiteinträge pro Issue.",
+  "endpoints": [
+    "/rest/api/2/issue/{issueIdOrKey}/worklog"
+  ],
+  "objects": {
+    "Worklog": {
+      "id": "string",
+      "author": "User",
+      "timeSpent": "string",
+      "timeSpentSeconds": "number",
+      "started": "datetime",
+      "created": "datetime",
+      "updated": "datetime",
+      "comment": "string"
+    }
+  }
+}

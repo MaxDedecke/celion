@@ -1,0 +1,18 @@
+{
+  "category": "System",
+  "description": "Serverinformationen und Build-Daten.",
+  "endpoints": [
+    "/rest/api/2/serverInfo"
+  ],
+  "objects": {
+    "ServerInfo": {
+      "baseUrl": "string",
+      "version": "string",
+      "versionNumbers": "number[]",
+      "deploymentType": "string",
+      "buildNumber": "number",
+      "buildDate": "datetime",
+      "serverTime": "datetime"
+    }
+  }
+}

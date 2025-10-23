@@ -1,0 +1,25 @@
+{
+  "category": "Custom Fields",
+  "description": "Benutzerdefinierte Felder für Projekte und Tasks.",
+  "endpoints": [
+    "/custom_fields",
+    "/enum_options"
+  ],
+  "objects": {
+    "CustomField": {
+      "gid": "string",
+      "name": "string",
+      "type": "string",
+      "enum_options": "EnumOption[]"
+    },
+    "EnumOption": {
+      "gid": "string",
+      "name": "string"
+    },
+    "CustomFieldValue": {
+      "gid": "string",
+      "field": "CustomField",
+      "value": "string | number | EnumOption"
+    }
+  }
+}

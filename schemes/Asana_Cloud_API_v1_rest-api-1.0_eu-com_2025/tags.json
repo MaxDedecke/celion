@@ -1,0 +1,16 @@
+{
+  "category": "Tags",
+  "description": "Labels zur Kategorisierung von Tasks.",
+  "endpoints": [
+    "/tags",
+    "/tags/{gid}",
+    "/tags/{gid}/tasks"
+  ],
+  "objects": {
+    "Tag": {
+      "gid": "string",
+      "name": "string",
+      "color": "string"
+    }
+  }
+}
