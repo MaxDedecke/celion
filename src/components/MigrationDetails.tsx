@@ -1054,12 +1054,17 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
     </div>
   );
 
-  const renderEdge = (fill: number, isActive: boolean) => (
-    <div className={`flex-1 h-1.5 rounded-full bg-muted relative overflow-hidden ${isActive ? 'shadow-[0_0_12px_rgba(59,130,246,0.4)]' : ''}`}>
+  const renderEdge = (fill: number, isActive: boolean, label: string) => (
+    <div className="flex flex-1 flex-col items-center gap-1">
       <div
-        className="absolute inset-y-0 left-0 bg-primary transition-all duration-500"
-        style={{ width: `${fill}%` }}
-      />
+        className={`w-full h-1.5 rounded-full bg-muted relative overflow-hidden ${isActive ? 'shadow-[0_0_12px_rgba(59,130,246,0.4)]' : ''}`}
+      >
+        <div
+          className="absolute inset-y-0 left-0 bg-primary transition-all duration-500"
+          style={{ width: `${fill}%` }}
+        />
+      </div>
+      <span className="text-xs text-muted-foreground">{label}: {Math.round(fill)}%</span>
     </div>
   );
 
@@ -1079,37 +1084,6 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
     <div className="h-full p-8 pb-6 space-y-6">
       {activeTab === "general" && (
         <div className="space-y-6 pb-6">
-          <Card className="bg-card border-border">
-            <CardContent className="pt-6">
-              <div className="space-y-4">
-                <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div>
-                    <p className="text-sm font-semibold text-foreground">Migrationsfluss</p>
-                    <p className="text-xs text-muted-foreground">
-                      Visualisierung des Datenwegs von Quelle über Celion bis zum Zielsystem.
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    <span>{importStatus}</span>
-                    <span className="text-muted-foreground/40">•</span>
-                    <span>{exportStatus}</span>
-                  </div>
-                </div>
-                <div className="flex items-center gap-3">
-                  {renderNode('Quelle', Download, true, isImporting && importEdgeFill < 100)}
-                  {renderEdge(importEdgeFill, isImporting || hasImported)}
-                  {renderNode('Celion', Workflow, hasImported || importEdgeFill >= 100, isImporting && importEdgeFill < 100)}
-                  {renderEdge(exportEdgeFill, isExporting || hasExported)}
-                  {renderNode('Zielsystem', Upload, hasExported || exportEdgeFill >= 100, isExporting && exportEdgeFill < 100)}
-                </div>
-                <div className="flex justify-between text-xs text-muted-foreground px-1">
-                  <span>Import: {Math.round(importEdgeFill)}%</span>
-                  <span>Export: {Math.round(exportEdgeFill)}%</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
           {/* Progress Card - Full width */}
           <div className="grid grid-cols-1 md:grid-cols-2 items-center gap-10 py-4">
             <div className="flex justify-center">
@@ -1125,6 +1099,28 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
               </div>
             </div>
           </div>
+
+          <Card className="bg-card border-border">
+            <CardContent className="pt-6">
+              <div className="space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-sm font-semibold text-foreground">Status</p>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                    <span>{importStatus}</span>
+                    <span className="text-muted-foreground/40">•</span>
+                    <span>{exportStatus}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
+                  {renderNode('Quelle', Download, true, isImporting && importEdgeFill < 100)}
+                  {renderEdge(importEdgeFill, isImporting || hasImported, 'Import')}
+                  {renderNode('Celion', Workflow, hasImported || importEdgeFill >= 100, isImporting && importEdgeFill < 100)}
+                  {renderEdge(exportEdgeFill, isExporting || hasExported, 'Export')}
+                  {renderNode('Zielsystem', Upload, hasExported || exportEdgeFill >= 100, isExporting && exportEdgeFill < 100)}
+                </div>
+              </div>
+            </CardContent>
+          </Card>
 
           <div className="grid gap-6">
             <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-6">
