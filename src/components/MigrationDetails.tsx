@@ -942,146 +942,160 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
             </div>
           </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            {/* Left column - Cards */}
-            <div className="lg:col-span-2 space-y-6">
-              {/* Meta model Card */}
-              <Card className="bg-card border-border">
-                <CardContent className="pt-6">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-8">
-                      <div>
-                        <p className="text-sm font-medium">Meta modell</p>
+          <div className="grid gap-6">
+            <div className="grid grid-cols-1 xl:grid-cols-[2fr_1fr] gap-6">
+              <div className="grid gap-6">
+                {/* Meta model Card */}
+                <Card className="bg-card border-border h-full">
+                  <CardContent className="pt-6">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-8">
+                        <div>
+                          <p className="text-sm font-medium">Meta modell</p>
+                        </div>
+                        <div>
+                          <p className="text-sm text-muted-foreground">Mapped objects</p>
+                          <p className="text-foreground font-medium">{project.mappedObjects}</p>
+                        </div>
+                        {getCurrentStep() === "Validierung" && (
+                          <Button
+                            onClick={handleValidationStart}
+                            disabled={isValidating}
+                            className="bg-success hover:bg-success/90 text-white"
+                          >
+                            {isValidating ? (
+                              <>
+                                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                                Validiere...
+                              </>
+                            ) : (
+                              "Validieren"
+                            )}
+                          </Button>
+                        )}
                       </div>
-                      <div>
-                        <p className="text-sm text-muted-foreground">Mapped objects</p>
-                        <p className="text-foreground font-medium">{project.mappedObjects}</p>
+                      <div className={`w-12 h-12 rounded-full border-4 transition-all duration-500 ${
+                        project.progress === 100
+                          ? "border-success"
+                          : isValidating || (getCurrentStep() === "Validierung" && !hasValidated)
+                          ? "border-primary"
+                          : "border-muted"
+                      } flex items-center justify-center`}>
+                        <Database className="h-5 w-5" />
                       </div>
-                      {getCurrentStep() === "Validierung" && (
-                        <Button 
-                          onClick={handleValidationStart}
-                          disabled={isValidating}
-                          className="bg-success hover:bg-success/90 text-white"
-                        >
-                          {isValidating ? (
-                            <>
-                              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                              Validiere...
-                            </>
-                          ) : (
-                            "Validieren"
+                    </div>
+                  </CardContent>
+                </Card>
+
+                {/* Inconnector Card */}
+                <Card className={`bg-card border-border transition-shadow duration-300 ${
+                  getCurrentStep() === "Inconnector" || getCurrentStep() === "Transfer"
+                    ? "shadow-[0_0_20px_rgba(59,130,246,0.5)] dark:shadow-[0_0_20px_rgba(255,255,255,0.3)]"
+                    : ""
+                }`}>
+                  <CardHeader className="flex flex-row items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <CardTitle className="text-base">Inconnector</CardTitle>
+                          {hasInConnector && (
+                            <Check className="h-4 w-4 text-green-500" />
                           )}
+                        </div>
+                        <p className="text-sm text-muted-foreground mt-1">
+                          {project.inConnectorDetail}
+                        </p>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      {isMetaModelApproved && getCurrentStep() === "Transfer" && (
+                        <>
+                          {isImporting && (
+                            <Loader2 className="h-4 w-4 text-primary animate-spin" />
+                          )}
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className={`text-success hover:text-success ${!hasImported ? "animate-gentle-bounce" : ""}`}
+                            title={hasImported ? "Import wiederholen" : "Import starten"}
+                            onClick={handleImportStart}
+                            disabled={isImporting}
+                          >
+                            {hasImported ? (
+                              <RefreshCw className="h-4 w-4" />
+                            ) : (
+                              <Download className="h-4 w-4" />
+                            )}
+                          </Button>
+                        </>
+                      )}
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="ghost" size="icon">
+                            <SettingsIcon className="h-4 w-4" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end">
+                          <DropdownMenuItem onClick={() => handleEdit('in')}>
+                            {hasInConnector ? 'Bearbeiten' : 'Erstellen'}
+                          </DropdownMenuItem>
+                          {hasInConnector && (
+                            <DropdownMenuItem onClick={() => handleTest('in')}>
+                              Test
+                            </DropdownMenuItem>
+                          )}
+                          {getAvailableDataSources('in').length > 0 && (
+                            <>
+                              <DropdownMenuSeparator />
+                              <DropdownMenuItem onClick={() => handleLinkDataSource('in')}>
+                                <Link className="h-4 w-4 mr-2" />
+                                Datenquelle verknüpfen
+                              </DropdownMenuItem>
+                            </>
+                          )}
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                      {hasInConnector && (
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => handleDeleteClick('in')}
+                        >
+                          <Trash2 className="h-4 w-4 text-destructive" />
                         </Button>
                       )}
                     </div>
-                    <div className={`w-12 h-12 rounded-full border-4 transition-all duration-500 ${
-                      project.progress === 100 
-                        ? "border-success" 
-                        : isValidating || (getCurrentStep() === "Validierung" && !hasValidated)
-                        ? "border-primary"
-                        : "border-muted"
-                    } flex items-center justify-center`}>
-                      <Database className="h-5 w-5" />
+                  </CardHeader>
+                  <CardContent>
+                    <div className="flex items-center gap-2 text-sm">
+                      <span className={project.connectors?.in?.is_tested ? "text-success" : "text-muted-foreground"}>
+                        Connection {project.connectors?.in?.is_tested ? "✓" : "—"}
+                      </span>
                     </div>
-                  </div>
-                </CardContent>
-              </Card>
+                    <p className="text-xs text-muted-foreground mt-2">
+                      Objects transferred {project.objectsTransferred}
+                    </p>
+                  </CardContent>
+                </Card>
+              </div>
 
-              {/* Inconnector Card */}
-              <Card className={`bg-card border-border transition-shadow duration-300 ${
-                getCurrentStep() === "Inconnector" || getCurrentStep() === "Transfer"
-                  ? "shadow-[0_0_20px_rgba(59,130,246,0.5)] dark:shadow-[0_0_20px_rgba(255,255,255,0.3)]" 
-                  : ""
-              }`}>
-                <CardHeader className="flex flex-row items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <CardTitle className="text-base">Inconnector</CardTitle>
-                        {hasInConnector && (
-                          <Check className="h-4 w-4 text-green-500" />
-                        )}
-                      </div>
-                      <p className="text-sm text-muted-foreground mt-1">
-                        {project.inConnectorDetail}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {isMetaModelApproved && getCurrentStep() === "Transfer" && (
-                      <>
-                        {isImporting && (
-                          <Loader2 className="h-4 w-4 text-primary animate-spin" />
-                        )}
-                        <Button 
-                          variant="ghost" 
-                          size="icon"
-                          className={`text-success hover:text-success ${!hasImported ? "animate-gentle-bounce" : ""}`}
-                          title={hasImported ? "Import wiederholen" : "Import starten"}
-                          onClick={handleImportStart}
-                          disabled={isImporting}
-                        >
-                          {hasImported ? (
-                            <RefreshCw className="h-4 w-4" />
-                          ) : (
-                            <Download className="h-4 w-4" />
-                          )}
-                        </Button>
-                      </>
-                    )}
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button variant="ghost" size="icon">
-                          <SettingsIcon className="h-4 w-4" />
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end">
-                        <DropdownMenuItem onClick={() => handleEdit('in')}>
-                          {hasInConnector ? 'Bearbeiten' : 'Erstellen'}
-                        </DropdownMenuItem>
-                        {hasInConnector && (
-                          <DropdownMenuItem onClick={() => handleTest('in')}>
-                            Test
-                          </DropdownMenuItem>
-                        )}
-                        {getAvailableDataSources('in').length > 0 && (
-                          <>
-                            <DropdownMenuSeparator />
-                            <DropdownMenuItem onClick={() => handleLinkDataSource('in')}>
-                              <Link className="h-4 w-4 mr-2" />
-                              Datenquelle verknüpfen
-                            </DropdownMenuItem>
-                          </>
-                        )}
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                    {hasInConnector && (
-                      <Button 
-                        variant="ghost" 
-                        size="icon"
-                        onClick={() => handleDeleteClick('in')}
-                      >
-                        <Trash2 className="h-4 w-4 text-destructive" />
-                      </Button>
-                    )}
-                  </div>
+              <Card className="bg-card border-border h-full flex flex-col">
+                <CardHeader>
+                  <CardTitle className="text-base">Activity</CardTitle>
                 </CardHeader>
-                <CardContent>
-                  <div className="flex items-center gap-2 text-sm">
-                    <span className={project.connectors?.in?.is_tested ? "text-success" : "text-muted-foreground"}>
-                      Connection {project.connectors?.in?.is_tested ? "✓" : "—"}
-                    </span>
-                  </div>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Objects transferred {project.objectsTransferred}
-                  </p>
+                <CardContent className="p-0 flex-1">
+                  <ScrollArea className="h-full max-h-[260px] px-6 py-4">
+                    <ActivityTimeline activities={project.activities} />
+                  </ScrollArea>
                 </CardContent>
               </Card>
+            </div>
 
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Outconnector Card */}
               <Card className={`bg-card border-border transition-shadow duration-300 ${
                 getCurrentStep() === "Outconnector" || getCurrentStep() === "Export"
-                  ? "shadow-[0_0_20px_rgba(59,130,246,0.5)] dark:shadow-[0_0_20px_rgba(255,255,255,0.3)]" 
+                  ? "shadow-[0_0_20px_rgba(59,130,246,0.5)] dark:shadow-[0_0_20px_rgba(255,255,255,0.3)]"
                   : ""
               }`}>
                 <CardHeader className="flex flex-row items-center justify-between">
@@ -1104,8 +1118,8 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                         {isExporting && (
                           <Loader2 className="h-4 w-4 text-primary animate-spin" />
                         )}
-                        <Button 
-                          variant="ghost" 
+                        <Button
+                          variant="ghost"
                           size="icon"
                           className={`text-success hover:text-success ${!hasExported ? "animate-gentle-bounce" : ""}`}
                           title={hasExported ? "Export wiederholen" : "Export starten"}
@@ -1143,8 +1157,8 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                       </DropdownMenuContent>
                     </DropdownMenu>
                     {hasOutConnector && (
-                      <Button 
-                        variant="ghost" 
+                      <Button
+                        variant="ghost"
                         size="icon"
                         onClick={() => handleDeleteClick('out')}
                       >
@@ -1165,25 +1179,10 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                 </CardContent>
               </Card>
 
-            </div>
-
-            {/* Right column - Activity Timeline and Meta Model Approval */}
-            <div className="lg:col-span-1 flex flex-col gap-6">
-              <Card className="bg-card border-border">
-                <CardHeader>
-                  <CardTitle className="text-base">Activity</CardTitle>
-                </CardHeader>
-                <CardContent className="p-0">
-                  <ScrollArea className="h-[240px] px-6 py-4">
-                    <ActivityTimeline activities={project.activities} />
-                  </ScrollArea>
-                </CardContent>
-              </Card>
-
               {/* Meta Model Approval Card - Always visible */}
               <Card className={`bg-card border-border transition-shadow duration-300 ${
-                getCurrentStep() === "Mapping (MetaModel)" 
-                  ? "shadow-[0_0_20px_rgba(59,130,246,0.5)] dark:shadow-[0_0_20px_rgba(255,255,255,0.3)]" 
+                getCurrentStep() === "Mapping (MetaModel)"
+                  ? "shadow-[0_0_20px_rgba(59,130,246,0.5)] dark:shadow-[0_0_20px_rgba(255,255,255,0.3)]"
                   : ""
               }`}>
                 <CardHeader>
