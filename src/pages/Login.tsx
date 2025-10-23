@@ -1,16 +1,19 @@
-import { useState } from "react";
+﻿import { useState } from "react";
 import { useNavigate } from "react-router-dom";
+import DataFlowLoader from "@/components/DataFlowLoader";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Logo from "@/components/Logo";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useMinimumLoader } from "@/hooks/useMinimumLoader";
 
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
   const [loading, setLoading] = useState(false);
+  const loaderVisible = useMinimumLoader(loading, 1000);
   const navigate = useNavigate();
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -54,7 +57,12 @@ const Login = () => {
   };
 
   return (
-    <div className="app-shell flex items-center justify-center px-6 py-16">
+    <div className="app-shell relative flex items-center justify-center px-6 py-16">
+      {loaderVisible && (
+        <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/85 backdrop-blur-md transition-opacity">
+          <DataFlowLoader size="lg" />
+        </div>
+      )}
       <div className="z-10 flex w-full max-w-4xl flex-col items-center gap-12">
         <div className="flex flex-col items-center gap-4 text-center">
           <Logo
@@ -64,7 +72,7 @@ const Login = () => {
           <p className="text-sm text-muted-foreground">Melde dich an, um fortzufahren.</p>
         </div>
 
-        <div className="app-surface w-full max-w-md px-10 py-12">
+        <div className="app-surface relative w-full max-w-md px-10 py-12">
           <form onSubmit={handleSubmit} className="space-y-8">
             <div className="space-y-4">
               <Input
@@ -86,21 +94,17 @@ const Login = () => {
             </div>
             <Button
               type="submit"
-              className="h-12 w-full rounded-2xl bg-foreground text-background text-sm font-semibold transition-colors hover:bg-foreground/90 focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:ring-offset-0 disabled:cursor-not-allowed"
+              className="flex h-12 w-full items-center justify-center rounded-2xl bg-foreground text-background text-sm font-semibold transition-colors hover:bg-foreground/90 focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:ring-offset-0 disabled:cursor-not-allowed"
               disabled={loading}
             >
-              {loading ? "Lädt..." : isSignUp ? "Registrieren" : "Anmelden"}
+              {loading ? (
+                <>
+                  <DataFlowLoader size="sm" className="w-16" />
+                  <span className="sr-only">Anfrage wird verarbeitet</span>
+                </>
+              ) : isSignUp ? "Registrieren" : "Anmelden"}
             </Button>
           </form>
-
-          <button
-            type="button"
-            onClick={() => setIsSignUp(!isSignUp)}
-            className="mt-10 w-full text-center text-sm text-muted-foreground transition-colors hover:text-foreground"
-            disabled={loading}
-          >
-            {isSignUp ? "Bereits ein Konto? Jetzt anmelden" : "Noch kein Konto? Jetzt registrieren"}
-          </button>
         </div>
       </div>
     </div>
@@ -108,3 +112,4 @@ const Login = () => {
 };
 
 export default Login;
+

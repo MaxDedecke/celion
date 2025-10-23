@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+﻿import { useState, useEffect, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -18,8 +18,10 @@ import {
   Sparkles
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import DataFlowLoader from "@/components/DataFlowLoader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { supabase } from "@/integrations/supabase/client";
+import { useMinimumLoader } from "@/hooks/useMinimumLoader";
 import type { Tables, TablesInsert } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -44,7 +46,7 @@ type DataSourceFormData = Omit<
 
 const SOURCE_TYPE_OPTIONS = [
   "Jira Server / Jira Data Center",
-  "Azure DevOps Server (früher TFS)",
+  "Azure DevOps Server (fr├╝her TFS)",
   "GitLab (Self-Managed Edition)",
   "GitHub Enterprise Server",
   "Redmine",
@@ -105,6 +107,7 @@ const DataSources = () => {
   const [dataSources, setDataSources] = useState<DataSourceWithProjects[]>([]);
   const [projects, setProjects] = useState<ProjectSummary[]>([]);
   const [loading, setLoading] = useState(true);
+  const loaderVisible = useMinimumLoader(loading, 1000);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSource, setEditingSource] = useState<DataSourceWithProjects | null>(null);
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
@@ -277,10 +280,10 @@ const DataSources = () => {
         .eq("id", id);
 
       if (error) throw error;
-      toast.success("Datenquelle gelöscht");
+      toast.success("Datenquelle gel├Âscht");
       await loadDataSources();
     } catch (error: unknown) {
-      toast.error("Fehler beim Löschen");
+      toast.error("Fehler beim L├Âschen");
       console.error(error);
     }
   };
@@ -295,10 +298,10 @@ const DataSources = () => {
     }
   }, [formData.is_global]);
 
-  if (loading) {
+  if (loaderVisible) {
     return (
       <div className="app-shell flex min-h-screen items-center justify-center p-6">
-        <p className="text-muted-foreground">Laden...</p>
+        <DataFlowLoader size="lg" />
       </div>
     );
   }
@@ -447,7 +450,7 @@ const DataSources = () => {
                   onValueChange={(value) => setFormData({ ...formData, source_type: value })}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Quelle auswählen" />
+                    <SelectValue placeholder="Quelle ausw├ñhlen" />
                   </SelectTrigger>
                   <SelectContent>
                     {SOURCE_TYPE_OPTIONS.map((type) => (
@@ -517,7 +520,7 @@ const DataSources = () => {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="is_global">Global verfügbar</Label>
+                <Label htmlFor="is_global">Global verf├╝gbar</Label>
                 <div className="flex items-center gap-2 rounded-full border border-border/50 px-3 py-2">
                   <Switch
                     id="is_global"
@@ -525,7 +528,7 @@ const DataSources = () => {
                     onCheckedChange={(checked) => setFormData({ ...formData, is_global: checked })}
                   />
                   <span className="text-sm text-muted-foreground">
-                    Wenn aktiviert, für alle Projekte verfügbar
+                    Wenn aktiviert, f├╝r alle Projekte verf├╝gbar
                   </span>
                 </div>
               </div>
@@ -544,7 +547,7 @@ const DataSources = () => {
                     }}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Projekt auswählen" />
+                      <SelectValue placeholder="Projekt ausw├ñhlen" />
                     </SelectTrigger>
                     <SelectContent>
                       {projects.map((project) => (

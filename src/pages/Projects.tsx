@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import Sidebar from "@/components/Sidebar";
 import UserMenu from "@/components/UserMenu";
@@ -7,6 +7,7 @@ import AddProjectDialog from "@/components/dialogs/AddProjectDialog";
 import AddMigrationDialog from "@/components/dialogs/AddMigrationDialog";
 import EditProjectDialog from "@/components/dialogs/EditProjectDialog";
 import EditMigrationDialog from "@/components/dialogs/EditMigrationDialog";
+import DataFlowLoader from "@/components/DataFlowLoader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { FolderOpen, Plus, Trash2, Sparkles, ClipboardList, Users } from "lucide-react";
@@ -22,6 +23,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { useMinimumLoader } from "@/hooks/useMinimumLoader";
 
 const Projects = () => {
   const navigate = useNavigate();
@@ -42,6 +44,8 @@ const Projects = () => {
   const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
   const [migrationToDelete, setMigrationToDelete] = useState<string | null>(null);
   const [projectIdForNewMigration, setProjectIdForNewMigration] = useState<string | null>(null);
+  const [transitioning, setTransitioning] = useState(false);
+  const loaderVisible = useMinimumLoader(loading || transitioning, 1000);
 
   useEffect(() => {
     checkAuth();
@@ -130,8 +134,16 @@ const Projects = () => {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    navigate("/");
+    try {
+      setTransitioning(true);
+      await supabase.auth.signOut();
+      navigate("/");
+    } catch (error) {
+      toast.error("Abmeldung fehlgeschlagen");
+      console.error(error);
+    } finally {
+      setTransitioning(false);
+    }
   };
 
   const handleAddProject = async (data: { name: string; description: string }) => {
@@ -191,12 +203,12 @@ const Projects = () => {
 
       if (error) throw error;
 
-      toast.success("Projekt gelöscht");
+      toast.success("Projekt gelÃ¶scht");
       setShowDeleteDialog(false);
       setProjectToDelete(null);
       await loadAllData();
     } catch (error: any) {
-      toast.error("Fehler beim Löschen");
+      toast.error("Fehler beim LÃ¶schen");
       console.error(error);
     }
   };
@@ -273,10 +285,10 @@ const Projects = () => {
 
       if (error) throw error;
 
-      toast.success("Migration gelöscht");
+      toast.success("Migration gelÃ¶scht");
       loadAllData();
     } catch (error: any) {
-      toast.error("Fehler beim Löschen der Migration");
+      toast.error("Fehler beim LÃ¶schen der Migration");
       console.error(error);
     }
   };
@@ -307,6 +319,14 @@ const Projects = () => {
       console.error(error);
     }
   };
+
+  if (loaderVisible) {
+    return (
+      <div className="app-shell flex min-h-screen items-center justify-center p-6">
+        <DataFlowLoader size="lg" />
+      </div>
+    );
+  }
 
   return (
     <div className="app-shell flex min-h-screen flex-col p-6">
@@ -343,7 +363,7 @@ const Projects = () => {
               </div>
               <div>
                 <h1 className="text-xl font-semibold text-foreground">Projekte</h1>
-                <p className="text-sm text-muted-foreground">Behalte den Überblick über deine Migrationsvorhaben.</p>
+                <p className="text-sm text-muted-foreground">Behalte den Ãœberblick Ã¼ber deine Migrationsvorhaben.</p>
               </div>
             </div>
             <UserMenu
@@ -364,7 +384,7 @@ const Projects = () => {
               <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 px-6 py-5">
                 <div>
                   <p className="text-sm text-muted-foreground">
-                    Lege neue Projekte an oder öffne bestehende Migrationen.
+                    Lege neue Projekte an oder Ã¶ffne bestehende Migrationen.
                   </p>
                 </div>
                 <Button
@@ -485,16 +505,16 @@ const Projects = () => {
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Projekt löschen</AlertDialogTitle>
+            <AlertDialogTitle>Projekt lÃ¶schen</AlertDialogTitle>
             <AlertDialogDescription>
-              Sind Sie sicher, dass Sie dieses Projekt löschen möchten? Alle zugehörigen Migrationen werden ebenfalls gelöscht.
-              Diese Aktion kann nicht rückgängig gemacht werden.
+              Sind Sie sicher, dass Sie dieses Projekt lÃ¶schen mÃ¶chten? Alle zugehÃ¶rigen Migrationen werden ebenfalls gelÃ¶scht.
+              Diese Aktion kann nicht rÃ¼ckgÃ¤ngig gemacht werden.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Abbrechen</AlertDialogCancel>
             <AlertDialogAction onClick={handleDeleteProject}>
-              Löschen
+              LÃ¶schen
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -504,3 +524,5 @@ const Projects = () => {
 };
 
 export default Projects;
+
+

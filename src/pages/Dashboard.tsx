@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+﻿import { useState, useEffect } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Sidebar from "@/components/Sidebar";
 import UserMenu from "@/components/UserMenu";
@@ -6,6 +6,7 @@ import AccountDialog from "@/components/dialogs/AccountDialog";
 import AddMigrationDialog from "@/components/dialogs/AddMigrationDialog";
 import EditMigrationDialog from "@/components/dialogs/EditMigrationDialog";
 import MigrationDetails from "@/components/MigrationDetails";
+import DataFlowLoader from "@/components/DataFlowLoader";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import {
@@ -20,6 +21,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
+import { useMinimumLoader } from "@/hooks/useMinimumLoader";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -48,6 +50,8 @@ const Dashboard = () => {
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [migrationToDelete, setMigrationToDelete] = useState<string | null>(null);
   const [projectIdForNewMigration, setProjectIdForNewMigration] = useState<string | null>(null);
+  const [transitioning, setTransitioning] = useState(false);
+  const loaderVisible = useMinimumLoader(loading || transitioning, 1000);
 
   // Check auth and load project data
   useEffect(() => {
@@ -190,9 +194,17 @@ const Dashboard = () => {
   };
 
   const handleLogout = async () => {
-    await supabase.auth.signOut();
-    toast.success("Erfolgreich abgemeldet");
-    navigate("/");
+    try {
+      setTransitioning(true);
+      await supabase.auth.signOut();
+      toast.success("Erfolgreich abgemeldet");
+      navigate("/");
+    } catch (error) {
+      toast.error("Abmeldung fehlgeschlagen");
+      console.error(error);
+    } finally {
+      setTransitioning(false);
+    }
   };
 
   const handleAddMigration = async (name: string, sourceSystem: string, targetSystem: string) => {
@@ -267,10 +279,10 @@ const Dashboard = () => {
         setSelectedMigration(null);
       }
       
-      toast.success(`Migration "${migrationToDeleteData?.name}" gelöscht`);
+      toast.success(`Migration "${migrationToDeleteData?.name}" gel├Âscht`);
       loadAllData();
     } catch (error: any) {
-      toast.error("Fehler beim Löschen der Migration");
+      toast.error("Fehler beim L├Âschen der Migration");
       console.error(error);
     } finally {
       setShowDeleteDialog(false);
@@ -309,10 +321,10 @@ const Dashboard = () => {
     ? [...migrations, ...standaloneMigrations].find((m) => m.id === selectedMigration)
     : null;
 
-  if (loading) {
+  if (loaderVisible) {
     return (
       <div className="app-shell flex min-h-screen items-center justify-center p-6">
-        <p className="text-muted-foreground">Lädt...</p>
+        <DataFlowLoader size="lg" />
       </div>
     );
   }
@@ -378,13 +390,13 @@ const Dashboard = () => {
                   </Button>
                 </div>
                 <div className="text-base font-semibold text-foreground">
-                  {currentMigration.sourceSystem} → {currentMigration.targetSystem}
+                  {currentMigration.sourceSystem} ÔåÆ {currentMigration.targetSystem}
                 </div>
               </div>
             ) : (
               <div>
                 <h1 className="text-xl font-semibold text-foreground">Dashboard</h1>
-                <p className="text-sm text-muted-foreground">Eine kompakte Übersicht deiner Migrationen.</p>
+                <p className="text-sm text-muted-foreground">Eine kompakte ├£bersicht deiner Migrationen.</p>
               </div>
             )}
             <UserMenu
@@ -412,8 +424,8 @@ const Dashboard = () => {
             ) : (
               <div className="app-surface flex h-full flex-col gap-6 overflow-auto rounded-3xl px-8 py-8">
                 <div>
-                  <h2 className="text-2xl font-semibold text-foreground">Willkommen zurück!</h2>
-                  <p className="mt-2 text-sm text-muted-foreground">Hier ist eine Übersicht deiner Migrationen.</p>
+                  <h2 className="text-2xl font-semibold text-foreground">Willkommen zur├╝ck!</h2>
+                  <p className="mt-2 text-sm text-muted-foreground">Hier ist eine ├£bersicht deiner Migrationen.</p>
                 </div>
 
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
@@ -477,7 +489,7 @@ const Dashboard = () => {
                               <div>
                                 <p className="font-medium text-foreground">{migration.name}</p>
                                 <p className="text-sm text-muted-foreground">
-                                  {migration.sourceSystem} → {migration.targetSystem}
+                                  {migration.sourceSystem} ÔåÆ {migration.targetSystem}
                                 </p>
                               </div>
                               <div className="text-right">
@@ -514,7 +526,7 @@ const Dashboard = () => {
                   <div className="app-subtle rounded-2xl p-6">
                     <h3 className="flex items-center gap-2 text-lg font-semibold text-foreground">
                       <BarChart3 className="h-5 w-5 text-muted-foreground" />
-                      Fortschrittsübersicht
+                      Fortschritts├╝bersicht
                     </h3>
                     <div className="mt-4 space-y-4">
                       {allProjects.slice(0, 5).map((project) => {
@@ -554,7 +566,7 @@ const Dashboard = () => {
                   <div className="flex h-12 w-12 items-center justify-center rounded-full bg-foreground/5">
                     <Rocket className="h-6 w-6 text-foreground" />
                   </div>
-                  <h3 className="text-lg font-semibold text-foreground">Bereit für eine neue Migration?</h3>
+                  <h3 className="text-lg font-semibold text-foreground">Bereit f├╝r eine neue Migration?</h3>
                   <p className="text-sm text-muted-foreground">Starte jetzt und migriere deine Daten nahtlos.</p>
                   <Button
                     onClick={() => setShowAddDialog(true)}
@@ -592,13 +604,13 @@ const Dashboard = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Sind Sie sicher?</AlertDialogTitle>
             <AlertDialogDescription>
-              Diese Aktion kann nicht rückgängig gemacht werden. Die Migration "{migrations.find(m => m.id === migrationToDelete)?.name}" wird permanent gelöscht.
+              Diese Aktion kann nicht r├╝ckg├ñngig gemacht werden. Die Migration "{migrations.find(m => m.id === migrationToDelete)?.name}" wird permanent gel├Âscht.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Abbrechen</AlertDialogCancel>
             <AlertDialogAction onClick={confirmDeleteMigration} className="bg-destructive hover:bg-destructive/90">
-              Löschen
+              L├Âschen
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -608,3 +620,4 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+
