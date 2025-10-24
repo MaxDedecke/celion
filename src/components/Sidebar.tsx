@@ -150,17 +150,28 @@ const Sidebar = ({
               return (
                 <div key={project.id} className="space-y-1">
                   <div className="flex w-full items-center justify-between rounded-xl px-2 py-2 text-sm transition-colors">
-                    <button
-                      onClick={() => toggleProject(project.id)}
-                      className="flex items-center gap-2 flex-1 text-left font-medium"
-                    >
-                      {expandedProjects.has(project.id) ? (
-                        <ChevronDown className="h-4 w-4" />
-                      ) : (
-                        <ChevronRight className="h-4 w-4" />
-                      )}
-                      {project.name}
-                    </button>
+                    <div className="flex flex-1 items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={() => toggleProject(project.id)}
+                        className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
+                        aria-label={expandedProjects.has(project.id) ? "Projekt einklappen" : "Projekt ausklappen"}
+                        aria-expanded={expandedProjects.has(project.id)}
+                      >
+                        {expandedProjects.has(project.id) ? (
+                          <ChevronDown className="h-4 w-4" />
+                        ) : (
+                          <ChevronRight className="h-4 w-4" />
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => navigate(`/project/${encodeURIComponent(project.name)}`)}
+                        className="flex-1 text-left font-medium text-muted-foreground transition-colors hover:text-foreground"
+                      >
+                        {project.name}
+                      </button>
+                    </div>
                     <button
                       onClick={() => onNewProjectMigration?.(project.id)}
                       className="rounded p-1 transition-colors hover:bg-foreground/5"

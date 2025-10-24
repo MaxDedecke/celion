@@ -6,6 +6,7 @@ import { BrowserRouter, Routes, Route } from "react-router-dom";
 import { ThemeProvider } from "next-themes";
 import Login from "./pages/Login";
 import Projects from "./pages/Projects";
+import ProjectDetail from "./pages/ProjectDetail";
 import Dashboard from "./pages/Dashboard";
 import DataSources from "./pages/DataSources";
 import NotFound from "./pages/NotFound";
@@ -24,6 +25,7 @@ const App = () => (
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/migration/:migrationId" element={<Dashboard />} />
             <Route path="/projects/:projectId/migration/:migrationId" element={<Dashboard />} />
+            <Route path="/project/:projectName" element={<ProjectDetail />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/data-sources" element={<DataSources />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
