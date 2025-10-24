@@ -48,7 +48,7 @@ import TestConnectionDialog from "./dialogs/TestConnectionDialog";
 import { FieldMapper } from "./FieldMapper";
 import { getSystemObjectOptions } from "@/lib/schema-registry";
 import { applyMappingsToRecord, buildSampleRecordFromMappings } from "@/lib/migration-pipeline";
-import { getMappingStorageKey, loadMappingsFromStorage } from "@/lib/mapping-storage";
+import { loadMappingsFromDatabase } from "@/lib/mapping-storage";
 import type { FieldMapping } from "@/types/mapping";
 
 interface MigrationProject {
@@ -125,20 +125,13 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   const hasInConnector = !!project.connectors?.in;
   const hasOutConnector = !!project.connectors?.out;
 
-  const loadActiveMappings = useCallback((): FieldMapping[] => {
+  const loadActiveMappings = useCallback(async (): Promise<FieldMapping[]> => {
     if (!selectedSourceObject || !selectedTargetObject) {
       return [];
     }
 
-    const key = getMappingStorageKey(
-      project.sourceSystem,
-      selectedSourceObject,
-      project.targetSystem,
-      selectedTargetObject
-    );
-
-    return loadMappingsFromStorage(key);
-  }, [project.sourceSystem, project.targetSystem, selectedSourceObject, selectedTargetObject]);
+    return await loadMappingsFromDatabase(project.id);
+  }, [project.id, selectedSourceObject, selectedTargetObject]);
 
   // Load meta model approval status from database
   useEffect(() => {
@@ -647,7 +640,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
     try {
       setIsImporting(true);
 
-      const activeMappings = loadActiveMappings();
+      const activeMappings = await loadActiveMappings();
 
       if (activeMappings.length > 0) {
         const sampleRecord = buildSampleRecordFromMappings(activeMappings);
@@ -1408,6 +1401,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
           <div className="border-transparent rounded-lg min-h-[600px]">
             {selectedSourceObject && selectedTargetObject ? (
               <FieldMapper
+                migrationId={project.id}
                 sourceSystem={project.sourceSystem}
                 targetSystem={project.targetSystem}
                 sourceObject={selectedSourceObject}

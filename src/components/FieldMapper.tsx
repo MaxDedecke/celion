@@ -37,26 +37,27 @@ import type { SchemaField } from "@/types/schema";
 import { getFieldsForSystemObject } from "@/lib/schema-registry";
 import {
   createMappingId,
-  getMappingStorageKey,
-  loadMappingsFromStorage,
-  saveMappingsToStorage,
+  loadMappingsFromDatabase,
+  saveMappingToDatabase,
+  deleteMappingFromDatabase,
 } from "@/lib/mapping-storage";
 
 type Field = SchemaField;
 
 interface FieldMapperProps {
+  migrationId: string;
   sourceSystem: string;
   targetSystem: string;
   sourceObject: string;
   targetObject: string;
 }
 
-export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetObject }: FieldMapperProps) => {
+export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObject, targetObject }: FieldMapperProps) => {
   const [mappings, setMappings] = useState<FieldMapping[]>([]);
   const [draggedField, setDraggedField] = useState<{ side: 'source' | 'target', fieldId: string } | null>(null);
   const [hoveredField, setHoveredField] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [isStorageReady, setIsStorageReady] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
   const [isMappingModalOpen, setIsMappingModalOpen] = useState(false);
   const [editingMappingId, setEditingMappingId] = useState<string | null>(null);
   const [draftMapping, setDraftMapping] = useState<FieldMapping | null>(null);
@@ -70,11 +71,6 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
       document.body.style.overflow = prev;
     };
   }, [isFullscreen]);
-
-  const storageKey = useMemo(
-    () => getMappingStorageKey(sourceSystem, sourceObject, targetSystem, targetObject),
-    [sourceSystem, sourceObject, targetSystem, targetObject]
-  );
 
   const sourceFields = useMemo(
     () => getFieldsForSystemObject(sourceSystem, sourceObject),
@@ -96,15 +92,18 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
     []
   );
 
-  const updateMappingEntry = useCallback((updated: FieldMapping) => {
-    setMappings((prev) =>
-      prev.map((mapping) =>
-        mapping.id === updated.id
-          ? { ...updated, updatedAt: new Date().toISOString() }
-          : mapping
-      )
-    );
-  }, []);
+  const updateMappingEntry = useCallback(async (updated: FieldMapping) => {
+    const success = await saveMappingToDatabase(migrationId, updated);
+    if (success) {
+      setMappings((prev) =>
+        prev.map((mapping) =>
+          mapping.id === updated.id
+            ? { ...updated, updatedAt: new Date().toISOString() }
+            : mapping
+        )
+      );
+    }
+  }, [migrationId]);
 
   const getMappingsForField = useCallback(
     (side: 'source' | 'target', fieldId: string): FieldMapping[] => {
@@ -117,19 +116,20 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
     [mappings]
   );
 
+  // Load mappings from database
   useEffect(() => {
-    const storedMappings = loadMappingsFromStorage(storageKey);
-    setMappings(storedMappings);
-    setIsStorageReady(true);
-  }, [storageKey]);
+    const loadMappings = async () => {
+      setIsLoading(true);
+      const loadedMappings = await loadMappingsFromDatabase(migrationId);
+      setMappings(loadedMappings);
+      setIsLoading(false);
+    };
 
-  useEffect(() => {
-    if (!isStorageReady) return;
-    saveMappingsToStorage(storageKey, mappings);
-  }, [isStorageReady, mappings, storageKey]);
+    loadMappings();
+  }, [migrationId]);
 
   // Auto-map fields with exact matching names
-  const handleAutoMap = () => {
+  const handleAutoMap = async () => {
     const newMappings: FieldMapping[] = [];
 
     sourceFields.forEach(sourceField => {
@@ -152,6 +152,10 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
     });
 
     if (newMappings.length > 0) {
+      // Save all new mappings to database
+      const promises = newMappings.map(mapping => saveMappingToDatabase(migrationId, mapping));
+      await Promise.all(promises);
+      
       setMappings(prev => [...prev, ...newMappings]);
       toast.success(`Auto-mapped ${newMappings.length} field${newMappings.length > 1 ? 's' : ''}`);
     } else {
@@ -197,7 +201,7 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
     e.preventDefault();
   };
 
-  const handleDrop = (side: 'source' | 'target', fieldId: string) => {
+  const handleDrop = async (side: 'source' | 'target', fieldId: string) => {
     if (!draggedField) return;
     
     // Only allow mapping from source to target or target to source
@@ -217,18 +221,29 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
     );
 
     if (directMapping) {
-      setMappings(prev => prev.filter(m => m.id !== directMapping.id));
-      toast.info("Mapping removed");
+      const success = await deleteMappingFromDatabase(directMapping.id);
+      if (success) {
+        setMappings(prev => prev.filter(m => m.id !== directMapping.id));
+        toast.info("Mapping removed");
+      }
     } else {
-      setMappings(prev => [...prev, createDirectMapping(sourceFieldId, targetFieldId)]);
-      toast.success("Mapping added");
+      const newMapping = createDirectMapping(sourceFieldId, targetFieldId);
+      const success = await saveMappingToDatabase(migrationId, newMapping);
+      if (success) {
+        setMappings(prev => [...prev, newMapping]);
+        toast.success("Mapping added");
+      }
     }
 
     setDraggedField(null);
   };
 
-  const handleRemoveMapping = (mappingId: string) => {
-    setMappings(prev => prev.filter(m => m.id !== mappingId));
+  const handleRemoveMapping = async (mappingId: string) => {
+    const success = await deleteMappingFromDatabase(mappingId);
+    if (success) {
+      setMappings(prev => prev.filter(m => m.id !== mappingId));
+      toast.success("Mapping removed");
+    }
   };
 
   const openMappingEditor = (mapping: FieldMapping) => {
@@ -353,7 +368,7 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
     });
   };
 
-  const handleSaveMappingDetails = () => {
+  const handleSaveMappingDetails = async () => {
     if (!draftMapping) return;
 
     if (draftMapping.mappingType === "direct") {
@@ -362,7 +377,7 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
         return;
       }
 
-      updateMappingEntry(draftMapping);
+      await updateMappingEntry(draftMapping);
       toast.success("Mapping aktualisiert");
       closeMappingEditor();
       return;
@@ -387,7 +402,7 @@ export const FieldMapper = ({ sourceSystem, targetSystem, sourceObject, targetOb
       joinWith: sanitizedJoin,
     };
 
-    updateMappingEntry(updatedMapping);
+    await updateMappingEntry(updatedMapping);
     toast.success("Mapping aktualisiert");
     closeMappingEditor();
   };

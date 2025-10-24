@@ -157,6 +157,53 @@ export type Database = {
         }
         Relationships: []
       }
+      field_mappings: {
+        Row: {
+          collection_item_field_id: string | null
+          created_at: string
+          description: string | null
+          id: string
+          join_with: string | null
+          mapping_type: string
+          migration_id: string
+          source_field_id: string
+          target_field_id: string
+          updated_at: string
+        }
+        Insert: {
+          collection_item_field_id?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          join_with?: string | null
+          mapping_type?: string
+          migration_id: string
+          source_field_id: string
+          target_field_id: string
+          updated_at?: string
+        }
+        Update: {
+          collection_item_field_id?: string | null
+          created_at?: string
+          description?: string | null
+          id?: string
+          join_with?: string | null
+          mapping_type?: string
+          migration_id?: string
+          source_field_id?: string
+          target_field_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "field_mappings_migration_id_fkey"
+            columns: ["migration_id"]
+            isOneToOne: false
+            referencedRelation: "migrations"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       migration_activities: {
         Row: {
           created_at: string

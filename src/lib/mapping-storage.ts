@@ -1,6 +1,5 @@
 import type { FieldMapping, MappingType } from "@/types/mapping";
-
-const STORAGE_PREFIX = "field-mapper";
+import { supabase } from "@/integrations/supabase/client";
 
 export const createMappingId = (): string => {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -10,101 +9,150 @@ export const createMappingId = (): string => {
   return Math.random().toString(36).slice(2, 10);
 };
 
-export const getMappingStorageKey = (
-  sourceSystem: string,
-  sourceObject: string,
-  targetSystem: string,
-  targetObject: string
-) => `${STORAGE_PREFIX}:${sourceSystem}:${sourceObject}:${targetSystem}:${targetObject}`;
-
-export type StoredFieldMapping = Partial<FieldMapping> & {
-  id?: string;
-  targetFieldId: string;
-  sourceFieldId?: string;
-  mappingType?: MappingType;
-  collectionItemFieldId?: string;
-  joinWith?: string;
+type DbFieldMapping = {
+  id: string;
+  migration_id: string;
+  target_field_id: string;
+  source_field_id: string;
+  mapping_type: string;
+  collection_item_field_id: string | null;
+  join_with: string | null;
+  description: string | null;
+  created_at: string;
+  updated_at: string;
 };
 
-export const ensureMappingDefaults = (mapping: StoredFieldMapping): FieldMapping | null => {
-  const mappingType: MappingType = mapping.mappingType === "collection" ? "collection" : "direct";
-  const sourceFieldId = mapping.sourceFieldId ?? "";
-
-  if (!sourceFieldId) {
-    return null;
-  }
-
+const dbMappingToFieldMapping = (dbMapping: DbFieldMapping): FieldMapping => {
   const base = {
-    id: mapping.id ?? createMappingId(),
-    targetFieldId: mapping.targetFieldId,
-    description: mapping.description,
-    updatedAt: mapping.updatedAt,
+    id: dbMapping.id,
+    targetFieldId: dbMapping.target_field_id,
+    description: dbMapping.description || undefined,
+    updatedAt: dbMapping.updated_at,
   };
 
-  if (mappingType === "collection") {
-    const collectionItemFieldId = mapping.collectionItemFieldId ?? "";
-
-    if (!collectionItemFieldId) {
-      return null;
-    }
-
+  if (dbMapping.mapping_type === "collection" && dbMapping.collection_item_field_id) {
     return {
       ...base,
-      mappingType,
-      sourceFieldId,
-      collectionItemFieldId,
-      joinWith: mapping.joinWith ?? ", ",
+      mappingType: "collection" as const,
+      sourceFieldId: dbMapping.source_field_id,
+      collectionItemFieldId: dbMapping.collection_item_field_id,
+      joinWith: dbMapping.join_with || ", ",
     };
   }
 
   return {
     ...base,
-    mappingType,
-    sourceFieldId,
+    mappingType: "direct" as const,
+    sourceFieldId: dbMapping.source_field_id,
   };
 };
 
-export const loadMappingsFromStorage = (key: string): FieldMapping[] => {
-  if (typeof window === "undefined") {
-    return [];
+const fieldMappingToDbMapping = (mapping: FieldMapping, migrationId: string) => {
+  const base = {
+    migration_id: migrationId,
+    target_field_id: mapping.targetFieldId,
+    source_field_id: mapping.sourceFieldId,
+    mapping_type: mapping.mappingType,
+    description: mapping.description || null,
+  };
+
+  if (mapping.mappingType === "collection") {
+    return {
+      ...base,
+      collection_item_field_id: mapping.collectionItemFieldId,
+      join_with: mapping.joinWith || ", ",
+    };
   }
 
+  return {
+    ...base,
+    collection_item_field_id: null,
+    join_with: null,
+  };
+};
+
+export const loadMappingsFromDatabase = async (
+  migrationId: string
+): Promise<FieldMapping[]> => {
   try {
-    const raw = window.localStorage.getItem(key);
-    if (!raw) {
+    const { data, error } = await supabase
+      .from("field_mappings")
+      .select("*")
+      .eq("migration_id", migrationId);
+
+    if (error) {
+      console.error("Failed to load mappings from database:", error);
       return [];
     }
 
-    const parsed = JSON.parse(raw) as StoredFieldMapping[];
-    return parsed
-      .map(ensureMappingDefaults)
-      .filter((mapping): mapping is FieldMapping => Boolean(mapping));
+    return (data as DbFieldMapping[]).map(dbMappingToFieldMapping);
   } catch (error) {
-    console.warn("Failed to parse stored mappings", error);
+    console.error("Failed to load mappings:", error);
     return [];
   }
 };
 
-export const saveMappingsToStorage = (key: string, mappings: FieldMapping[]) => {
-  if (typeof window === "undefined") {
-    return;
-  }
-
+export const saveMappingToDatabase = async (
+  migrationId: string,
+  mapping: FieldMapping
+): Promise<boolean> => {
   try {
-    window.localStorage.setItem(key, JSON.stringify(mappings));
+    const dbMapping = fieldMappingToDbMapping(mapping, migrationId);
+
+    const { error } = await supabase
+      .from("field_mappings")
+      .upsert({ id: mapping.id, ...dbMapping });
+
+    if (error) {
+      console.error("Failed to save mapping to database:", error);
+      return false;
+    }
+
+    return true;
   } catch (error) {
-    console.warn("Failed to persist mappings", error);
+    console.error("Failed to save mapping:", error);
+    return false;
   }
 };
 
-export const clearMappingsFromStorage = (key: string) => {
-  if (typeof window === "undefined") {
-    return;
-  }
-
+export const deleteMappingFromDatabase = async (
+  mappingId: string
+): Promise<boolean> => {
   try {
-    window.localStorage.removeItem(key);
+    const { error } = await supabase
+      .from("field_mappings")
+      .delete()
+      .eq("id", mappingId);
+
+    if (error) {
+      console.error("Failed to delete mapping from database:", error);
+      return false;
+    }
+
+    return true;
   } catch (error) {
-    console.warn("Failed to clear mappings", error);
+    console.error("Failed to delete mapping:", error);
+    return false;
+  }
+};
+
+export const clearAllMappingsForMigration = async (
+  migrationId: string
+): Promise<boolean> => {
+  try {
+    const { error } = await supabase
+      .from("field_mappings")
+      .delete()
+      .eq("migration_id", migrationId);
+
+    if (error) {
+      console.error("Failed to clear mappings from database:", error);
+      return false;
+    }
+
+    return true;
+  } catch (error) {
+    console.error("Failed to clear mappings:", error);
+    return false;
   }
 };
