@@ -1,0 +1,38 @@
+{
+  "category": "Boards & Processes",
+  "description": "Boards, Workflows und Prozesse.",
+  "endpoints": [
+    "/api/v1/Processes",
+    "/api/v1/EntityStates",
+    "/api/v1/Boards"
+  ],
+  "objects": {
+    "Process": {
+      "id": "int",
+      "name": "string",
+      "entityTypes": "string[]"
+    },
+    "Workflow": {
+      "id": "int",
+      "name": "string",
+      "states": "EntityState[]"
+    },
+    "Board": {
+      "id": "int",
+      "name": "string",
+      "columns": "Column[]"
+    },
+    "Column": {
+      "id": "int",
+      "name": "string",
+      "order": "int",
+      "entityState": "EntityState"
+    }
+  },
+  "meta": {
+    "base_url_example": "https://{server}/api/v1/",
+    "api_version": "v1.1",
+    "auth": "Bearer Token oder Basic (username:password)",
+    "product_version": "Targetprocess Server 2022.2"
+  }
+}

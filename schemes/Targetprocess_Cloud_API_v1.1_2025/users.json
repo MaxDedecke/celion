@@ -1,0 +1,28 @@
+{
+  "category": "Users & Roles",
+  "description": "Benutzer, Rollen, Berechtigungen.",
+  "endpoints": [
+    "/api/v1/Users",
+    "/api/v1/Roles",
+    "/api/v1/Permissions"
+  ],
+  "objects": {
+    "User": {
+      "id": "int",
+      "firstName": "string",
+      "lastName": "string",
+      "email": "string",
+      "role": "Role"
+    },
+    "Role": {
+      "id": "int",
+      "name": "string",
+      "permissions": "Permission[]"
+    },
+    "Permission": {
+      "id": "int",
+      "name": "string",
+      "description": "string"
+    }
+  }
+}

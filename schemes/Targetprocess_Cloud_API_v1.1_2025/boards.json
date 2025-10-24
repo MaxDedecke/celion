@@ -1,0 +1,32 @@
+{
+  "category": "Boards & Processes",
+  "description": "Boards, Workflows und Prozesse.",
+  "endpoints": [
+    "/api/v1/Processes",
+    "/api/v1/EntityStates",
+    "/api/v1/Boards"
+  ],
+  "objects": {
+    "Process": {
+      "id": "int",
+      "name": "string",
+      "entityTypes": "string[]"
+    },
+    "Workflow": {
+      "id": "int",
+      "name": "string",
+      "states": "EntityState[]"
+    },
+    "Board": {
+      "id": "int",
+      "name": "string",
+      "columns": "Column[]"
+    },
+    "Column": {
+      "id": "int",
+      "name": "string",
+      "order": "int",
+      "entityState": "EntityState"
+    }
+  }
+}

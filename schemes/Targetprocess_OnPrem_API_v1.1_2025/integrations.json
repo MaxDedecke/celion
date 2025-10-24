@@ -1,0 +1,35 @@
+{
+  "category": "Integrations & Automations",
+  "description": "Webhooks, Automations, Connections.",
+  "endpoints": [
+    "/api/v1/Webhooks",
+    "/api/v1/AutomationRules",
+    "/api/v1/Connections"
+  ],
+  "objects": {
+    "Webhook": {
+      "id": "int",
+      "url": "string",
+      "event": "string",
+      "isActive": "boolean"
+    },
+    "AutomationRule": {
+      "id": "int",
+      "name": "string",
+      "trigger": "string",
+      "actions": "object[]"
+    },
+    "Connection": {
+      "id": "int",
+      "name": "string",
+      "type": "string",
+      "details": "object"
+    }
+  },
+  "meta": {
+    "base_url_example": "https://{server}/api/v1/",
+    "api_version": "v1.1",
+    "auth": "Bearer Token oder Basic (username:password)",
+    "product_version": "Targetprocess Server 2022.2"
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "category": "Time Tracking",
+  "description": "Zeiteinträge und Timesheets.",
+  "endpoints": [
+    "/api/v1/Times",
+    "/api/v1/UserTimes",
+    "/api/v1/TimeSheets"
+  ],
+  "objects": {
+    "Time": {
+      "id": "int",
+      "date": "datetime",
+      "spent": "number",
+      "user": "User",
+      "entity": "WorkItem"
+    },
+    "UserTime": {
+      "id": "int",
+      "user": "User",
+      "date": "datetime",
+      "spent": "number"
+    },
+    "TimeSheet": {
+      "id": "int",
+      "startDate": "datetime",
+      "endDate": "datetime",
+      "user": "User"
+    }
+  }
+}

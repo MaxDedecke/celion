@@ -1,0 +1,29 @@
+{
+  "category": "Integrations & Automations",
+  "description": "Webhooks, Automations, Connections.",
+  "endpoints": [
+    "/api/v1/Webhooks",
+    "/api/v1/AutomationRules",
+    "/api/v1/Connections"
+  ],
+  "objects": {
+    "Webhook": {
+      "id": "int",
+      "url": "string",
+      "event": "string",
+      "isActive": "boolean"
+    },
+    "AutomationRule": {
+      "id": "int",
+      "name": "string",
+      "trigger": "string",
+      "actions": "object[]"
+    },
+    "Connection": {
+      "id": "int",
+      "name": "string",
+      "type": "string",
+      "details": "object"
+    }
+  }
+}

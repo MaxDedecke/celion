@@ -1,0 +1,54 @@
+{
+  "category": "Work Items",
+  "description": "User Stories, Tasks, Bugs, Features, Epics, Requests.",
+  "endpoints": [
+    "/api/v1/UserStories",
+    "/api/v1/Tasks",
+    "/api/v1/Bugs",
+    "/api/v1/Features",
+    "/api/v1/Epics",
+    "/api/v1/Requests"
+  ],
+  "objects": {
+    "UserStory": {
+      "id": "int",
+      "name": "string",
+      "description": "string",
+      "project": "Project",
+      "owner": "User",
+      "status": "EntityState"
+    },
+    "Task": {
+      "id": "int",
+      "name": "string",
+      "description": "string",
+      "userStory": "UserStory",
+      "assignedTo": "User"
+    },
+    "Bug": {
+      "id": "int",
+      "name": "string",
+      "severity": "string",
+      "priority": "string",
+      "project": "Project"
+    },
+    "Feature": {
+      "id": "int",
+      "name": "string",
+      "description": "string",
+      "epic": "Epic"
+    },
+    "Epic": {
+      "id": "int",
+      "name": "string",
+      "description": "string",
+      "features": "Feature[]"
+    },
+    "Request": {
+      "id": "int",
+      "name": "string",
+      "source": "string",
+      "requester": "User"
+    }
+  }
+}

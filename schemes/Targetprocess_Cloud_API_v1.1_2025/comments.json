@@ -1,0 +1,30 @@
+{
+  "category": "Comments & Attachments",
+  "description": "Kommentare, Nachrichten, Anhänge.",
+  "endpoints": [
+    "/api/v1/Comments",
+    "/api/v1/Attachments",
+    "/api/v1/Messages"
+  ],
+  "objects": {
+    "Comment": {
+      "id": "int",
+      "description": "string",
+      "author": "User",
+      "createDate": "datetime"
+    },
+    "Attachment": {
+      "id": "int",
+      "name": "string",
+      "url": "string",
+      "size": "number",
+      "owner": "User"
+    },
+    "Message": {
+      "id": "int",
+      "subject": "string",
+      "body": "string",
+      "author": "User"
+    }
+  }
+}
