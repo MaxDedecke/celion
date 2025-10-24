@@ -22,7 +22,7 @@ import {
 import { useMinimumLoader } from "@/hooks/useMinimumLoader";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { ArrowLeft, FolderKanban, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Plus, Trash2 } from "lucide-react";
 
 interface SidebarMigration {
   id: string;
@@ -479,7 +479,7 @@ const ProjectDetail = () => {
                           </button>
                           <div className="flex items-start gap-3 pr-10">
                             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-foreground/5 text-foreground transition-all duration-300 group-hover:bg-primary/10 group-hover:text-primary">
-                              <FolderKanban className="h-5 w-5" />
+                              <ArrowRight className="h-5 w-5" />
                             </div>
                             <div>
                               <CardTitle className="text-lg font-semibold text-foreground group-hover:text-primary">
@@ -500,6 +500,9 @@ const ProjectDetail = () => {
                                 {migration.sourceSystem}
                               </Badge>
                             )}
+                            {migration.sourceSystem && migration.targetSystem && (
+                              <ArrowRight className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+                            )}
                             {migration.targetSystem && (
                               <Badge variant="outline" className="border-emerald-400/30 bg-emerald-400/5 text-emerald-600 dark:text-emerald-300">
                                 {migration.targetSystem}
@@ -511,8 +514,7 @@ const ProjectDetail = () => {
                               </Badge>
                             )}
                           </div>
-                          <div className="flex items-center justify-between text-sm text-muted-foreground">
-                            <span>Zur Migration</span>
+                          <div className="flex items-center justify-end text-sm text-muted-foreground">
                             <span className="font-medium text-primary">Mehr erfahren →</span>
                           </div>
                         </CardContent>
