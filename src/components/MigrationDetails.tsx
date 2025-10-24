@@ -1371,9 +1371,9 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
               </Select>
             </div>
 
-            <div className="flex items-center justify-center pb-2">
+            <div className="flex items-end justify-center pb-2">
               <div className="p-2 rounded-full bg-muted text-muted-foreground">
-                <ArrowLeftRight className="h-5 w-5" />
+                <ArrowLeftRight className="h-5 w-5 translate-y-[2px]" />
               </div>
             </div>
 

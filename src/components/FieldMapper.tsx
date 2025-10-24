@@ -45,7 +45,7 @@ import {
 } from "./ui/select";
 import type { FieldMapping, MappingType } from "@/types/mapping";
 import type { SchemaField } from "@/types/schema";
-import { getFieldsForSystemObject } from "@/lib/schema-registry";
+import { getFieldsForSystemObject, getSystemObjectOptions } from "@/lib/schema-registry";
 import {
   createMappingId,
   loadMappingsFromDatabase,
@@ -95,6 +95,16 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
     () => getFieldsForSystemObject(targetSystem, targetObject),
     [targetSystem, targetObject]
   );
+
+  const sourceObjectDisplayName = useMemo(() => {
+    const options = getSystemObjectOptions(sourceSystem);
+    return options.find((option) => option.id === sourceObject)?.name ?? sourceObject;
+  }, [sourceSystem, sourceObject]);
+
+  const targetObjectDisplayName = useMemo(() => {
+    const options = getSystemObjectOptions(targetSystem);
+    return options.find((option) => option.id === targetObject)?.name ?? targetObject;
+  }, [targetSystem, targetObject]);
 
   const createDirectMapping = useCallback(
     (sourceFieldId: string, targetFieldId: string): FieldMapping => ({
@@ -613,6 +623,10 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
                               className="flex items-center gap-2 text-xs text-muted-foreground"
                             >
                               <ArrowRight className="h-3 w-3" />
+                              <span className="text-xs font-medium text-muted-foreground">
+                                {targetObjectDisplayName}
+                              </span>
+                              <span className="text-xs text-muted-foreground">·</span>
                               <span>{target?.name ?? mapping.targetFieldId}</span>
                               <Tooltip>
                                 <TooltipTrigger asChild>
@@ -707,7 +721,16 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
                               key={mapping.id}
                               className="flex items-center gap-2 text-xs text-muted-foreground"
                             >
-                              <span>{sourceLabel}{joinDescription}</span>
+                              <div className="flex items-center gap-1">
+                                <span className="font-medium text-muted-foreground">
+                                  {sourceObjectDisplayName}
+                                </span>
+                                <span className="text-muted-foreground">·</span>
+                                <span>
+                                  {sourceLabel}
+                                  {joinDescription}
+                                </span>
+                              </div>
                               <ArrowRight className="h-3 w-3" />
                               <Tooltip>
                                 <TooltipTrigger asChild>
