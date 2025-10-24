@@ -1,0 +1,29 @@
+{
+  "category": "Releases",
+  "description": "Release Definitionen und Deployments.",
+  "endpoints": [
+    "/_apis/release/releases",
+    "/_apis/release/definitions",
+    "/_apis/release/environments"
+  ],
+  "objects": {
+    "Release": {
+      "id": "int",
+      "name": "string",
+      "status": "string",
+      "createdBy": "User",
+      "createdOn": "datetime"
+    },
+    "ReleaseDefinition": {
+      "id": "int",
+      "name": "string",
+      "environments": "Environment[]"
+    },
+    "Environment": {
+      "id": "int",
+      "name": "string",
+      "status": "string",
+      "triggers": "object[]"
+    }
+  }
+}

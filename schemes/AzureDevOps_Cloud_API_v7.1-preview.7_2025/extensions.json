@@ -1,0 +1,21 @@
+{
+  "category": "Extensions & Marketplace",
+  "description": "Erweiterungen und installierte Marketplace Items.",
+  "endpoints": [
+    "/_apis/extensionmanagement/installedextensions",
+    "/_apis/gallery/publishers"
+  ],
+  "objects": {
+    "Extension": {
+      "id": "string",
+      "name": "string",
+      "publisher": "string",
+      "version": "string"
+    },
+    "InstalledExtension": {
+      "extension": "Extension",
+      "installDate": "datetime",
+      "lastUpdated": "datetime"
+    }
+  }
+}

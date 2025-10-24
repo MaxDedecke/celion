@@ -1,0 +1,42 @@
+{
+  "category": "Repositories",
+  "description": "Git-Repositories, Branches, Commits und Pull Requests.",
+  "endpoints": [
+    "/_apis/git/repositories",
+    "/_apis/git/repositories/{repositoryId}/refs",
+    "/_apis/git/repositories/{repositoryId}/commits",
+    "/_apis/git/pullrequests"
+  ],
+  "objects": {
+    "Repository": {
+      "id": "string",
+      "name": "string",
+      "defaultBranch": "string",
+      "url": "string"
+    },
+    "Branch": {
+      "name": "string",
+      "objectId": "string",
+      "creator": "User"
+    },
+    "Commit": {
+      "commitId": "string",
+      "author": "User",
+      "comment": "string",
+      "url": "string"
+    },
+    "PullRequest": {
+      "id": "int",
+      "title": "string",
+      "status": "string",
+      "createdBy": "User",
+      "sourceRefName": "string",
+      "targetRefName": "string"
+    }
+  },
+  "meta": {
+    "base_url_example": "https://{server}/tfs/{collection}/_apis/",
+    "api_version": "7.0",
+    "auth": "Basic (username: '', password: <PAT>) or Windows Auth depending on setup"
+  }
+}

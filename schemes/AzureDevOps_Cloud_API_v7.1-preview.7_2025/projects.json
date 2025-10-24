@@ -1,0 +1,31 @@
+{
+  "category": "Projects & Teams",
+  "description": "Organisationen, Projekte und Teams in Azure DevOps.",
+  "endpoints": [
+    "/_apis/organizations",
+    "/_apis/projects",
+    "/_apis/projects/{projectId}",
+    "/_apis/projects/{projectId}/teams",
+    "/_apis/teams/{teamId}"
+  ],
+  "objects": {
+    "Organization": {
+      "id": "string",
+      "name": "string",
+      "url": "string"
+    },
+    "Project": {
+      "id": "string",
+      "name": "string",
+      "state": "string",
+      "visibility": "string",
+      "description": "string"
+    },
+    "Team": {
+      "id": "string",
+      "name": "string",
+      "projectId": "string",
+      "members": "User[]"
+    }
+  }
+}

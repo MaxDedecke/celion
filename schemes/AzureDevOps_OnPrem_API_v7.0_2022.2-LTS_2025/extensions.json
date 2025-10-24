@@ -1,0 +1,26 @@
+{
+  "category": "Extensions & Marketplace",
+  "description": "Erweiterungen und installierte Marketplace Items.",
+  "endpoints": [
+    "/_apis/extensionmanagement/installedextensions",
+    "/_apis/gallery/publishers"
+  ],
+  "objects": {
+    "Extension": {
+      "id": "string",
+      "name": "string",
+      "publisher": "string",
+      "version": "string"
+    },
+    "InstalledExtension": {
+      "extension": "Extension",
+      "installDate": "datetime",
+      "lastUpdated": "datetime"
+    }
+  },
+  "meta": {
+    "base_url_example": "https://{server}/tfs/{collection}/_apis/",
+    "api_version": "7.0",
+    "auth": "Basic (username: '', password: <PAT>) or Windows Auth depending on setup"
+  }
+}

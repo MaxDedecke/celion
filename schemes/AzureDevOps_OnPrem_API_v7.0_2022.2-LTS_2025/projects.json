@@ -1,0 +1,36 @@
+{
+  "category": "Projects & Teams",
+  "description": "Organisationen, Projekte und Teams in Azure DevOps.",
+  "endpoints": [
+    "/_apis/organizations",
+    "/_apis/projects",
+    "/_apis/projects/{projectId}",
+    "/_apis/projects/{projectId}/teams",
+    "/_apis/teams/{teamId}"
+  ],
+  "objects": {
+    "Organization": {
+      "id": "string",
+      "name": "string",
+      "url": "string"
+    },
+    "Project": {
+      "id": "string",
+      "name": "string",
+      "state": "string",
+      "visibility": "string",
+      "description": "string"
+    },
+    "Team": {
+      "id": "string",
+      "name": "string",
+      "projectId": "string",
+      "members": "User[]"
+    }
+  },
+  "meta": {
+    "base_url_example": "https://{server}/tfs/{collection}/_apis/",
+    "api_version": "7.0",
+    "auth": "Basic (username: '', password: <PAT>) or Windows Auth depending on setup"
+  }
+}

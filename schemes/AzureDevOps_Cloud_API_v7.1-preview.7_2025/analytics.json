@@ -1,0 +1,22 @@
+{
+  "category": "Analytics & Dashboards",
+  "description": "Abfragen, Charts, Widgets, Dashboards.",
+  "endpoints": [
+    "/_apis/dashboard/dashboards",
+    "/_apis/dashboard/widgets"
+  ],
+  "objects": {
+    "Dashboard": {
+      "id": "string",
+      "name": "string",
+      "owner": "User",
+      "widgets": "Widget[]"
+    },
+    "Widget": {
+      "id": "string",
+      "name": "string",
+      "size": "string",
+      "settings": "object"
+    }
+  }
+}

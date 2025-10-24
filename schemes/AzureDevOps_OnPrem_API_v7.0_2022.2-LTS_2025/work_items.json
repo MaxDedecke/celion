@@ -1,0 +1,41 @@
+{
+  "category": "Work Items",
+  "description": "Arbeitselemente (Tasks, Bugs, Epics, etc.)",
+  "endpoints": [
+    "/_apis/wit/workitems",
+    "/_apis/wit/workitems/{id}",
+    "/_apis/wit/workitemtypes",
+    "/_apis/wit/queries",
+    "/_apis/wit/reporting/workitemrevisions"
+  ],
+  "objects": {
+    "WorkItem": {
+      "id": "int",
+      "fields": "object",
+      "relations": "WorkItemRelation[]",
+      "url": "string"
+    },
+    "WorkItemType": {
+      "name": "string",
+      "description": "string",
+      "color": "string",
+      "icon": "string"
+    },
+    "WorkItemRelation": {
+      "rel": "string",
+      "url": "string",
+      "attributes": "object"
+    },
+    "Query": {
+      "id": "string",
+      "name": "string",
+      "wiql": "string",
+      "path": "string"
+    }
+  },
+  "meta": {
+    "base_url_example": "https://{server}/tfs/{collection}/_apis/",
+    "api_version": "7.0",
+    "auth": "Basic (username: '', password: <PAT>) or Windows Auth depending on setup"
+  }
+}

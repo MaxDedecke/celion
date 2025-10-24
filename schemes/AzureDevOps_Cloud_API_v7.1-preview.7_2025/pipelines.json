@@ -1,0 +1,36 @@
+{
+  "category": "Pipelines",
+  "description": "YAML-Pipelines, Runs, Variablen und Agent Pools.",
+  "endpoints": [
+    "/_apis/pipelines",
+    "/_apis/pipelines/{pipelineId}/runs",
+    "/_apis/distributedtask/variablegroups",
+    "/_apis/distributedtask/pools"
+  ],
+  "objects": {
+    "Pipeline": {
+      "id": "int",
+      "name": "string",
+      "folder": "string",
+      "url": "string"
+    },
+    "PipelineRun": {
+      "id": "int",
+      "state": "string",
+      "result": "string",
+      "createdDate": "datetime",
+      "finishedDate": "datetime"
+    },
+    "VariableGroup": {
+      "id": "int",
+      "name": "string",
+      "variables": "object"
+    },
+    "AgentPool": {
+      "id": "int",
+      "name": "string",
+      "size": "int",
+      "isHosted": "boolean"
+    }
+  }
+}

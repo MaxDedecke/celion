@@ -1,0 +1,27 @@
+{
+  "category": "Service Hooks",
+  "description": "Webhooks / Service Hooks für Ereignisse.",
+  "endpoints": [
+    "/_apis/hooks/subscriptions",
+    "/_apis/hooks/eventtypes"
+  ],
+  "objects": {
+    "Subscription": {
+      "id": "string",
+      "publisherId": "string",
+      "eventType": "string",
+      "consumerId": "string",
+      "url": "string"
+    },
+    "EventType": {
+      "id": "string",
+      "name": "string",
+      "description": "string"
+    }
+  },
+  "meta": {
+    "base_url_example": "https://{server}/tfs/{collection}/_apis/",
+    "api_version": "7.0",
+    "auth": "Basic (username: '', password: <PAT>) or Windows Auth depending on setup"
+  }
+}

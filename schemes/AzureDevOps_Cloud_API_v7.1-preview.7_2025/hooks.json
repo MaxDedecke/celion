@@ -1,0 +1,22 @@
+{
+  "category": "Service Hooks",
+  "description": "Webhooks / Service Hooks für Ereignisse.",
+  "endpoints": [
+    "/_apis/hooks/subscriptions",
+    "/_apis/hooks/eventtypes"
+  ],
+  "objects": {
+    "Subscription": {
+      "id": "string",
+      "publisherId": "string",
+      "eventType": "string",
+      "consumerId": "string",
+      "url": "string"
+    },
+    "EventType": {
+      "id": "string",
+      "name": "string",
+      "description": "string"
+    }
+  }
+}
