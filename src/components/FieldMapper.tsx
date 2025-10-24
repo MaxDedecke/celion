@@ -9,6 +9,7 @@ import {
   Minimize2,
   Info,
   Edit3,
+  Save,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { toast } from "sonner";
@@ -21,6 +22,16 @@ import {
   DialogHeader,
   DialogTitle,
 } from "./ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "./ui/alert-dialog";
 import { Label } from "./ui/label";
 import { RadioGroup, RadioGroupItem } from "./ui/radio-group";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./ui/tooltip";
@@ -54,13 +65,17 @@ interface FieldMapperProps {
 
 export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObject, targetObject }: FieldMapperProps) => {
   const [mappings, setMappings] = useState<FieldMapping[]>([]);
+  const [savedMappings, setSavedMappings] = useState<FieldMapping[]>([]);
   const [draggedField, setDraggedField] = useState<{ side: 'source' | 'target', fieldId: string } | null>(null);
   const [hoveredField, setHoveredField] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
   const [isMappingModalOpen, setIsMappingModalOpen] = useState(false);
   const [editingMappingId, setEditingMappingId] = useState<string | null>(null);
   const [draftMapping, setDraftMapping] = useState<FieldMapping | null>(null);
+  const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+  const [pendingAction, setPendingAction] = useState<(() => void) | null>(null);
 
   // Lock background scroll while in fullscreen
   useEffect(() => {
@@ -92,18 +107,15 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
     []
   );
 
-  const updateMappingEntry = useCallback(async (updated: FieldMapping) => {
-    const success = await saveMappingToDatabase(migrationId, updated);
-    if (success) {
-      setMappings((prev) =>
-        prev.map((mapping) =>
-          mapping.id === updated.id
-            ? { ...updated, updatedAt: new Date().toISOString() }
-            : mapping
-        )
-      );
-    }
-  }, [migrationId]);
+  const updateMappingEntry = useCallback((updated: FieldMapping) => {
+    setMappings((prev) =>
+      prev.map((mapping) =>
+        mapping.id === updated.id
+          ? { ...updated, updatedAt: new Date().toISOString() }
+          : mapping
+      )
+    );
+  }, []);
 
   const getMappingsForField = useCallback(
     (side: 'source' | 'target', fieldId: string): FieldMapping[] => {
@@ -116,20 +128,39 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
     [mappings]
   );
 
+  // Check if there are unsaved changes
+  const hasUnsavedChanges = useMemo(() => {
+    return JSON.stringify(mappings) !== JSON.stringify(savedMappings);
+  }, [mappings, savedMappings]);
+
   // Load mappings from database
   useEffect(() => {
     const loadMappings = async () => {
       setIsLoading(true);
       const loadedMappings = await loadMappingsFromDatabase(migrationId);
       setMappings(loadedMappings);
+      setSavedMappings(loadedMappings);
       setIsLoading(false);
     };
 
     loadMappings();
   }, [migrationId]);
 
+  // Warn before leaving with unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (hasUnsavedChanges) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [hasUnsavedChanges]);
+
   // Auto-map fields with exact matching names
-  const handleAutoMap = async () => {
+  const handleAutoMap = () => {
     const newMappings: FieldMapping[] = [];
 
     sourceFields.forEach(sourceField => {
@@ -152,14 +183,10 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
     });
 
     if (newMappings.length > 0) {
-      // Save all new mappings to database
-      const promises = newMappings.map(mapping => saveMappingToDatabase(migrationId, mapping));
-      await Promise.all(promises);
-      
       setMappings(prev => [...prev, ...newMappings]);
-      toast.success(`Auto-mapped ${newMappings.length} field${newMappings.length > 1 ? 's' : ''}`);
+      toast.info(`${newMappings.length} Feld${newMappings.length > 1 ? 'er' : ''} automatisch gemappt (noch nicht gespeichert)`);
     } else {
-      toast.info("No matching fields found");
+      toast.info("Keine passenden Felder gefunden");
     }
   };
 
@@ -201,7 +228,7 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
     e.preventDefault();
   };
 
-  const handleDrop = async (side: 'source' | 'target', fieldId: string) => {
+  const handleDrop = (side: 'source' | 'target', fieldId: string) => {
     if (!draggedField) return;
     
     // Only allow mapping from source to target or target to source
@@ -221,29 +248,19 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
     );
 
     if (directMapping) {
-      const success = await deleteMappingFromDatabase(directMapping.id);
-      if (success) {
-        setMappings(prev => prev.filter(m => m.id !== directMapping.id));
-        toast.info("Mapping removed");
-      }
+      setMappings(prev => prev.filter(m => m.id !== directMapping.id));
+      toast.info("Mapping entfernt (noch nicht gespeichert)");
     } else {
       const newMapping = createDirectMapping(sourceFieldId, targetFieldId);
-      const success = await saveMappingToDatabase(migrationId, newMapping);
-      if (success) {
-        setMappings(prev => [...prev, newMapping]);
-        toast.success("Mapping added");
-      }
+      setMappings(prev => [...prev, newMapping]);
+      toast.success("Mapping hinzugefügt (noch nicht gespeichert)");
     }
 
     setDraggedField(null);
   };
 
-  const handleRemoveMapping = async (mappingId: string) => {
-    const success = await deleteMappingFromDatabase(mappingId);
-    if (success) {
-      setMappings(prev => prev.filter(m => m.id !== mappingId));
-      toast.success("Mapping removed");
-    }
+  const handleRemoveMapping = (mappingId: string) => {
+    setMappings(prev => prev.filter(m => m.id !== mappingId));
   };
 
   const openMappingEditor = (mapping: FieldMapping) => {
@@ -368,7 +385,7 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
     });
   };
 
-  const handleSaveMappingDetails = async () => {
+  const handleSaveMappingDetails = () => {
     if (!draftMapping) return;
 
     if (draftMapping.mappingType === "direct") {
@@ -377,8 +394,8 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
         return;
       }
 
-      await updateMappingEntry(draftMapping);
-      toast.success("Mapping aktualisiert");
+      updateMappingEntry(draftMapping);
+      toast.success("Mapping aktualisiert (noch nicht gespeichert)");
       closeMappingEditor();
       return;
     }
@@ -402,8 +419,8 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
       joinWith: sanitizedJoin,
     };
 
-    await updateMappingEntry(updatedMapping);
-    toast.success("Mapping aktualisiert");
+    updateMappingEntry(updatedMapping);
+    toast.success("Mapping aktualisiert (noch nicht gespeichert)");
     closeMappingEditor();
   };
 
@@ -445,6 +462,50 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
     return getMappingsForField(side, fieldId).length > 0;
   };
 
+  const handleSaveAllMappings = async () => {
+    setIsSaving(true);
+    try {
+      // Get IDs of mappings to keep
+      const currentMappingIds = new Set(mappings.map(m => m.id));
+      const savedMappingIds = new Set(savedMappings.map(m => m.id));
+
+      // Delete removed mappings
+      const toDelete = savedMappings.filter(m => !currentMappingIds.has(m.id));
+      for (const mapping of toDelete) {
+        await deleteMappingFromDatabase(mapping.id);
+      }
+
+      // Save new and updated mappings
+      for (const mapping of mappings) {
+        await saveMappingToDatabase(migrationId, mapping);
+      }
+
+      setSavedMappings([...mappings]);
+      toast.success("Alle Mappings erfolgreich gespeichert");
+    } catch (error) {
+      console.error("Error saving mappings:", error);
+      toast.error("Fehler beim Speichern der Mappings");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const handleDiscardChanges = () => {
+    setMappings([...savedMappings]);
+    setShowUnsavedDialog(false);
+    setPendingAction(null);
+    toast.info("Änderungen verworfen");
+  };
+
+  const handleConfirmUnsavedDialog = async () => {
+    await handleSaveAllMappings();
+    setShowUnsavedDialog(false);
+    if (pendingAction) {
+      pendingAction();
+      setPendingAction(null);
+    }
+  };
+
   const content = (
     <TooltipProvider>
       <div
@@ -454,7 +515,7 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
             : ''
         } flex flex-col space-y-4`}
       >
-        {/* Header with Auto-Map and Fullscreen Buttons */}
+        {/* Header with Auto-Map, Save and Fullscreen Buttons */}
         <div className="flex justify-between items-center mb-4">
           {isFullscreen && (
             <h2 className="text-lg font-semibold">
@@ -470,6 +531,16 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
             >
               <Wand2 className="h-4 w-4" />
               Auto Map
+            </Button>
+            <Button
+              onClick={handleSaveAllMappings}
+              variant={hasUnsavedChanges ? "default" : "outline"}
+              size="sm"
+              className="gap-2"
+              disabled={isSaving || !hasUnsavedChanges}
+            >
+              <Save className="h-4 w-4" />
+              {isSaving ? "Speichert..." : hasUnsavedChanges ? "Speichern *" : "Gespeichert"}
             </Button>
             <Button
               onClick={() => setIsFullscreen(!isFullscreen)}
@@ -919,6 +990,26 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Unsaved Changes Dialog */}
+      <AlertDialog open={showUnsavedDialog} onOpenChange={setShowUnsavedDialog}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Ungespeicherte Änderungen</AlertDialogTitle>
+            <AlertDialogDescription>
+              Sie haben ungespeicherte Mapping-Änderungen. Möchten Sie diese speichern, bevor Sie fortfahren?
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={handleDiscardChanges}>
+              Verwerfen
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={handleConfirmUnsavedDialog}>
+              Speichern & Fortfahren
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </TooltipProvider>
   );
 
