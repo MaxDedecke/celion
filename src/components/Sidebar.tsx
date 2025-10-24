@@ -2,7 +2,7 @@ import { Plus, Trash2, Pencil, PanelLeftClose, PanelLeft, Plug, ChevronDown, Che
 import { Button } from "@/components/ui/button";
 import Logo from "./Logo";
 import { cn } from "@/lib/utils";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 interface SidebarProps {
@@ -29,8 +29,54 @@ const Sidebar = ({
   onEditMigration
 }: SidebarProps) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [collapsedSize, setCollapsedSize] = useState<number>();
+  const sidebarRef = useRef<HTMLDivElement | null>(null);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set(projects.map(p => p.id)));
   const navigate = useNavigate();
+
+  useEffect(() => {
+    const sidebarElement = sidebarRef.current;
+    if (!sidebarElement) return;
+
+    const container = sidebarElement.parentElement;
+    if (!container) return;
+
+    const anchorElement = container.querySelector<HTMLElement>("[data-sidebar-anchor]");
+    if (!anchorElement) {
+      setCollapsedSize(undefined);
+      return;
+    }
+
+    const updateSize = () => {
+      const nextSize = anchorElement.getBoundingClientRect().height;
+      if (!Number.isNaN(nextSize) && nextSize > 0) {
+        setCollapsedSize(nextSize);
+      }
+    };
+
+    updateSize();
+
+    if (typeof ResizeObserver === "undefined") {
+      return;
+    }
+
+    const resizeObserver = new ResizeObserver(() => updateSize());
+    resizeObserver.observe(anchorElement);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [isCollapsed]);
+
+  const collapsedDimension = collapsedSize ?? 80;
+  const collapsedStyle = isCollapsed
+    ? {
+        width: `${collapsedDimension}px`,
+        height: `${collapsedDimension}px`,
+        minWidth: `${collapsedDimension}px`,
+        minHeight: `${collapsedDimension}px`
+      }
+    : undefined;
 
   const toggleProject = (projectId: string) => {
     const newExpanded = new Set(expandedProjects);
@@ -44,54 +90,54 @@ const Sidebar = ({
 
   return (
     <div
+      ref={sidebarRef}
+      style={collapsedStyle}
       className={cn(
-        "app-surface flex h-full min-h-0 flex-col overflow-hidden transition-all duration-300",
-        isCollapsed ? "w-14 items-center p-2" : "w-80 p-6"
+        "app-surface transition-all duration-300",
+        isCollapsed
+          ? "flex items-center justify-center self-start p-2"
+          : "flex h-full min-h-0 w-80 flex-col overflow-hidden p-6"
       )}
     >
-      <div
-        className={cn(
-          "flex w-full items-center gap-2",
-          isCollapsed ? "justify-center mb-4" : "justify-between mb-8"
-        )}
-      >
-        <Logo
-          onClick={() => navigate("/dashboard")}
-          className={cn(
-            "cursor-pointer transition-all",
-            isCollapsed && "pointer-events-none w-0 opacity-0"
-          )}
-        />
-        <div className="flex items-center gap-1">
-          {!isCollapsed && (
-            <Button
-              variant="ghost"
-              size="icon"
-              onClick={() => navigate("/data-sources")}
-              className="flex-shrink-0 hover:bg-foreground/5"
-            >
-              <Plug className="h-4 w-4" />
-            </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="icon"
-            onClick={() => setIsCollapsed(!isCollapsed)}
-            className="flex-shrink-0 hover:bg-foreground/5"
-          >
-            {isCollapsed ? (
-              <PanelLeft className="h-4 w-4" />
-            ) : (
-              <PanelLeftClose className="h-4 w-4" />
-            )}
-          </Button>
-        </div>
-      </div>
+      {isCollapsed ? (
+        <Button
+          variant="ghost"
+          size="icon"
+          onClick={() => setIsCollapsed(false)}
+          className="hover:bg-foreground/5"
+        >
+          <PanelLeft className="h-4 w-4" />
+        </Button>
+      ) : (
+        <>
+          <div className="mb-8 flex w-full items-center justify-between gap-2">
+            <Logo
+              onClick={() => navigate("/dashboard")}
+              className="cursor-pointer transition-all"
+            />
+            <div className="flex items-center gap-1">
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => navigate("/data-sources")}
+                className="flex-shrink-0 hover:bg-foreground/5"
+              >
+                <Plug className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="ghost"
+                size="icon"
+                onClick={() => setIsCollapsed(true)}
+                className="flex-shrink-0 hover:bg-foreground/5"
+              >
+                <PanelLeftClose className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
 
-      {!isCollapsed && (
-        <nav className="flex-1 space-y-4 overflow-auto">
-          <div className="space-y-2">
-            <div className="flex items-center justify-between px-2">
+          <nav className="flex-1 space-y-4 overflow-auto">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between px-2">
               <h3 
                 className="text-xs font-semibold text-muted-foreground uppercase cursor-pointer hover:text-foreground transition-colors"
                 onClick={() => navigate("/projects")}
@@ -233,6 +279,7 @@ const Sidebar = ({
             )}
           </div>
         </nav>
+        </>
       )}
     </div>
   );

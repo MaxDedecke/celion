@@ -356,7 +356,10 @@ const Projects = () => {
         />
 
         <div className="flex flex-1 flex-col gap-6">
-          <header className="app-surface flex items-center justify-between rounded-3xl px-6 py-5">
+          <header
+            data-sidebar-anchor
+            className="app-surface flex items-center justify-between rounded-3xl px-6 py-5"
+          >
             <div className="flex items-center gap-4">
               <div className="flex h-12 w-12 items-center justify-center rounded-full bg-foreground/5">
                 <Folder className="h-6 w-6 text-foreground" />

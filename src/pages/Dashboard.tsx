@@ -359,7 +359,10 @@ const Dashboard = () => {
         />
 
         <div className="flex flex-1 flex-col gap-6">
-          <header className="app-surface flex items-center justify-between rounded-3xl px-6 py-5">
+          <header
+            data-sidebar-anchor
+            className="app-surface flex items-center justify-between rounded-3xl px-6 py-5"
+          >
             {currentMigration ? (
               <div className="flex flex-wrap items-center gap-4">
                 <div className="inline-flex items-center gap-2 rounded-full bg-foreground/5 p-1 text-sm">
