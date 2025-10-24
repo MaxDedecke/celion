@@ -45,14 +45,22 @@ const Sidebar = ({
   return (
     <div
       className={cn(
-        "app-surface flex h-full min-h-0 flex-col overflow-hidden p-6 transition-all duration-300",
-        isCollapsed ? "w-[5.5rem]" : "w-80"
+        "app-surface flex h-full min-h-0 flex-col overflow-hidden transition-all duration-300",
+        isCollapsed ? "w-14 items-center p-2" : "w-80 p-6"
       )}
     >
-      <div className="mb-8 flex items-center justify-between gap-2">
-        <Logo 
-          onClick={() => navigate("/dashboard")} 
-          className={cn("cursor-pointer transition-opacity", isCollapsed && "opacity-0 w-0 overflow-hidden")}
+      <div
+        className={cn(
+          "flex w-full items-center gap-2",
+          isCollapsed ? "justify-center mb-4" : "justify-between mb-8"
+        )}
+      >
+        <Logo
+          onClick={() => navigate("/dashboard")}
+          className={cn(
+            "cursor-pointer transition-all",
+            isCollapsed && "pointer-events-none w-0 opacity-0"
+          )}
         />
         <div className="flex items-center gap-1">
           {!isCollapsed && (
