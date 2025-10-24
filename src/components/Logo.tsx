@@ -1,3 +1,5 @@
+import { cn } from "@/lib/utils";
+
 const Logo = ({
   className = "",
   textClassName = "text-2xl",
@@ -11,16 +13,16 @@ const Logo = ({
 }) => {
   return (
     <button
-      className={`flex items-center gap-2 ${className}`}
+      className={cn("flex items-center gap-2", className)}
       onClick={onClick}
       type="button"
     >
       <img
         src="/placeholder.svg"
         alt="Celion logo"
-        className={imageClassName}
+        className={cn("pt-2", imageClassName)}
       />
-      <span className={`font-bold text-foreground ${textClassName}`}>celion</span>
+      <span className={cn("font-bold text-foreground", textClassName)}>Celion</span>
     </button>
   );
 };
