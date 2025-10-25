@@ -10,6 +10,7 @@ import {
   Info,
   Edit3,
   Save,
+  Trash2,
 } from "lucide-react";
 import { Button } from "./ui/button";
 import { toast } from "sonner";
@@ -103,10 +104,29 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
     return options.find((option) => option.id === sourceObject)?.name ?? sourceObject;
   }, [sourceSystem, sourceObject]);
 
+  const targetObjectOptions = useMemo(
+    () => getSystemObjectOptions(targetSystem),
+    [targetSystem]
+  );
+
   const targetObjectDisplayName = useMemo(() => {
-    const options = getSystemObjectOptions(targetSystem);
-    return options.find((option) => option.id === targetObject)?.name ?? targetObject;
-  }, [targetSystem, targetObject]);
+    return targetObjectOptions.find((option) => option.id === targetObject)?.name ?? targetObject;
+  }, [targetObjectOptions, targetObject]);
+
+  const getTargetObjectDisplayName = useCallback(
+    (objectType: string) => {
+      return targetObjectOptions.find((option) => option.id === objectType)?.name ?? objectType;
+    },
+    [targetObjectOptions]
+  );
+
+  const getTargetFieldName = useCallback(
+    (objectType: string, fieldId: string) => {
+      const objectFields = getFieldsForSystemObject(targetSystem, objectType);
+      return objectFields.find((field) => field.id === fieldId)?.name ?? fieldId;
+    },
+    [targetSystem]
+  );
 
   const createDirectMapping = useCallback(
     (sourceFieldId: string, targetFieldId: string): FieldMapping => ({
@@ -147,6 +167,22 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
     },
     [allSourceMappings]
   );
+
+  const otherTargetMappings = useMemo(() => {
+    return allSourceMappings
+      .filter((mapping) => mapping.targetObjectType !== targetObject)
+      .reduce((acc, mapping) => {
+        const current = acc[mapping.targetObjectType] ?? [];
+        acc[mapping.targetObjectType] = [...current, mapping];
+        return acc;
+      }, {} as Record<string, (FieldMapping & { targetObjectType: string })[]>);
+  }, [allSourceMappings, targetObject]);
+
+  const otherTargetMappingCount = useMemo(() => {
+    return Object.values(otherTargetMappings).reduce((sum, mappingsForObject) => sum + mappingsForObject.length, 0);
+  }, [otherTargetMappings]);
+
+  const totalMappingCount = mappings.length + otherTargetMappingCount;
 
   // Check if there are unsaved changes
   const hasUnsavedChanges = useMemo(() => {
@@ -620,7 +656,7 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
                     onMouseLeave={() => setHoveredField(null)}
                     className={`
                       flex flex-col gap-2 p-3 rounded-lg border
-                      ${isMapped('source', field.id) || allFieldMappings.length > 0
+                      ${isMapped('source', field.id)
                         ? 'bg-primary/10 border-primary'
                         : 'bg-muted/50 border-border'
                       }
@@ -692,10 +728,7 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
                       <div className="flex flex-col gap-1 pl-6 pt-1 border-t border-border/50">
                         <div className="text-xs text-muted-foreground/60 mb-1">Weitere Mappings:</div>
                         {otherObjectMappings.map((mapping) => {
-                          const targetObjectOptions = getSystemObjectOptions(targetSystem);
-                          const targetObjDisplayName = targetObjectOptions.find(
-                            opt => opt.id === mapping.targetObjectType
-                          )?.name ?? mapping.targetObjectType;
+                          const targetObjDisplayName = getTargetObjectDisplayName(mapping.targetObjectType);
                           const badgeVariant = mapping.mappingType === 'collection' ? 'secondary' : 'outline';
 
                           return (
@@ -842,7 +875,7 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
             <Card className="bg-card/50 border-border">
               <CardHeader className="flex flex-row items-center justify-between">
                 <CardTitle className="text-sm flex items-center gap-2">
-                  Mapping-Übersicht ({mappings.length})
+                  Mapping-Übersicht ({totalMappingCount})
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -861,58 +894,123 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                {mappings.length === 0 ? (
+                {totalMappingCount === 0 ? (
                   <p className="text-xs text-muted-foreground">
                     Noch keine Felder gemappt. Ziehe Felder oder verwende "Auto Map", um zu starten.
                   </p>
                 ) : (
-                  <div className="space-y-3">
-                    {mappings.map((mapping) => {
-                      const targetField = targetFields.find(f => f.id === mapping.targetFieldId);
-                      const targetName = targetField?.name ?? mapping.targetFieldId;
-                      const sourceLabel = describeMappingSource(mapping);
-                      const badgeVariant = mapping.mappingType === 'collection' ? 'secondary' : 'outline';
+                  <div className="space-y-6">
+                    {mappings.length > 0 && (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-primary font-semibold">
+                          <span>Aktuelles Zielobjekt · {targetObjectDisplayName}</span>
+                          <Badge variant="outline" className="border-primary/60 bg-primary/10 text-primary">
+                            Aktive Auswahl
+                          </Badge>
+                        </div>
+                        {mappings.map((mapping) => {
+                          const targetName = getTargetFieldName(targetObject, mapping.targetFieldId);
+                          const sourceLabel = describeMappingSource(mapping);
+                          const badgeVariant = mapping.mappingType === 'collection' ? 'secondary' : 'outline';
+
+                          return (
+                            <div
+                              key={mapping.id}
+                              className="flex flex-col gap-2 rounded-lg border border-primary/50 bg-primary/5 p-3 shadow-sm"
+                            >
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <span className="text-sm font-medium">{targetName}</span>
+                                  <Badge variant={badgeVariant} className="flex items-center gap-1">
+                                    {getMappingTypeLabel(mapping)}
+                                  </Badge>
+                                  {mapping.mappingType === 'collection' && (
+                                    <span className="text-xs text-muted-foreground">
+                                      Trenner: "{mapping.joinWith ?? defaultJoinWith}"
+                                    </span>
+                                  )}
+                                </div>
+                                <div className="flex items-center gap-1">
+                                  <Badge
+                                    variant="secondary"
+                                    className="bg-primary text-primary-foreground hover:bg-primary"
+                                  >
+                                    Aktive Auswahl
+                                  </Badge>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => openMappingEditor(mapping)}
+                                    aria-label="Mapping bearbeiten"
+                                  >
+                                    <Edit3 className="h-4 w-4" />
+                                    <span className="sr-only">Bearbeiten</span>
+                                  </Button>
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    className="text-destructive"
+                                    onClick={() => handleRemoveMapping(mapping.id)}
+                                    aria-label="Mapping entfernen"
+                                  >
+                                    <Trash2 className="h-4 w-4" />
+                                    <span className="sr-only">Entfernen</span>
+                                  </Button>
+                                </div>
+                              </div>
+                              <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                                <span>{sourceLabel}</span>
+                                <ArrowRight className="h-3 w-3" />
+                                <span>{targetName}</span>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {Object.entries(otherTargetMappings).map(([objectType, mappingsForObject]) => {
+                      const targetLabel = getTargetObjectDisplayName(objectType);
 
                       return (
-                        <div
-                          key={mapping.id}
-                          className="flex flex-col gap-2 rounded-lg border border-border bg-muted/30 p-3"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-sm font-medium">{targetName}</span>
-                              <Badge variant={badgeVariant} className="flex items-center gap-1">
-                                {getMappingTypeLabel(mapping)}
-                              </Badge>
-                              {mapping.mappingType === 'collection' && (
-                                <span className="text-xs text-muted-foreground">
-                                  Trenner: "{mapping.joinWith ?? defaultJoinWith}"
-                                </span>
-                              )}
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                onClick={() => openMappingEditor(mapping)}
-                              >
-                                Bearbeiten
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="sm"
-                                className="text-destructive"
-                                onClick={() => handleRemoveMapping(mapping.id)}
-                              >
-                                Entfernen
-                              </Button>
-                            </div>
+                        <div key={objectType} className="space-y-3">
+                          <div className="text-xs uppercase text-muted-foreground tracking-wide">
+                            Weitere Mappings · {targetLabel}
                           </div>
-                          <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
-                            <span>{sourceLabel}</span>
-                            <ArrowRight className="h-3 w-3" />
-                            <span>{targetName}</span>
-                          </div>
+                          {mappingsForObject.map((mapping) => {
+                            const targetName = getTargetFieldName(objectType, mapping.targetFieldId);
+                            const sourceLabel = describeMappingSource(mapping);
+                            const badgeVariant = mapping.mappingType === 'collection' ? 'secondary' : 'outline';
+
+                            return (
+                              <div
+                                key={mapping.id}
+                                className="flex flex-col gap-2 rounded-lg border border-dashed border-border/70 bg-muted/10 p-3"
+                              >
+                                <div className="flex flex-wrap items-center justify-between gap-2">
+                                  <div className="flex flex-wrap items-center gap-2">
+                                    <span className="text-sm font-medium">{targetName}</span>
+                                    <Badge variant={badgeVariant} className="flex items-center gap-1">
+                                      {getMappingTypeLabel(mapping)}
+                                    </Badge>
+                                    {mapping.mappingType === 'collection' && (
+                                      <span className="text-xs text-muted-foreground">
+                                        Trenner: "{mapping.joinWith ?? defaultJoinWith}"
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                                <div className="flex flex-wrap items-center gap-1 text-xs text-muted-foreground">
+                                  <span>{sourceLabel}</span>
+                                  <ArrowRight className="h-3 w-3" />
+                                  <span>{targetLabel} · {targetName}</span>
+                                </div>
+                                <div className="text-xs text-muted-foreground">
+                                  Zum Bearbeiten zu {targetLabel} wechseln.
+                                </div>
+                              </div>
+                            );
+                          })}
                         </div>
                       );
                     })}
