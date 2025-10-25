@@ -46,6 +46,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { WizardSteps, type WizardStep } from "@/components/ui/wizard-steps";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
+import type { Tables, TablesInsert, TablesUpdate, Json } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import TestConnectionDialog from "./dialogs/TestConnectionDialog";
 import { FieldMapper } from "./FieldMapper";
@@ -66,6 +67,128 @@ import {
   type PaginationStrategy,
 } from "@/lib/config-helpers";
 
+type ConnectorRow = Tables<"connectors">;
+type DataSourceRow = Tables<"data_sources">;
+
+type JsonObject = { [key: string]: Json | undefined };
+
+interface ConnectorEndpointConfig extends JsonObject {
+  list?: string;
+  detail?: string;
+  create?: string;
+  update?: string;
+  delete?: string;
+  healthcheck?: string;
+}
+
+interface ConnectorOperationsConfig extends JsonObject {
+  write_method?: string;
+  payload_template?: string;
+  response_sample?: string;
+  success_status_codes?: number[];
+  request_timeout?: number;
+}
+
+interface ConnectorPaginationConfig extends JsonObject {
+  strategy?: PaginationStrategy;
+  page_size?: number;
+  page_param?: string;
+  limit_param?: string;
+  cursor_param?: string;
+  cursor_path?: string;
+}
+
+interface ConnectorFilteringConfig extends JsonObject {
+  default_params?: string;
+  delta_field?: string;
+  delta_strategy?: DeltaStrategy;
+  initial_value?: string;
+}
+
+interface ConnectorRateLimitingConfig extends JsonObject {
+  requests_per_minute?: number;
+  concurrent_requests?: number;
+  retry_after_header?: string;
+}
+
+interface ConnectorBatchingConfig extends JsonObject {
+  batch_size?: number;
+  max_objects_per_run?: number;
+}
+
+interface ConnectorSchedulingConfig extends JsonObject {
+  poll_interval_minutes?: number;
+  cron?: string;
+}
+
+interface ConnectorDataFormatConfig extends JsonObject {
+  date_format?: string;
+  timezone?: string;
+}
+
+interface ConnectorIdentifiersConfig extends JsonObject {
+  primary_key?: string;
+}
+
+interface ConnectorAdditionalConfig extends JsonObject {
+  client_id?: string;
+  client_secret?: string;
+  auth_url?: string;
+  token_url?: string;
+  scope?: string;
+  redirect_uri?: string;
+  realm?: string;
+  issuer?: string;
+  ssl_verification?: boolean;
+  proxy_host?: string;
+  proxy_port?: string;
+  vpn_settings?: string;
+  headers?: Array<{ key: string; value: string }>;
+  endpoint?: string;
+  endpoints?: ConnectorEndpointConfig;
+  operations?: ConnectorOperationsConfig;
+  pagination?: ConnectorPaginationConfig;
+  filtering?: ConnectorFilteringConfig;
+  rate_limiting?: ConnectorRateLimitingConfig;
+  batching?: ConnectorBatchingConfig;
+  scheduling?: ConnectorSchedulingConfig;
+  data_format?: ConnectorDataFormatConfig;
+  identifiers?: ConnectorIdentifiersConfig;
+  notes?: string;
+}
+
+type ConnectorWithConfig = Omit<ConnectorRow, "additional_config"> & {
+  additional_config: ConnectorAdditionalConfig | null;
+};
+
+type ConnectorMutationPayload = Pick<
+  TablesInsert<"connectors">,
+  | "migration_id"
+  | "connector_type"
+  | "api_url"
+  | "api_key"
+  | "username"
+  | "password"
+  | "endpoint"
+  | "auth_type"
+  | "additional_config"
+>;
+
+const getErrorMessage = (error: unknown): string | undefined => {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (typeof error === "string") {
+    return error;
+  }
+
+  return undefined;
+};
+
+const normalizeConnectorConfig = (config: unknown): ConnectorAdditionalConfig =>
+  (pruneConfig(config) as ConnectorAdditionalConfig | undefined) ?? ({} as ConnectorAdditionalConfig);
+
 interface MigrationProject {
   id: string;
   name: string;
@@ -81,8 +204,8 @@ interface MigrationProject {
   projectId?: string;
   activities: Activity[];
   connectors?: {
-    in?: any;
-    out?: any;
+    in?: ConnectorWithConfig | null;
+    out?: ConnectorWithConfig | null;
   };
 }
 
@@ -219,20 +342,20 @@ const CONNECTOR_WIZARD_STEPS: WizardStep[] = [
   },
 ];
 
-const buildConnectorFormData = (connector?: any): ConnectorFormData => {
+const buildConnectorFormData = (connector?: ConnectorWithConfig | null): ConnectorFormData => {
   const base = createInitialConnectorFormData();
   if (!connector) return base;
 
-  const config = connector.additional_config || {};
-  const endpoints = config.endpoints || {};
-  const operations = config.operations || {};
-  const pagination = config.pagination || {};
-  const filtering = config.filtering || {};
-  const rateLimiting = config.rate_limiting || {};
-  const batching = config.batching || {};
-  const scheduling = config.scheduling || {};
-  const dataFormat = config.data_format || {};
-  const identifiers = config.identifiers || {};
+  const config: ConnectorAdditionalConfig = connector.additional_config ?? {};
+  const endpoints: ConnectorEndpointConfig = config.endpoints ?? {};
+  const operations: ConnectorOperationsConfig = config.operations ?? {};
+  const pagination: ConnectorPaginationConfig = config.pagination ?? {};
+  const filtering: ConnectorFilteringConfig = config.filtering ?? {};
+  const rateLimiting: ConnectorRateLimitingConfig = config.rate_limiting ?? {};
+  const batching: ConnectorBatchingConfig = config.batching ?? {};
+  const scheduling: ConnectorSchedulingConfig = config.scheduling ?? {};
+  const dataFormat: ConnectorDataFormatConfig = config.data_format ?? {};
+  const identifiers: ConnectorIdentifiersConfig = config.identifiers ?? {};
 
   return {
     ...base,
@@ -299,7 +422,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   const [configType, setConfigType] = useState<'in' | 'out'>('in');
   const [testType, setTestType] = useState<'in' | 'out'>('in');
   const [linkType, setLinkType] = useState<'in' | 'out'>('in');
-  const [dataSources, setDataSources] = useState<any[]>([]);
+  const [dataSources, setDataSources] = useState<DataSourceRow[]>([]);
   const [selectedDataSourceId, setSelectedDataSourceId] = useState<string>('');
   const [isMetaModelApproved, setIsMetaModelApproved] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -445,8 +568,8 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
           .eq('is_active', true)
           .eq('is_global', true);
         
-        if (!error && data) {
-          setDataSources(data);
+        if (!error) {
+          setDataSources(data ?? []);
         }
         return;
       }
@@ -468,8 +591,8 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
         return;
       }
 
-      const assignedSourceIds = projectAssignments?.map(a => a.data_source_id) || [];
-      
+      const assignedSourceIds = projectAssignments?.map((assignment) => assignment.data_source_id) || [];
+
       if (assignedSourceIds.length > 0) {
         const { data: assignedSources, error: assignedError } = await supabase
           .from('data_sources')
@@ -479,14 +602,14 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
         if (!assignedError) {
           // Combine global and assigned sources, remove duplicates
-          const allSources = [...(globalSources || []), ...(assignedSources || [])];
+          const allSources: DataSourceRow[] = [...(globalSources || []), ...(assignedSources || [])];
           const uniqueSources = Array.from(
-            new Map(allSources.map(s => [s.id, s])).values()
+            new Map(allSources.map((source) => [source.id, source])).values()
           );
           setDataSources(uniqueSources);
         }
       } else {
-        setDataSources(globalSources || []);
+        setDataSources(globalSources ?? []);
       }
     };
 
@@ -494,7 +617,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   }, [project.projectId]);
 
   // Filter data sources by connector type
-  const getAvailableDataSources = (type: 'in' | 'out') => {
+  const getAvailableDataSources = (type: 'in' | 'out'): DataSourceRow[] => {
     const systemType = type === 'in' ? project.sourceSystem : project.targetSystem;
     return dataSources.filter(ds => ds.source_type === systemType);
   };
@@ -552,7 +675,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
         const newProgress = Math.min(project.progress + 2.5, 100);
         
         // If it's an inconnector test, also update mapped_objects and objects_transferred
-        let updateData: any = { progress: newProgress };
+        const updateData: TablesUpdate<'migrations'> = { progress: newProgress };
         
         if (testType === 'in') {
           // Generate realistic number of objects found (50-200)
@@ -579,7 +702,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
       toast.success("Test erfolgreich abgeschlossen");
       await onRefresh();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast.error("Fehler beim Test");
       console.error(error);
     }
@@ -630,7 +753,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
       toast.success(`${deleteType === 'in' ? 'Inconnector' : 'Outconnector'} gelöscht`);
       setIsDeleteDialogOpen(false);
       await onRefresh();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast.error("Fehler beim Löschen");
       console.error(error);
     }
@@ -660,13 +783,10 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
       const isCreating = !connector;
       const wasTested = connector?.is_tested || false;
 
-      const additionalConfig = (pruneConfig(dataSource.additional_config) as Record<string, any>) || {};
-      const derivedEndpoint =
-        (additionalConfig?.endpoints?.list as string | undefined) ||
-        (additionalConfig?.endpoint as string | undefined) ||
-        undefined;
+      const additionalConfig = normalizeConnectorConfig(dataSource.additional_config);
+      const derivedEndpoint = additionalConfig.endpoints?.list ?? additionalConfig.endpoint ?? undefined;
 
-      const connectorData = {
+      const connectorData: ConnectorMutationPayload = {
         migration_id: project.id,
         connector_type: linkType,
         api_url: dataSource.api_url,
@@ -688,9 +808,14 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
       if (connector) {
         // Update existing connector - reset is_tested to false
+        const connectorUpdate: TablesUpdate<'connectors'> = {
+          ...connectorData,
+          is_tested: false,
+        };
+
         const { error } = await supabase
           .from('connectors')
-          .update({ ...connectorData, is_tested: false })
+          .update(connectorUpdate)
           .eq('id', connector.id);
 
         if (error) throw error;
@@ -734,8 +859,8 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
       setIsLinkDialogOpen(false);
       await onRefresh();
-    } catch (error: any) {
-      toast.error(error.message || "Fehler beim Verknüpfen");
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error) ?? "Fehler beim Verknüpfen");
       console.error(error);
     }
   };
@@ -828,8 +953,8 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
         toast.success("Meta Modell Freigabe wurde zurückgezogen");
         await onRefresh();
       }
-    } catch (error: any) {
-      toast.error("Fehler beim Freigeben des Meta-Modells");
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error) ?? "Fehler beim Freigeben des Meta-Modells");
       console.error(error);
       setIsMetaModelApproved(false);
     }
@@ -870,7 +995,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
           }
 
           console.debug('Transformierte Pipeline-Vorschau', transformedSample);
-        } catch (error) {
+        } catch (error: unknown) {
           console.error('Fehler bei der Pipeline-Ausführung', error);
           toast.error('Fehler bei der Mapping-Auswertung in der Pipeline');
           setIsImporting(false);
@@ -919,7 +1044,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
       setHasImported(true);
       toast.success("Import erfolgreich abgeschlossen");
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast.error("Fehler beim Import");
       console.error(error);
     } finally {
@@ -962,7 +1087,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
       setHasExported(true);
       toast.success("Export erfolgreich abgeschlossen");
       await onRefresh();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast.error("Fehler beim Export");
       console.error(error);
     } finally {
@@ -1028,7 +1153,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
       setHasValidated(true);
       toast.success("Validierung erfolgreich abgeschlossen");
       await onRefresh();
-    } catch (error: any) {
+    } catch (error: unknown) {
       toast.error("Fehler bei der Validierung");
       console.error(error);
     } finally {
@@ -1042,7 +1167,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
       const isCreating = !connector;
       const wasTested = connector?.is_tested || false;
       
-      const oauthFields: Record<string, any> = formData.authType === 'oauth2'
+      const oauthFields: Partial<ConnectorAdditionalConfig> = formData.authType === 'oauth2'
         ? {
             client_id: formData.clientId,
             client_secret: formData.clientSecret,
@@ -1053,7 +1178,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
           }
         : {};
 
-      const customAuthFields: Record<string, any> = formData.authType === 'custom'
+      const customAuthFields: Partial<ConnectorAdditionalConfig> = formData.authType === 'custom'
         ? {
             realm: formData.realm,
             issuer: formData.issuer,
@@ -1062,7 +1187,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
           }
         : {};
 
-      const endpointConfig = {
+      const endpointConfig: ConnectorEndpointConfig = {
         list: formData.listEndpoint || formData.endpoint,
         detail: formData.detailEndpoint,
         create: formData.createEndpoint,
@@ -1071,7 +1196,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
         healthcheck: formData.healthcheckEndpoint,
       };
 
-      const operationsConfig = {
+      const operationsConfig: ConnectorOperationsConfig = {
         write_method: formData.writeHttpMethod,
         payload_template: formData.requestPayloadTemplate,
         response_sample: formData.responseSample,
@@ -1079,7 +1204,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
         request_timeout: parseInteger(formData.requestTimeout),
       };
 
-      const paginationConfig = {
+      const paginationConfig: ConnectorPaginationConfig = {
         strategy: formData.paginationStrategy,
         page_size: parseInteger(formData.pageSize),
         page_param: formData.pageParam,
@@ -1088,39 +1213,39 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
         cursor_path: formData.cursorPath,
       };
 
-      const filteringConfig = {
+      const filteringConfig: ConnectorFilteringConfig = {
         default_params: formData.filterTemplate,
         delta_field: formData.deltaField,
         delta_strategy: formData.deltaStrategy,
         initial_value: formData.deltaInitialValue,
       };
 
-      const rateLimitingConfig = {
+      const rateLimitingConfig: ConnectorRateLimitingConfig = {
         requests_per_minute: parseInteger(formData.requestsPerMinute),
         concurrent_requests: parseInteger(formData.concurrencyLimit),
         retry_after_header: formData.retryAfterHeader,
       };
 
-      const batchingConfig = {
+      const batchingConfig: ConnectorBatchingConfig = {
         batch_size: parseInteger(formData.batchSize),
         max_objects_per_run: parseInteger(formData.maxObjectsPerRun),
       };
 
-      const schedulingConfig = {
+      const schedulingConfig: ConnectorSchedulingConfig = {
         poll_interval_minutes: parseInteger(formData.pollIntervalMinutes),
         cron: formData.cronSchedule,
       };
 
-      const dataFormatConfig = {
+      const dataFormatConfig: ConnectorDataFormatConfig = {
         date_format: formData.dateFormat,
         timezone: formData.timezone,
       };
 
-      const identifiersConfig = {
+      const identifiersConfig: ConnectorIdentifiersConfig = {
         primary_key: formData.identifierField,
       };
 
-      const baseConfig: Record<string, any> = {
+      const baseConfig: ConnectorAdditionalConfig = {
         ssl_verification: formData.sslVerification,
         proxy_host: formData.proxyHost,
         proxy_port: formData.proxyPort,
@@ -1144,9 +1269,9 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
         baseConfig.headers = headerEntries;
       }
 
-      const additionalConfig = (pruneConfig(baseConfig) as Record<string, any>) ?? {};
+      const additionalConfig = normalizeConnectorConfig(baseConfig);
 
-      const connectorData = {
+      const connectorData: ConnectorMutationPayload = {
         migration_id: project.id,
         connector_type: configType,
         api_url: formData.apiUrl,
@@ -1168,9 +1293,14 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
       if (connector) {
         // Update existing connector - reset is_tested to false
+        const connectorUpdate: TablesUpdate<'connectors'> = {
+          ...connectorData,
+          is_tested: false,
+        };
+
         const { error } = await supabase
           .from('connectors')
-          .update({ ...connectorData, is_tested: false })
+          .update(connectorUpdate)
           .eq('id', connector.id);
 
         if (error) throw error;
@@ -1229,8 +1359,8 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
       setFormData(createInitialConnectorFormData());
       handleConfigDialogChange(false);
       await onRefresh();
-    } catch (error: any) {
-      toast.error(error.message || "Fehler beim Speichern");
+    } catch (error: unknown) {
+      toast.error(getErrorMessage(error) ?? "Fehler beim Speichern");
       console.error(error);
     }
   };
