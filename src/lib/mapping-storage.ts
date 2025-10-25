@@ -98,6 +98,33 @@ export const loadMappingsFromDatabase = async (
   }
 };
 
+export const loadAllMappingsForSource = async (
+  migrationId: string,
+  sourceObjectType: string
+): Promise<(FieldMapping & { sourceObjectType: string; targetObjectType: string })[]> => {
+  try {
+    const { data, error } = await supabase
+      .from("field_mappings")
+      .select("*")
+      .eq("migration_id", migrationId)
+      .eq("source_object_type", sourceObjectType);
+
+    if (error) {
+      console.error("Failed to load all mappings from database:", error);
+      return [];
+    }
+
+    return (data as DbFieldMapping[]).map(dbMapping => ({
+      ...dbMappingToFieldMapping(dbMapping),
+      sourceObjectType: dbMapping.source_object_type,
+      targetObjectType: dbMapping.target_object_type,
+    }));
+  } catch (error) {
+    console.error("Failed to load all mappings:", error);
+    return [];
+  }
+};
+
 export const saveMappingToDatabase = async (
   migrationId: string,
   mapping: FieldMapping,

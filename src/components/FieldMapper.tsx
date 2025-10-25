@@ -51,6 +51,7 @@ import {
   loadMappingsFromDatabase,
   saveMappingToDatabase,
   deleteMappingFromDatabase,
+  loadAllMappingsForSource,
 } from "@/lib/mapping-storage";
 
 type Field = SchemaField;
@@ -66,6 +67,7 @@ interface FieldMapperProps {
 export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObject, targetObject }: FieldMapperProps) => {
   const [mappings, setMappings] = useState<FieldMapping[]>([]);
   const [savedMappings, setSavedMappings] = useState<FieldMapping[]>([]);
+  const [allSourceMappings, setAllSourceMappings] = useState<(FieldMapping & { targetObjectType: string })[]>([]);
   const [draggedField, setDraggedField] = useState<{ side: 'source' | 'target', fieldId: string } | null>(null);
   const [hoveredField, setHoveredField] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -138,6 +140,14 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
     [mappings]
   );
 
+  // Get all mappings for a source field (across all target objects)
+  const getAllMappingsForSourceField = useCallback(
+    (fieldId: string): (FieldMapping & { targetObjectType: string })[] => {
+      return allSourceMappings.filter((mapping) => mapping.sourceFieldId === fieldId);
+    },
+    [allSourceMappings]
+  );
+
   // Check if there are unsaved changes
   const hasUnsavedChanges = useMemo(() => {
     return JSON.stringify(mappings) !== JSON.stringify(savedMappings);
@@ -147,9 +157,15 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
   useEffect(() => {
     const loadMappings = async () => {
       setIsLoading(true);
+      // Load mappings for current target object
       const loadedMappings = await loadMappingsFromDatabase(migrationId, sourceObject, targetObject);
       setMappings(loadedMappings);
       setSavedMappings(loadedMappings);
+      
+      // Load all mappings for the source object (across all target objects)
+      const allMappings = await loadAllMappingsForSource(migrationId, sourceObject);
+      setAllSourceMappings(allMappings);
+      
       setIsLoading(false);
     };
 
@@ -491,6 +507,11 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
       }
 
       setSavedMappings([...mappings]);
+      
+      // Reload all source mappings to update the overview
+      const allMappings = await loadAllMappingsForSource(migrationId, sourceObject);
+      setAllSourceMappings(allMappings);
+      
       toast.success("Alle Mappings erfolgreich gespeichert");
     } catch (error) {
       console.error("Error saving mappings:", error);
@@ -584,6 +605,8 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
             <CardContent className="space-y-2">
               {sourceFields.map((field) => {
                 const fieldMappings = getMappingsForField('source', field.id);
+                const allFieldMappings = getAllMappingsForSourceField(field.id);
+                const otherObjectMappings = allFieldMappings.filter(m => m.targetObjectType !== targetObject);
                 const highlighted = isHighlighted('source', field.id);
 
                 return (
@@ -597,7 +620,7 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
                     onMouseLeave={() => setHoveredField(null)}
                     className={`
                       flex flex-col gap-2 p-3 rounded-lg border
-                      ${isMapped('source', field.id)
+                      ${isMapped('source', field.id) || allFieldMappings.length > 0
                         ? 'bg-primary/10 border-primary'
                         : 'bg-muted/50 border-border'
                       }
@@ -658,6 +681,47 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
                               >
                                 ×
                               </Button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    
+                    {/* Show mappings to other target objects */}
+                    {otherObjectMappings.length > 0 && (
+                      <div className="flex flex-col gap-1 pl-6 pt-1 border-t border-border/50">
+                        <div className="text-xs text-muted-foreground/60 mb-1">Weitere Mappings:</div>
+                        {otherObjectMappings.map((mapping) => {
+                          const targetObjectOptions = getSystemObjectOptions(targetSystem);
+                          const targetObjDisplayName = targetObjectOptions.find(
+                            opt => opt.id === mapping.targetObjectType
+                          )?.name ?? mapping.targetObjectType;
+                          const badgeVariant = mapping.mappingType === 'collection' ? 'secondary' : 'outline';
+
+                          return (
+                            <div
+                              key={mapping.id}
+                              className="flex items-center gap-2 text-xs text-muted-foreground/70"
+                            >
+                              <ArrowRight className="h-3 w-3" />
+                              <span className="text-xs font-medium">
+                                {targetObjDisplayName}
+                              </span>
+                              <Tooltip>
+                                <TooltipTrigger asChild>
+                                  <Badge variant={badgeVariant} className="flex items-center gap-1 opacity-70">
+                                    {getMappingTypeLabel(mapping)}
+                                  </Badge>
+                                </TooltipTrigger>
+                                <TooltipContent>
+                                  <div className="space-y-1">
+                                    <div>{getMappingTypeTooltip(mapping)}</div>
+                                    <div className="text-xs text-muted-foreground">
+                                      Zum Bearbeiten zu {targetObjDisplayName} wechseln
+                                    </div>
+                                  </div>
+                                </TooltipContent>
+                              </Tooltip>
                             </div>
                           );
                         })}

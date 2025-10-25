@@ -48,7 +48,7 @@ import TestConnectionDialog from "./dialogs/TestConnectionDialog";
 import { FieldMapper } from "./FieldMapper";
 import { getSystemObjectOptions } from "@/lib/schema-registry";
 import { applyMappingsToRecord, buildSampleRecordFromMappings } from "@/lib/migration-pipeline";
-import { loadMappingsFromDatabase } from "@/lib/mapping-storage";
+import { loadMappingsFromDatabase, loadAllMappingsForSource } from "@/lib/mapping-storage";
 import type { FieldMapping } from "@/types/mapping";
 
 interface MigrationProject {
