@@ -130,7 +130,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
       return [];
     }
 
-    return await loadMappingsFromDatabase(project.id);
+    return await loadMappingsFromDatabase(project.id, selectedSourceObject, selectedTargetObject);
   }, [project.id, selectedSourceObject, selectedTargetObject]);
 
   // Load meta model approval status from database

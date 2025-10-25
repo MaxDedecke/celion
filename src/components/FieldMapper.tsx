@@ -147,14 +147,14 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
   useEffect(() => {
     const loadMappings = async () => {
       setIsLoading(true);
-      const loadedMappings = await loadMappingsFromDatabase(migrationId);
+      const loadedMappings = await loadMappingsFromDatabase(migrationId, sourceObject, targetObject);
       setMappings(loadedMappings);
       setSavedMappings(loadedMappings);
       setIsLoading(false);
     };
 
     loadMappings();
-  }, [migrationId]);
+  }, [migrationId, sourceObject, targetObject]);
 
   // Warn before leaving with unsaved changes
   useEffect(() => {
@@ -487,7 +487,7 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
 
       // Save new and updated mappings
       for (const mapping of mappings) {
-        await saveMappingToDatabase(migrationId, mapping);
+        await saveMappingToDatabase(migrationId, mapping, sourceObject, targetObject);
       }
 
       setSavedMappings([...mappings]);

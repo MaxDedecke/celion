@@ -506,11 +506,6 @@ const ProjectDetail = () => {
                                 {migration.targetSystem}
                               </Badge>
                             )}
-                            {migration.status && (
-                              <Badge variant="outline" className="border-foreground/20 text-muted-foreground">
-                                Status: {migration.status}
-                              </Badge>
-                            )}
                           </div>
                           <div className="flex items-center justify-end text-sm text-muted-foreground">
                             <span className="font-medium text-primary">Mehr erfahren →</span>

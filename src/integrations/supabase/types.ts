@@ -167,7 +167,9 @@ export type Database = {
           mapping_type: string
           migration_id: string
           source_field_id: string
+          source_object_type: string
           target_field_id: string
+          target_object_type: string
           updated_at: string
         }
         Insert: {
@@ -179,7 +181,9 @@ export type Database = {
           mapping_type?: string
           migration_id: string
           source_field_id: string
+          source_object_type: string
           target_field_id: string
+          target_object_type: string
           updated_at?: string
         }
         Update: {
@@ -191,7 +195,9 @@ export type Database = {
           mapping_type?: string
           migration_id?: string
           source_field_id?: string
+          source_object_type?: string
           target_field_id?: string
+          target_object_type?: string
           updated_at?: string
         }
         Relationships: [

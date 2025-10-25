@@ -18,6 +18,8 @@ type DbFieldMapping = {
   collection_item_field_id: string | null;
   join_with: string | null;
   description: string | null;
+  source_object_type: string;
+  target_object_type: string;
   created_at: string;
   updated_at: string;
 };
@@ -72,13 +74,17 @@ const fieldMappingToDbMapping = (mapping: FieldMapping, migrationId: string) => 
 };
 
 export const loadMappingsFromDatabase = async (
-  migrationId: string
+  migrationId: string,
+  sourceObjectType: string,
+  targetObjectType: string
 ): Promise<FieldMapping[]> => {
   try {
     const { data, error } = await supabase
       .from("field_mappings")
       .select("*")
-      .eq("migration_id", migrationId);
+      .eq("migration_id", migrationId)
+      .eq("source_object_type", sourceObjectType)
+      .eq("target_object_type", targetObjectType);
 
     if (error) {
       console.error("Failed to load mappings from database:", error);
@@ -94,14 +100,21 @@ export const loadMappingsFromDatabase = async (
 
 export const saveMappingToDatabase = async (
   migrationId: string,
-  mapping: FieldMapping
+  mapping: FieldMapping,
+  sourceObjectType: string,
+  targetObjectType: string
 ): Promise<boolean> => {
   try {
     const dbMapping = fieldMappingToDbMapping(mapping, migrationId);
 
     const { error } = await supabase
       .from("field_mappings")
-      .upsert({ id: mapping.id, ...dbMapping });
+      .upsert({ 
+        id: mapping.id, 
+        ...dbMapping,
+        source_object_type: sourceObjectType,
+        target_object_type: targetObjectType
+      });
 
     if (error) {
       console.error("Failed to save mapping to database:", error);
