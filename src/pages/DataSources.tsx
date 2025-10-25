@@ -15,7 +15,8 @@ import {
   Globe2,
   Power,
   Link2,
-  Sparkles
+  Sparkles,
+  Plus
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import DataFlowLoader from "@/components/DataFlowLoader";
@@ -29,13 +30,26 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { DATA_SOURCE_TYPE_OPTIONS, type DataSourceType } from "@/constants/sourceTypes";
+import {
+  createHeaderField,
+  headersToConfigEntries,
+  mapHeadersToFields,
+  parseCommaSeparatedIntegers,
+  parseInteger,
+  pruneConfig,
+  successCodesToString,
+  type DeltaStrategy,
+  type HeaderField,
+  type PaginationStrategy,
+} from "@/lib/config-helpers";
 
 type DataSourceRow = Tables<"data_sources">;
 type DataSourceWithProjects = DataSourceRow & { assigned_projects: string[] };
 type ProjectSummary = Pick<Tables<"projects">, "id" | "name">;
 
-type DataSourceFormData = Omit<
+type BaseDataSourceForm = Omit<
   TablesInsert<"data_sources">,
   "user_id" | "id" | "created_at" | "updated_at" | "additional_config"
 > & {
@@ -45,9 +59,57 @@ type DataSourceFormData = Omit<
   password: string;
 };
 
+type DataSourceFormData = BaseDataSourceForm & {
+  clientId: string;
+  clientSecret: string;
+  authUrl: string;
+  tokenUrl: string;
+  scope: string;
+  redirectUri: string;
+  realm: string;
+  issuer: string;
+  sslVerification: boolean;
+  proxyHost: string;
+  proxyPort: string;
+  vpnSettings: string;
+  headers: HeaderField[];
+  listEndpoint: string;
+  detailEndpoint: string;
+  createEndpoint: string;
+  updateEndpoint: string;
+  deleteEndpoint: string;
+  healthcheckEndpoint: string;
+  writeHttpMethod: string;
+  requestPayloadTemplate: string;
+  responseSample: string;
+  successStatusCodes: string;
+  paginationStrategy: PaginationStrategy;
+  pageSize: string;
+  pageParam: string;
+  limitParam: string;
+  cursorParam: string;
+  cursorPath: string;
+  filterTemplate: string;
+  deltaField: string;
+  deltaInitialValue: string;
+  deltaStrategy: DeltaStrategy;
+  identifierField: string;
+  dateFormat: string;
+  timezone: string;
+  requestsPerMinute: string;
+  concurrencyLimit: string;
+  retryAfterHeader: string;
+  requestTimeout: string;
+  batchSize: string;
+  maxObjectsPerRun: string;
+  pollIntervalMinutes: string;
+  cronSchedule: string;
+  notes: string;
+};
+
 const SOURCE_TYPE_OPTIONS = DATA_SOURCE_TYPE_OPTIONS;
 
-const EMPTY_FORM_DATA: DataSourceFormData = {
+const createInitialDataSourceFormData = (): DataSourceFormData => ({
   name: "",
   source_type: SOURCE_TYPE_OPTIONS[0],
   api_url: "",
@@ -57,6 +119,231 @@ const EMPTY_FORM_DATA: DataSourceFormData = {
   auth_type: "api_key",
   is_active: true,
   is_global: false,
+  clientId: "",
+  clientSecret: "",
+  authUrl: "",
+  tokenUrl: "",
+  scope: "",
+  redirectUri: "",
+  realm: "",
+  issuer: "",
+  sslVerification: true,
+  proxyHost: "",
+  proxyPort: "",
+  vpnSettings: "",
+  headers: [createHeaderField()],
+  listEndpoint: "",
+  detailEndpoint: "",
+  createEndpoint: "",
+  updateEndpoint: "",
+  deleteEndpoint: "",
+  healthcheckEndpoint: "",
+  writeHttpMethod: "POST",
+  requestPayloadTemplate: "",
+  responseSample: "",
+  successStatusCodes: "",
+  paginationStrategy: "none",
+  pageSize: "",
+  pageParam: "",
+  limitParam: "",
+  cursorParam: "",
+  cursorPath: "",
+  filterTemplate: "",
+  deltaField: "",
+  deltaInitialValue: "",
+  deltaStrategy: "timestamp",
+  identifierField: "",
+  dateFormat: "",
+  timezone: "",
+  requestsPerMinute: "",
+  concurrencyLimit: "",
+  retryAfterHeader: "",
+  requestTimeout: "",
+  batchSize: "",
+  maxObjectsPerRun: "",
+  pollIntervalMinutes: "",
+  cronSchedule: "",
+  notes: "",
+});
+
+const mapDataSourceToFormData = (source?: DataSourceWithProjects): DataSourceFormData => {
+  const base = createInitialDataSourceFormData();
+  if (!source) return base;
+
+  const config = source.additional_config || {};
+  const endpoints = config.endpoints || {};
+  const operations = config.operations || {};
+  const pagination = config.pagination || {};
+  const filtering = config.filtering || {};
+  const rateLimiting = config.rate_limiting || {};
+  const batching = config.batching || {};
+  const scheduling = config.scheduling || {};
+  const dataFormat = config.data_format || {};
+  const identifiers = config.identifiers || {};
+
+  return {
+    ...base,
+    name: source.name,
+    source_type: source.source_type,
+    api_url: source.api_url || "",
+    api_key: source.api_key || "",
+    username: source.username || "",
+    password: source.password || "",
+    auth_type: source.auth_type,
+    is_active: source.is_active,
+    is_global: source.is_global,
+    clientId: config.client_id || "",
+    clientSecret: config.client_secret || "",
+    authUrl: config.auth_url || "",
+    tokenUrl: config.token_url || "",
+    scope: config.scope || "",
+    redirectUri: config.redirect_uri || "",
+    realm: config.realm || "",
+    issuer: config.issuer || "",
+    sslVerification: config.ssl_verification ?? true,
+    proxyHost: config.proxy_host || "",
+    proxyPort: config.proxy_port || "",
+    vpnSettings: config.vpn_settings || "",
+    headers: mapHeadersToFields(config.headers),
+    listEndpoint: endpoints.list || "",
+    detailEndpoint: endpoints.detail || "",
+    createEndpoint: endpoints.create || "",
+    updateEndpoint: endpoints.update || "",
+    deleteEndpoint: endpoints.delete || "",
+    healthcheckEndpoint: endpoints.healthcheck || "",
+    writeHttpMethod: operations.write_method || "POST",
+    requestPayloadTemplate: operations.payload_template || "",
+    responseSample: operations.response_sample || "",
+    successStatusCodes: successCodesToString(operations.success_status_codes),
+    paginationStrategy: pagination.strategy || "none",
+    pageSize: pagination.page_size ? String(pagination.page_size) : "",
+    pageParam: pagination.page_param || "",
+    limitParam: pagination.limit_param || "",
+    cursorParam: pagination.cursor_param || "",
+    cursorPath: pagination.cursor_path || "",
+    filterTemplate: filtering.default_params || "",
+    deltaField: filtering.delta_field || "",
+    deltaInitialValue: filtering.initial_value || "",
+    deltaStrategy: filtering.delta_strategy || "timestamp",
+    identifierField: identifiers.primary_key || "",
+    dateFormat: dataFormat.date_format || "",
+    timezone: dataFormat.timezone || "",
+    requestsPerMinute: rateLimiting.requests_per_minute ? String(rateLimiting.requests_per_minute) : "",
+    concurrencyLimit: rateLimiting.concurrent_requests ? String(rateLimiting.concurrent_requests) : "",
+    retryAfterHeader: rateLimiting.retry_after_header || "",
+    requestTimeout: operations.request_timeout ? String(operations.request_timeout) : "",
+    batchSize: batching.batch_size ? String(batching.batch_size) : "",
+    maxObjectsPerRun: batching.max_objects_per_run ? String(batching.max_objects_per_run) : "",
+    pollIntervalMinutes: scheduling.poll_interval_minutes ? String(scheduling.poll_interval_minutes) : "",
+    cronSchedule: scheduling.cron || "",
+    notes: config.notes || "",
+  };
+};
+
+const buildDataSourceAdditionalConfig = (form: DataSourceFormData): Record<string, any> => {
+  const oauthFields: Record<string, any> = form.auth_type === "oauth2"
+    ? {
+        client_id: form.clientId,
+        client_secret: form.clientSecret,
+        auth_url: form.authUrl,
+        token_url: form.tokenUrl,
+        scope: form.scope,
+        redirect_uri: form.redirectUri,
+      }
+    : {};
+
+  const customAuthFields: Record<string, any> = form.auth_type === "custom"
+    ? {
+        realm: form.realm,
+        issuer: form.issuer,
+        client_id: form.clientId,
+        client_secret: form.clientSecret,
+      }
+    : {};
+
+  const endpointConfig = {
+    list: form.listEndpoint,
+    detail: form.detailEndpoint,
+    create: form.createEndpoint,
+    update: form.updateEndpoint,
+    delete: form.deleteEndpoint,
+    healthcheck: form.healthcheckEndpoint,
+  };
+
+  const operationsConfig = {
+    write_method: form.writeHttpMethod,
+    payload_template: form.requestPayloadTemplate,
+    response_sample: form.responseSample,
+    success_status_codes: parseCommaSeparatedIntegers(form.successStatusCodes),
+    request_timeout: parseInteger(form.requestTimeout),
+  };
+
+  const paginationConfig = {
+    strategy: form.paginationStrategy,
+    page_size: parseInteger(form.pageSize),
+    page_param: form.pageParam,
+    limit_param: form.limitParam,
+    cursor_param: form.cursorParam,
+    cursor_path: form.cursorPath,
+  };
+
+  const filteringConfig = {
+    default_params: form.filterTemplate,
+    delta_field: form.deltaField,
+    delta_strategy: form.deltaStrategy,
+    initial_value: form.deltaInitialValue,
+  };
+
+  const rateLimitingConfig = {
+    requests_per_minute: parseInteger(form.requestsPerMinute),
+    concurrent_requests: parseInteger(form.concurrencyLimit),
+    retry_after_header: form.retryAfterHeader,
+  };
+
+  const batchingConfig = {
+    batch_size: parseInteger(form.batchSize),
+    max_objects_per_run: parseInteger(form.maxObjectsPerRun),
+  };
+
+  const schedulingConfig = {
+    poll_interval_minutes: parseInteger(form.pollIntervalMinutes),
+    cron: form.cronSchedule,
+  };
+
+  const dataFormatConfig = {
+    date_format: form.dateFormat,
+    timezone: form.timezone,
+  };
+
+  const identifiersConfig = {
+    primary_key: form.identifierField,
+  };
+
+  const baseConfig: Record<string, any> = {
+    ssl_verification: form.sslVerification,
+    proxy_host: form.proxyHost,
+    proxy_port: form.proxyPort,
+    vpn_settings: form.vpnSettings,
+    notes: form.notes,
+    ...oauthFields,
+    ...customAuthFields,
+    endpoints: endpointConfig,
+    operations: operationsConfig,
+    pagination: paginationConfig,
+    filtering: filteringConfig,
+    rate_limiting: rateLimitingConfig,
+    batching: batchingConfig,
+    scheduling: schedulingConfig,
+    data_format: dataFormatConfig,
+    identifiers: identifiersConfig,
+  };
+
+  const headerEntries = headersToConfigEntries(form.headers);
+  if (headerEntries.length > 0) {
+    baseConfig.headers = headerEntries;
+  }
+
+  return (pruneConfig(baseConfig) as Record<string, any>) || {};
 };
 
 const getErrorMessage = (error: unknown) =>
@@ -71,7 +358,7 @@ const DataSources = () => {
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [editingSource, setEditingSource] = useState<DataSourceWithProjects | null>(null);
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
-  const [formData, setFormData] = useState<DataSourceFormData>({ ...EMPTY_FORM_DATA });
+  const [formData, setFormData] = useState<DataSourceFormData>(() => createInitialDataSourceFormData());
 
   const sourceTypeOptions = SOURCE_TYPE_OPTIONS.includes(
     formData.source_type as DataSourceType
@@ -152,21 +439,11 @@ const DataSources = () => {
   const handleOpenDialog = (source?: DataSourceWithProjects) => {
     if (source) {
       setEditingSource(source);
-      setFormData({
-        name: source.name,
-        source_type: source.source_type,
-        api_url: source.api_url ?? "",
-        api_key: source.api_key ?? "",
-        username: source.username ?? "",
-        password: source.password ?? "",
-        auth_type: source.auth_type,
-        is_active: source.is_active,
-        is_global: source.is_global,
-      });
+      setFormData(mapDataSourceToFormData(source));
       setSelectedProjects(source.assigned_projects ?? []);
     } else {
       setEditingSource(null);
-      setFormData({ ...EMPTY_FORM_DATA });
+      setFormData(createInitialDataSourceFormData());
       setSelectedProjects([]);
     }
     setIsDialogOpen(true);
@@ -179,19 +456,26 @@ const DataSources = () => {
 
       let sourceId: string;
 
-      const sanitizedFormData: TablesInsert<"data_sources"> = {
-        ...formData,
+      const additionalConfig = buildDataSourceAdditionalConfig(formData);
+
+      const baseData: TablesInsert<"data_sources"> = {
+        name: formData.name,
+        source_type: formData.source_type,
         api_url: formData.api_url || null,
         api_key: formData.api_key || null,
         username: formData.username || null,
         password: formData.password || null,
+        auth_type: formData.auth_type,
+        is_active: formData.is_active,
+        is_global: formData.is_global,
+        additional_config: additionalConfig,
         user_id: user.id,
       };
 
       if (editingSource) {
         const { error } = await supabase
           .from("data_sources")
-          .update({ ...sanitizedFormData, user_id: editingSource.user_id })
+          .update({ ...baseData, user_id: editingSource.user_id })
           .eq("id", editingSource.id);
 
         if (error) throw error;
@@ -207,7 +491,7 @@ const DataSources = () => {
       } else {
         const { data, error } = await supabase
           .from("data_sources")
-          .insert(sanitizedFormData)
+          .insert(baseData)
           .select()
           .single();
 
@@ -231,6 +515,7 @@ const DataSources = () => {
       }
 
       setIsDialogOpen(false);
+      setFormData(createInitialDataSourceFormData());
       await loadDataSources();
     } catch (error: unknown) {
       toast.error(getErrorMessage(error) || "Fehler beim Speichern");
@@ -256,6 +541,32 @@ const DataSources = () => {
 
   const handleRemoveProject = (projectId: string) => {
     setSelectedProjects((current) => current.filter((id) => id !== projectId));
+  };
+
+  const handleAddHeader = () => {
+    setFormData((prev) => ({
+      ...prev,
+      headers: [...prev.headers, createHeaderField()],
+    }));
+  };
+
+  const handleHeaderChange = (id: string, field: 'key' | 'value', value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      headers: prev.headers.map((header) =>
+        header.id === id ? { ...header, [field]: value } : header
+      ),
+    }));
+  };
+
+  const handleRemoveHeaderField = (id: string) => {
+    setFormData((prev) => {
+      const remaining = prev.headers.filter((header) => header.id !== id);
+      return {
+        ...prev,
+        headers: remaining.length > 0 ? remaining : [createHeaderField()],
+      };
+    });
   };
 
   useEffect(() => {
@@ -393,14 +704,14 @@ const DataSources = () => {
       </div>
 
       <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>
               {editingSource ? "Datenquelle bearbeiten" : "Neue Datenquelle"}
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-6 py-2">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="name">Name</Label>
                 <Input
@@ -429,7 +740,7 @@ const DataSources = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="api_url">API URL</Label>
                 <Input
@@ -448,7 +759,7 @@ const DataSources = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label htmlFor="username">Benutzername</Label>
                 <Input
@@ -468,35 +779,529 @@ const DataSources = () => {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
               <div className="space-y-2">
-                <Label>Authentifizierung</Label>
+                <Label htmlFor="auth-type">Authentifizierung</Label>
                 <Select
                   value={formData.auth_type}
                   onValueChange={(value) => setFormData({ ...formData, auth_type: value })}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger id="auth-type">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="api_key">API Key</SelectItem>
                     <SelectItem value="basic">Basic Auth</SelectItem>
                     <SelectItem value="oauth2">OAuth2</SelectItem>
+                    <SelectItem value="custom">Custom (Keycloak)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label htmlFor="is_global">Global verfügbar</Label>
-                <div className="flex items-center gap-2 rounded-full border border-border/50 px-3 py-2">
+                <Label>Aktiv</Label>
+                <div className="flex items-center justify-between rounded-2xl border border-border/50 px-3 py-2">
+                  <span className="text-sm text-muted-foreground">Connector aktiv</span>
                   <Switch
-                    id="is_global"
+                    checked={formData.is_active}
+                    onCheckedChange={(checked) => setFormData({ ...formData, is_active: checked })}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label>Global verfügbar</Label>
+                <div className="flex items-center justify-between rounded-2xl border border-border/50 px-3 py-2">
+                  <span className="text-sm text-muted-foreground">Für alle Projekte verfügbar</span>
+                  <Switch
                     checked={formData.is_global}
                     onCheckedChange={(checked) => setFormData({ ...formData, is_global: checked })}
                   />
-                  <span className="text-sm text-muted-foreground">
-                    Wenn aktiviert, für alle Projekte verfügbar
-                  </span>
                 </div>
+              </div>
+            </div>
+
+            {formData.auth_type === "oauth2" && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="client-id">Client ID</Label>
+                  <Input
+                    id="client-id"
+                    value={formData.clientId}
+                    onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="client-secret">Client Secret</Label>
+                  <Input
+                    id="client-secret"
+                    type="password"
+                    value={formData.clientSecret}
+                    onChange={(e) => setFormData({ ...formData, clientSecret: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="auth-url">Authorization URL</Label>
+                  <Input
+                    id="auth-url"
+                    value={formData.authUrl}
+                    onChange={(e) => setFormData({ ...formData, authUrl: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="token-url">Token URL</Label>
+                  <Input
+                    id="token-url"
+                    value={formData.tokenUrl}
+                    onChange={(e) => setFormData({ ...formData, tokenUrl: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="scope">Scope</Label>
+                  <Input
+                    id="scope"
+                    value={formData.scope}
+                    onChange={(e) => setFormData({ ...formData, scope: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="redirect-uri">Redirect URI</Label>
+                  <Input
+                    id="redirect-uri"
+                    value={formData.redirectUri}
+                    onChange={(e) => setFormData({ ...formData, redirectUri: e.target.value })}
+                  />
+                </div>
+              </div>
+            )}
+
+            {formData.auth_type === "custom" && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="realm">Realm</Label>
+                  <Input
+                    id="realm"
+                    value={formData.realm}
+                    onChange={(e) => setFormData({ ...formData, realm: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="issuer">Issuer URL</Label>
+                  <Input
+                    id="issuer"
+                    value={formData.issuer}
+                    onChange={(e) => setFormData({ ...formData, issuer: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="custom-client-id">Client ID</Label>
+                  <Input
+                    id="custom-client-id"
+                    value={formData.clientId}
+                    onChange={(e) => setFormData({ ...formData, clientId: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="custom-client-secret">Client Secret</Label>
+                  <Input
+                    id="custom-client-secret"
+                    type="password"
+                    value={formData.clientSecret}
+                    onChange={(e) => setFormData({ ...formData, clientSecret: e.target.value })}
+                  />
+                </div>
+              </div>
+            )}
+
+            <div className="rounded-2xl border border-border/50 p-4 space-y-4">
+              <h3 className="text-sm font-semibold text-foreground">🧱 Infrastruktur</h3>
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-muted-foreground">SSL-Verifizierung aktiv</span>
+                <Switch
+                  checked={formData.sslVerification}
+                  onCheckedChange={(checked) => setFormData({ ...formData, sslVerification: checked })}
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="proxy-host">Proxy Host</Label>
+                  <Input
+                    id="proxy-host"
+                    value={formData.proxyHost}
+                    onChange={(e) => setFormData({ ...formData, proxyHost: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="proxy-port">Proxy Port</Label>
+                  <Input
+                    id="proxy-port"
+                    value={formData.proxyPort}
+                    onChange={(e) => setFormData({ ...formData, proxyPort: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2 md:col-span-1">
+                  <Label htmlFor="vpn-settings">VPN / Tunnel</Label>
+                  <Input
+                    id="vpn-settings"
+                    value={formData.vpnSettings}
+                    onChange={(e) => setFormData({ ...formData, vpnSettings: e.target.value })}
+                    placeholder="Konfigurationshinweise"
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-foreground">🌐 Endpunkte & Operationen</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="list-endpoint">Listen-Endpunkt</Label>
+                  <Input
+                    id="list-endpoint"
+                    value={formData.listEndpoint}
+                    onChange={(e) => setFormData({ ...formData, listEndpoint: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="detail-endpoint">Detail-Endpunkt</Label>
+                  <Input
+                    id="detail-endpoint"
+                    value={formData.detailEndpoint}
+                    onChange={(e) => setFormData({ ...formData, detailEndpoint: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="create-endpoint">Create-Endpunkt</Label>
+                  <Input
+                    id="create-endpoint"
+                    value={formData.createEndpoint}
+                    onChange={(e) => setFormData({ ...formData, createEndpoint: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="update-endpoint">Update-Endpunkt</Label>
+                  <Input
+                    id="update-endpoint"
+                    value={formData.updateEndpoint}
+                    onChange={(e) => setFormData({ ...formData, updateEndpoint: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="delete-endpoint">Delete-Endpunkt</Label>
+                  <Input
+                    id="delete-endpoint"
+                    value={formData.deleteEndpoint}
+                    onChange={(e) => setFormData({ ...formData, deleteEndpoint: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="healthcheck-endpoint">Healthcheck-Endpunkt</Label>
+                  <Input
+                    id="healthcheck-endpoint"
+                    value={formData.healthcheckEndpoint}
+                    onChange={(e) => setFormData({ ...formData, healthcheckEndpoint: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="write-method">Schreibmethode</Label>
+                  <Select
+                    value={formData.writeHttpMethod}
+                    onValueChange={(value) => setFormData({ ...formData, writeHttpMethod: value })}
+                  >
+                    <SelectTrigger id="write-method">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="POST">POST</SelectItem>
+                      <SelectItem value="PUT">PUT</SelectItem>
+                      <SelectItem value="PATCH">PATCH</SelectItem>
+                      <SelectItem value="DELETE">DELETE</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="request-timeout">Timeout (Sekunden)</Label>
+                  <Input
+                    id="request-timeout"
+                    value={formData.requestTimeout}
+                    onChange={(e) => setFormData({ ...formData, requestTimeout: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="identifier-field">Identifier</Label>
+                  <Input
+                    id="identifier-field"
+                    value={formData.identifierField}
+                    onChange={(e) => setFormData({ ...formData, identifierField: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="success-status">Erfolgsstatus-Codes</Label>
+                <Input
+                  id="success-status"
+                  value={formData.successStatusCodes}
+                  onChange={(e) => setFormData({ ...formData, successStatusCodes: e.target.value })}
+                  placeholder="200,201"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-foreground">📦 Payload & Response</h3>
+              <div className="space-y-2">
+                <Label htmlFor="request-payload">Request Payload Template</Label>
+                <Textarea
+                  id="request-payload"
+                  value={formData.requestPayloadTemplate}
+                  onChange={(e) => setFormData({ ...formData, requestPayloadTemplate: e.target.value })}
+                  className="min-h-[90px]"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="response-sample">Beispiel Response</Label>
+                <Textarea
+                  id="response-sample"
+                  value={formData.responseSample}
+                  onChange={(e) => setFormData({ ...formData, responseSample: e.target.value })}
+                  className="min-h-[90px]"
+                />
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-foreground">🔁 Pagination & Delta</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="pagination-strategy">Strategie</Label>
+                  <Select
+                    value={formData.paginationStrategy}
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, paginationStrategy: value as PaginationStrategy })
+                    }
+                  >
+                    <SelectTrigger id="pagination-strategy">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Keine</SelectItem>
+                      <SelectItem value="offset">Offset</SelectItem>
+                      <SelectItem value="page">Seitenbasiert</SelectItem>
+                      <SelectItem value="cursor">Cursor</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="page-size">Page Size</Label>
+                  <Input
+                    id="page-size"
+                    value={formData.pageSize}
+                    onChange={(e) => setFormData({ ...formData, pageSize: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="page-param">Page Parameter</Label>
+                  <Input
+                    id="page-param"
+                    value={formData.pageParam}
+                    onChange={(e) => setFormData({ ...formData, pageParam: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="limit-param">Limit Parameter</Label>
+                  <Input
+                    id="limit-param"
+                    value={formData.limitParam}
+                    onChange={(e) => setFormData({ ...formData, limitParam: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cursor-param">Cursor Parameter</Label>
+                  <Input
+                    id="cursor-param"
+                    value={formData.cursorParam}
+                    onChange={(e) => setFormData({ ...formData, cursorParam: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cursor-path">Cursor Pfad</Label>
+                  <Input
+                    id="cursor-path"
+                    value={formData.cursorPath}
+                    onChange={(e) => setFormData({ ...formData, cursorPath: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="filter-template">Standard-Filter</Label>
+                <Textarea
+                  id="filter-template"
+                  value={formData.filterTemplate}
+                  onChange={(e) => setFormData({ ...formData, filterTemplate: e.target.value })}
+                  className="min-h-[70px]"
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="delta-field">Delta Feld</Label>
+                  <Input
+                    id="delta-field"
+                    value={formData.deltaField}
+                    onChange={(e) => setFormData({ ...formData, deltaField: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="delta-strategy">Delta Strategie</Label>
+                  <Select
+                    value={formData.deltaStrategy}
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, deltaStrategy: value as DeltaStrategy })
+                    }
+                  >
+                    <SelectTrigger id="delta-strategy">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="timestamp">Zeitstempel</SelectItem>
+                      <SelectItem value="incremental">Fortlaufende ID</SelectItem>
+                      <SelectItem value="cursor">Cursor</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="delta-initial">Initialer Wert</Label>
+                  <Input
+                    id="delta-initial"
+                    value={formData.deltaInitialValue}
+                    onChange={(e) => setFormData({ ...formData, deltaInitialValue: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-foreground">🧾 Header & Datenformat</h3>
+              <div className="space-y-3">
+                {formData.headers.map((header) => (
+                  <div key={header.id} className="grid grid-cols-[1fr_1fr_auto] gap-3 items-center">
+                    <Input
+                      placeholder="Header Name"
+                      value={header.key}
+                      onChange={(e) => handleHeaderChange(header.id, 'key', e.target.value)}
+                    />
+                    <Input
+                      placeholder="Header Wert"
+                      value={header.value}
+                      onChange={(e) => handleHeaderChange(header.id, 'value', e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleRemoveHeaderField(header.id)}
+                      className="text-destructive hover:text-destructive"
+                      aria-label="Header entfernen"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" onClick={handleAddHeader} className="w-full justify-center">
+                  <Plus className="mr-2 h-4 w-4" /> Header hinzufügen
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="date-format">Datumsformat</Label>
+                  <Input
+                    id="date-format"
+                    value={formData.dateFormat}
+                    onChange={(e) => setFormData({ ...formData, dateFormat: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="timezone">Zeitzone</Label>
+                  <Input
+                    id="timezone"
+                    value={formData.timezone}
+                    onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-foreground">⚙️ Limits & Ausführung</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="rpm">Requests pro Minute</Label>
+                  <Input
+                    id="rpm"
+                    value={formData.requestsPerMinute}
+                    onChange={(e) => setFormData({ ...formData, requestsPerMinute: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="concurrency">Parallele Requests</Label>
+                  <Input
+                    id="concurrency"
+                    value={formData.concurrencyLimit}
+                    onChange={(e) => setFormData({ ...formData, concurrencyLimit: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="retry-header">Retry-After Header</Label>
+                  <Input
+                    id="retry-header"
+                    value={formData.retryAfterHeader}
+                    onChange={(e) => setFormData({ ...formData, retryAfterHeader: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="batch-size">Batchgröße</Label>
+                  <Input
+                    id="batch-size"
+                    value={formData.batchSize}
+                    onChange={(e) => setFormData({ ...formData, batchSize: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="max-objects">Max. Objekte pro Lauf</Label>
+                  <Input
+                    id="max-objects"
+                    value={formData.maxObjectsPerRun}
+                    onChange={(e) => setFormData({ ...formData, maxObjectsPerRun: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="poll-interval">Poll-Intervall (Minuten)</Label>
+                  <Input
+                    id="poll-interval"
+                    value={formData.pollIntervalMinutes}
+                    onChange={(e) => setFormData({ ...formData, pollIntervalMinutes: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cron-schedule">Cron-Ausdruck</Label>
+                  <Input
+                    id="cron-schedule"
+                    value={formData.cronSchedule}
+                    onChange={(e) => setFormData({ ...formData, cronSchedule: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="notes">Notizen & Besonderheiten</Label>
+                <Textarea
+                  id="notes"
+                  value={formData.notes}
+                  onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                  className="min-h-[80px]"
+                />
               </div>
             </div>
 

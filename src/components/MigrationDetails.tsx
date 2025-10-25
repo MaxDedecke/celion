@@ -1,4 +1,4 @@
-import { Database, Settings as SettingsIcon, Trash2, Check, Link, Download, RefreshCw, Loader2, Upload, ArrowLeftRight, Workflow } from "lucide-react";
+import { Database, Settings as SettingsIcon, Trash2, Check, Link, Download, RefreshCw, Loader2, Upload, ArrowLeftRight, Workflow, Plus } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -41,6 +41,7 @@ import { Label } from "@/components/ui/label";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -50,6 +51,18 @@ import { getSystemObjectOptions } from "@/lib/schema-registry";
 import { applyMappingsToRecord, buildSampleRecordFromMappings } from "@/lib/migration-pipeline";
 import { loadMappingsFromDatabase, loadAllMappingsForSource } from "@/lib/mapping-storage";
 import type { FieldMapping } from "@/types/mapping";
+import {
+  createHeaderField,
+  headersToConfigEntries,
+  mapHeadersToFields,
+  parseCommaSeparatedIntegers,
+  parseInteger,
+  pruneConfig,
+  successCodesToString,
+  type DeltaStrategy,
+  type HeaderField,
+  type PaginationStrategy,
+} from "@/lib/config-helpers";
 
 interface MigrationProject {
   id: string;
@@ -77,6 +90,185 @@ interface MigrationDetailsProps {
   onRefresh: () => Promise<void>;
 }
 
+type ConnectorFormData = {
+  apiUrl: string;
+  apiKey: string;
+  username: string;
+  password: string;
+  endpoint: string;
+  authType: string;
+  clientId: string;
+  clientSecret: string;
+  authUrl: string;
+  tokenUrl: string;
+  scope: string;
+  redirectUri: string;
+  realm: string;
+  issuer: string;
+  sslVerification: boolean;
+  proxyHost: string;
+  proxyPort: string;
+  vpnSettings: string;
+  headers: HeaderField[];
+  listEndpoint: string;
+  detailEndpoint: string;
+  createEndpoint: string;
+  updateEndpoint: string;
+  deleteEndpoint: string;
+  healthcheckEndpoint: string;
+  writeHttpMethod: string;
+  requestPayloadTemplate: string;
+  responseSample: string;
+  successStatusCodes: string;
+  paginationStrategy: PaginationStrategy;
+  pageSize: string;
+  pageParam: string;
+  limitParam: string;
+  cursorParam: string;
+  cursorPath: string;
+  filterTemplate: string;
+  deltaField: string;
+  deltaInitialValue: string;
+  deltaStrategy: DeltaStrategy;
+  identifierField: string;
+  dateFormat: string;
+  timezone: string;
+  pollIntervalMinutes: string;
+  cronSchedule: string;
+  requestsPerMinute: string;
+  concurrencyLimit: string;
+  retryAfterHeader: string;
+  requestTimeout: string;
+  batchSize: string;
+  maxObjectsPerRun: string;
+  notes: string;
+};
+
+const createInitialConnectorFormData = (): ConnectorFormData => ({
+  apiUrl: '',
+  apiKey: '',
+  username: '',
+  password: '',
+  endpoint: '',
+  authType: 'api_key',
+  clientId: '',
+  clientSecret: '',
+  authUrl: '',
+  tokenUrl: '',
+  scope: '',
+  redirectUri: '',
+  realm: '',
+  issuer: '',
+  sslVerification: true,
+  proxyHost: '',
+  proxyPort: '',
+  vpnSettings: '',
+  headers: [createHeaderField()],
+  listEndpoint: '',
+  detailEndpoint: '',
+  createEndpoint: '',
+  updateEndpoint: '',
+  deleteEndpoint: '',
+  healthcheckEndpoint: '',
+  writeHttpMethod: 'POST',
+  requestPayloadTemplate: '',
+  responseSample: '',
+  successStatusCodes: '',
+  paginationStrategy: 'none',
+  pageSize: '',
+  pageParam: '',
+  limitParam: '',
+  cursorParam: '',
+  cursorPath: '',
+  filterTemplate: '',
+  deltaField: '',
+  deltaInitialValue: '',
+  deltaStrategy: 'timestamp',
+  identifierField: '',
+  dateFormat: '',
+  timezone: '',
+  pollIntervalMinutes: '',
+  cronSchedule: '',
+  requestsPerMinute: '',
+  concurrencyLimit: '',
+  retryAfterHeader: '',
+  requestTimeout: '',
+  batchSize: '',
+  maxObjectsPerRun: '',
+  notes: '',
+});
+
+const buildConnectorFormData = (connector?: any): ConnectorFormData => {
+  const base = createInitialConnectorFormData();
+  if (!connector) return base;
+
+  const config = connector.additional_config || {};
+  const endpoints = config.endpoints || {};
+  const operations = config.operations || {};
+  const pagination = config.pagination || {};
+  const filtering = config.filtering || {};
+  const rateLimiting = config.rate_limiting || {};
+  const batching = config.batching || {};
+  const scheduling = config.scheduling || {};
+  const dataFormat = config.data_format || {};
+  const identifiers = config.identifiers || {};
+
+  return {
+    ...base,
+    apiUrl: connector.api_url || '',
+    apiKey: connector.api_key || '',
+    username: connector.username || '',
+    password: connector.password || '',
+    endpoint: connector.endpoint || endpoints.list || '',
+    authType: connector.auth_type || 'api_key',
+    clientId: config.client_id || '',
+    clientSecret: config.client_secret || '',
+    authUrl: config.auth_url || '',
+    tokenUrl: config.token_url || '',
+    scope: config.scope || '',
+    redirectUri: config.redirect_uri || '',
+    realm: config.realm || '',
+    issuer: config.issuer || '',
+    sslVerification: config.ssl_verification ?? true,
+    proxyHost: config.proxy_host || '',
+    proxyPort: config.proxy_port || '',
+    vpnSettings: config.vpn_settings || '',
+    headers: mapHeadersToFields(config.headers),
+    listEndpoint: endpoints.list || '',
+    detailEndpoint: endpoints.detail || '',
+    createEndpoint: endpoints.create || '',
+    updateEndpoint: endpoints.update || '',
+    deleteEndpoint: endpoints.delete || '',
+    healthcheckEndpoint: endpoints.healthcheck || '',
+    writeHttpMethod: operations.write_method || 'POST',
+    requestPayloadTemplate: operations.payload_template || '',
+    responseSample: operations.response_sample || '',
+    successStatusCodes: successCodesToString(operations.success_status_codes),
+    paginationStrategy: pagination.strategy || 'none',
+    pageSize: pagination.page_size ? String(pagination.page_size) : '',
+    pageParam: pagination.page_param || '',
+    limitParam: pagination.limit_param || '',
+    cursorParam: pagination.cursor_param || '',
+    cursorPath: pagination.cursor_path || '',
+    filterTemplate: filtering.default_params || '',
+    deltaField: filtering.delta_field || '',
+    deltaInitialValue: filtering.initial_value || '',
+    deltaStrategy: filtering.delta_strategy || 'timestamp',
+    identifierField: identifiers.primary_key || '',
+    dateFormat: dataFormat.date_format || '',
+    timezone: dataFormat.timezone || '',
+    pollIntervalMinutes: scheduling.poll_interval_minutes ? String(scheduling.poll_interval_minutes) : '',
+    cronSchedule: scheduling.cron || '',
+    requestsPerMinute: rateLimiting.requests_per_minute ? String(rateLimiting.requests_per_minute) : '',
+    concurrencyLimit: rateLimiting.concurrent_requests ? String(rateLimiting.concurrent_requests) : '',
+    retryAfterHeader: rateLimiting.retry_after_header || '',
+    requestTimeout: operations.request_timeout ? String(operations.request_timeout) : '',
+    batchSize: batching.batch_size ? String(batching.batch_size) : '',
+    maxObjectsPerRun: batching.max_objects_per_run ? String(batching.max_objects_per_run) : '',
+    notes: config.notes || '',
+  };
+};
+
 const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsProps) => {
   const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
@@ -98,29 +290,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   const [hasValidated, setHasValidated] = useState(false);
   const [selectedSourceObject, setSelectedSourceObject] = useState<string>('');
   const [selectedTargetObject, setSelectedTargetObject] = useState<string>('');
-  const [formData, setFormData] = useState({
-    apiUrl: '',
-    apiKey: '',
-    username: '',
-    password: '',
-    endpoint: '',
-    authType: 'api_key',
-    // OAuth2 fields
-    clientId: '',
-    clientSecret: '',
-    authUrl: '',
-    tokenUrl: '',
-    scope: '',
-    redirectUri: '',
-    // Custom/Keycloak fields
-    realm: '',
-    issuer: '',
-    // Infrastructure fields
-    sslVerification: true,
-    proxyHost: '',
-    proxyPort: '',
-    vpnSettings: '',
-  });
+  const [formData, setFormData] = useState<ConnectorFormData>(() => createInitialConnectorFormData());
 
   const hasInConnector = !!project.connectors?.in;
   const hasOutConnector = !!project.connectors?.out;
@@ -310,51 +480,8 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
     
     // Load existing connector data if available
     const connector = type === 'in' ? project.connectors?.in : project.connectors?.out;
-    if (connector) {
-      const config = connector.additional_config || {};
-      setFormData({
-        apiUrl: connector.api_url || '',
-        apiKey: connector.api_key || '',
-        username: connector.username || '',
-        password: connector.password || '',
-        endpoint: connector.endpoint || '',
-        authType: connector.auth_type || 'api_key',
-        clientId: config.client_id || '',
-        clientSecret: config.client_secret || '',
-        authUrl: config.auth_url || '',
-        tokenUrl: config.token_url || '',
-        scope: config.scope || '',
-        redirectUri: config.redirect_uri || '',
-        realm: config.realm || '',
-        issuer: config.issuer || '',
-        sslVerification: config.ssl_verification ?? true,
-        proxyHost: config.proxy_host || '',
-        proxyPort: config.proxy_port || '',
-        vpnSettings: config.vpn_settings || '',
-      });
-    } else {
-      setFormData({
-        apiUrl: '',
-        apiKey: '',
-        username: '',
-        password: '',
-        endpoint: '',
-        authType: 'api_key',
-        clientId: '',
-        clientSecret: '',
-        authUrl: '',
-        tokenUrl: '',
-        scope: '',
-        redirectUri: '',
-        realm: '',
-        issuer: '',
-        sslVerification: true,
-        proxyHost: '',
-        proxyPort: '',
-        vpnSettings: '',
-      });
-    }
-    
+    setFormData(buildConnectorFormData(connector));
+
     setIsConfigDialogOpen(true);
   };
 
@@ -492,7 +619,11 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
       const isCreating = !connector;
       const wasTested = connector?.is_tested || false;
 
-      const additionalConfig = dataSource.additional_config || {};
+      const additionalConfig = (pruneConfig(dataSource.additional_config) as Record<string, any>) || {};
+      const derivedEndpoint =
+        (additionalConfig?.endpoints?.list as string | undefined) ||
+        (additionalConfig?.endpoint as string | undefined) ||
+        undefined;
 
       const connectorData = {
         migration_id: project.id,
@@ -501,6 +632,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
         api_key: dataSource.api_key,
         username: dataSource.username,
         password: dataSource.password,
+        endpoint: derivedEndpoint,
         auth_type: dataSource.auth_type,
         additional_config: additionalConfig,
       };
@@ -565,6 +697,32 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
       toast.error(error.message || "Fehler beim Verknüpfen");
       console.error(error);
     }
+  };
+
+  const handleAddHeader = () => {
+    setFormData((prev) => ({
+      ...prev,
+      headers: [...prev.headers, createHeaderField()],
+    }));
+  };
+
+  const handleHeaderChange = (id: string, field: 'key' | 'value', value: string) => {
+    setFormData((prev) => ({
+      ...prev,
+      headers: prev.headers.map((header) =>
+        header.id === id ? { ...header, [field]: value } : header
+      ),
+    }));
+  };
+
+  const handleRemoveHeader = (id: string) => {
+    setFormData((prev) => {
+      const remaining = prev.headers.filter((header) => header.id !== id);
+      return {
+        ...prev,
+        headers: remaining.length > 0 ? remaining : [createHeaderField()],
+      };
+    });
   };
 
   // Determine current migration step
@@ -843,32 +1001,109 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
       const isCreating = !connector;
       const wasTested = connector?.is_tested || false;
       
-      const additionalConfig: Record<string, any> = {
-        ssl_verification: formData.sslVerification,
+      const oauthFields: Record<string, any> = formData.authType === 'oauth2'
+        ? {
+            client_id: formData.clientId,
+            client_secret: formData.clientSecret,
+            auth_url: formData.authUrl,
+            token_url: formData.tokenUrl,
+            scope: formData.scope,
+            redirect_uri: formData.redirectUri,
+          }
+        : {};
+
+      const customAuthFields: Record<string, any> = formData.authType === 'custom'
+        ? {
+            realm: formData.realm,
+            issuer: formData.issuer,
+            client_id: formData.clientId,
+            client_secret: formData.clientSecret,
+          }
+        : {};
+
+      const endpointConfig = {
+        list: formData.listEndpoint || formData.endpoint,
+        detail: formData.detailEndpoint,
+        create: formData.createEndpoint,
+        update: formData.updateEndpoint,
+        delete: formData.deleteEndpoint,
+        healthcheck: formData.healthcheckEndpoint,
       };
 
-      // Add OAuth2 fields if auth type is oauth2
-      if (formData.authType === 'oauth2') {
-        additionalConfig.client_id = formData.clientId;
-        additionalConfig.client_secret = formData.clientSecret;
-        additionalConfig.auth_url = formData.authUrl;
-        additionalConfig.token_url = formData.tokenUrl;
-        additionalConfig.scope = formData.scope;
-        additionalConfig.redirect_uri = formData.redirectUri;
+      const operationsConfig = {
+        write_method: formData.writeHttpMethod,
+        payload_template: formData.requestPayloadTemplate,
+        response_sample: formData.responseSample,
+        success_status_codes: parseCommaSeparatedIntegers(formData.successStatusCodes),
+        request_timeout: parseInteger(formData.requestTimeout),
+      };
+
+      const paginationConfig = {
+        strategy: formData.paginationStrategy,
+        page_size: parseInteger(formData.pageSize),
+        page_param: formData.pageParam,
+        limit_param: formData.limitParam,
+        cursor_param: formData.cursorParam,
+        cursor_path: formData.cursorPath,
+      };
+
+      const filteringConfig = {
+        default_params: formData.filterTemplate,
+        delta_field: formData.deltaField,
+        delta_strategy: formData.deltaStrategy,
+        initial_value: formData.deltaInitialValue,
+      };
+
+      const rateLimitingConfig = {
+        requests_per_minute: parseInteger(formData.requestsPerMinute),
+        concurrent_requests: parseInteger(formData.concurrencyLimit),
+        retry_after_header: formData.retryAfterHeader,
+      };
+
+      const batchingConfig = {
+        batch_size: parseInteger(formData.batchSize),
+        max_objects_per_run: parseInteger(formData.maxObjectsPerRun),
+      };
+
+      const schedulingConfig = {
+        poll_interval_minutes: parseInteger(formData.pollIntervalMinutes),
+        cron: formData.cronSchedule,
+      };
+
+      const dataFormatConfig = {
+        date_format: formData.dateFormat,
+        timezone: formData.timezone,
+      };
+
+      const identifiersConfig = {
+        primary_key: formData.identifierField,
+      };
+
+      const baseConfig: Record<string, any> = {
+        ssl_verification: formData.sslVerification,
+        proxy_host: formData.proxyHost,
+        proxy_port: formData.proxyPort,
+        vpn_settings: formData.vpnSettings,
+        notes: formData.notes,
+        ...oauthFields,
+        ...customAuthFields,
+        endpoints: endpointConfig,
+        operations: operationsConfig,
+        pagination: paginationConfig,
+        filtering: filteringConfig,
+        rate_limiting: rateLimitingConfig,
+        batching: batchingConfig,
+        scheduling: schedulingConfig,
+        data_format: dataFormatConfig,
+        identifiers: identifiersConfig,
+      };
+
+      const headerEntries = headersToConfigEntries(formData.headers);
+      if (headerEntries.length > 0) {
+        baseConfig.headers = headerEntries;
       }
 
-      // Add custom/Keycloak fields if auth type is custom
-      if (formData.authType === 'custom') {
-        additionalConfig.realm = formData.realm;
-        additionalConfig.issuer = formData.issuer;
-        additionalConfig.client_id = formData.clientId;
-        additionalConfig.client_secret = formData.clientSecret;
-      }
-
-      // Add infrastructure fields if provided
-      if (formData.proxyHost) additionalConfig.proxy_host = formData.proxyHost;
-      if (formData.proxyPort) additionalConfig.proxy_port = formData.proxyPort;
-      if (formData.vpnSettings) additionalConfig.vpn_settings = formData.vpnSettings;
+      const additionalConfig = (pruneConfig(baseConfig) as Record<string, any>) ?? {};
 
       const connectorData = {
         migration_id: project.id,
@@ -877,7 +1112,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
         api_key: formData.apiKey,
         username: formData.username,
         password: formData.password,
-        endpoint: formData.endpoint,
+        endpoint: formData.endpoint || formData.listEndpoint,
         auth_type: formData.authType,
         additional_config: additionalConfig,
       };
@@ -950,6 +1185,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
         }
       }
 
+      setFormData(createInitialConnectorFormData());
       setIsConfigDialogOpen(false);
       await onRefresh();
     } catch (error: any) {
@@ -1629,7 +1865,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                   <Checkbox
                     id="ssl-verification"
                     checked={formData.sslVerification}
-                    onCheckedChange={(checked) => 
+                    onCheckedChange={(checked) =>
                       setFormData({ ...formData, sslVerification: checked as boolean })
                     }
                   />
@@ -1668,6 +1904,397 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                 </div>
               </CollapsibleContent>
             </Collapsible>
+
+            {/* Endpunkte & Operationen */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-foreground">🌐 Endpunkte & Operationen</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="list-endpoint">Listen-Endpunkt</Label>
+                  <Input
+                    id="list-endpoint"
+                    placeholder="/api/v1/items"
+                    value={formData.listEndpoint}
+                    onChange={(e) => setFormData({ ...formData, listEndpoint: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="detail-endpoint">Detail-Endpunkt</Label>
+                  <Input
+                    id="detail-endpoint"
+                    placeholder="/api/v1/items/{id}"
+                    value={formData.detailEndpoint}
+                    onChange={(e) => setFormData({ ...formData, detailEndpoint: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="create-endpoint">Create-Endpunkt</Label>
+                  <Input
+                    id="create-endpoint"
+                    placeholder="/api/v1/items"
+                    value={formData.createEndpoint}
+                    onChange={(e) => setFormData({ ...formData, createEndpoint: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="update-endpoint">Update-Endpunkt</Label>
+                  <Input
+                    id="update-endpoint"
+                    placeholder="/api/v1/items/{id}"
+                    value={formData.updateEndpoint}
+                    onChange={(e) => setFormData({ ...formData, updateEndpoint: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="delete-endpoint">Delete-Endpunkt</Label>
+                  <Input
+                    id="delete-endpoint"
+                    placeholder="/api/v1/items/{id}"
+                    value={formData.deleteEndpoint}
+                    onChange={(e) => setFormData({ ...formData, deleteEndpoint: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="healthcheck-endpoint">Healthcheck-Endpunkt</Label>
+                  <Input
+                    id="healthcheck-endpoint"
+                    placeholder="/api/v1/health"
+                    value={formData.healthcheckEndpoint}
+                    onChange={(e) => setFormData({ ...formData, healthcheckEndpoint: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="write-method">Schreibmethode</Label>
+                  <Select
+                    value={formData.writeHttpMethod}
+                    onValueChange={(value) => setFormData({ ...formData, writeHttpMethod: value })}
+                  >
+                    <SelectTrigger id="write-method" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="POST">POST</SelectItem>
+                      <SelectItem value="PUT">PUT</SelectItem>
+                      <SelectItem value="PATCH">PATCH</SelectItem>
+                      <SelectItem value="DELETE">DELETE</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="request-timeout">Timeout (Sekunden)</Label>
+                  <Input
+                    id="request-timeout"
+                    placeholder="60"
+                    value={formData.requestTimeout}
+                    onChange={(e) => setFormData({ ...formData, requestTimeout: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="success-status">Erfolgsstatus-Codes</Label>
+                  <Input
+                    id="success-status"
+                    placeholder="200,201"
+                    value={formData.successStatusCodes}
+                    onChange={(e) => setFormData({ ...formData, successStatusCodes: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="identifier-field">Primärschlüssel / Identifier</Label>
+                  <Input
+                    id="identifier-field"
+                    placeholder="id"
+                    value={formData.identifierField}
+                    onChange={(e) => setFormData({ ...formData, identifierField: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Payload */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-foreground">📦 Payload & Response</h3>
+              <div className="space-y-2">
+                <Label htmlFor="request-payload">Request Payload Template</Label>
+                <Textarea
+                  id="request-payload"
+                  placeholder='{"title": "{{source.summary}}"}'
+                  value={formData.requestPayloadTemplate}
+                  onChange={(e) => setFormData({ ...formData, requestPayloadTemplate: e.target.value })}
+                  className="min-h-[100px]"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="response-sample">Beispiel Response</Label>
+                <Textarea
+                  id="response-sample"
+                  placeholder='{"id":123,"title":"Example"}'
+                  value={formData.responseSample}
+                  onChange={(e) => setFormData({ ...formData, responseSample: e.target.value })}
+                  className="min-h-[100px]"
+                />
+              </div>
+            </div>
+
+            {/* Pagination & Delta */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-foreground">🔁 Pagination & Delta-Handling</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="pagination-strategy">Paginierungsstrategie</Label>
+                  <Select
+                    value={formData.paginationStrategy}
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, paginationStrategy: value as PaginationStrategy })
+                    }
+                  >
+                    <SelectTrigger id="pagination-strategy" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Keine</SelectItem>
+                      <SelectItem value="offset">Offset</SelectItem>
+                      <SelectItem value="page">Seitenbasiert</SelectItem>
+                      <SelectItem value="cursor">Cursor</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="page-size">Page Size / Limit</Label>
+                  <Input
+                    id="page-size"
+                    placeholder="100"
+                    value={formData.pageSize}
+                    onChange={(e) => setFormData({ ...formData, pageSize: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="page-param">Page Parameter</Label>
+                  <Input
+                    id="page-param"
+                    placeholder="page"
+                    value={formData.pageParam}
+                    onChange={(e) => setFormData({ ...formData, pageParam: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="limit-param">Limit Parameter</Label>
+                  <Input
+                    id="limit-param"
+                    placeholder="limit"
+                    value={formData.limitParam}
+                    onChange={(e) => setFormData({ ...formData, limitParam: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cursor-param">Cursor Parameter</Label>
+                  <Input
+                    id="cursor-param"
+                    placeholder="cursor"
+                    value={formData.cursorParam}
+                    onChange={(e) => setFormData({ ...formData, cursorParam: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cursor-path">Cursor Pfad</Label>
+                  <Input
+                    id="cursor-path"
+                    placeholder="data.next_cursor"
+                    value={formData.cursorPath}
+                    onChange={(e) => setFormData({ ...formData, cursorPath: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="filter-template">Standard-Filter / Query-Parameter</Label>
+                <Textarea
+                  id="filter-template"
+                  placeholder="status=active&sort=updated_at"
+                  value={formData.filterTemplate}
+                  onChange={(e) => setFormData({ ...formData, filterTemplate: e.target.value })}
+                  className="min-h-[80px]"
+                />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="delta-field">Delta Feld</Label>
+                  <Input
+                    id="delta-field"
+                    placeholder="updated_at"
+                    value={formData.deltaField}
+                    onChange={(e) => setFormData({ ...formData, deltaField: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="delta-strategy">Delta Strategie</Label>
+                  <Select
+                    value={formData.deltaStrategy}
+                    onValueChange={(value) =>
+                      setFormData({ ...formData, deltaStrategy: value as DeltaStrategy })
+                    }
+                  >
+                    <SelectTrigger id="delta-strategy" className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="timestamp">Zeitstempel</SelectItem>
+                      <SelectItem value="incremental">Fortlaufende ID</SelectItem>
+                      <SelectItem value="cursor">Cursor</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="delta-initial">Initialer Wert</Label>
+                  <Input
+                    id="delta-initial"
+                    placeholder="2024-01-01T00:00:00Z"
+                    value={formData.deltaInitialValue}
+                    onChange={(e) => setFormData({ ...formData, deltaInitialValue: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Header & Datenformat */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-foreground">🧾 Header & Datenformat</h3>
+              <div className="space-y-3">
+                {formData.headers.map((header) => (
+                  <div key={header.id} className="grid grid-cols-[1fr_1fr_auto] gap-3 items-center">
+                    <Input
+                      placeholder="Header Name"
+                      value={header.key}
+                      onChange={(e) => handleHeaderChange(header.id, 'key', e.target.value)}
+                    />
+                    <Input
+                      placeholder="Header Wert"
+                      value={header.value}
+                      onChange={(e) => handleHeaderChange(header.id, 'value', e.target.value)}
+                    />
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => handleRemoveHeader(header.id)}
+                      className="text-destructive hover:text-destructive"
+                      aria-label="Header entfernen"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                ))}
+                <Button type="button" variant="outline" onClick={handleAddHeader} className="w-full justify-center">
+                  <Plus className="mr-2 h-4 w-4" /> Header hinzufügen
+                </Button>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="date-format">Datumsformat</Label>
+                  <Input
+                    id="date-format"
+                    placeholder="YYYY-MM-DDTHH:mm:ssZ"
+                    value={formData.dateFormat}
+                    onChange={(e) => setFormData({ ...formData, dateFormat: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="timezone">Zeitzone</Label>
+                  <Input
+                    id="timezone"
+                    placeholder="UTC"
+                    value={formData.timezone}
+                    onChange={(e) => setFormData({ ...formData, timezone: e.target.value })}
+                  />
+                </div>
+              </div>
+            </div>
+
+            {/* Limits & Ausführung */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-foreground">⚙️ Limits & Ausführung</h3>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="rpm">Requests pro Minute</Label>
+                  <Input
+                    id="rpm"
+                    placeholder="60"
+                    value={formData.requestsPerMinute}
+                    onChange={(e) => setFormData({ ...formData, requestsPerMinute: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="concurrency">Parallele Requests</Label>
+                  <Input
+                    id="concurrency"
+                    placeholder="3"
+                    value={formData.concurrencyLimit}
+                    onChange={(e) => setFormData({ ...formData, concurrencyLimit: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="retry-header">Retry-After Header</Label>
+                  <Input
+                    id="retry-header"
+                    placeholder="Retry-After"
+                    value={formData.retryAfterHeader}
+                    onChange={(e) => setFormData({ ...formData, retryAfterHeader: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="batch-size">Batchgröße</Label>
+                  <Input
+                    id="batch-size"
+                    placeholder="100"
+                    value={formData.batchSize}
+                    onChange={(e) => setFormData({ ...formData, batchSize: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="max-objects">Max. Objekte pro Lauf</Label>
+                  <Input
+                    id="max-objects"
+                    placeholder="1000"
+                    value={formData.maxObjectsPerRun}
+                    onChange={(e) => setFormData({ ...formData, maxObjectsPerRun: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="poll-interval">Poll-Intervall (Minuten)</Label>
+                  <Input
+                    id="poll-interval"
+                    placeholder="15"
+                    value={formData.pollIntervalMinutes}
+                    onChange={(e) => setFormData({ ...formData, pollIntervalMinutes: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="cron-schedule">Cron-Ausdruck</Label>
+                  <Input
+                    id="cron-schedule"
+                    placeholder="0 * * * *"
+                    value={formData.cronSchedule}
+                    onChange={(e) => setFormData({ ...formData, cronSchedule: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="notes-long">Weitere Hinweise</Label>
+                  <Textarea
+                    id="notes-long"
+                    placeholder="z. B. manuelle Schritte oder Besonderheiten"
+                    value={formData.notes}
+                    onChange={(e) => setFormData({ ...formData, notes: e.target.value })}
+                    className="min-h-[80px]"
+                  />
+                </div>
+              </div>
+            </div>
 
             <Button onClick={handleSaveConnector} className="w-full">
               Speichern
