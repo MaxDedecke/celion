@@ -22,7 +22,7 @@ import {
 import { useMinimumLoader } from "@/hooks/useMinimumLoader";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, Plus, Trash2 } from "lucide-react";
+import { ArrowLeft, ArrowRight, Plus, Trash2, FolderKanban } from "lucide-react";
 
 interface SidebarMigration {
   id: string;
@@ -36,7 +36,6 @@ interface ProjectMigrationCard {
   createdAt: string | null;
   sourceSystem?: string | null;
   targetSystem?: string | null;
-  status?: string | null;
 }
 
 interface ProjectDetails {
@@ -185,7 +184,6 @@ const ProjectDetail = () => {
             createdAt: migration.created_at,
             sourceSystem: migration.source_system,
             targetSystem: migration.target_system,
-            status: migration.status,
           }))
         );
       } catch (error) {
