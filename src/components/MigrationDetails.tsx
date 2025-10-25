@@ -5,6 +5,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import CircularProgress from "./CircularProgress";
 import ActivityTimeline, { Activity } from "./ActivityTimeline";
 import { Button } from "./ui/button";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -44,6 +45,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { WizardSteps, type WizardStep } from "@/components/ui/wizard-steps";
+import InfoTooltip from "./InfoTooltip";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate, Json } from "@/integrations/supabase/types";
@@ -1840,32 +1842,81 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
               {connectorStep === 0 && (
                 <div className="space-y-4">
                   <h3 className="text-sm font-semibold text-foreground">🔧 Basisdaten</h3>
+                  <Alert className="border-border/50 bg-muted/40">
+                    <AlertTitle>Eindeutige Schnittstellenangaben</AlertTitle>
+                    <AlertDescription className="space-y-2 text-sm text-muted-foreground">
+                      <p>Nutzen Sie die vollständige, öffentlich erreichbare Basis-URL inklusive Protokoll (https://).</p>
+                      <p>
+                        Hinterlegen Sie im Basis-Endpunkt den API-Pfad, der für die meisten Aufrufe verwendet werden soll
+                        (z. B. /api/v1/items).
+                      </p>
+                    </AlertDescription>
+                  </Alert>
                   <div className="space-y-2">
-                    <Label htmlFor="api-url">API URL</Label>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="api-url">API URL</Label>
+                      <InfoTooltip
+                        content={
+                          <div className="space-y-1">
+                            <p>Verwenden Sie exakt die URL, über die der Zielservice erreichbar ist.</p>
+                            <p>Falls es verschiedene Umgebungen gibt, geben Sie die produktive Basis-URL an.</p>
+                          </div>
+                        }
+                      />
+                    </div>
                     <Input
                       id="api-url"
-                      placeholder="https://api.example.com"
+                      placeholder="https://api.partner.de"
                       type="url"
                       value={formData.apiUrl}
                       onChange={(e) => setFormData({ ...formData, apiUrl: e.target.value })}
                     />
+                    <p className="text-xs text-muted-foreground">Beispiel: https://api.partner.de</p>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="endpoint">Basis-Endpunkt</Label>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="endpoint">Basis-Endpunkt</Label>
+                      <InfoTooltip
+                        content={
+                          <div className="space-y-1">
+                            <p>Geben Sie nur den Pfad an, der an die Basis-URL angehängt wird.</p>
+                            <p>Parameter werden in späteren Schritten definiert.</p>
+                          </div>
+                        }
+                      />
+                    </div>
                     <Input
                       id="endpoint"
-                      placeholder="/api/v1/data"
+                      placeholder="/api/v1/items"
                       value={formData.endpoint}
                       onChange={(e) => setFormData({ ...formData, endpoint: e.target.value })}
                     />
+                    <p className="text-xs text-muted-foreground">Pfad ohne Domain, beginnend mit einem Slash.</p>
                   </div>
                 </div>
               )}
 
               {connectorStep === 1 && (
                 <div className="space-y-6">
+                  <Alert className="border-border/50 bg-muted/40">
+                    <AlertTitle>Klare Zugangsdaten hinterlegen</AlertTitle>
+                    <AlertDescription className="space-y-2 text-sm text-muted-foreground">
+                      <p>Beschreiben Sie exakt, welche Authentifizierung aktiv ist und welche Accounts genutzt werden.</p>
+                      <p>Falls Test- oder Sandbox-Zugänge verwendet werden, ergänzen Sie deren Gültigkeit im Notizfeld.</p>
+                    </AlertDescription>
+                  </Alert>
                   <div className="space-y-2">
-                    <Label htmlFor="auth-type">Authentifizierungstyp</Label>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="auth-type">Authentifizierungstyp</Label>
+                      <InfoTooltip
+                        content={
+                          <div className="space-y-1">
+                            <p>Wählen Sie den Mechanismus, den der Zielservice verlangt.</p>
+                            <p>Weitere Felder werden abhängig vom Typ eingeblendet.</p>
+                          </div>
+                        }
+                      />
+                    </div>
                     <Select
                       value={formData.authType}
                       onValueChange={(value) => setFormData({ ...formData, authType: value })}
@@ -1884,7 +1935,17 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
                   {formData.authType === 'api_key' && (
                     <div className="space-y-2">
-                      <Label htmlFor="api-key">API Key</Label>
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="api-key">API Key</Label>
+                        <InfoTooltip
+                          content={
+                            <div className="space-y-1">
+                              <p>Tragen Sie den genauen Schlüssel ein, inklusive eventueller Präfixe.</p>
+                              <p>Beschreiben Sie im Notizfeld, wie und wann der Key erneuert wird.</p>
+                            </div>
+                          }
+                        />
+                      </div>
                       <Input
                         id="api-key"
                         placeholder="Enter API key"
@@ -2067,11 +2128,28 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
               {connectorStep === 2 && (
                 <div className="space-y-6">
+                  <Alert className="border-border/50 bg-muted/40">
+                    <AlertTitle>Datenflüsse nachvollziehbar dokumentieren</AlertTitle>
+                    <AlertDescription className="space-y-2 text-sm text-muted-foreground">
+                      <p>Beschreiben Sie für jeden Endpunkt, welche Objekte übertragen werden und welche Felder Pflicht sind.</p>
+                      <p>Nutzen Sie Beispiele für Payloads und Responses, damit Integrationspartner Tests schneller vorbereiten können.</p>
+                    </AlertDescription>
+                  </Alert>
                   <div className="space-y-4">
                     <h3 className="text-sm font-semibold text-foreground">🌐 Endpunkte & Operationen</h3>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <div className="space-y-2">
-                        <Label htmlFor="list-endpoint">Listen-Endpunkt</Label>
+                        <div className="flex items-center gap-2">
+                          <Label htmlFor="list-endpoint">Listen-Endpunkt</Label>
+                          <InfoTooltip
+                            content={
+                              <div className="space-y-1">
+                                <p>Pfad für den Abruf mehrerer Datensätze (z. B. GET-Liste).</p>
+                                <p>Optionalen Query-Parameter dokumentieren Sie im Abschnitt Filter.</p>
+                              </div>
+                            }
+                          />
+                        </div>
                         <Input
                           id="list-endpoint"
                           placeholder="/api/v1/items"
@@ -2127,7 +2205,17 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                     </div>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <div className="space-y-2">
-                        <Label htmlFor="write-method">Schreibmethode</Label>
+                        <div className="flex items-center gap-2">
+                          <Label htmlFor="write-method">Schreibmethode</Label>
+                          <InfoTooltip
+                            content={
+                              <div className="space-y-1">
+                                <p>Wählen Sie die HTTP-Methode, die beim Senden von Änderungen verwendet wird.</p>
+                                <p>DELETE sollte nur angegeben werden, wenn Löschvorgänge erlaubt sind.</p>
+                              </div>
+                            }
+                          />
+                        </div>
                         <Select
                           value={formData.writeHttpMethod}
                           onValueChange={(value) => setFormData({ ...formData, writeHttpMethod: value })}
@@ -2157,7 +2245,17 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="success-status">Erfolgsstatus-Codes</Label>
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="success-status">Erfolgsstatus-Codes</Label>
+                        <InfoTooltip
+                          content={
+                            <div className="space-y-1">
+                              <p>Trennen Sie mehrere HTTP-Status mit Komma.</p>
+                              <p>Nutzen Sie ausschließlich Codes, die als erfolgreicher Abschluss gelten.</p>
+                            </div>
+                          }
+                        />
+                      </div>
                       <Input
                         id="success-status"
                         placeholder="200,201"
@@ -2175,11 +2273,23 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                       />
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="request-payload">Request Payload Template</Label>
-                    <Textarea
-                      id="request-payload"
-                      placeholder='{"title": "{{source.summary}}"}'
+                    <div className="space-y-2">
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="request-payload">Request Payload Template</Label>
+                        <InfoTooltip
+                          content={
+                            <div className="space-y-1">
+                            <p>
+                              Nutzen Sie Platzhalter (z. B. {'{{source.field}}'}), um Pflichtfelder zu kennzeichnen.
+                            </p>
+                              <p>Beschreiben Sie in Kommentaren besondere Validierungsregeln.</p>
+                            </div>
+                          }
+                        />
+                      </div>
+                      <Textarea
+                        id="request-payload"
+                        placeholder='{"title": "{{source.summary}}"}'
                       className="min-h-[100px]"
                       value={formData.requestPayloadTemplate}
                       onChange={(e) => setFormData({ ...formData, requestPayloadTemplate: e.target.value })}
@@ -2253,11 +2363,28 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
               {connectorStep === 3 && (
                 <div className="space-y-6">
+                  <Alert className="border-border/50 bg-muted/40">
+                    <AlertTitle>Automatisierung eindeutig konfigurieren</AlertTitle>
+                    <AlertDescription className="space-y-2 text-sm text-muted-foreground">
+                      <p>Legen Sie fest, wie viele Daten pro Lauf verarbeitet werden dürfen und in welchem Rhythmus Abfragen erfolgen.</p>
+                      <p>Dokumentieren Sie Limits aus Fremdsystemen, damit Deployments ohne Rückfragen geplant werden können.</p>
+                    </AlertDescription>
+                  </Alert>
                   <div className="space-y-4">
                     <h3 className="text-sm font-semibold text-foreground">🔁 Pagination & Delta-Handling</h3>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <div className="space-y-2">
-                        <Label htmlFor="pagination-strategy">Paginierungsstrategie</Label>
+                        <div className="flex items-center gap-2">
+                          <Label htmlFor="pagination-strategy">Paginierungsstrategie</Label>
+                          <InfoTooltip
+                            content={
+                              <div className="space-y-1">
+                                <p>Wählen Sie die Strategie, wie weitere Seiten abgefragt werden.</p>
+                                <p>Für Cursor-basierte APIs geben Sie unten Parameter und Pfade an.</p>
+                              </div>
+                            }
+                          />
+                        </div>
                         <Select
                           value={formData.paginationStrategy}
                           onValueChange={(value) =>
@@ -2375,7 +2502,17 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                     <h3 className="text-sm font-semibold text-foreground">⚙️ Limits & Ausführung</h3>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                       <div className="space-y-2">
-                        <Label htmlFor="rpm">Requests pro Minute</Label>
+                        <div className="flex items-center gap-2">
+                          <Label htmlFor="rpm">Requests pro Minute</Label>
+                          <InfoTooltip
+                            content={
+                              <div className="space-y-1">
+                                <p>Tragen Sie die maximal zulässige Anzahl Anfragen pro Minute ein.</p>
+                                <p>Berücksichtigen Sie Sicherheitsreserven, um Rate-Limits nicht zu überschreiten.</p>
+                              </div>
+                            }
+                          />
+                        </div>
                         <Input
                           id="rpm"
                           placeholder="120"
@@ -2424,7 +2561,17 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                     </div>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                       <div className="space-y-2">
-                        <Label htmlFor="poll-interval">Poll-Intervall (Minuten)</Label>
+                        <div className="flex items-center gap-2">
+                          <Label htmlFor="poll-interval">Poll-Intervall (Minuten)</Label>
+                          <InfoTooltip
+                            content={
+                              <div className="space-y-1">
+                                <p>Definiert, wie oft der Connector neue Daten abruft.</p>
+                                <p>Wählen Sie einen Wert, der SLA und Systemlast berücksichtigt.</p>
+                              </div>
+                            }
+                          />
+                        </div>
                         <Input
                           id="poll-interval"
                           placeholder="15"

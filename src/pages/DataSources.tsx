@@ -21,6 +21,7 @@ import {
 import { Button } from "@/components/ui/button";
 import DataFlowLoader from "@/components/DataFlowLoader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { supabase } from "@/integrations/supabase/client";
 import { useMinimumLoader } from "@/hooks/useMinimumLoader";
 import type { Tables, TablesInsert } from "@/integrations/supabase/types";
@@ -40,6 +41,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { DATA_SOURCE_TYPE_OPTIONS, type DataSourceType } from "@/constants/sourceTypes";
 import { WizardSteps, type WizardStep } from "@/components/ui/wizard-steps";
+import InfoTooltip from "@/components/InfoTooltip";
 import {
   createHeaderField,
   headersToConfigEntries,
@@ -766,9 +768,26 @@ const DataSources = () => {
             <div className="space-y-6">
               {currentStep === 0 && (
                 <div className="space-y-6">
+                  <Alert className="border-border/50 bg-muted/40">
+                    <AlertTitle>Grunddaten klar benennen</AlertTitle>
+                    <AlertDescription className="space-y-2 text-sm text-muted-foreground">
+                      <p>Vergeben Sie einen eindeutigen Namen, der System und Umgebung widerspiegelt (z. B. „Salesforce PROD“).</p>
+                      <p>Prüfen Sie, ob die angegebene URL ohne VPN erreichbar ist oder zusätzliche Infrastruktur benötigt.</p>
+                    </AlertDescription>
+                  </Alert>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="name">Name</Label>
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="name">Name</Label>
+                        <InfoTooltip
+                          content={
+                            <div className="space-y-1">
+                              <p>Nutzen Sie eine sprechende Bezeichnung inkl. System, Mandant oder Region.</p>
+                              <p>Dies erleichtert das Auffinden in der Projektübersicht.</p>
+                            </div>
+                          }
+                        />
+                      </div>
                       <Input
                         id="name"
                         value={formData.name}
@@ -776,7 +795,17 @@ const DataSources = () => {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="source_type">Typ</Label>
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="source_type">Typ</Label>
+                        <InfoTooltip
+                          content={
+                            <div className="space-y-1">
+                              <p>Wählen Sie das System oder Protokoll, das am besten passt.</p>
+                              <p>Fehlt ein Typ, nutzen Sie den generischen Eintrag „custom“.</p>
+                            </div>
+                          }
+                        />
+                      </div>
                       <Select
                         value={formData.source_type}
                         onValueChange={(value) => setFormData({ ...formData, source_type: value })}
@@ -795,12 +824,23 @@ const DataSources = () => {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="api_url">API URL</Label>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="api_url">API URL</Label>
+                      <InfoTooltip
+                        content={
+                          <div className="space-y-1">
+                            <p>Tragen Sie die vollständige Basis-URL inklusive Protokoll ein.</p>
+                            <p>Bei Subpfaden (z. B. /api/v1) bitte den gesamten Pfad ergänzen.</p>
+                          </div>
+                        }
+                      />
+                    </div>
                     <Input
                       id="api_url"
                       value={formData.api_url}
                       onChange={(e) => setFormData({ ...formData, api_url: e.target.value })}
                     />
+                    <p className="text-xs text-muted-foreground">Beispiel: https://api.system.de/v1</p>
                   </div>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div className="space-y-2">
@@ -829,8 +869,25 @@ const DataSources = () => {
 
               {currentStep === 1 && (
                 <div className="space-y-6">
+                  <Alert className="border-border/50 bg-muted/40">
+                    <AlertTitle>Zugänge nachvollziehbar dokumentieren</AlertTitle>
+                    <AlertDescription className="space-y-2 text-sm text-muted-foreground">
+                      <p>Notieren Sie, welche Credentials produktiv genutzt werden dürfen und wer sie verwaltet.</p>
+                      <p>Vermerken Sie Rotationszyklen oder Ablaufdaten direkt in den Notizen.</p>
+                    </AlertDescription>
+                  </Alert>
                   <div className="space-y-2">
-                    <Label htmlFor="auth-type">Authentifizierung</Label>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="auth-type">Authentifizierung</Label>
+                      <InfoTooltip
+                        content={
+                          <div className="space-y-1">
+                            <p>Wählen Sie das Verfahren, das die Datenquelle erwartet.</p>
+                            <p>Die Maske blendet automatisch die benötigten Felder ein.</p>
+                          </div>
+                        }
+                      />
+                    </div>
                     <Select
                       value={formData.auth_type}
                       onValueChange={(value) => setFormData({ ...formData, auth_type: value })}
@@ -848,7 +905,17 @@ const DataSources = () => {
                   </div>
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="api_key">API Key</Label>
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="api_key">API Key</Label>
+                        <InfoTooltip
+                          content={
+                            <div className="space-y-1">
+                              <p>Geben Sie den Key exakt so ein, wie er vom Provider geliefert wurde.</p>
+                              <p>Falls der Key nur temporär gültig ist, ergänzen Sie das Ablaufdatum.</p>
+                            </div>
+                          }
+                        />
+                      </div>
                       <Input
                         id="api_key"
                         value={formData.api_key}
@@ -1008,11 +1075,28 @@ const DataSources = () => {
 
               {currentStep === 2 && (
                 <div className="space-y-6">
+                  <Alert className="border-border/50 bg-muted/40">
+                    <AlertTitle>Datenfluss transparent beschreiben</AlertTitle>
+                    <AlertDescription className="space-y-2 text-sm text-muted-foreground">
+                      <p>Notieren Sie zu jedem Endpunkt Zweck, Pflichtparameter und Antwortstruktur.</p>
+                      <p>Beispiele helfen Teams, Payloads ohne zusätzliche Abstimmung zu testen.</p>
+                    </AlertDescription>
+                  </Alert>
                   <div className="space-y-4">
                     <h3 className="text-sm font-semibold text-foreground">🌐 Endpunkte & Operationen</h3>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <div className="space-y-2">
-                        <Label htmlFor="list-endpoint">Listen-Endpunkt</Label>
+                        <div className="flex items-center gap-2">
+                          <Label htmlFor="list-endpoint">Listen-Endpunkt</Label>
+                          <InfoTooltip
+                            content={
+                              <div className="space-y-1">
+                                <p>Pfad zum Abruf mehrerer Objekte.</p>
+                                <p>Optionale Filter können unten beschrieben werden.</p>
+                              </div>
+                            }
+                          />
+                        </div>
                         <Input
                           id="list-endpoint"
                           value={formData.listEndpoint}
@@ -1062,7 +1146,17 @@ const DataSources = () => {
                     </div>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                       <div className="space-y-2">
-                        <Label htmlFor="write-method">Write-Methode</Label>
+                        <div className="flex items-center gap-2">
+                          <Label htmlFor="write-method">Write-Methode</Label>
+                          <InfoTooltip
+                            content={
+                              <div className="space-y-1">
+                                <p>Definiert die HTTP-Methode für schreibende Operationen.</p>
+                                <p>Nur angeben, wenn die Datenquelle Änderungen zulässt.</p>
+                              </div>
+                            }
+                          />
+                        </div>
                         <Select
                           value={formData.writeHttpMethod}
                           onValueChange={(value) => setFormData({ ...formData, writeHttpMethod: value })}
@@ -1090,7 +1184,17 @@ const DataSources = () => {
 
                   <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                     <div className="space-y-2">
-                      <Label htmlFor="success-codes">Erfolgsstatus-Codes</Label>
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="success-codes">Erfolgsstatus-Codes</Label>
+                        <InfoTooltip
+                          content={
+                            <div className="space-y-1">
+                              <p>Kommagetrennte Liste der HTTP-Codes, die als erfolgreich gelten.</p>
+                              <p>Nutzen Sie nur Codes, die keinen erneuten Versuch auslösen.</p>
+                            </div>
+                          }
+                        />
+                      </div>
                       <Input
                         id="success-codes"
                         placeholder="200,201"
@@ -1108,7 +1212,17 @@ const DataSources = () => {
                     </div>
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="request-payload">Request Payload Vorlage</Label>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="request-payload">Request Payload Vorlage</Label>
+                      <InfoTooltip
+                        content={
+                          <div className="space-y-1">
+                            <p>Nutzen Sie Platzhalter ({'{{source.field}}'}) für dynamische Werte.</p>
+                            <p>Dokumentieren Sie Pflichtfelder und Formatvorgaben.</p>
+                          </div>
+                        }
+                      />
+                    </div>
                     <Textarea
                       id="request-payload"
                       className="min-h-[80px]"
@@ -1117,7 +1231,17 @@ const DataSources = () => {
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="response-sample">Beispiel Response</Label>
+                    <div className="flex items-center gap-2">
+                      <Label htmlFor="response-sample">Beispiel Response</Label>
+                      <InfoTooltip
+                        content={
+                          <div className="space-y-1">
+                            <p>Hinterlegen Sie eine repräsentative Antwort inklusive Status- und Datenfelder.</p>
+                            <p>Kennzeichnen Sie optionale Felder mit Kommentaren oder Beispieldaten.</p>
+                          </div>
+                        }
+                      />
+                    </div>
                     <Textarea
                       id="response-sample"
                       className="min-h-[80px]"
@@ -1181,11 +1305,28 @@ const DataSources = () => {
 
               {currentStep === 3 && (
                 <div className="space-y-6">
+                  <Alert className="border-border/50 bg-muted/40">
+                    <AlertTitle>Automatisierung präzise planen</AlertTitle>
+                    <AlertDescription className="space-y-2 text-sm text-muted-foreground">
+                      <p>Dokumentieren Sie, wie Paginierung, Delta-Updates und Limits zusammenspielen.</p>
+                      <p>So lassen sich Laufzeiten und Ressourcen frühzeitig abschätzen.</p>
+                    </AlertDescription>
+                  </Alert>
                   <div className="space-y-4">
                     <h3 className="text-sm font-semibold text-foreground">🔁 Pagination & Delta</h3>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                       <div className="space-y-2 md:col-span-1">
-                        <Label htmlFor="pagination-strategy">Paginierungsstrategie</Label>
+                        <div className="flex items-center gap-2">
+                          <Label htmlFor="pagination-strategy">Paginierungsstrategie</Label>
+                          <InfoTooltip
+                            content={
+                              <div className="space-y-1">
+                                <p>Steuert, wie weitere Seiten geladen werden.</p>
+                                <p>Cursor-basierte APIs benötigen unten zusätzliche Parameter.</p>
+                              </div>
+                            }
+                          />
+                        </div>
                         <Select
                           value={formData.paginationStrategy}
                           onValueChange={(value) =>
@@ -1245,7 +1386,17 @@ const DataSources = () => {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="filter-template">Standard-Filter</Label>
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="filter-template">Standard-Filter</Label>
+                        <InfoTooltip
+                          content={
+                            <div className="space-y-1">
+                              <p>Beschreiben Sie Default-Query-Parameter inklusive Beispielwerten.</p>
+                              <p>Nutzen Sie & zum Verknüpfen mehrerer Parameter.</p>
+                            </div>
+                          }
+                        />
+                      </div>
                       <Textarea
                         id="filter-template"
                         className="min-h-[70px]"
@@ -1263,7 +1414,17 @@ const DataSources = () => {
                         />
                       </div>
                       <div className="space-y-2">
-                        <Label htmlFor="delta-strategy">Delta Strategie</Label>
+                        <div className="flex items-center gap-2">
+                          <Label htmlFor="delta-strategy">Delta Strategie</Label>
+                          <InfoTooltip
+                            content={
+                              <div className="space-y-1">
+                                <p>Legt fest, wie Änderungen erkannt werden (z. B. Timestamp oder ID).</p>
+                                <p>Stimmen Sie die Strategie mit den verfügbaren Feldern ab.</p>
+                              </div>
+                            }
+                          />
+                        </div>
                         <Select
                           value={formData.deltaStrategy}
                           onValueChange={(value) =>
@@ -1295,7 +1456,17 @@ const DataSources = () => {
                     <h3 className="text-sm font-semibold text-foreground">⚙️ Limits & Ausführung</h3>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                       <div className="space-y-2">
-                        <Label htmlFor="rpm">Requests pro Minute</Label>
+                        <div className="flex items-center gap-2">
+                          <Label htmlFor="rpm">Requests pro Minute</Label>
+                          <InfoTooltip
+                            content={
+                              <div className="space-y-1">
+                                <p>Maximale Anzahl von Aufrufen pro Minute laut Anbieter.</p>
+                                <p>Planen Sie eine Reserve ein, um Rate-Limits zu vermeiden.</p>
+                              </div>
+                            }
+                          />
+                        </div>
                         <Input
                           id="rpm"
                           value={formData.requestsPerMinute}
@@ -1339,7 +1510,17 @@ const DataSources = () => {
                     </div>
                     <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
                       <div className="space-y-2">
-                        <Label htmlFor="poll-interval">Poll-Intervall (Minuten)</Label>
+                        <div className="flex items-center gap-2">
+                          <Label htmlFor="poll-interval">Poll-Intervall (Minuten)</Label>
+                          <InfoTooltip
+                            content={
+                              <div className="space-y-1">
+                                <p>Bestimmt, wie häufig neue Daten abgefragt werden.</p>
+                                <p>Berücksichtigen Sie SLAs und Lastspitzen.</p>
+                              </div>
+                            }
+                          />
+                        </div>
                         <Input
                           id="poll-interval"
                           value={formData.pollIntervalMinutes}
@@ -1356,7 +1537,17 @@ const DataSources = () => {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor="notes">Notizen & Besonderheiten</Label>
+                      <div className="flex items-center gap-2">
+                        <Label htmlFor="notes">Notizen & Besonderheiten</Label>
+                        <InfoTooltip
+                          content={
+                            <div className="space-y-1">
+                              <p>Halten Sie Abhängigkeiten, Ansprechpartner und manuelle Schritte fest.</p>
+                              <p>Diese Informationen helfen beim Onboarding weiterer Teams.</p>
+                            </div>
+                          }
+                        />
+                      </div>
                       <Textarea
                         id="notes"
                         className="min-h-[80px]"
