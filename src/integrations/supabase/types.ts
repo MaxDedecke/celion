@@ -165,7 +165,7 @@ export type Database = {
           id: string
           join_with: string | null
           mapping_type: string
-          migration_id: string
+          pipeline_id: string
           source_field_id: string
           source_object_type: string
           target_field_id: string
@@ -179,7 +179,7 @@ export type Database = {
           id?: string
           join_with?: string | null
           mapping_type?: string
-          migration_id: string
+          pipeline_id: string
           source_field_id: string
           source_object_type: string
           target_field_id: string
@@ -193,7 +193,7 @@ export type Database = {
           id?: string
           join_with?: string | null
           mapping_type?: string
-          migration_id?: string
+          pipeline_id?: string
           source_field_id?: string
           source_object_type?: string
           target_field_id?: string
@@ -202,10 +202,10 @@ export type Database = {
         }
         Relationships: [
           {
-            foreignKeyName: "field_mappings_migration_id_fkey"
-            columns: ["migration_id"]
+            foreignKeyName: "field_mappings_pipeline_id_fkey"
+            columns: ["pipeline_id"]
             isOneToOne: false
-            referencedRelation: "migrations"
+            referencedRelation: "pipelines"
             referencedColumns: ["id"]
           },
         ]
@@ -306,6 +306,82 @@ export type Database = {
             columns: ["project_id"]
             isOneToOne: false
             referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      pipelines: {
+        Row: {
+          created_at: string
+          description: string | null
+          execution_order: number
+          id: string
+          is_active: boolean
+          mapped_objects: string
+          migration_id: string
+          name: string
+          objects_transferred: string
+          progress: number
+          source_data_source_id: string | null
+          source_system: string
+          target_data_source_id: string | null
+          target_system: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          description?: string | null
+          execution_order?: number
+          id?: string
+          is_active?: boolean
+          mapped_objects?: string
+          migration_id: string
+          name: string
+          objects_transferred?: string
+          progress?: number
+          source_data_source_id?: string | null
+          source_system: string
+          target_data_source_id?: string | null
+          target_system: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          description?: string | null
+          execution_order?: number
+          id?: string
+          is_active?: boolean
+          mapped_objects?: string
+          migration_id?: string
+          name?: string
+          objects_transferred?: string
+          progress?: number
+          source_data_source_id?: string | null
+          source_system?: string
+          target_data_source_id?: string | null
+          target_system?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "pipelines_migration_id_fkey"
+            columns: ["migration_id"]
+            isOneToOne: false
+            referencedRelation: "migrations"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pipelines_source_data_source_id_fkey"
+            columns: ["source_data_source_id"]
+            isOneToOne: false
+            referencedRelation: "data_sources"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "pipelines_target_data_source_id_fkey"
+            columns: ["target_data_source_id"]
+            isOneToOne: false
+            referencedRelation: "data_sources"
             referencedColumns: ["id"]
           },
         ]

@@ -11,7 +11,7 @@ export const createMappingId = (): string => {
 
 type DbFieldMapping = {
   id: string;
-  migration_id: string;
+  pipeline_id: string;
   target_field_id: string;
   source_field_id: string;
   mapping_type: string;
@@ -49,9 +49,9 @@ const dbMappingToFieldMapping = (dbMapping: DbFieldMapping): FieldMapping => {
   };
 };
 
-const fieldMappingToDbMapping = (mapping: FieldMapping, migrationId: string) => {
+const fieldMappingToDbMapping = (mapping: FieldMapping, pipelineId: string) => {
   const base = {
-    migration_id: migrationId,
+    pipeline_id: pipelineId,
     target_field_id: mapping.targetFieldId,
     source_field_id: mapping.sourceFieldId,
     mapping_type: mapping.mappingType,
@@ -74,7 +74,7 @@ const fieldMappingToDbMapping = (mapping: FieldMapping, migrationId: string) => 
 };
 
 export const loadMappingsFromDatabase = async (
-  migrationId: string,
+  pipelineId: string,
   sourceObjectType: string,
   targetObjectType: string
 ): Promise<FieldMapping[]> => {
@@ -82,7 +82,7 @@ export const loadMappingsFromDatabase = async (
     const { data, error } = await supabase
       .from("field_mappings")
       .select("*")
-      .eq("migration_id", migrationId)
+      .eq("pipeline_id", pipelineId)
       .eq("source_object_type", sourceObjectType)
       .eq("target_object_type", targetObjectType);
 
@@ -99,14 +99,14 @@ export const loadMappingsFromDatabase = async (
 };
 
 export const loadAllMappingsForSource = async (
-  migrationId: string,
+  pipelineId: string,
   sourceObjectType: string
 ): Promise<(FieldMapping & { sourceObjectType: string; targetObjectType: string })[]> => {
   try {
     const { data, error } = await supabase
       .from("field_mappings")
       .select("*")
-      .eq("migration_id", migrationId)
+      .eq("pipeline_id", pipelineId)
       .eq("source_object_type", sourceObjectType);
 
     if (error) {
@@ -126,13 +126,13 @@ export const loadAllMappingsForSource = async (
 };
 
 export const saveMappingToDatabase = async (
-  migrationId: string,
+  pipelineId: string,
   mapping: FieldMapping,
   sourceObjectType: string,
   targetObjectType: string
 ): Promise<boolean> => {
   try {
-    const dbMapping = fieldMappingToDbMapping(mapping, migrationId);
+    const dbMapping = fieldMappingToDbMapping(mapping, pipelineId);
 
     const { error } = await supabase
       .from("field_mappings")
@@ -176,14 +176,14 @@ export const deleteMappingFromDatabase = async (
   }
 };
 
-export const clearAllMappingsForMigration = async (
-  migrationId: string
+export const clearAllMappingsForPipeline = async (
+  pipelineId: string
 ): Promise<boolean> => {
   try {
     const { error } = await supabase
       .from("field_mappings")
       .delete()
-      .eq("migration_id", migrationId);
+      .eq("pipeline_id", pipelineId);
 
     if (error) {
       console.error("Failed to clear mappings from database:", error);

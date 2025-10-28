@@ -58,14 +58,14 @@ import {
 type Field = SchemaField;
 
 interface FieldMapperProps {
-  migrationId: string;
+  pipelineId: string;
   sourceSystem: string;
   targetSystem: string;
   sourceObject: string;
   targetObject: string;
 }
 
-export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObject, targetObject }: FieldMapperProps) => {
+export const FieldMapper = ({ pipelineId, sourceSystem, targetSystem, sourceObject, targetObject }: FieldMapperProps) => {
   const [mappings, setMappings] = useState<FieldMapping[]>([]);
   const [savedMappings, setSavedMappings] = useState<FieldMapping[]>([]);
   const [allSourceMappings, setAllSourceMappings] = useState<(FieldMapping & { targetObjectType: string })[]>([]);
@@ -194,19 +194,19 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
     const loadMappings = async () => {
       setIsLoading(true);
       // Load mappings for current target object
-      const loadedMappings = await loadMappingsFromDatabase(migrationId, sourceObject, targetObject);
+      const loadedMappings = await loadMappingsFromDatabase(pipelineId, sourceObject, targetObject);
       setMappings(loadedMappings);
       setSavedMappings(loadedMappings);
       
       // Load all mappings for the source object (across all target objects)
-      const allMappings = await loadAllMappingsForSource(migrationId, sourceObject);
+      const allMappings = await loadAllMappingsForSource(pipelineId, sourceObject);
       setAllSourceMappings(allMappings);
       
       setIsLoading(false);
     };
 
     loadMappings();
-  }, [migrationId, sourceObject, targetObject]);
+  }, [pipelineId, sourceObject, targetObject]);
 
   // Warn before leaving with unsaved changes
   useEffect(() => {
@@ -539,13 +539,13 @@ export const FieldMapper = ({ migrationId, sourceSystem, targetSystem, sourceObj
 
       // Save new and updated mappings
       for (const mapping of mappings) {
-        await saveMappingToDatabase(migrationId, mapping, sourceObject, targetObject);
+        await saveMappingToDatabase(pipelineId, mapping, sourceObject, targetObject);
       }
 
       setSavedMappings([...mappings]);
       
       // Reload all source mappings to update the overview
-      const allMappings = await loadAllMappingsForSource(migrationId, sourceObject);
+      const allMappings = await loadAllMappingsForSource(pipelineId, sourceObject);
       setAllSourceMappings(allMappings);
       
       toast.success("Alle Mappings erfolgreich gespeichert");
