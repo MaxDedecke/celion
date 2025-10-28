@@ -438,6 +438,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   const [selectedTargetObject, setSelectedTargetObject] = useState<string>('');
   const [formData, setFormData] = useState<ConnectorFormData>(() => createInitialConnectorFormData());
   const [connectorStep, setConnectorStep] = useState(0);
+  const [currentPipelineId, setCurrentPipelineId] = useState<string | null>(null);
 
   const totalConnectorSteps = CONNECTOR_WIZARD_STEPS.length;
   const isOnLastConnectorStep = connectorStep === totalConnectorSteps - 1;
@@ -460,13 +461,32 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   const hasInConnector = !!project.connectors?.in;
   const hasOutConnector = !!project.connectors?.out;
 
+  // Load the pipeline for this migration
+  useEffect(() => {
+    const loadPipeline = async () => {
+      const { data, error } = await supabase
+        .from('pipelines')
+        .select('id')
+        .eq('migration_id', project.id)
+        .order('execution_order', { ascending: true })
+        .limit(1)
+        .maybeSingle();
+      
+      if (!error && data) {
+        setCurrentPipelineId(data.id);
+      }
+    };
+
+    loadPipeline();
+  }, [project.id]);
+
   const loadActiveMappings = useCallback(async (): Promise<FieldMapping[]> => {
-    if (!selectedSourceObject || !selectedTargetObject) {
+    if (!selectedSourceObject || !selectedTargetObject || !currentPipelineId) {
       return [];
     }
 
-    return await loadMappingsFromDatabase(project.id, selectedSourceObject, selectedTargetObject);
-  }, [project.id, selectedSourceObject, selectedTargetObject]);
+    return await loadMappingsFromDatabase(currentPipelineId, selectedSourceObject, selectedTargetObject);
+  }, [currentPipelineId, selectedSourceObject, selectedTargetObject]);
 
   // Load meta model approval status from database
   useEffect(() => {
@@ -1808,9 +1828,9 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
           {/* Field Mapping Area */}
           <div className="border-transparent rounded-lg min-h-[600px]">
-            {selectedSourceObject && selectedTargetObject ? (
+            {selectedSourceObject && selectedTargetObject && currentPipelineId ? (
               <FieldMapper
-                migrationId={project.id}
+                pipelineId={currentPipelineId}
                 sourceSystem={project.sourceSystem}
                 targetSystem={project.targetSystem}
                 sourceObject={selectedSourceObject}
