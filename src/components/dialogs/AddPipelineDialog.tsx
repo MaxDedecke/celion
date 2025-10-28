@@ -10,6 +10,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Select,
   SelectContent,
@@ -37,6 +38,7 @@ interface AddPipelineDialogProps {
     targetSystem: string;
     sourceDataSourceId?: string;
     targetDataSourceId?: string;
+    workflowType: "manual" | "agent";
   }) => void;
   targetSystem?: string; // Optional: Pre-fill target system from migration
 }
@@ -49,6 +51,7 @@ export function AddPipelineDialog({ open, onOpenChange, onAdd, targetSystem }: A
   const [sourceDataSourceId, setSourceDataSourceId] = useState<string>("");
   const [targetDataSourceId, setTargetDataSourceId] = useState<string>("");
   const [dataSources, setDataSources] = useState<DataSource[]>([]);
+  const [workflowType, setWorkflowType] = useState<"manual" | "agent" | "">("");
   const [hasError, setHasError] = useState(false);
 
   useEffect(() => {
@@ -60,6 +63,7 @@ export function AddPipelineDialog({ open, onOpenChange, onAdd, targetSystem }: A
       setLocalTargetSystem(targetSystem || "");
       setSourceDataSourceId("");
       setTargetDataSourceId("");
+      setWorkflowType("");
       setHasError(false);
     }
   }, [open, targetSystem]);
@@ -76,7 +80,7 @@ export function AddPipelineDialog({ open, onOpenChange, onAdd, targetSystem }: A
   };
 
   const handleSubmit = () => {
-    if (!name || !sourceSystem || !localTargetSystem) {
+    if (!name || !sourceSystem || !localTargetSystem || !workflowType) {
       setHasError(true);
       return;
     }
@@ -88,6 +92,7 @@ export function AddPipelineDialog({ open, onOpenChange, onAdd, targetSystem }: A
       targetSystem: localTargetSystem,
       sourceDataSourceId: sourceDataSourceId || undefined,
       targetDataSourceId: targetDataSourceId || undefined,
+      workflowType,
     });
 
     onOpenChange(false);
@@ -108,6 +113,49 @@ export function AddPipelineDialog({ open, onOpenChange, onAdd, targetSystem }: A
 
         <div className="grid gap-4 py-4">
           <div className="grid gap-2">
+            <Label>Workflow Typ *</Label>
+            <RadioGroup
+              value={workflowType}
+              onValueChange={(value) => {
+                setWorkflowType(value as "manual" | "agent");
+                setHasError(false);
+              }}
+              className="grid gap-3"
+            >
+              <div
+                className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${
+                  workflowType === "manual" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
+                }`}
+              >
+                <RadioGroupItem value="manual" id="workflow-manual" className="mt-1" />
+                <div>
+                  <Label htmlFor="workflow-manual" className="text-sm font-medium">
+                    Manuell
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    Konfiguriere Schnittstellen, Mapping und Prozesse eigenständig – genauso wie bisher.
+                  </p>
+                </div>
+              </div>
+              <div
+                className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${
+                  workflowType === "agent" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"
+                }`}
+              >
+                <RadioGroupItem value="agent" id="workflow-agent" className="mt-1" />
+                <div>
+                  <Label htmlFor="workflow-agent" className="text-sm font-medium">
+                    Agent
+                  </Label>
+                  <p className="text-sm text-muted-foreground">
+                    Überlasse die Migration unseren KI-Agenten und steuere sie über die neue Agent UI.
+                  </p>
+                </div>
+              </div>
+            </RadioGroup>
+          </div>
+
+          <div className="grid gap-2">
             <Label htmlFor="pipeline-name">Name *</Label>
             <Input
               id="pipeline-name"
@@ -116,6 +164,12 @@ export function AddPipelineDialog({ open, onOpenChange, onAdd, targetSystem }: A
               placeholder="z.B. Jira Agile → Asana"
             />
           </div>
+
+          {workflowType === "agent" && (
+            <div className="rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3 text-sm text-muted-foreground">
+              Die grundlegenden Systeme werden hier definiert. Die detaillierte Steuerung des Agenten erfolgt anschließend in der Agent UI dieser Migration.
+            </div>
+          )}
 
           <div className="grid gap-2">
             <Label htmlFor="pipeline-description">Beschreibung</Label>

@@ -12,6 +12,8 @@ export interface Pipeline {
   progress: number;
   objects_transferred: string;
   mapped_objects: string;
+  workflow_type?: "manual" | "agent";
+  is_mock?: boolean;
   created_at: string;
   updated_at: string;
 }

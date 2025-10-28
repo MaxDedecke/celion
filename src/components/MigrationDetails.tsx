@@ -59,6 +59,7 @@ import { getSystemObjectOptions } from "@/lib/schema-registry";
 import { applyMappingsToRecord, buildSampleRecordFromMappings } from "@/lib/migration-pipeline";
 import { loadMappingsFromDatabase, loadAllMappingsForSource } from "@/lib/mapping-storage";
 import type { FieldMapping } from "@/types/mapping";
+import AgentWorkflowTab from "./AgentWorkflowTab";
 import {
   createHeaderField,
   headersToConfigEntries,
@@ -216,7 +217,7 @@ interface MigrationProject {
 
 interface MigrationDetailsProps {
   project: MigrationProject;
-  activeTab: "general" | "mapping";
+  activeTab: "general" | "mapping" | "agent";
   onRefresh: () => Promise<void>;
 }
 
@@ -502,7 +503,36 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
     targetSystem: string;
     sourceDataSourceId?: string;
     targetDataSourceId?: string;
+    workflowType: "manual" | "agent";
   }) => {
+    if (pipelineData.workflowType === "agent") {
+      const timestamp = new Date().toISOString();
+      const mockPipeline: Pipeline = {
+        id: `agent-${Date.now()}`,
+        migration_id: project.id,
+        name: pipelineData.name,
+        description: pipelineData.description,
+        source_system: pipelineData.sourceSystem,
+        target_system: pipelineData.targetSystem,
+        source_data_source_id: pipelineData.sourceDataSourceId,
+        target_data_source_id: pipelineData.targetDataSourceId,
+        execution_order: pipelines.length,
+        is_active: true,
+        progress: 0,
+        objects_transferred: "0/0",
+        mapped_objects: "0/0",
+        created_at: timestamp,
+        updated_at: timestamp,
+        workflow_type: "agent",
+        is_mock: true,
+      };
+
+      setPipelines([...pipelines, mockPipeline]);
+      setCurrentPipelineId(mockPipeline.id);
+      toast.success(`Agent Pipeline "${pipelineData.name}" wurde als Mock hinzugefügt`);
+      return;
+    }
+
     const { data, error } = await supabase
       .from('pipelines')
       .insert({
@@ -523,8 +553,13 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
       .single();
 
     if (!error && data) {
-      setPipelines([...pipelines, data as Pipeline]);
-      setCurrentPipelineId(data.id);
+      const insertedPipeline = {
+        ...(data as Pipeline),
+        workflow_type: "manual" as const,
+      };
+
+      setPipelines([...pipelines, insertedPipeline]);
+      setCurrentPipelineId(insertedPipeline.id);
       toast.success(`Pipeline "${pipelineData.name}" wurde hinzugefügt`);
     } else {
       toast.error("Fehler beim Hinzufügen der Pipeline");
@@ -532,6 +567,8 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   };
 
   const currentPipeline = pipelines.find(p => p.id === currentPipelineId);
+  const agentPipelines = useMemo(() => pipelines.filter(p => p.workflow_type === 'agent'), [pipelines]);
+  const currentAgentPipelineId = currentPipeline?.workflow_type === 'agent' ? currentPipeline.id : null;
 
   // Load meta model approval status from database
   useEffect(() => {
@@ -1589,6 +1626,12 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                         <div className="flex-1">
                           <div className="flex items-center gap-2">
                             <p className="font-medium text-sm">{pipeline.name}</p>
+                            <Badge
+                              variant={pipeline.workflow_type === 'agent' ? 'secondary' : 'outline'}
+                              className="text-xs"
+                            >
+                              {pipeline.workflow_type === 'agent' ? 'Agent' : 'Manuell'}
+                            </Badge>
                             {!pipeline.is_active && (
                               <Badge variant="secondary" className="text-xs">Inaktiv</Badge>
                             )}
@@ -1884,72 +1927,92 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
       )}
 
       {activeTab === "mapping" && (
-        <div className="space-y-6 pb-6">
-          {/* Dropdowns Section */}
-          <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-6">
-            {/* Left Dropdown - Source System Objects */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">
-                {project.sourceSystem} Objects
-              </label>
-              <Select value={selectedSourceObject} onValueChange={setSelectedSourceObject}>
-                <SelectTrigger className="w-full bg-background">
-                  <SelectValue placeholder="Select source object" />
-                </SelectTrigger>
-                <SelectContent>
-                  {sourceObjects.map((obj) => (
-                    <SelectItem key={obj.id} value={obj.id}>
-                      {obj.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+        currentPipeline?.workflow_type === 'agent' ? (
+          <div className="flex h-full flex-col items-center justify-center gap-4 rounded-3xl border border-dashed border-primary/40 bg-primary/5 p-8 text-center text-muted-foreground">
+            <Workflow className="h-12 w-12 text-primary" />
+            <div className="space-y-2 max-w-xl">
+              <h3 className="text-lg font-semibold text-foreground">Diese Pipeline wird von KI-Agenten gesteuert</h3>
+              <p className="text-sm">
+                Die klassische Mapping UI ist nur für manuelle Workflows verfügbar. Wechsle in den Agent Tab, um deine Automatisierung zu steuern und Ergebnisse zu überwachen.
+              </p>
             </div>
+          </div>
+        ) : (
+          <div className="space-y-6 pb-6">
+            {/* Dropdowns Section */}
+            <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-6">
+              {/* Left Dropdown - Source System Objects */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">
+                  {project.sourceSystem} Objects
+                </label>
+                <Select value={selectedSourceObject} onValueChange={setSelectedSourceObject}>
+                  <SelectTrigger className="w-full bg-background">
+                    <SelectValue placeholder="Select source object" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {sourceObjects.map((obj) => (
+                      <SelectItem key={obj.id} value={obj.id}>
+                        {obj.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
 
-            <div className="flex items-end justify-center pb-2">
-              <div className="p-2 rounded-full bg-muted text-muted-foreground">
-                <ArrowLeftRight className="h-5 w-5 translate-y-[2px]" />
+              <div className="flex items-end justify-center pb-2">
+                <div className="p-2 rounded-full bg-muted text-muted-foreground">
+                  <ArrowLeftRight className="h-5 w-5 translate-y-[2px]" />
+                </div>
+              </div>
+
+              {/* Right Dropdown - Target System Objects */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">
+                  {project.targetSystem} Objects
+                </label>
+                <Select value={selectedTargetObject} onValueChange={setSelectedTargetObject}>
+                  <SelectTrigger className="w-full bg-background">
+                    <SelectValue placeholder="Select target object" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {targetObjects.map((obj) => (
+                      <SelectItem key={obj.id} value={obj.id}>
+                        {obj.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 
-            {/* Right Dropdown - Target System Objects */}
-            <div className="space-y-2">
-              <label className="text-sm font-medium text-foreground">
-                {project.targetSystem} Objects
-              </label>
-              <Select value={selectedTargetObject} onValueChange={setSelectedTargetObject}>
-                <SelectTrigger className="w-full bg-background">
-                  <SelectValue placeholder="Select target object" />
-                </SelectTrigger>
-                <SelectContent>
-                  {targetObjects.map((obj) => (
-                    <SelectItem key={obj.id} value={obj.id}>
-                      {obj.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            {/* Field Mapping Area */}
+            <div className="border-transparent rounded-lg min-h-[600px]">
+              {selectedSourceObject && selectedTargetObject && currentPipelineId ? (
+                <FieldMapper
+                  pipelineId={currentPipelineId}
+                  sourceSystem={project.sourceSystem}
+                  targetSystem={project.targetSystem}
+                  sourceObject={selectedSourceObject}
+                  targetObject={selectedTargetObject}
+                />
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-muted-foreground text-center py-12">
+                  <Workflow className="h-10 w-10" />
+                  <span>Wähle Source und Target Objects aus, um mit dem Mapping zu beginnen</span>
+                </div>
+              )}
             </div>
           </div>
+        )
+      )}
 
-          {/* Field Mapping Area */}
-          <div className="border-transparent rounded-lg min-h-[600px]">
-            {selectedSourceObject && selectedTargetObject && currentPipelineId ? (
-              <FieldMapper
-                pipelineId={currentPipelineId}
-                sourceSystem={project.sourceSystem}
-                targetSystem={project.targetSystem}
-                sourceObject={selectedSourceObject}
-                targetObject={selectedTargetObject}
-              />
-            ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-muted-foreground text-center py-12">
-                <Workflow className="h-10 w-10" />
-                <span>Wähle Source und Target Objects aus, um mit dem Mapping zu beginnen</span>
-              </div>
-            )}
-          </div>
-        </div>
+      {activeTab === "agent" && (
+        <AgentWorkflowTab
+          pipelines={pipelines}
+          initialPipelineId={currentAgentPipelineId ?? agentPipelines[0]?.id ?? null}
+          onOpenAddPipeline={() => setIsAddPipelineOpen(true)}
+        />
       )}
 
       <Dialog open={isConfigDialogOpen} onOpenChange={handleConfigDialogChange}>

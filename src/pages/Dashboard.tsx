@@ -41,7 +41,7 @@ const Dashboard = () => {
   const [showAccountDialog, setShowAccountDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [activeDialogTab, setActiveDialogTab] = useState<"account" | "settings">("account");
-  const [activeMigrationTab, setActiveMigrationTab] = useState<"general" | "mapping">("general");
+  const [activeMigrationTab, setActiveMigrationTab] = useState<"general" | "mapping" | "agent">("general");
   const [migrations, setMigrations] = useState<any[]>([]);
   const [standaloneMigrations, setStandaloneMigrations] = useState<any[]>([]);
   const [allProjects, setAllProjects] = useState<any[]>([]);
@@ -391,6 +391,19 @@ const Dashboard = () => {
                     )}
                   >
                     Mapping UI
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={() => setActiveMigrationTab("agent")}
+                    size="sm"
+                    className={cn(
+                      "rounded-full px-4 transition-colors",
+                      activeMigrationTab === "agent"
+                        ? "text-accent"
+                        : "text-muted-foreground",
+                    )}
+                  >
+                    Agent UI
                   </Button>
                 </div>
                 <div className="text-base font-semibold text-foreground">
