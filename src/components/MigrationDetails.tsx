@@ -219,6 +219,7 @@ interface MigrationDetailsProps {
   project: MigrationProject;
   activeTab: "general" | "mapping" | "agent";
   onRefresh: () => Promise<void>;
+  onWorkflowModeChange?: (mode: "agent" | "manual" | null) => void;
 }
 
 type ConnectorFormData = {
@@ -419,7 +420,7 @@ const buildConnectorFormData = (connector?: ConnectorWithConfig | null): Connect
   };
 };
 
-const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsProps) => {
+const MigrationDetails = ({ project, activeTab, onRefresh, onWorkflowModeChange }: MigrationDetailsProps) => {
   const [isConfigDialogOpen, setIsConfigDialogOpen] = useState(false);
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isTestDialogOpen, setIsTestDialogOpen] = useState(false);
@@ -569,6 +570,19 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   const currentPipeline = pipelines.find(p => p.id === currentPipelineId);
   const agentPipelines = useMemo(() => pipelines.filter(p => p.workflow_type === 'agent'), [pipelines]);
   const currentAgentPipelineId = currentPipeline?.workflow_type === 'agent' ? currentPipeline.id : null;
+
+  useEffect(() => {
+    if (!onWorkflowModeChange) {
+      return;
+    }
+
+    if (!currentPipeline) {
+      onWorkflowModeChange(null);
+      return;
+    }
+
+    onWorkflowModeChange(currentPipeline.workflow_type === 'agent' ? 'agent' : 'manual');
+  }, [currentPipeline?.workflow_type, currentPipeline, onWorkflowModeChange]);
 
   // Load meta model approval status from database
   useEffect(() => {

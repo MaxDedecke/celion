@@ -42,6 +42,7 @@ const Dashboard = () => {
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [activeDialogTab, setActiveDialogTab] = useState<"account" | "settings">("account");
   const [activeMigrationTab, setActiveMigrationTab] = useState<"general" | "mapping" | "agent">("general");
+  const [currentWorkflowMode, setCurrentWorkflowMode] = useState<"agent" | "manual" | null>(null);
   const [migrations, setMigrations] = useState<any[]>([]);
   const [standaloneMigrations, setStandaloneMigrations] = useState<any[]>([]);
   const [allProjects, setAllProjects] = useState<any[]>([]);
@@ -66,7 +67,16 @@ const Dashboard = () => {
   useEffect(() => {
     setSelectedMigration(migrationId ?? null);
     setActiveMigrationTab("general"); // Reset tab to general when switching migrations
+    setCurrentWorkflowMode(null);
   }, [migrationId]);
+
+  useEffect(() => {
+    if (currentWorkflowMode === "agent" && activeMigrationTab === "mapping") {
+      setActiveMigrationTab("agent");
+    } else if (currentWorkflowMode === "manual" && activeMigrationTab === "agent") {
+      setActiveMigrationTab("mapping");
+    }
+  }, [currentWorkflowMode, activeMigrationTab]);
 
   const checkAuth = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -379,32 +389,36 @@ const Dashboard = () => {
                   >
                     General
                   </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={() => setActiveMigrationTab("mapping")}
-                    size="sm"
-                    className={cn(
-                      "rounded-full px-4 transition-colors",
-                      activeMigrationTab === "mapping"
-                        ? "text-accent"
-                        : "text-muted-foreground",
-                    )}
-                  >
-                    Mapping UI
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    onClick={() => setActiveMigrationTab("agent")}
-                    size="sm"
-                    className={cn(
-                      "rounded-full px-4 transition-colors",
-                      activeMigrationTab === "agent"
-                        ? "text-accent"
-                        : "text-muted-foreground",
-                    )}
-                  >
-                    Agent UI
-                  </Button>
+                  {(currentWorkflowMode !== "agent") && (
+                    <Button
+                      variant="ghost"
+                      onClick={() => setActiveMigrationTab("mapping")}
+                      size="sm"
+                      className={cn(
+                        "rounded-full px-4 transition-colors",
+                        activeMigrationTab === "mapping"
+                          ? "text-accent"
+                          : "text-muted-foreground",
+                      )}
+                    >
+                      Mapping UI
+                    </Button>
+                  )}
+                  {(currentWorkflowMode !== "manual") && (
+                    <Button
+                      variant="ghost"
+                      onClick={() => setActiveMigrationTab("agent")}
+                      size="sm"
+                      className={cn(
+                        "rounded-full px-4 transition-colors",
+                        activeMigrationTab === "agent"
+                          ? "text-accent"
+                          : "text-muted-foreground",
+                      )}
+                    >
+                      Agent UI
+                    </Button>
+                  )}
                 </div>
                 <div className="text-base font-semibold text-foreground">
                   <span className="inline-flex items-center gap-2">
@@ -440,6 +454,7 @@ const Dashboard = () => {
                   project={currentMigration}
                   activeTab={activeMigrationTab}
                   onRefresh={refreshCurrentMigration}
+                  onWorkflowModeChange={setCurrentWorkflowMode}
                 />
               </div>
             ) : (
