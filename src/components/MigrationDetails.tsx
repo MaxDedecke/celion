@@ -6,6 +6,7 @@ import CircularProgress from "./CircularProgress";
 import ActivityTimeline, { Activity } from "./ActivityTimeline";
 import { Button } from "./ui/button";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
+import { Badge } from "@/components/ui/badge";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -46,6 +47,8 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { WizardSteps, type WizardStep } from "@/components/ui/wizard-steps";
 import InfoTooltip from "./InfoTooltip";
+import { AddPipelineDialog } from "./dialogs/AddPipelineDialog";
+import type { Pipeline } from "@/types/pipeline";
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate, Json } from "@/integrations/supabase/types";
@@ -439,6 +442,8 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   const [formData, setFormData] = useState<ConnectorFormData>(() => createInitialConnectorFormData());
   const [connectorStep, setConnectorStep] = useState(0);
   const [currentPipelineId, setCurrentPipelineId] = useState<string | null>(null);
+  const [pipelines, setPipelines] = useState<Pipeline[]>([]);
+  const [isAddPipelineOpen, setIsAddPipelineOpen] = useState(false);
 
   const totalConnectorSteps = CONNECTOR_WIZARD_STEPS.length;
   const isOnLastConnectorStep = connectorStep === totalConnectorSteps - 1;
@@ -461,23 +466,25 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
   const hasInConnector = !!project.connectors?.in;
   const hasOutConnector = !!project.connectors?.out;
 
-  // Load the pipeline for this migration
+  // Load all pipelines for this migration
   useEffect(() => {
-    const loadPipeline = async () => {
+    const loadPipelines = async () => {
       const { data, error } = await supabase
         .from('pipelines')
-        .select('id')
+        .select('*')
         .eq('migration_id', project.id)
-        .order('execution_order', { ascending: true })
-        .limit(1)
-        .maybeSingle();
+        .order('execution_order', { ascending: true });
       
       if (!error && data) {
-        setCurrentPipelineId(data.id);
+        setPipelines(data as Pipeline[]);
+        // Set the first pipeline as current if not already set
+        if (!currentPipelineId && data.length > 0) {
+          setCurrentPipelineId(data[0].id);
+        }
       }
     };
 
-    loadPipeline();
+    loadPipelines();
   }, [project.id]);
 
   const loadActiveMappings = useCallback(async (): Promise<FieldMapping[]> => {
@@ -487,6 +494,44 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
 
     return await loadMappingsFromDatabase(currentPipelineId, selectedSourceObject, selectedTargetObject);
   }, [currentPipelineId, selectedSourceObject, selectedTargetObject]);
+
+  const handleAddPipeline = async (pipelineData: {
+    name: string;
+    description?: string;
+    sourceSystem: string;
+    targetSystem: string;
+    sourceDataSourceId?: string;
+    targetDataSourceId?: string;
+  }) => {
+    const { data, error } = await supabase
+      .from('pipelines')
+      .insert({
+        migration_id: project.id,
+        name: pipelineData.name,
+        description: pipelineData.description,
+        source_system: pipelineData.sourceSystem,
+        target_system: pipelineData.targetSystem,
+        source_data_source_id: pipelineData.sourceDataSourceId,
+        target_data_source_id: pipelineData.targetDataSourceId,
+        execution_order: pipelines.length,
+        is_active: true,
+        progress: 0,
+        objects_transferred: '0/0',
+        mapped_objects: '0/0',
+      })
+      .select()
+      .single();
+
+    if (!error && data) {
+      setPipelines([...pipelines, data as Pipeline]);
+      setCurrentPipelineId(data.id);
+      toast.success(`Pipeline "${pipelineData.name}" wurde hinzugefügt`);
+    } else {
+      toast.error("Fehler beim Hinzufügen der Pipeline");
+    }
+  };
+
+  const currentPipeline = pipelines.find(p => p.id === currentPipelineId);
 
   // Load meta model approval status from database
   useEffect(() => {
@@ -1507,6 +1552,67 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
                   {renderNode('Zielsystem', Upload, hasExported || exportEdgeFill >= 100, isExporting && exportEdgeFill < 100)}
                 </div>
               </div>
+            </CardContent>
+          </Card>
+
+          {/* Pipeline Selection Card */}
+          <Card className="bg-card border-border">
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-base">Pipelines</CardTitle>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setIsAddPipelineOpen(true)}
+                >
+                  <Plus className="h-4 w-4 mr-2" />
+                  Pipeline hinzufügen
+                </Button>
+              </div>
+            </CardHeader>
+            <CardContent>
+              {pipelines.length === 0 ? (
+                <p className="text-sm text-muted-foreground">Noch keine Pipelines konfiguriert</p>
+              ) : (
+                <div className="space-y-2">
+                  {pipelines.map((pipeline) => (
+                    <div
+                      key={pipeline.id}
+                      className={`p-3 rounded-lg border cursor-pointer transition-all ${
+                        currentPipelineId === pipeline.id
+                          ? "border-primary bg-primary/5"
+                          : "border-border hover:border-primary/50"
+                      }`}
+                      onClick={() => setCurrentPipelineId(pipeline.id)}
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium text-sm">{pipeline.name}</p>
+                            {!pipeline.is_active && (
+                              <Badge variant="secondary" className="text-xs">Inaktiv</Badge>
+                            )}
+                          </div>
+                          {pipeline.description && (
+                            <p className="text-xs text-muted-foreground mt-1">{pipeline.description}</p>
+                          )}
+                          <div className="flex items-center gap-2 mt-2 text-xs text-muted-foreground">
+                            <span>{pipeline.source_system}</span>
+                            <ArrowLeftRight className="h-3 w-3" />
+                            <span>{pipeline.target_system}</span>
+                          </div>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-xs text-muted-foreground">Order: {pipeline.execution_order}</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {pipeline.objects_transferred}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </CardContent>
           </Card>
 
@@ -2734,6 +2840,14 @@ const MigrationDetails = ({ project, activeTab, onRefresh }: MigrationDetailsPro
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Add Pipeline Dialog */}
+      <AddPipelineDialog
+        open={isAddPipelineOpen}
+        onOpenChange={setIsAddPipelineOpen}
+        onAdd={handleAddPipeline}
+        targetSystem={project.targetSystem}
+      />
     </div>
   );
 };
