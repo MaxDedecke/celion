@@ -199,16 +199,16 @@ const mapDataSourceToFormData = (source?: DataSourceWithProjects): DataSourceFor
   const base = createInitialDataSourceFormData();
   if (!source) return base;
 
-  const config = source.additional_config || {};
-  const endpoints = config.endpoints || {};
-  const operations = config.operations || {};
-  const pagination = config.pagination || {};
-  const filtering = config.filtering || {};
-  const rateLimiting = config.rate_limiting || {};
-  const batching = config.batching || {};
-  const scheduling = config.scheduling || {};
-  const dataFormat = config.data_format || {};
-  const identifiers = config.identifiers || {};
+  const config = (source.additional_config as Record<string, any>) || {};
+  const endpoints = (config.endpoints as Record<string, any>) || {};
+  const operations = (config.operations as Record<string, any>) || {};
+  const pagination = (config.pagination as Record<string, any>) || {};
+  const filtering = (config.filtering as Record<string, any>) || {};
+  const rateLimiting = (config.rate_limiting as Record<string, any>) || {};
+  const batching = (config.batching as Record<string, any>) || {};
+  const scheduling = (config.scheduling as Record<string, any>) || {};
+  const dataFormat = (config.data_format as Record<string, any>) || {};
+  const identifiers = (config.identifiers as Record<string, any>) || {};
 
   return {
     ...base,
@@ -221,19 +221,19 @@ const mapDataSourceToFormData = (source?: DataSourceWithProjects): DataSourceFor
     auth_type: source.auth_type,
     is_active: source.is_active,
     is_global: source.is_global,
-    clientId: config.client_id || "",
-    clientSecret: config.client_secret || "",
-    authUrl: config.auth_url || "",
-    tokenUrl: config.token_url || "",
-    scope: config.scope || "",
-    redirectUri: config.redirect_uri || "",
-    realm: config.realm || "",
-    issuer: config.issuer || "",
-    sslVerification: config.ssl_verification ?? true,
-    proxyHost: config.proxy_host || "",
-    proxyPort: config.proxy_port || "",
-    vpnSettings: config.vpn_settings || "",
-    headers: mapHeadersToFields(config.headers),
+    clientId: (config.client_id as string) || "",
+    clientSecret: (config.client_secret as string) || "",
+    authUrl: (config.auth_url as string) || "",
+    tokenUrl: (config.token_url as string) || "",
+    scope: (config.scope as string) || "",
+    redirectUri: (config.redirect_uri as string) || "",
+    realm: (config.realm as string) || "",
+    issuer: (config.issuer as string) || "",
+    sslVerification: (config.ssl_verification as boolean) ?? true,
+    proxyHost: (config.proxy_host as string) || "",
+    proxyPort: (config.proxy_port as string) || "",
+    vpnSettings: (config.vpn_settings as string) || "",
+    headers: mapHeadersToFields(config.headers as any),
     listEndpoint: endpoints.list || "",
     detailEndpoint: endpoints.detail || "",
     createEndpoint: endpoints.create || "",
@@ -265,7 +265,7 @@ const mapDataSourceToFormData = (source?: DataSourceWithProjects): DataSourceFor
     maxObjectsPerRun: batching.max_objects_per_run ? String(batching.max_objects_per_run) : "",
     pollIntervalMinutes: scheduling.poll_interval_minutes ? String(scheduling.poll_interval_minutes) : "",
     cronSchedule: scheduling.cron || "",
-    notes: config.notes || "",
+    notes: (config.notes as string) || "",
   };
 };
 
