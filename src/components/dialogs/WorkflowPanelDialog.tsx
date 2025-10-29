@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { PointerEvent as ReactPointerEvent } from "react";
 import {
   Dialog,
   DialogContent,
@@ -34,7 +35,7 @@ const NODE_WIDTH = 220;
 const NODE_HEIGHT = 130;
 
 const statusOptions: Array<{ value: WorkflowNodeStatus; label: string }> = [
-  { value: "pending", label: "Offen" },
+  { value: "pending", label: "Geplant" },
   { value: "in-progress", label: "In Arbeit" },
   { value: "done", label: "Erledigt" },
 ];
@@ -165,7 +166,7 @@ const WorkflowPanelDialog = ({
 
   const selectedNode = selectedNodeId ? nodesById[selectedNodeId] ?? null : null;
 
-  const handlePointerDown = (event: React.PointerEvent<HTMLDivElement>, node: WorkflowNode) => {
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>, node: WorkflowNode) => {
     const boardElement = boardRef.current;
     if (!boardElement) return;
 
@@ -306,9 +307,9 @@ const WorkflowPanelDialog = ({
         <DialogHeader className="space-y-3">
           <div className="flex items-center justify-between gap-4">
             <div>
-              <DialogTitle>Workflow Panel</DialogTitle>
+              <DialogTitle>Workflow bearbeiten</DialogTitle>
               <DialogDescription>
-                Baue visuelle Abläufe für deinen Agenten. Ziehe Schritte auf dem Whiteboard und verknüpfe sie miteinander.
+                Arrangiere Schritte, aktualisiere Inhalte und verknüpfe Abhängigkeiten für diesen Migrationsworkflow.
               </DialogDescription>
             </div>
             <Button
@@ -335,7 +336,7 @@ const WorkflowPanelDialog = ({
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <span>{workflow.nodes.length} Schritte</span>
               <span className="text-muted-foreground/60">•</span>
-              <span>{workflow.connections.length} Verbindungen</span>
+              <span>{workflow.connections.length} Verknüpfungen</span>
             </div>
             <Button size="sm" onClick={addNode} className="gap-2">
               <Plus className="h-4 w-4" /> Schritt hinzufügen
@@ -375,7 +376,7 @@ const WorkflowPanelDialog = ({
               {workflow.nodes.map((node) => (
                 <div
                   key={node.id}
-                  className={cn(getNodeClassName(node), selectedNodeId === node.id && "ring-2 ring-primary/80")}
+                  className={cn(getNodeClassName(node), selectedNodeId === node.id && "ring-2 ring-primary/80", !node.active && "opacity-70")}
                   style={{ left: node.x, top: node.y }}
                   onPointerDown={(event) => handlePointerDown(event, node)}
                   onClick={() => setSelectedNodeId(node.id)}
@@ -383,7 +384,9 @@ const WorkflowPanelDialog = ({
                   <div className="flex items-start justify-between gap-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-semibold text-foreground">{node.title}</p>
-                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">{node.description || "Noch keine Beschreibung"}</p>
+                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                        {node.description || "Noch keine Beschreibung"}
+                      </p>
                     </div>
                     <Badge variant="secondary" className={cn("text-[10px] uppercase", statusBadgeClasses[node.status])}>
                       {statusOptions.find((option) => option.value === node.status)?.label ?? "Status"}
@@ -458,7 +461,7 @@ const WorkflowPanelDialog = ({
                           className={cn(
                             "h-7 w-7 rounded-full border-2 border-transparent transition",
                             nodeColorClasses[option.value],
-                            selectedNode.color === option.value
+                            ensureColor(selectedNode.color) === option.value
                               ? "ring-2 ring-offset-2 ring-offset-background"
                               : "opacity-70 hover:opacity-100",
                           )}
@@ -473,7 +476,10 @@ const WorkflowPanelDialog = ({
                       id="workflow-node-active"
                       checked={selectedNode.active}
                       onCheckedChange={(checked) =>
-                        updateNode(selectedNode.id, { active: Boolean(checked) })
+                        updateNode(selectedNode.id, {
+                          active: Boolean(checked),
+                          status: checked ? selectedNode.status : "pending",
+                        })
                       }
                     />
                     <label
@@ -485,7 +491,7 @@ const WorkflowPanelDialog = ({
                   </div>
 
                   <div className="space-y-2">
-                    <label className="text-xs font-medium text-muted-foreground">Neue Verbindung</label>
+                    <label className="text-xs font-medium text-muted-foreground">Neue Verknüpfung</label>
                     <div className="flex items-center gap-2">
                       <Select value={newConnectionTarget} onValueChange={setNewConnectionTarget}>
                         <SelectTrigger className="flex-1">
@@ -521,11 +527,11 @@ const WorkflowPanelDialog = ({
                   </div>
 
                   <div className="space-y-2">
-                    <p className="text-xs font-medium text-muted-foreground">Bestehende Verbindungen</p>
+                    <p className="text-xs font-medium text-muted-foreground">Bestehende Verknüpfungen</p>
                     <ScrollArea className="h-24 rounded-lg border border-border/60 bg-background/60 p-2">
                       <div className="space-y-2 text-xs">
                         {workflow.connections.filter((connection) => connection.sourceId === selectedNode.id).length === 0 ? (
-                          <p className="text-muted-foreground">Keine ausgehenden Verbindungen.</p>
+                          <p className="text-muted-foreground">Keine ausgehenden Verknüpfungen.</p>
                         ) : (
                           workflow.connections
                             .filter((connection) => connection.sourceId === selectedNode.id)
@@ -539,7 +545,7 @@ const WorkflowPanelDialog = ({
                                   type="button"
                                   onClick={() => removeConnection(connection.id)}
                                   className="text-muted-foreground transition hover:text-destructive"
-                                  aria-label="Verbindung entfernen"
+                                  aria-label="Verknüpfung entfernen"
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
                                 </button>
@@ -565,7 +571,9 @@ const WorkflowPanelDialog = ({
               ) : (
                 <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
                   <p className="text-sm font-medium text-foreground">Wähle einen Schritt aus</p>
-                  <p className="text-xs text-muted-foreground">Tippe auf ein Element im Whiteboard, um Details zu bearbeiten.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Tippe auf ein Element im Whiteboard, um Details zu bearbeiten.
+                  </p>
                 </div>
               )}
             </aside>

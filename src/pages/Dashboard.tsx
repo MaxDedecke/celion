@@ -8,7 +8,6 @@ import EditMigrationDialog from "@/components/dialogs/EditMigrationDialog";
 import MigrationDetails from "@/components/MigrationDetails";
 import DataFlowLoader from "@/components/DataFlowLoader";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import {
   Plus,
   FolderKanban,
@@ -48,8 +47,6 @@ const Dashboard = () => {
   const [showAccountDialog, setShowAccountDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [activeDialogTab, setActiveDialogTab] = useState<"account" | "settings">("account");
-  const [activeMigrationTab, setActiveMigrationTab] = useState<"general" | "agent">("general");
-  const [currentWorkflowMode, setCurrentWorkflowMode] = useState<"agent" | "manual" | null>(null);
   const [migrations, setMigrations] = useState<any[]>([]);
   const [standaloneMigrations, setStandaloneMigrations] = useState<any[]>([]);
   const [allProjects, setAllProjects] = useState<any[]>([]);
@@ -73,15 +70,7 @@ const Dashboard = () => {
 
   useEffect(() => {
     setSelectedMigration(migrationId ?? null);
-    setActiveMigrationTab("general"); // Reset tab to general when switching migrations
-    setCurrentWorkflowMode(null);
   }, [migrationId]);
-
-  useEffect(() => {
-    if (currentWorkflowMode !== "agent" && activeMigrationTab === "agent") {
-      setActiveMigrationTab("general");
-    }
-  }, [currentWorkflowMode, activeMigrationTab]);
 
   const checkAuth = async () => {
     const { data: { session } } = await supabase.auth.getSession();
@@ -400,35 +389,8 @@ const Dashboard = () => {
           >
             {currentMigration ? (
               <div className="flex flex-wrap items-center gap-4">
-                <div className="inline-flex items-center gap-2 rounded-full bg-foreground/5 p-1 text-sm">
-                  <Button
-                    variant="ghost"
-                    onClick={() => setActiveMigrationTab("general")}
-                    size="sm"
-                    className={cn(
-                      "rounded-full px-4 transition-colors",
-                      activeMigrationTab === "general"
-                        ? "text-accent"
-                        : "text-muted-foreground",
-                    )}
-                  >
-                    General
-                  </Button>
-                  {currentWorkflowMode === "agent" && (
-                    <Button
-                      variant="ghost"
-                      onClick={() => setActiveMigrationTab("agent")}
-                      size="sm"
-                      className={cn(
-                        "rounded-full px-4 transition-colors",
-                        activeMigrationTab === "agent"
-                          ? "text-accent"
-                          : "text-muted-foreground",
-                      )}
-                    >
-                      Agent UI
-                    </Button>
-                  )}
+                <div className="inline-flex items-center gap-2 rounded-full bg-foreground/5 px-4 py-1 text-sm text-muted-foreground">
+                  Migration
                 </div>
                 <div className="text-base font-semibold text-foreground">
                   <span className="inline-flex items-center gap-2">
@@ -462,9 +424,7 @@ const Dashboard = () => {
               <div className="app-surface h-full overflow-hidden rounded-3xl">
                 <MigrationDetails
                   project={currentMigration}
-                  activeTab={activeMigrationTab}
                   onRefresh={refreshCurrentMigration}
-                  onWorkflowModeChange={setCurrentWorkflowMode}
                 />
               </div>
             ) : (
