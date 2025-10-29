@@ -8,6 +8,8 @@ export interface WorkflowNode {
   y: number;
   color: string;
   status: WorkflowNodeStatus;
+  priority: number;
+  active: boolean;
 }
 
 export interface WorkflowConnection {

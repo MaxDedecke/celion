@@ -41,17 +41,23 @@ const AgentWorkflowTab = ({ workflow, onOpenPanel, onWorkflowChange }: AgentWork
   const [agentState, setAgentState] = useState<AgentWorkspaceState>(createInitialAgentState());
 
   const sortedWorkflowSteps = useMemo(() => {
-    return [...workflow.nodes].sort((a, b) => {
-      if (a.y === b.y) {
-        return a.x - b.x;
-      }
+    return [...workflow.nodes]
+      .filter((node) => node.active !== false)
+      .sort((a, b) => {
+        if (a.priority !== b.priority) {
+          return a.priority - b.priority;
+        }
 
-      return a.y - b.y;
-    });
+        if (a.y === b.y) {
+          return a.x - b.x;
+        }
+
+        return a.y - b.y;
+      });
   }, [workflow.nodes]);
 
   const generatePlan = () => {
-    if (workflow.nodes.length === 0) {
+    if (sortedWorkflowSteps.length === 0) {
       toast.error("Füge zuerst Schritte im Workflow Panel hinzu.");
       return;
     }
@@ -197,7 +203,7 @@ const AgentWorkflowTab = ({ workflow, onOpenPanel, onWorkflowChange }: AgentWork
     toast.info("Agent Workspace wurde zurückgesetzt.");
   };
 
-  if (workflow.nodes.length === 0) {
+  if (sortedWorkflowSteps.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 rounded-3xl border border-dashed border-primary/40 bg-primary/5 p-10 text-center">
         <Bot className="h-12 w-12 text-primary" />

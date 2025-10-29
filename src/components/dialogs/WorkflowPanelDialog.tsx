@@ -12,6 +12,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Checkbox } from "@/components/ui/checkbox";
 import { cn } from "@/lib/utils";
 import type {
   WorkflowBoardState,
@@ -26,6 +27,7 @@ interface WorkflowPanelDialogProps {
   onOpenChange: (open: boolean) => void;
   workflow: WorkflowBoardState;
   onWorkflowChange: (updater: (previous: WorkflowBoardState) => WorkflowBoardState) => void;
+  initialSelectedNodeId?: string | null;
 }
 
 const NODE_WIDTH = 220;
@@ -73,7 +75,13 @@ const getNodeClassName = (node: WorkflowNode) =>
     nodeColorClasses[ensureColor(node.color)],
   );
 
-const WorkflowPanelDialog = ({ open, onOpenChange, workflow, onWorkflowChange }: WorkflowPanelDialogProps) => {
+const WorkflowPanelDialog = ({
+  open,
+  onOpenChange,
+  workflow,
+  onWorkflowChange,
+  initialSelectedNodeId,
+}: WorkflowPanelDialogProps) => {
   const boardRef = useRef<HTMLDivElement | null>(null);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
@@ -94,6 +102,16 @@ const WorkflowPanelDialog = ({ open, onOpenChange, workflow, onWorkflowChange }:
       setIsFullscreen(false);
     }
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !initialSelectedNodeId) {
+      return;
+    }
+
+    if (workflow.nodes.some((node) => node.id === initialSelectedNodeId)) {
+      setSelectedNodeId(initialSelectedNodeId);
+    }
+  }, [initialSelectedNodeId, open, workflow.nodes]);
 
   useEffect(() => {
     if (!selectedNodeId && workflow.nodes.length > 0) {
@@ -182,6 +200,8 @@ const WorkflowPanelDialog = ({ open, onOpenChange, workflow, onWorkflowChange }:
       y: baseY + nextIndex * 6,
       color: "sky",
       status: "pending",
+      priority: workflow.nodes.length + 1,
+      active: true,
     };
 
     onWorkflowChange((previous) => ({
@@ -446,6 +466,22 @@ const WorkflowPanelDialog = ({ open, onOpenChange, workflow, onWorkflowChange }:
                         />
                       ))}
                     </div>
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    <Checkbox
+                      id="workflow-node-active"
+                      checked={selectedNode.active}
+                      onCheckedChange={(checked) =>
+                        updateNode(selectedNode.id, { active: Boolean(checked) })
+                      }
+                    />
+                    <label
+                      htmlFor="workflow-node-active"
+                      className="text-xs font-medium text-muted-foreground"
+                    >
+                      Schritt aktiv
+                    </label>
                   </div>
 
                   <div className="space-y-2">
