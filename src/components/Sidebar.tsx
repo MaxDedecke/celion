@@ -147,23 +147,26 @@ const Sidebar = ({
             </div>
             {projects.map((project) => {
               const projectMigs = projectMigrations.filter(m => m.projectId === project.id);
+              const hasProjectMigrations = projectMigs.length > 0;
               return (
                 <div key={project.id} className="space-y-1">
                   <div className="flex w-full items-center justify-between rounded-xl px-2 py-2 text-sm transition-colors">
                     <div className="flex flex-1 items-center gap-2">
-                      <button
-                        type="button"
-                        onClick={() => toggleProject(project.id)}
-                        className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
-                        aria-label={expandedProjects.has(project.id) ? "Projekt einklappen" : "Projekt ausklappen"}
-                        aria-expanded={expandedProjects.has(project.id)}
-                      >
-                        {expandedProjects.has(project.id) ? (
-                          <ChevronDown className="h-4 w-4" />
-                        ) : (
-                          <ChevronRight className="h-4 w-4" />
-                        )}
-                      </button>
+                      {hasProjectMigrations && (
+                        <button
+                          type="button"
+                          onClick={() => toggleProject(project.id)}
+                          className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
+                          aria-label={expandedProjects.has(project.id) ? "Projekt einklappen" : "Projekt ausklappen"}
+                          aria-expanded={expandedProjects.has(project.id)}
+                        >
+                          {expandedProjects.has(project.id) ? (
+                            <ChevronDown className="h-4 w-4" />
+                          ) : (
+                            <ChevronRight className="h-4 w-4" />
+                          )}
+                        </button>
+                      )}
                       <button
                         type="button"
                         onClick={() => navigate(`/project/${encodeURIComponent(project.name)}`)}
