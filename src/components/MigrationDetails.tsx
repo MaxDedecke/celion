@@ -49,16 +49,11 @@ import { WizardSteps, type WizardStep } from "@/components/ui/wizard-steps";
 import InfoTooltip from "./InfoTooltip";
 import { AddPipelineDialog } from "./dialogs/AddPipelineDialog";
 import type { Pipeline } from "@/types/pipeline";
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "@/integrations/supabase/client";
 import type { Tables, TablesInsert, TablesUpdate, Json } from "@/integrations/supabase/types";
 import { toast } from "sonner";
 import TestConnectionDialog from "./dialogs/TestConnectionDialog";
-import { FieldMapper } from "./FieldMapper";
-import { getSystemObjectOptions } from "@/lib/schema-registry";
-import { applyMappingsToRecord, buildSampleRecordFromMappings } from "@/lib/migration-pipeline";
-import { loadMappingsFromDatabase, loadAllMappingsForSource } from "@/lib/mapping-storage";
-import type { FieldMapping } from "@/types/mapping";
 import AgentWorkflowTab from "./AgentWorkflowTab";
 import {
   createHeaderField,
@@ -217,7 +212,7 @@ interface MigrationProject {
 
 interface MigrationDetailsProps {
   project: MigrationProject;
-  activeTab: "general" | "mapping" | "agent";
+  activeTab: "general" | "agent";
   onRefresh: () => Promise<void>;
   onWorkflowModeChange?: (mode: "agent" | "manual" | null) => void;
 }
@@ -439,8 +434,6 @@ const MigrationDetails = ({ project, activeTab, onRefresh, onWorkflowModeChange 
   const [exportProgressVisual, setExportProgressVisual] = useState(0);
   const [isValidating, setIsValidating] = useState(false);
   const [hasValidated, setHasValidated] = useState(false);
-  const [selectedSourceObject, setSelectedSourceObject] = useState<string>('');
-  const [selectedTargetObject, setSelectedTargetObject] = useState<string>('');
   const [formData, setFormData] = useState<ConnectorFormData>(() => createInitialConnectorFormData());
   const [connectorStep, setConnectorStep] = useState(0);
   const [currentPipelineId, setCurrentPipelineId] = useState<string | null>(null);
@@ -502,14 +495,6 @@ const MigrationDetails = ({ project, activeTab, onRefresh, onWorkflowModeChange 
       setCurrentPipelineId(pipelines[0].id);
     }
   }, [pipelines, currentPipelineId]);
-
-  const loadActiveMappings = useCallback(async (): Promise<FieldMapping[]> => {
-    if (!selectedSourceObject || !selectedTargetObject || !currentPipelineId) {
-      return [];
-    }
-
-    return await loadMappingsFromDatabase(currentPipelineId, selectedSourceObject, selectedTargetObject);
-  }, [currentPipelineId, selectedSourceObject, selectedTargetObject]);
 
   const handleAddPipeline = async (pipelineData: {
     name: string;
@@ -726,16 +711,6 @@ const MigrationDetails = ({ project, activeTab, onRefresh, onWorkflowModeChange 
     const systemType = type === 'in' ? project.sourceSystem : project.targetSystem;
     return dataSources.filter(ds => ds.source_type === systemType);
   };
-
-  // Load available objects for mapping
-  const sourceObjects = useMemo(
-    () => getSystemObjectOptions(project.sourceSystem),
-    [project.sourceSystem]
-  );
-  const targetObjects = useMemo(
-    () => getSystemObjectOptions(project.targetSystem),
-    [project.targetSystem]
-  );
 
   const handleEdit = (type: 'in' | 'out') => {
     // Check if inconnector is tested before allowing outconnector edit
@@ -1068,45 +1043,6 @@ const MigrationDetails = ({ project, activeTab, onRefresh, onWorkflowModeChange 
   const handleImportStart = async () => {
     try {
       setIsImporting(true);
-
-      const activeMappings = await loadActiveMappings();
-
-      if (activeMappings.length > 0) {
-        const sampleRecord = buildSampleRecordFromMappings(activeMappings);
-        const populatedSample = Object.keys(sampleRecord).reduce<Record<string, unknown>>((acc, key) => {
-          acc[key] = `Sample(${key})`;
-          return acc;
-        }, {});
-
-        try {
-          const { errors, logs, result: transformedSample } = await applyMappingsToRecord(populatedSample, activeMappings, {
-            sourceSystem: project.sourceSystem,
-            targetSystem: project.targetSystem,
-            sourceObject: selectedSourceObject,
-            targetObject: selectedTargetObject,
-          });
-
-          if (logs.length) {
-            console.groupCollapsed('Mapping Pipeline Preview');
-            logs.forEach((log) => console.log(`[${log.level}] ${log.message}`, log.detail ?? ''));
-            console.groupEnd();
-          }
-
-          if (errors.length) {
-            errors.forEach((log) => console.error(`[Pipeline Error] ${log.message}`, log.detail ?? ''));
-            toast.error("Mapping-Validierung fehlgeschlagen. Bitte Konfiguration prüfen.");
-            setIsImporting(false);
-            return;
-          }
-
-          console.debug('Transformierte Pipeline-Vorschau', transformedSample);
-        } catch (error: unknown) {
-          console.error('Fehler bei der Pipeline-Ausführung', error);
-          toast.error('Fehler bei der Mapping-Auswertung in der Pipeline');
-          setIsImporting(false);
-          return;
-        }
-      }
 
       // Get the target count from mapped_objects
       const [, targetCountStr] = project.mappedObjects.split('/');
@@ -1910,7 +1846,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh, onWorkflowModeChange 
                       <div>
                         <p className="text-sm font-medium">Freigeben</p>
                         <p className="text-xs text-muted-foreground mt-1">
-                          Bearbeite das Modell in der Mapping UI
+                          Pflege das Meta-Modell außerhalb der Anwendung und gib es hier frei
                         </p>
                       </div>
                       <Switch
@@ -1925,87 +1861,6 @@ const MigrationDetails = ({ project, activeTab, onRefresh, onWorkflowModeChange 
             </div>
           </div>
         </div>
-      )}
-
-      {activeTab === "mapping" && (
-        currentPipeline?.workflow_type === 'agent' ? (
-          <div className="flex h-full flex-col items-center justify-center gap-4 rounded-3xl border border-dashed border-primary/40 bg-primary/5 p-8 text-center text-muted-foreground">
-            <Workflow className="h-12 w-12 text-primary" />
-            <div className="space-y-2 max-w-xl">
-              <h3 className="text-lg font-semibold text-foreground">Diese Pipeline wird von KI-Agenten gesteuert</h3>
-              <p className="text-sm">
-                Die klassische Mapping UI ist nur für manuelle Workflows verfügbar. Wechsle in den Agent Tab, um deine Automatisierung zu steuern und Ergebnisse zu überwachen.
-              </p>
-            </div>
-          </div>
-        ) : (
-          <div className="space-y-6 pb-6">
-            {/* Dropdowns Section */}
-            <div className="grid grid-cols-[1fr_auto_1fr] items-end gap-6">
-              {/* Left Dropdown - Source System Objects */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">
-                  {project.sourceSystem} Objects
-                </label>
-                <Select value={selectedSourceObject} onValueChange={setSelectedSourceObject}>
-                  <SelectTrigger className="w-full bg-background">
-                    <SelectValue placeholder="Select source object" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sourceObjects.map((obj) => (
-                      <SelectItem key={obj.id} value={obj.id}>
-                        {obj.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="flex items-end justify-center pb-2">
-                <div className="p-2 rounded-full bg-muted text-muted-foreground">
-                  <ArrowLeftRight className="h-5 w-5 translate-y-[2px]" />
-                </div>
-              </div>
-
-              {/* Right Dropdown - Target System Objects */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-foreground">
-                  {project.targetSystem} Objects
-                </label>
-                <Select value={selectedTargetObject} onValueChange={setSelectedTargetObject}>
-                  <SelectTrigger className="w-full bg-background">
-                    <SelectValue placeholder="Select target object" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {targetObjects.map((obj) => (
-                      <SelectItem key={obj.id} value={obj.id}>
-                        {obj.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-
-            {/* Field Mapping Area */}
-            <div className="border-transparent rounded-lg min-h-[600px]">
-              {selectedSourceObject && selectedTargetObject && currentPipelineId ? (
-                <FieldMapper
-                  pipelineId={currentPipelineId}
-                  sourceSystem={project.sourceSystem}
-                  targetSystem={project.targetSystem}
-                  sourceObject={selectedSourceObject}
-                  targetObject={selectedTargetObject}
-                />
-              ) : (
-                <div className="w-full h-full flex flex-col items-center justify-center gap-2 text-muted-foreground text-center py-12">
-                  <Workflow className="h-10 w-10" />
-                  <span>Wähle Source und Target Objects aus, um mit dem Mapping zu beginnen</span>
-                </div>
-              )}
-            </div>
-          </div>
-        )
       )}
 
       {activeTab === "agent" && (

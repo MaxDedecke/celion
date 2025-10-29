@@ -41,7 +41,7 @@ const Dashboard = () => {
   const [showAccountDialog, setShowAccountDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [activeDialogTab, setActiveDialogTab] = useState<"account" | "settings">("account");
-  const [activeMigrationTab, setActiveMigrationTab] = useState<"general" | "mapping" | "agent">("general");
+  const [activeMigrationTab, setActiveMigrationTab] = useState<"general" | "agent">("general");
   const [currentWorkflowMode, setCurrentWorkflowMode] = useState<"agent" | "manual" | null>(null);
   const [migrations, setMigrations] = useState<any[]>([]);
   const [standaloneMigrations, setStandaloneMigrations] = useState<any[]>([]);
@@ -71,10 +71,8 @@ const Dashboard = () => {
   }, [migrationId]);
 
   useEffect(() => {
-    if (currentWorkflowMode === "agent" && activeMigrationTab === "mapping") {
-      setActiveMigrationTab("agent");
-    } else if (currentWorkflowMode === "manual" && activeMigrationTab === "agent") {
-      setActiveMigrationTab("mapping");
+    if (currentWorkflowMode !== "agent" && activeMigrationTab === "agent") {
+      setActiveMigrationTab("general");
     }
   }, [currentWorkflowMode, activeMigrationTab]);
 
@@ -389,22 +387,7 @@ const Dashboard = () => {
                   >
                     General
                   </Button>
-                  {(currentWorkflowMode !== "agent") && (
-                    <Button
-                      variant="ghost"
-                      onClick={() => setActiveMigrationTab("mapping")}
-                      size="sm"
-                      className={cn(
-                        "rounded-full px-4 transition-colors",
-                        activeMigrationTab === "mapping"
-                          ? "text-accent"
-                          : "text-muted-foreground",
-                      )}
-                    >
-                      Mapping UI
-                    </Button>
-                  )}
-                  {(currentWorkflowMode !== "manual") && (
+                  {currentWorkflowMode === "agent" && (
                     <Button
                       variant="ghost"
                       onClick={() => setActiveMigrationTab("agent")}
