@@ -1,32 +1,35 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bot, Sparkles, ListChecks, ArrowRight, RotateCcw } from "lucide-react";
+import { useMemo, useState } from "react";
+import { Bot, Sparkles, ListChecks, RotateCcw, ArrowRight, Workflow } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
-import type { Pipeline } from "@/types/pipeline";
+import type { WorkflowBoardState } from "@/types/workflow";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
 
 interface AgentWorkflowTabProps {
-  pipelines: Pipeline[];
-  initialPipelineId: string | null;
-  onOpenAddPipeline: () => void;
+  workflow: WorkflowBoardState;
+  onOpenPanel: () => void;
+  onWorkflowChange: (updater: (previous: WorkflowBoardState) => WorkflowBoardState) => void;
 }
 
-type AgentPipelineState = {
+type PlanStep = {
+  id: string;
+  title: string;
+  description: string;
+};
+
+type AgentWorkspaceState = {
   briefing: string;
-  plan: string[];
-  completedSteps: Record<number, boolean>;
+  plan: PlanStep[];
+  completedSteps: Record<string, boolean>;
   logs: string[];
   isRunning: boolean;
 };
 
-const createInitialAgentState = (): AgentPipelineState => ({
+const createInitialAgentState = (): AgentWorkspaceState => ({
   briefing: "",
   plan: [],
   completedSteps: {},
@@ -34,140 +37,39 @@ const createInitialAgentState = (): AgentPipelineState => ({
   isRunning: false,
 });
 
-const AgentWorkflowTab = ({ pipelines, initialPipelineId, onOpenAddPipeline }: AgentWorkflowTabProps) => {
-  const agentPipelines = useMemo(
-    () => pipelines.filter((pipeline) => pipeline.workflow_type === "agent"),
-    [pipelines],
-  );
-  const [selectedPipelineId, setSelectedPipelineId] = useState<string | null>(initialPipelineId);
-  const [agentStates, setAgentStates] = useState<Record<string, AgentPipelineState>>({});
+const AgentWorkflowTab = ({ workflow, onOpenPanel, onWorkflowChange }: AgentWorkflowTabProps) => {
+  const [agentState, setAgentState] = useState<AgentWorkspaceState>(createInitialAgentState());
 
-  useEffect(() => {
-    if (agentPipelines.length === 0) {
-      setSelectedPipelineId(null);
-      return;
-    }
-
-    if (selectedPipelineId && agentPipelines.some((pipeline) => pipeline.id === selectedPipelineId)) {
-      return;
-    }
-
-    if (initialPipelineId && agentPipelines.some((pipeline) => pipeline.id === initialPipelineId)) {
-      setSelectedPipelineId(initialPipelineId);
-      return;
-    }
-
-    setSelectedPipelineId(agentPipelines[0].id);
-  }, [agentPipelines, initialPipelineId, selectedPipelineId]);
-
-  useEffect(() => {
-    if (!selectedPipelineId) return;
-
-    const loadAgentState = async () => {
-      const { data, error } = await supabase
-        .from("agent_workflow_states")
-        .select("*")
-        .eq("pipeline_id", selectedPipelineId)
-        .maybeSingle();
-
-      if (error) {
-        console.error("Error loading agent state:", error);
-        return;
+  const sortedWorkflowSteps = useMemo(() => {
+    return [...workflow.nodes].sort((a, b) => {
+      if (a.y === b.y) {
+        return a.x - b.x;
       }
 
-      if (data) {
-        setAgentStates((previous) => ({
-          ...previous,
-          [selectedPipelineId]: {
-            briefing: data.briefing,
-            plan: data.plan as string[],
-            completedSteps: data.completed_steps as Record<number, boolean>,
-            logs: data.logs as string[],
-            isRunning: data.is_running,
-          },
-        }));
-      } else {
-        setAgentStates((previous) => {
-          if (previous[selectedPipelineId]) {
-            return previous;
-          }
-
-          return {
-            ...previous,
-            [selectedPipelineId]: createInitialAgentState(),
-          };
-        });
-      }
-    };
-
-    loadAgentState();
-  }, [selectedPipelineId]);
-
-  const updateAgentState = useCallback(async (pipelineId: string, updater: (state: AgentPipelineState) => AgentPipelineState) => {
-    setAgentStates((previous) => {
-      const current = previous[pipelineId] ?? createInitialAgentState();
-      const newState = updater(current);
-
-      // Persist to database
-      supabase
-        .from("agent_workflow_states")
-        .upsert({
-          pipeline_id: pipelineId,
-          briefing: newState.briefing,
-          plan: newState.plan,
-          completed_steps: newState.completedSteps,
-          logs: newState.logs,
-          is_running: newState.isRunning,
-        })
-        .then(({ error }) => {
-          if (error) {
-            console.error("Error saving agent state:", error);
-            toast.error("Fehler beim Speichern des Agent-Status");
-          }
-        });
-
-      return {
-        ...previous,
-        [pipelineId]: newState,
-      };
+      return a.y - b.y;
     });
-  }, []);
-
-  const selectedPipeline = useMemo(
-    () => agentPipelines.find((pipeline) => pipeline.id === selectedPipelineId) ?? null,
-    [agentPipelines, selectedPipelineId],
-  );
-
-  const pipelineState = selectedPipelineId ? agentStates[selectedPipelineId] ?? createInitialAgentState() : createInitialAgentState();
+  }, [workflow.nodes]);
 
   const generatePlan = () => {
-    if (!selectedPipelineId || !selectedPipeline) {
-      toast.error("Bitte wähle zuerst eine Agent Pipeline aus.");
+    if (workflow.nodes.length === 0) {
+      toast.error("Füge zuerst Schritte im Workflow Panel hinzu.");
       return;
     }
 
-    if (!pipelineState.briefing.trim()) {
+    if (!agentState.briefing.trim()) {
       toast.error("Beschreibe das Ziel der Migration, damit der Agent einen Plan erstellen kann.");
       return;
     }
 
-    const dynamicSteps = pipelineState.briefing
-      .split(/\n|\./)
-      .map((item) => item.trim())
-      .filter((item) => item.length > 0);
+    const plan = sortedWorkflowSteps.map<PlanStep>((step) => ({
+      id: step.id,
+      title: step.title,
+      description: step.description,
+    }));
 
-    const baseSteps = [
-      `Analyse der ${selectedPipeline.source_system}-Daten`,
-      "Transformationslogik entwerfen",
-      `Zielstruktur für ${selectedPipeline.target_system} vorbereiten`,
-      "Validierung & Testdurchläufe planen",
-    ];
-
-    const mergedPlan = [...baseSteps, ...dynamicSteps].slice(0, 8);
-
-    updateAgentState(selectedPipelineId, (state) => ({
+    setAgentState((state) => ({
       ...state,
-      plan: mergedPlan,
+      plan,
       completedSteps: {},
       logs: [
         ...state.logs,
@@ -175,33 +77,59 @@ const AgentWorkflowTab = ({ pipelines, initialPipelineId, onOpenAddPipeline }: A
       ],
     }));
 
+    onWorkflowChange((previous) => ({
+      ...previous,
+      nodes: previous.nodes.map((node) =>
+        plan.some((step) => step.id === node.id)
+          ? { ...node, status: "pending" }
+          : node,
+      ),
+    }));
+
     toast.success("Agentenplan wurde aktualisiert.");
   };
 
-  const toggleStep = (index: number) => {
-    if (!selectedPipelineId) return;
+  const toggleStep = (stepId: string) => {
+    const isCompleted = Boolean(agentState.completedSteps[stepId]);
 
-    updateAgentState(selectedPipelineId, (state) => ({
+    setAgentState((state) => ({
       ...state,
       completedSteps: {
         ...state.completedSteps,
-        [index]: !state.completedSteps[index],
+        [stepId]: !isCompleted,
       },
+    }));
+
+    onWorkflowChange((previous) => ({
+      ...previous,
+      nodes: previous.nodes.map((node) => {
+        if (node.id !== stepId) {
+          return node;
+        }
+
+        return {
+          ...node,
+          status: isCompleted ? "pending" : "done",
+        };
+      }),
     }));
   };
 
   const executePlan = () => {
-    if (!selectedPipelineId || pipelineState.plan.length === 0) {
+    if (agentState.plan.length === 0) {
       toast.error("Erstelle zuerst einen Agentenplan.");
       return;
     }
 
-    if (pipelineState.isRunning) {
-      toast.info("Der Agent arbeitet bereits an dieser Pipeline.");
+    if (agentState.isRunning) {
+      toast.info("Der Agent arbeitet bereits an diesem Workflow.");
       return;
     }
 
-    updateAgentState(selectedPipelineId, (state) => ({
+    const currentPlan = agentState.plan;
+    const planIds = new Set(currentPlan.map((step) => step.id));
+
+    setAgentState((state) => ({
       ...state,
       isRunning: true,
       logs: [
@@ -210,11 +138,24 @@ const AgentWorkflowTab = ({ pipelines, initialPipelineId, onOpenAddPipeline }: A
       ],
     }));
 
-    const pipelineId = selectedPipelineId as string;
+    onWorkflowChange((previous) => ({
+      ...previous,
+      nodes: previous.nodes.map((node) => {
+        if (!planIds.has(node.id)) {
+          return node;
+        }
+
+        return {
+          ...node,
+          status: node.id === currentPlan[0]?.id ? "in-progress" : "pending",
+        };
+      }),
+    }));
+
     setTimeout(() => {
-      updateAgentState(pipelineId, (state) => {
-        const completedSteps = state.plan.reduce<Record<number, boolean>>((result, _step, index) => {
-          result[index] = true;
+      setAgentState((state) => {
+        const completedSteps = currentPlan.reduce<Record<string, boolean>>((result, step) => {
+          result[step.id] = true;
           return result;
         }, {});
 
@@ -229,30 +170,46 @@ const AgentWorkflowTab = ({ pipelines, initialPipelineId, onOpenAddPipeline }: A
         };
       });
 
+      onWorkflowChange((previous) => ({
+        ...previous,
+        nodes: previous.nodes.map((node) =>
+          planIds.has(node.id)
+            ? { ...node, status: "done" }
+            : node,
+        ),
+      }));
+
       toast.success("Migration durch den Agenten abgeschlossen.");
     }, 800);
   };
 
   const resetWorkspace = () => {
-    if (!selectedPipelineId) return;
+    setAgentState(createInitialAgentState());
 
-    updateAgentState(selectedPipelineId, () => createInitialAgentState());
+    onWorkflowChange((previous) => ({
+      ...previous,
+      nodes: previous.nodes.map((node) => ({
+        ...node,
+        status: "pending",
+      })),
+    }));
+
     toast.info("Agent Workspace wurde zurückgesetzt.");
   };
 
-  if (agentPipelines.length === 0) {
+  if (workflow.nodes.length === 0) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-4 rounded-3xl border border-dashed border-primary/40 bg-primary/5 p-10 text-center">
         <Bot className="h-12 w-12 text-primary" />
         <div className="space-y-2 max-w-xl">
           <h3 className="text-lg font-semibold text-foreground">Starte deine erste Agent Migration</h3>
           <p className="text-sm text-muted-foreground">
-            Lege eine Pipeline mit dem Workflow-Typ "Agent" an, um Migrationen durch unsere KI-Agenten durchführen zu lassen.
+            Öffne das Workflow Panel, um einen visuellen Ablauf anzulegen. Danach kannst du den Agentenlauf direkt hier steuern.
           </p>
         </div>
-        <Button onClick={onOpenAddPipeline} className="rounded-full px-5">
+        <Button onClick={onOpenPanel} className="rounded-full px-5">
           <Sparkles className="mr-2 h-4 w-4" />
-          Agent Pipeline erstellen
+          Workflow Panel öffnen
         </Button>
       </div>
     );
@@ -268,9 +225,9 @@ const AgentWorkflowTab = ({ pipelines, initialPipelineId, onOpenAddPipeline }: A
             Plane Aufgaben, überwache die Ausführung und begleite die KI bei der Migration.
           </p>
         </div>
-        <Button variant="outline" onClick={onOpenAddPipeline} className="rounded-full">
+        <Button variant="outline" onClick={onOpenPanel} className="rounded-full">
           <Sparkles className="mr-2 h-4 w-4" />
-          Weitere Agent Pipeline
+          Workflow bearbeiten
         </Button>
       </div>
 
@@ -278,74 +235,38 @@ const AgentWorkflowTab = ({ pipelines, initialPipelineId, onOpenAddPipeline }: A
         <Card className="h-full">
           <CardHeader className="space-y-4">
             <div className="flex flex-col gap-2">
-              <CardTitle className="text-base">Aktiver Agent</CardTitle>
+              <CardTitle className="text-base">Agentenablauf</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Wähle die Pipeline, formuliere das Ziel und erstelle anschließend den Aktionsplan.
+                Erstelle ein Briefing und leite daraus die nächsten Aufgaben für den Agenten ab.
               </p>
-            </div>
-            <div className="space-y-3">
-              <div className="space-y-2">
-                <Label htmlFor="agent-pipeline">Pipeline</Label>
-                <Select value={selectedPipelineId ?? ""} onValueChange={(value) => setSelectedPipelineId(value)}>
-                  <SelectTrigger id="agent-pipeline" className="bg-background">
-                    <SelectValue placeholder="Agent Pipeline auswählen" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {agentPipelines.map((pipeline) => (
-                      <SelectItem key={pipeline.id} value={pipeline.id}>
-                        {pipeline.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {selectedPipeline && (
-                <div className="rounded-lg border border-dashed border-primary/40 bg-primary/5 p-4">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <Badge variant="secondary" className="text-xs">
-                      Agent Workflow
-                    </Badge>
-                    {!selectedPipeline.is_active && (
-                      <Badge variant="outline" className="text-xs">
-                        Inaktiv
-                      </Badge>
-                    )}
-                  </div>
-                  <p className="mt-2 text-sm font-medium text-foreground">{selectedPipeline.name}</p>
-                  <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-                    <span>{selectedPipeline.source_system}</span>
-                    <ArrowRight className="h-3 w-3" />
-                    <span>{selectedPipeline.target_system}</span>
-                  </div>
-                </div>
-              )}
             </div>
           </CardHeader>
           <CardContent className="space-y-5">
             <div className="space-y-2">
-              <Label htmlFor="agent-briefing">Agent Briefing</Label>
+              <label htmlFor="agent-briefing" className="text-sm font-medium text-foreground">
+                Agent Briefing
+              </label>
               <Textarea
                 id="agent-briefing"
                 placeholder="Beschreibe das gewünschte Migrationsergebnis, z. B. welche Objekte priorisiert werden sollen oder welche Qualitätsziele gelten."
                 className="min-h-[120px]"
-                value={pipelineState.briefing}
+                value={agentState.briefing}
                 onChange={(event) => {
-                  if (!selectedPipelineId) return;
-                  updateAgentState(selectedPipelineId, (state) => ({
+                  const value = event.target.value;
+                  setAgentState((state) => ({
                     ...state,
-                    briefing: event.target.value,
+                    briefing: value,
                   }));
                 }}
               />
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
-              <Button onClick={generatePlan} disabled={!selectedPipelineId}>
+              <Button onClick={generatePlan}>
                 <ListChecks className="mr-2 h-4 w-4" />
                 Plan generieren
               </Button>
-              <Button variant="outline" onClick={resetWorkspace} disabled={!selectedPipelineId}>
+              <Button variant="outline" onClick={resetWorkspace}>
                 <RotateCcw className="mr-2 h-4 w-4" />
                 Workspace zurücksetzen
               </Button>
@@ -355,27 +276,37 @@ const AgentWorkflowTab = ({ pipelines, initialPipelineId, onOpenAddPipeline }: A
               <div className="flex items-center justify-between">
                 <h3 className="text-sm font-semibold text-foreground">Vorgeschlagene Schritte</h3>
                 <span className="text-xs text-muted-foreground">
-                  {pipelineState.plan.length > 0 ? `${pipelineState.plan.length} Schritte` : "Noch kein Plan"}
+                  {agentState.plan.length > 0 ? `${agentState.plan.length} Schritte` : "Noch kein Plan"}
                 </span>
               </div>
 
-              {pipelineState.plan.length === 0 ? (
+              {agentState.plan.length === 0 ? (
                 <div className="rounded-lg border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
                   Definiere ein Briefing und generiere anschließend den Agentenplan.
                 </div>
               ) : (
                 <div className="space-y-2">
-                  {pipelineState.plan.map((step, index) => (
+                  {agentState.plan.map((step, index) => (
                     <label
-                      key={`${step}-${index}`}
+                      key={step.id}
                       className="flex cursor-pointer items-start gap-3 rounded-lg border border-border/60 bg-background p-3 text-sm hover:border-primary/40"
                     >
                       <Checkbox
-                        checked={pipelineState.completedSteps[index] ?? false}
-                        onCheckedChange={() => toggleStep(index)}
+                        checked={agentState.completedSteps[step.id] ?? false}
+                        onCheckedChange={() => toggleStep(step.id)}
                         className="mt-1"
                       />
-                      <span className="leading-5 text-foreground">{step}</span>
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Badge variant="secondary" className="text-[10px] uppercase">
+                            Schritt {index + 1}
+                          </Badge>
+                          <span className="font-medium text-foreground">{step.title}</span>
+                        </div>
+                        {step.description && (
+                          <p className="text-xs text-muted-foreground">{step.description}</p>
+                        )}
+                      </div>
                     </label>
                   ))}
                 </div>
@@ -395,34 +326,64 @@ const AgentWorkflowTab = ({ pipelines, initialPipelineId, onOpenAddPipeline }: A
             <div className="rounded-lg border border-dashed border-border/60 bg-muted/40 p-4">
               <p className="text-sm font-medium text-foreground">Aktueller Status</p>
               <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-                <Badge variant={pipelineState.isRunning ? "default" : "outline"} className="text-xs">
-                  {pipelineState.isRunning ? "Aktiv" : "Bereit"}
+                <Badge variant={agentState.isRunning ? "default" : "outline"} className="text-xs">
+                  {agentState.isRunning ? "Aktiv" : "Bereit"}
                 </Badge>
                 <span>
-                  {pipelineState.isRunning
-                    ? "Agent führt die Migration durch"
+                  {agentState.isRunning
+                    ? "Agent führt den Workflow aus"
                     : "Warte auf den nächsten Agentenlauf"}
                 </span>
+              </div>
+              <div className="mt-3 space-y-2 text-xs text-muted-foreground">
+                {sortedWorkflowSteps.map((node, index) => (
+                  <div key={node.id} className="flex items-center gap-2">
+                    <Badge
+                      variant="outline"
+                      className={
+                        node.status === "done"
+                          ? "border-emerald-500/50 text-emerald-600"
+                          : node.status === "in-progress"
+                            ? "border-sky-500/50 text-sky-600"
+                            : "border-border/60 text-muted-foreground"
+                      }
+                    >
+                      {index + 1}
+                    </Badge>
+                    <span className="flex items-center gap-2 text-foreground">
+                      <Workflow className="h-3.5 w-3.5 text-muted-foreground" />
+                      {node.title}
+                    </span>
+                    <ArrowRight className="h-3 w-3 text-muted-foreground" />
+                    <span className="text-muted-foreground">
+                      {node.status === "done"
+                        ? "Erledigt"
+                        : node.status === "in-progress"
+                          ? "In Arbeit"
+                          : "Geplant"}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
 
             <Button
               className="w-full"
               onClick={executePlan}
-              disabled={!selectedPipelineId || pipelineState.plan.length === 0 || pipelineState.isRunning}
+              disabled={agentState.plan.length === 0 || agentState.isRunning}
             >
               <Sparkles className="mr-2 h-4 w-4" />
               Agentenlauf starten
             </Button>
 
             <div className="space-y-2">
-              <Label>Aktivitätsprotokoll</Label>
+              <label className="text-sm font-medium text-foreground">Aktivitätsprotokoll</label>
               <ScrollArea className="h-48 rounded-lg border border-border/60 bg-background p-3 text-sm">
-                {pipelineState.logs.length === 0 ? (
+                {agentState.logs.length === 0 ? (
                   <p className="text-muted-foreground">Noch keine Aktivitäten protokolliert.</p>
                 ) : (
                   <ul className="space-y-2">
-                    {pipelineState.logs.map((entry, index) => (
+                    {agentState.logs.map((entry, index) => (
                       <li key={`${entry}-${index}`} className="text-foreground">
                         {entry}
                       </li>
