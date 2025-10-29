@@ -265,7 +265,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh, onWorkflowModeChange 
               </CardContent>
             </Card>
 
-            <Card className="border-border bg-card">
+            <Card className="flex h-full flex-col border-border bg-card">
               <CardHeader>
                 <CardTitle className="text-base">Prompt &amp; Anmerkungen</CardTitle>
                 <p className="text-sm text-muted-foreground">
@@ -273,9 +273,11 @@ const MigrationDetails = ({ project, activeTab, onRefresh, onWorkflowModeChange 
                   Briefing.
                 </p>
               </CardHeader>
-              <CardContent className="flex h-full flex-col gap-4">
-                <div className="flex flex-1 flex-col gap-2">
-                  <Label htmlFor="migration-notes">Briefing für den Agenten</Label>
+              <CardContent className="flex flex-1 min-h-0 flex-col gap-4">
+                <div className="flex flex-1 min-h-0 flex-col gap-2">
+                  <Label htmlFor="migration-notes" className="sr-only">
+                    Briefing für den Agenten
+                  </Label>
                   <Textarea
                     id="migration-notes"
                     value={notes}
