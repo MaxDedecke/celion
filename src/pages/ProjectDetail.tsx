@@ -545,9 +545,6 @@ const ProjectDetail = () => {
                               </Badge>
                             )}
                           </div>
-                          <div className="flex items-center justify-end text-sm text-muted-foreground">
-                            <span className="font-medium text-primary">Mehr erfahren →</span>
-                          </div>
                         </CardContent>
                       </Card>
                     ))}
