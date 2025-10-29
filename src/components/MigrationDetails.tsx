@@ -468,6 +468,12 @@ const MigrationDetails = ({ project, activeTab, onRefresh, onWorkflowModeChange 
   const hasInConnector = !!project.connectors?.in;
   const hasOutConnector = !!project.connectors?.out;
 
+  // Reset pipelines when migration changes to avoid stale selections
+  useEffect(() => {
+    setPipelines([]);
+    setCurrentPipelineId(null);
+  }, [project.id]);
+
   // Load all pipelines for this migration
   useEffect(() => {
     const loadPipelines = async () => {
@@ -476,18 +482,26 @@ const MigrationDetails = ({ project, activeTab, onRefresh, onWorkflowModeChange 
         .select('*')
         .eq('migration_id', project.id)
         .order('execution_order', { ascending: true });
-      
+
       if (!error && data) {
         setPipelines(data as Pipeline[]);
-        // Set the first pipeline as current if not already set
-        if (!currentPipelineId && data.length > 0) {
-          setCurrentPipelineId(data[0].id);
-        }
       }
     };
 
     loadPipelines();
   }, [project.id]);
+
+  // Ensure the first pipeline is selected by default or when selection becomes invalid
+  useEffect(() => {
+    if (pipelines.length === 0) {
+      setCurrentPipelineId(null);
+      return;
+    }
+
+    if (!currentPipelineId || !pipelines.some((pipeline) => pipeline.id === currentPipelineId)) {
+      setCurrentPipelineId(pipelines[0].id);
+    }
+  }, [pipelines, currentPipelineId]);
 
   const loadActiveMappings = useCallback(async (): Promise<FieldMapping[]> => {
     if (!selectedSourceObject || !selectedTargetObject || !currentPipelineId) {
