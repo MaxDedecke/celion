@@ -147,14 +147,6 @@ const Dashboard = () => {
             .eq('migration_id', migration.id)
             .order('created_at', { ascending: false });
 
-          const { data: connectorsData } = await supabase
-            .from('connectors')
-            .select('*')
-            .eq('migration_id', migration.id);
-
-          const inConnector = connectorsData?.find(c => c.connector_type === 'in');
-          const outConnector = connectorsData?.find(c => c.connector_type === 'out');
-
           return {
             id: migration.id,
             name: migration.name,
@@ -169,10 +161,7 @@ const Dashboard = () => {
             mappedObjects: migration.mapped_objects,
             projectId: projectId,
             activities: activitiesData || [],
-            connectors: {
-              in: inConnector,
-              out: outConnector,
-            },
+            notes: migration.notes ?? "",
           };
         })
       );
