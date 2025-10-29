@@ -10,6 +10,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Badge } from "@/components/ui/badge";
 import type { Pipeline } from "@/types/pipeline";
 import { toast } from "sonner";
+import { supabase } from "@/integrations/supabase/client";
 
 interface AgentWorkflowTabProps {
   pipelines: Pipeline[];
@@ -62,24 +63,72 @@ const AgentWorkflowTab = ({ pipelines, initialPipelineId, onOpenAddPipeline }: A
   useEffect(() => {
     if (!selectedPipelineId) return;
 
-    setAgentStates((previous) => {
-      if (previous[selectedPipelineId]) {
-        return previous;
+    const loadAgentState = async () => {
+      const { data, error } = await supabase
+        .from("agent_workflow_states")
+        .select("*")
+        .eq("pipeline_id", selectedPipelineId)
+        .maybeSingle();
+
+      if (error) {
+        console.error("Error loading agent state:", error);
+        return;
       }
 
-      return {
-        ...previous,
-        [selectedPipelineId]: createInitialAgentState(),
-      };
-    });
+      if (data) {
+        setAgentStates((previous) => ({
+          ...previous,
+          [selectedPipelineId]: {
+            briefing: data.briefing,
+            plan: data.plan as string[],
+            completedSteps: data.completed_steps as Record<number, boolean>,
+            logs: data.logs as string[],
+            isRunning: data.is_running,
+          },
+        }));
+      } else {
+        setAgentStates((previous) => {
+          if (previous[selectedPipelineId]) {
+            return previous;
+          }
+
+          return {
+            ...previous,
+            [selectedPipelineId]: createInitialAgentState(),
+          };
+        });
+      }
+    };
+
+    loadAgentState();
   }, [selectedPipelineId]);
 
-  const updateAgentState = useCallback((pipelineId: string, updater: (state: AgentPipelineState) => AgentPipelineState) => {
+  const updateAgentState = useCallback(async (pipelineId: string, updater: (state: AgentPipelineState) => AgentPipelineState) => {
     setAgentStates((previous) => {
       const current = previous[pipelineId] ?? createInitialAgentState();
+      const newState = updater(current);
+
+      // Persist to database
+      supabase
+        .from("agent_workflow_states")
+        .upsert({
+          pipeline_id: pipelineId,
+          briefing: newState.briefing,
+          plan: newState.plan,
+          completed_steps: newState.completedSteps,
+          logs: newState.logs,
+          is_running: newState.isRunning,
+        })
+        .then(({ error }) => {
+          if (error) {
+            console.error("Error saving agent state:", error);
+            toast.error("Fehler beim Speichern des Agent-Status");
+          }
+        });
+
       return {
         ...previous,
-        [pipelineId]: updater(current),
+        [pipelineId]: newState,
       };
     });
   }, []);

@@ -14,6 +14,50 @@ export type Database = {
   }
   public: {
     Tables: {
+      agent_workflow_states: {
+        Row: {
+          briefing: string
+          completed_steps: Json
+          created_at: string
+          id: string
+          is_running: boolean
+          logs: Json
+          pipeline_id: string
+          plan: Json
+          updated_at: string
+        }
+        Insert: {
+          briefing?: string
+          completed_steps?: Json
+          created_at?: string
+          id?: string
+          is_running?: boolean
+          logs?: Json
+          pipeline_id: string
+          plan?: Json
+          updated_at?: string
+        }
+        Update: {
+          briefing?: string
+          completed_steps?: Json
+          created_at?: string
+          id?: string
+          is_running?: boolean
+          logs?: Json
+          pipeline_id?: string
+          plan?: Json
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "agent_workflow_states_pipeline_id_fkey"
+            columns: ["pipeline_id"]
+            isOneToOne: true
+            referencedRelation: "pipelines"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       connectors: {
         Row: {
           additional_config: Json | null
@@ -327,6 +371,7 @@ export type Database = {
           target_data_source_id: string | null
           target_system: string
           updated_at: string
+          workflow_type: string
         }
         Insert: {
           created_at?: string
@@ -344,6 +389,7 @@ export type Database = {
           target_data_source_id?: string | null
           target_system: string
           updated_at?: string
+          workflow_type?: string
         }
         Update: {
           created_at?: string
@@ -361,6 +407,7 @@ export type Database = {
           target_data_source_id?: string | null
           target_system?: string
           updated_at?: string
+          workflow_type?: string
         }
         Relationships: [
           {

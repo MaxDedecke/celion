@@ -506,34 +506,6 @@ const MigrationDetails = ({ project, activeTab, onRefresh, onWorkflowModeChange 
     targetDataSourceId?: string;
     workflowType: "manual" | "agent";
   }) => {
-    if (pipelineData.workflowType === "agent") {
-      const timestamp = new Date().toISOString();
-      const mockPipeline: Pipeline = {
-        id: `agent-${Date.now()}`,
-        migration_id: project.id,
-        name: pipelineData.name,
-        description: pipelineData.description,
-        source_system: pipelineData.sourceSystem,
-        target_system: pipelineData.targetSystem,
-        source_data_source_id: pipelineData.sourceDataSourceId,
-        target_data_source_id: pipelineData.targetDataSourceId,
-        execution_order: pipelines.length,
-        is_active: true,
-        progress: 0,
-        objects_transferred: "0/0",
-        mapped_objects: "0/0",
-        created_at: timestamp,
-        updated_at: timestamp,
-        workflow_type: "agent",
-        is_mock: true,
-      };
-
-      setPipelines([...pipelines, mockPipeline]);
-      setCurrentPipelineId(mockPipeline.id);
-      toast.success(`Agent Pipeline "${pipelineData.name}" wurde als Mock hinzugefügt`);
-      return;
-    }
-
     const { data, error } = await supabase
       .from('pipelines')
       .insert({
@@ -544,6 +516,7 @@ const MigrationDetails = ({ project, activeTab, onRefresh, onWorkflowModeChange 
         target_system: pipelineData.targetSystem,
         source_data_source_id: pipelineData.sourceDataSourceId,
         target_data_source_id: pipelineData.targetDataSourceId,
+        workflow_type: pipelineData.workflowType,
         execution_order: pipelines.length,
         is_active: true,
         progress: 0,
@@ -554,15 +527,15 @@ const MigrationDetails = ({ project, activeTab, onRefresh, onWorkflowModeChange 
       .single();
 
     if (!error && data) {
-      const insertedPipeline = {
-        ...(data as Pipeline),
-        workflow_type: "manual" as const,
-      };
+      const insertedPipeline = data as Pipeline;
 
       setPipelines([...pipelines, insertedPipeline]);
       setCurrentPipelineId(insertedPipeline.id);
-      toast.success(`Pipeline "${pipelineData.name}" wurde hinzugefügt`);
+      
+      const pipelineType = pipelineData.workflowType === "agent" ? "Agent" : "";
+      toast.success(`${pipelineType} Pipeline "${pipelineData.name}" wurde hinzugefügt`);
     } else {
+      console.error("Error adding pipeline:", error);
       toast.error("Fehler beim Hinzufügen der Pipeline");
     }
   };
