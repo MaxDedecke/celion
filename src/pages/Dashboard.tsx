@@ -33,6 +33,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import type { NewMigrationInput } from "@/types/migration";
+import {
+  AUTH_DETAIL_CREDENTIALS,
+  AUTH_DETAIL_TOKEN,
+  CONNECTOR_AUTH_LABEL,
+  CONNECTOR_ENDPOINT_LABEL,
+  DEFAULT_SYSTEM_LABEL,
+} from "@/constants/migrations";
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -216,10 +224,14 @@ const Dashboard = () => {
     }
   };
 
-  const handleAddMigration = async (name: string, sourceSystem: string, targetSystem: string) => {
+  const handleAddMigration = async (migrationData: NewMigrationInput) => {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Nicht authentifiziert");
+
+      const { name, apiUrl, authType, apiToken, username, password } = migrationData;
+      const authDetail = authType === "token" ? AUTH_DETAIL_TOKEN : AUTH_DETAIL_CREDENTIALS;
+      const connectorAuthType = authType === "token" ? "api_key" : "basic";
 
       const { data: migration, error: migrationError } = await supabase
         .from('migrations')
@@ -227,17 +239,35 @@ const Dashboard = () => {
           user_id: user.id,
           project_id: projectIdForNewMigration,
           name,
-          source_system: sourceSystem,
-          target_system: targetSystem,
-          in_connector: sourceSystem,
-          in_connector_detail: sourceSystem,
-          out_connector: targetSystem,
-          out_connector_detail: targetSystem,
+          source_system: DEFAULT_SYSTEM_LABEL,
+          target_system: DEFAULT_SYSTEM_LABEL,
+          in_connector: CONNECTOR_ENDPOINT_LABEL,
+          in_connector_detail: apiUrl,
+          out_connector: CONNECTOR_AUTH_LABEL,
+          out_connector_detail: authDetail,
         })
         .select()
         .single();
 
       if (migrationError) throw migrationError;
+
+      const connectorPayload = {
+        migration_id: migration.id,
+        api_url: apiUrl,
+        auth_type: connectorAuthType,
+        api_key: authType === "token" ? apiToken ?? null : null,
+        username: authType === "credentials" ? username ?? null : null,
+        password: authType === "credentials" ? password ?? null : null,
+      };
+
+      const { error: connectorError } = await supabase
+        .from('connectors')
+        .insert([
+          { ...connectorPayload, connector_type: 'in' },
+          { ...connectorPayload, connector_type: 'out' },
+        ]);
+
+      if (connectorError) throw connectorError;
 
       // Create initial activity
       await supabase

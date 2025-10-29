@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
@@ -7,69 +7,70 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-  SelectSeparator,
-} from "@/components/ui/select";
 import { Label } from "@/components/ui/label";
 import { AlertCircle } from "lucide-react";
-import { supabase } from "@/integrations/supabase/client";
-import { DATA_SOURCE_TYPE_OPTIONS } from "@/constants/sourceTypes";
-
-interface DataSource {
-  id: string;
-  name: string;
-  source_type: string;
-}
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import type { MigrationAuthType, NewMigrationInput } from "@/types/migration";
 
 interface AddMigrationDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAdd: (name: string, sourceSystem: string, targetSystem: string) => void;
+  onAdd: (migration: NewMigrationInput) => void;
 }
 
 const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogProps) => {
   const [name, setName] = useState("");
-  const [sourceSystem, setSourceSystem] = useState("");
-  const [targetSystem, setTargetSystem] = useState("");
-  const [error, setError] = useState(false);
-  const [dataSources, setDataSources] = useState<DataSource[]>([]);
+  const [apiUrl, setApiUrl] = useState("");
+  const [authType, setAuthType] = useState<MigrationAuthType>("token");
+  const [apiToken, setApiToken] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const resetForm = useCallback(() => {
+    setName("");
+    setApiUrl("");
+    setAuthType("token");
+    setApiToken("");
+    setUsername("");
+    setPassword("");
+    setError(null);
+  }, []);
 
   useEffect(() => {
-    const loadDataSources = async () => {
-      const { data } = await supabase
-        .from("data_sources")
-        .select("id, name, source_type")
-        .eq("is_active", true);
-      
-      if (data) {
-        setDataSources(data);
-      }
-    };
-
-    if (open) {
-      loadDataSources();
+    if (!open) {
+      resetForm();
+    } else {
+      setError(null);
     }
-  }, [open]);
-
-  const defaultSystems = DATA_SOURCE_TYPE_OPTIONS;
-
-  const availableTargets = defaultSystems.filter(target => target !== sourceSystem);
+  }, [open, resetForm]);
 
   const handleSubmit = () => {
-    if (!name.trim() || !sourceSystem || !targetSystem) {
-      setError(true);
+    if (!name.trim() || !apiUrl.trim()) {
+      setError("Bitte fülle alle Pflichtfelder aus.");
       return;
     }
-    onAdd(name, sourceSystem, targetSystem);
-    setName("");
-    setSourceSystem("");
-    setTargetSystem("");
-    setError(false);
+
+    if (authType === "token" && !apiToken.trim()) {
+      setError("Bitte hinterlege einen API Token.");
+      return;
+    }
+
+    if (authType === "credentials" && (!username.trim() || !password)) {
+      setError("Bitte hinterlege Benutzername und Passwort.");
+      return;
+    }
+
+    onAdd({
+      name: name.trim(),
+      apiUrl: apiUrl.trim(),
+      authType,
+      apiToken: authType === "token" ? apiToken.trim() : undefined,
+      username: authType === "credentials" ? username.trim() : undefined,
+      password: authType === "credentials" ? password : undefined,
+    });
+
+    resetForm();
     onOpenChange(false);
   };
 
@@ -88,84 +89,111 @@ const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogPro
               value={name}
               onChange={(e) => {
                 setName(e.target.value);
-                setError(false);
+                setError(null);
               }}
               className="bg-input border-border"
             />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="source-system">Source System</Label>
-            <Select value={sourceSystem} onValueChange={(value) => {
-              setSourceSystem(value);
-              setError(false);
-            }}>
-              <SelectTrigger id="source-system" className="bg-input border-border">
-                <SelectValue placeholder="Select source system" />
-              </SelectTrigger>
-              <SelectContent>
-                {dataSources.length > 0 && (
-                  <>
-                    {dataSources.map((source) => (
-                      <SelectItem 
-                        key={source.id} 
-                        value={source.name}
-                        className="font-bold text-primary"
-                      >
-                        {source.name}
-                      </SelectItem>
-                    ))}
-                    <SelectSeparator />
-                  </>
-                )}
-                {defaultSystems.map((source) => (
-                  <SelectItem key={source} value={source}>
-                    {source}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label htmlFor="api-url">API URL</Label>
+            <Input
+              id="api-url"
+              type="url"
+              placeholder="https://api.partner.de"
+              value={apiUrl}
+              onChange={(e) => {
+                setApiUrl(e.target.value);
+                setError(null);
+              }}
+              className="bg-input border-border"
+            />
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="target-system">Target System</Label>
-            <Select value={targetSystem} onValueChange={(value) => {
-              setTargetSystem(value);
-              setError(false);
-            }}>
-              <SelectTrigger id="target-system" className="bg-input border-border">
-                <SelectValue placeholder="Select target system" />
-              </SelectTrigger>
-              <SelectContent>
-                {dataSources.filter(source => source.name !== sourceSystem).length > 0 && (
-                  <>
-                    {dataSources
-                      .filter(source => source.name !== sourceSystem)
-                      .map((source) => (
-                        <SelectItem 
-                          key={source.id} 
-                          value={source.name}
-                          className="font-bold text-primary"
-                        >
-                          {source.name}
-                        </SelectItem>
-                      ))}
-                    <SelectSeparator />
-                  </>
-                )}
-                {availableTargets.map((target) => (
-                  <SelectItem key={target} value={target}>
-                    {target}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            <Label>Authentifizierung</Label>
+            <RadioGroup
+              value={authType}
+              onValueChange={(value) => {
+                setAuthType(value as MigrationAuthType);
+                setError(null);
+              }}
+              className="grid gap-3"
+            >
+              <div className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${authType === "token" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}>
+                <RadioGroupItem value="token" id="auth-token" className="mt-1" />
+                <div>
+                  <Label htmlFor="auth-token" className="text-sm font-medium">API Token</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Verwende einen bestehenden Token für den Zugriff auf die API.
+                  </p>
+                </div>
+              </div>
+              <div className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${authType === "credentials" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}>
+                <RadioGroupItem value="credentials" id="auth-credentials" className="mt-1" />
+                <div>
+                  <Label htmlFor="auth-credentials" className="text-sm font-medium">Benutzername & Passwort</Label>
+                  <p className="text-xs text-muted-foreground">
+                    Hinterlege dedizierte Zugangsdaten für diese Migration.
+                  </p>
+                </div>
+              </div>
+            </RadioGroup>
           </div>
+
+          {authType === "token" && (
+            <div className="space-y-2">
+              <Label htmlFor="api-token">API Token</Label>
+              <Input
+                id="api-token"
+                type="password"
+                placeholder="Token"
+                value={apiToken}
+                onChange={(e) => {
+                  setApiToken(e.target.value);
+                  setError(null);
+                }}
+                className="bg-input border-border"
+              />
+            </div>
+          )}
+
+          {authType === "credentials" && (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <Label htmlFor="username">Benutzername</Label>
+                <Input
+                  id="username"
+                  placeholder="api-user"
+                  value={username}
+                  onChange={(e) => {
+                    setUsername(e.target.value);
+                    setError(null);
+                  }}
+                  className="bg-input border-border"
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="password">Passwort</Label>
+                <Input
+                  id="password"
+                  type="password"
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => {
+                    setPassword(e.target.value);
+                    setError(null);
+                  }}
+                  className="bg-input border-border"
+                />
+              </div>
+            </div>
+          )}
 
           {error && (
             <div className="flex items-center gap-2 text-destructive text-sm">
               <AlertCircle className="h-4 w-4" />
-              <span>Bitte füllen Sie alle Felder aus</span>
+              <span>{error}</span>
             </div>
           )}
 
@@ -173,7 +201,7 @@ const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogPro
             onClick={handleSubmit}
             className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground"
           >
-            Start process
+            Migration erstellen
           </Button>
         </div>
       </DialogContent>

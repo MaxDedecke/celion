@@ -1,4 +1,5 @@
 export const DATA_SOURCE_TYPE_OPTIONS = [
+  "Custom API",
   "Jira Server",
   "Jira Data Center",
   "Azure DevOps Server (früher TFS)",
