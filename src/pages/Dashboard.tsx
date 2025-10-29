@@ -39,7 +39,6 @@ import {
   AUTH_DETAIL_TOKEN,
   CONNECTOR_AUTH_LABEL,
   CONNECTOR_ENDPOINT_LABEL,
-  DEFAULT_SYSTEM_LABEL,
 } from "@/constants/migrations";
 
 const Dashboard = () => {
@@ -218,7 +217,16 @@ const Dashboard = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Nicht authentifiziert");
 
-      const { name, apiUrl, authType, apiToken, username, password } = migrationData;
+      const {
+        name,
+        apiUrl,
+        sourceSystem,
+        targetSystem,
+        authType,
+        apiToken,
+        username,
+        password,
+      } = migrationData;
       const authDetail = authType === "token" ? AUTH_DETAIL_TOKEN : AUTH_DETAIL_CREDENTIALS;
       const connectorAuthType = authType === "token" ? "api_key" : "basic";
 
@@ -228,8 +236,8 @@ const Dashboard = () => {
           user_id: user.id,
           project_id: projectIdForNewMigration,
           name,
-          source_system: DEFAULT_SYSTEM_LABEL,
-          target_system: DEFAULT_SYSTEM_LABEL,
+          source_system: sourceSystem,
+          target_system: targetSystem,
           in_connector: CONNECTOR_ENDPOINT_LABEL,
           in_connector_detail: apiUrl,
           out_connector: CONNECTOR_AUTH_LABEL,

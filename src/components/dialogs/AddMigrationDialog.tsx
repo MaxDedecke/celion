@@ -10,6 +10,14 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { AlertCircle } from "lucide-react";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { DATA_SOURCE_TYPE_OPTIONS } from "@/constants/sourceTypes";
 import type { MigrationAuthType, NewMigrationInput } from "@/types/migration";
 
 interface AddMigrationDialogProps {
@@ -21,6 +29,8 @@ interface AddMigrationDialogProps {
 const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogProps) => {
   const [name, setName] = useState("");
   const [apiUrl, setApiUrl] = useState("");
+  const [sourceSystem, setSourceSystem] = useState("");
+  const [targetSystem, setTargetSystem] = useState("");
   const [authType, setAuthType] = useState<MigrationAuthType>("token");
   const [apiToken, setApiToken] = useState("");
   const [username, setUsername] = useState("");
@@ -30,6 +40,8 @@ const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogPro
   const resetForm = useCallback(() => {
     setName("");
     setApiUrl("");
+    setSourceSystem("");
+    setTargetSystem("");
     setAuthType("token");
     setApiToken("");
     setUsername("");
@@ -46,7 +58,7 @@ const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogPro
   }, [open, resetForm]);
 
   const handleSubmit = () => {
-    if (!name.trim() || !apiUrl.trim()) {
+    if (!name.trim() || !apiUrl.trim() || !sourceSystem || !targetSystem) {
       setError("Bitte fülle alle Pflichtfelder aus.");
       return;
     }
@@ -64,6 +76,8 @@ const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogPro
     onAdd({
       name: name.trim(),
       apiUrl: apiUrl.trim(),
+      sourceSystem,
+      targetSystem,
       authType,
       apiToken: authType === "token" ? apiToken.trim() : undefined,
       username: authType === "credentials" ? username.trim() : undefined,
@@ -108,6 +122,52 @@ const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogPro
               }}
               className="bg-input border-border"
             />
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="source-system">Quellsystem</Label>
+              <Select
+                value={sourceSystem}
+                onValueChange={(value) => {
+                  setSourceSystem(value);
+                  setError(null);
+                }}
+              >
+                <SelectTrigger id="source-system" className="bg-input border-border">
+                  <SelectValue placeholder="System wählen" />
+                </SelectTrigger>
+                <SelectContent>
+                  {DATA_SOURCE_TYPE_OPTIONS.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="target-system">Zielsystem</Label>
+              <Select
+                value={targetSystem}
+                onValueChange={(value) => {
+                  setTargetSystem(value);
+                  setError(null);
+                }}
+              >
+                <SelectTrigger id="target-system" className="bg-input border-border">
+                  <SelectValue placeholder="System wählen" />
+                </SelectTrigger>
+                <SelectContent>
+                  {DATA_SOURCE_TYPE_OPTIONS.map((option) => (
+                    <SelectItem key={option} value={option}>
+                      {option}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
           </div>
 
           <div className="space-y-2">
