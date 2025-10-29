@@ -212,28 +212,20 @@ const AgentWorkflowTab = ({ pipelines, initialPipelineId, onOpenAddPipeline }: A
 
     const pipelineId = selectedPipelineId as string;
     setTimeout(() => {
-      setAgentStates((previous) => {
-        const current = pipelineId ? previous[pipelineId] : undefined;
-        if (!current) {
-          return previous;
-        }
-
-        const completedSteps = current.plan.reduce<Record<number, boolean>>((result, _step, index) => {
+      updateAgentState(pipelineId, (state) => {
+        const completedSteps = state.plan.reduce<Record<number, boolean>>((result, _step, index) => {
           result[index] = true;
           return result;
         }, {});
 
         return {
-          ...previous,
-          [pipelineId]: {
-            ...current,
-            isRunning: false,
-            completedSteps,
-            logs: [
-              ...current.logs,
-              `✅ Agentlauf abgeschlossen (${new Date().toLocaleTimeString()})`,
-            ],
-          },
+          ...state,
+          isRunning: false,
+          completedSteps,
+          logs: [
+            ...state.logs,
+            `✅ Agentlauf abgeschlossen (${new Date().toLocaleTimeString()})`,
+          ],
         };
       });
 
