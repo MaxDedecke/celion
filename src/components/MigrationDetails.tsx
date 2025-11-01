@@ -81,6 +81,64 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     return { nodes, connections };
   });
 
+  const defaultWorkflowSteps = useMemo(() => {
+    return AGENT_WORKFLOW_STEPS.reduce(
+      (result, step, index) => {
+        result.set(step.id, {
+          title: step.title,
+          description: step.description,
+          color: step.color,
+          agentType: step.agentType,
+          priority: index + 1,
+        });
+        return result;
+      },
+      new Map<
+        string,
+        {
+          title: string;
+          description: string;
+          color: string;
+          agentType: string;
+          priority: number;
+        }
+      >(),
+    );
+  }, []);
+
+  const customWorkflowNodes = useMemo(() => {
+    return workflowBoard.nodes.filter((node) => {
+      const defaultNode = defaultWorkflowSteps.get(node.id);
+
+      if (!defaultNode) {
+        return true;
+      }
+
+      const normalizedTitle = node.title.trim();
+      const normalizedDescription = (node.description ?? "").trim();
+      const defaultTitle = defaultNode.title;
+      const defaultDescription = (defaultNode.description ?? "").trim();
+
+      const hasDifferentTitle = normalizedTitle !== defaultTitle;
+      const hasDifferentDescription = normalizedDescription !== defaultDescription;
+      const hasDifferentColor = node.color !== defaultNode.color;
+      const hasDifferentStatus = node.status !== "pending";
+      const hasDifferentActiveState = node.active !== true;
+      const hasDifferentAgentType = (node.agentType ?? "") !== defaultNode.agentType;
+      const hasDifferentPriority = node.priority !== defaultNode.priority;
+
+      return (
+        hasDifferentTitle ||
+        hasDifferentDescription ||
+        hasDifferentColor ||
+        hasDifferentStatus ||
+        hasDifferentActiveState ||
+        hasDifferentAgentType ||
+        hasDifferentPriority
+      );
+    });
+  }, [defaultWorkflowSteps, workflowBoard.nodes]);
+
   const normalizeWorkflowState = useCallback((state: WorkflowBoardState): WorkflowBoardState => {
     const nodesWithDefaults = state.nodes.map((node, index) => ({
       ...node,
@@ -315,10 +373,86 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
               </Button>
             </CardHeader>
             <CardContent className="flex-1 overflow-hidden">
-              {workflowBoard.nodes.length > 0 ? (
-                <ScrollArea className="h-full pr-2">
+              {customWorkflowNodes.length > 0 ? (
+                customWorkflowNodes.length > 2 ? (
+                  <ScrollArea className="max-h-[360px] pr-2">
+                    <div className="space-y-3 pb-2">
+                      {customWorkflowNodes.map((node) => (
+                        <div
+                          key={node.id}
+                          className={cn(
+                            "flex items-stretch gap-3 rounded-xl border border-border/60 bg-background/60 p-4 shadow-sm transition",
+                            !node.active && "border-dashed opacity-70",
+                          )}
+                        >
+                          <div className="flex w-12 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 bg-muted/40 py-2 text-muted-foreground">
+                            <span className="text-xs font-medium">#{node.priority}</span>
+                          </div>
+                          <div className="flex flex-1 flex-col gap-3">
+                            <div className="flex flex-col gap-2">
+                              <div className="flex flex-wrap items-start justify-between gap-3">
+                                <div className="flex flex-col gap-1">
+                                  <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
+                                    <Workflow className="h-3.5 w-3.5" />
+                                    <span>Schritt {node.priority}</span>
+                                    <span className="hidden text-muted-foreground/60 sm:inline">•</span>
+                                    <span className="text-muted-foreground/80">Prio {node.priority}</span>
+                                  </div>
+                                  <h3 className="text-sm font-semibold text-foreground">{node.title}</h3>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Badge
+                                    variant="secondary"
+                                    className={cn(
+                                      "capitalize",
+                                      node.status === "done"
+                                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
+                                        : node.status === "in-progress"
+                                          ? "bg-sky-500/15 text-sky-600 dark:text-sky-300"
+                                          : "bg-muted text-muted-foreground",
+                                    )}
+                                  >
+                                    {node.status === "done"
+                                      ? "Erledigt"
+                                      : node.status === "in-progress"
+                                        ? "In Arbeit"
+                                        : "Geplant"}
+                                  </Badge>
+                                </div>
+                              </div>
+                              <p className="text-xs text-muted-foreground">{node.description || "Noch keine Beschreibung"}</p>
+                            </div>
+                            <div className="flex flex-wrap items-center justify-end gap-2">
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-8 w-8"
+                                onClick={() => handleOpenWorkflowPanel(node.id)}
+                                aria-label="Workflow-Schritt bearbeiten"
+                              >
+                                <Pencil className="h-4 w-4" />
+                              </Button>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className={cn(
+                                  "h-8 w-8 text-muted-foreground hover:text-foreground",
+                                  !node.active && "text-amber-600 hover:text-amber-500",
+                                )}
+                                onClick={() => handleToggleWorkflowNodeActive(node.id)}
+                                aria-label={node.active ? "Workflow-Schritt deaktivieren" : "Workflow-Schritt aktivieren"}
+                              >
+                                <Power className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </ScrollArea>
+                ) : (
                   <div className="space-y-3">
-                    {workflowBoard.nodes.map((node, index) => (
+                    {customWorkflowNodes.map((node) => (
                       <div
                         key={node.id}
                         className={cn(
@@ -335,7 +469,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                               <div className="flex flex-col gap-1">
                                 <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
                                   <Workflow className="h-3.5 w-3.5" />
-                                  <span>Schritt {index + 1}</span>
+                                  <span>Schritt {node.priority}</span>
                                   <span className="hidden text-muted-foreground/60 sm:inline">•</span>
                                   <span className="text-muted-foreground/80">Prio {node.priority}</span>
                                 </div>
@@ -390,10 +524,13 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                       </div>
                     ))}
                   </div>
-                </ScrollArea>
+                )
               ) : (
                 <div className="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-border/70 bg-muted/30 p-6 text-center text-sm text-muted-foreground">
-                  <p>Lege Schritte im Workflow Panel an, um den Ablauf der Migration zu definieren.</p>
+                  <p>Keine individuellen Workflow-Schritte konfiguriert.</p>
+                  <p className="mt-1 text-xs text-muted-foreground/80">
+                    Bearbeite den Workflow, um angepasste Schritte hervorzuheben.
+                  </p>
                   <Button className="mt-4" onClick={() => handleOpenWorkflowPanel()}>
                     Workflow bearbeiten
                   </Button>
