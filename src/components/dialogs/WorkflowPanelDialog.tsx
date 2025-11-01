@@ -304,7 +304,7 @@ const WorkflowPanelDialog = ({
           isFullscreen && "h-[96vh] max-w-none",
         )}
       >
-        <DialogHeader className="space-y-3">
+        <DialogHeader className="space-y-3 pr-12">
           <div className="flex items-center justify-between gap-4">
             <div>
               <DialogTitle>Workflow bearbeiten</DialogTitle>
@@ -312,22 +312,6 @@ const WorkflowPanelDialog = ({
                 Arrangiere Schritte, aktualisiere Inhalte und verknüpfe Abhängigkeiten für diesen Migrationsworkflow.
               </DialogDescription>
             </div>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsFullscreen((value) => !value)}
-              className="gap-2"
-            >
-              {isFullscreen ? (
-                <>
-                  <Minimize2 className="h-4 w-4" /> Vollbild beenden
-                </>
-              ) : (
-                <>
-                  <Maximize2 className="h-4 w-4" /> Vollbild
-                </>
-              )}
-            </Button>
           </div>
         </DialogHeader>
 
@@ -338,9 +322,26 @@ const WorkflowPanelDialog = ({
               <span className="text-muted-foreground/60">•</span>
               <span>{workflow.connections.length} Verknüpfungen</span>
             </div>
-            <Button size="sm" onClick={addNode} className="gap-2">
-              <Plus className="h-4 w-4" /> Schritt hinzufügen
-            </Button>
+            <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setIsFullscreen((value) => !value)}
+                aria-label={isFullscreen ? "Vollbildmodus beenden" : "Vollbildmodus aktivieren"}
+              >
+                {isFullscreen ? (
+                  <Minimize2 className="h-4 w-4" />
+                ) : (
+                  <Maximize2 className="h-4 w-4" />
+                )}
+                <span className="sr-only">
+                  {isFullscreen ? "Vollbildmodus beenden" : "Vollbildmodus aktivieren"}
+                </span>
+              </Button>
+              <Button size="sm" onClick={addNode} className="gap-2">
+                <Plus className="h-4 w-4" /> Schritt hinzufügen
+              </Button>
+            </div>
           </div>
 
           <div className="flex flex-1 gap-4 overflow-hidden">
