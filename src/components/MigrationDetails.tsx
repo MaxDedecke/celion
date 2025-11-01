@@ -70,6 +70,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       priority: index + 1,
       active: true,
       agentType: step.agentType,
+      agentPrompt: "",
     }));
 
     const connections = nodes.slice(0, -1).map((node, index) => ({
@@ -90,6 +91,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           color: step.color,
           agentType: step.agentType,
           priority: index + 1,
+          agentPrompt: "",
         });
         return result;
       },
@@ -101,6 +103,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           color: string;
           agentType: string;
           priority: number;
+          agentPrompt: string;
         }
       >(),
     );
@@ -116,8 +119,10 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
 
       const normalizedTitle = node.title.trim();
       const normalizedDescription = (node.description ?? "").trim();
+      const normalizedPrompt = (node.agentPrompt ?? "").trim();
       const defaultTitle = defaultNode.title;
       const defaultDescription = (defaultNode.description ?? "").trim();
+      const defaultPrompt = (defaultNode.agentPrompt ?? "").trim();
 
       const hasDifferentTitle = normalizedTitle !== defaultTitle;
       const hasDifferentDescription = normalizedDescription !== defaultDescription;
@@ -126,6 +131,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       const hasDifferentActiveState = node.active !== true;
       const hasDifferentAgentType = (node.agentType ?? "") !== defaultNode.agentType;
       const hasDifferentPriority = node.priority !== defaultNode.priority;
+      const hasDifferentPrompt = normalizedPrompt !== defaultPrompt;
 
       return (
         hasDifferentTitle ||
@@ -134,7 +140,8 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         hasDifferentStatus ||
         hasDifferentActiveState ||
         hasDifferentAgentType ||
-        hasDifferentPriority
+        hasDifferentPriority ||
+        hasDifferentPrompt
       );
     });
   }, [defaultWorkflowSteps, workflowBoard.nodes]);
@@ -144,6 +151,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       ...node,
       active: typeof node.active === "boolean" ? node.active : true,
       priority: typeof node.priority === "number" ? node.priority : index + 1,
+      agentPrompt: typeof node.agentPrompt === "string" ? node.agentPrompt : "",
       __originalIndex: index,
     }));
 

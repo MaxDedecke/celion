@@ -11,6 +11,7 @@ export interface WorkflowNode {
   priority: number;
   active: boolean;
   agentType?: string;
+  agentPrompt?: string;
 }
 
 export interface WorkflowConnection {

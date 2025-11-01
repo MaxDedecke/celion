@@ -21,7 +21,7 @@ import type {
   WorkflowNode,
   WorkflowNodeStatus,
 } from "@/types/workflow";
-import { Maximize2, Minimize2, Plus, Trash2 } from "lucide-react";
+import { Maximize2, Minimize2, RotateCcw, Trash2, ZoomIn, ZoomOut } from "lucide-react";
 
 interface WorkflowPanelDialogProps {
   open: boolean;
@@ -33,6 +33,9 @@ interface WorkflowPanelDialogProps {
 
 const NODE_WIDTH = 220;
 const NODE_HEIGHT = 130;
+const MIN_ZOOM = 0.6;
+const MAX_ZOOM = 1.6;
+const ZOOM_STEP = 0.1;
 
 const statusOptions: Array<{ value: WorkflowNodeStatus; label: string }> = [
   { value: "pending", label: "Geplant" },
@@ -104,6 +107,7 @@ const WorkflowPanelDialog = ({
   const dragOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [newConnectionTarget, setNewConnectionTarget] = useState<string>("");
+  const [zoomLevel, setZoomLevel] = useState(1);
 
   const nodesById = useMemo(() => {
     return workflow.nodes.reduce<Record<string, WorkflowNode>>((result, node) => {
@@ -116,6 +120,7 @@ const WorkflowPanelDialog = ({
     if (!open) {
       setSelectedNodeId(null);
       setIsFullscreen(false);
+      setZoomLevel(1);
     }
   }, [open]);
 
@@ -144,8 +149,10 @@ const WorkflowPanelDialog = ({
       if (!boardElement) return;
 
       const rect = boardElement.getBoundingClientRect();
-      const newX = event.clientX - rect.left - dragOffsetRef.current.x;
-      const newY = event.clientY - rect.top - dragOffsetRef.current.y;
+      const relativeX = (event.clientX - rect.left) / zoomLevel;
+      const relativeY = (event.clientY - rect.top) / zoomLevel;
+      const newX = relativeX - dragOffsetRef.current.x;
+      const newY = relativeY - dragOffsetRef.current.y;
 
       onWorkflowChange((previous) => {
         const updatedNodes = previous.nodes.map((node) => {
@@ -153,8 +160,10 @@ const WorkflowPanelDialog = ({
             return node;
           }
 
-          const clampedX = Math.min(Math.max(newX, 12), Math.max(rect.width - NODE_WIDTH - 12, 12));
-          const clampedY = Math.min(Math.max(newY, 12), Math.max(rect.height - NODE_HEIGHT - 12, 12));
+          const boundsWidth = rect.width / zoomLevel;
+          const boundsHeight = rect.height / zoomLevel;
+          const clampedX = Math.min(Math.max(newX, 12), Math.max(boundsWidth - NODE_WIDTH - 12, 12));
+          const clampedY = Math.min(Math.max(newY, 12), Math.max(boundsHeight - NODE_HEIGHT - 12, 12));
 
           return { ...node, x: clampedX, y: clampedY };
         });
@@ -177,7 +186,7 @@ const WorkflowPanelDialog = ({
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
     };
-  }, [draggingNodeId, onWorkflowChange]);
+  }, [draggingNodeId, onWorkflowChange, zoomLevel]);
 
   const selectedNode = selectedNodeId ? nodesById[selectedNodeId] ?? null : null;
 
@@ -187,8 +196,8 @@ const WorkflowPanelDialog = ({
 
     const rect = boardElement.getBoundingClientRect();
     dragOffsetRef.current = {
-      x: event.clientX - rect.left - node.x,
-      y: event.clientY - rect.top - node.y,
+      x: (event.clientX - rect.left) / zoomLevel - node.x,
+      y: (event.clientY - rect.top) / zoomLevel - node.y,
     };
     setDraggingNodeId(node.id);
     setSelectedNodeId(node.id);
@@ -205,8 +214,10 @@ const WorkflowPanelDialog = ({
     const nextIndex = workflow.nodes.length + 1;
     const boardElement = boardRef.current;
     const rect = boardElement?.getBoundingClientRect();
-    const baseX = rect ? rect.width / 2 - NODE_WIDTH / 2 : 120;
-    const baseY = rect ? rect.height / 2 - NODE_HEIGHT / 2 : 120;
+    const baseWidth = rect ? rect.width / zoomLevel : undefined;
+    const baseHeight = rect ? rect.height / zoomLevel : undefined;
+    const baseX = baseWidth ? baseWidth / 2 - NODE_WIDTH / 2 : 120;
+    const baseY = baseHeight ? baseHeight / 2 - NODE_HEIGHT / 2 : 120;
 
     const newNode: WorkflowNode = {
       id: `node-${Date.now()}`,
@@ -219,6 +230,7 @@ const WorkflowPanelDialog = ({
       priority: workflow.nodes.length + 1,
       active: true,
       agentType: undefined,
+      agentPrompt: "",
     };
 
     onWorkflowChange((previous) => ({
@@ -337,8 +349,41 @@ const WorkflowPanelDialog = ({
               <span>{workflow.nodes.length} Schritte</span>
               <span className="text-muted-foreground/60">•</span>
               <span>{workflow.connections.length} Verknüpfungen</span>
+              <span className="text-muted-foreground/60">•</span>
+              <span>{Math.round(zoomLevel * 100)}%</span>
             </div>
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() =>
+                  setZoomLevel((value) => Math.max(MIN_ZOOM, parseFloat((value - ZOOM_STEP).toFixed(2))))
+                }
+                aria-label="Herauszoomen"
+                disabled={zoomLevel <= MIN_ZOOM + 0.01}
+              >
+                <ZoomOut className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() =>
+                  setZoomLevel((value) => Math.min(MAX_ZOOM, parseFloat((value + ZOOM_STEP).toFixed(2))))
+                }
+                aria-label="Hereinzoomen"
+                disabled={zoomLevel >= MAX_ZOOM - 0.01}
+              >
+                <ZoomIn className="h-4 w-4" />
+              </Button>
+              <Button
+                variant="outline"
+                size="icon"
+                onClick={() => setZoomLevel(1)}
+                aria-label="Zoom zurücksetzen"
+                disabled={Math.abs(zoomLevel - 1) < 0.01}
+              >
+                <RotateCcw className="h-4 w-4" />
+              </Button>
               <Button
                 variant="outline"
                 size="icon"
@@ -362,52 +407,66 @@ const WorkflowPanelDialog = ({
               ref={boardRef}
               className="relative flex-1 overflow-hidden rounded-2xl border border-dashed border-border/60 bg-[radial-gradient(circle_at_1px_1px,theme(colors.border/40)_1px,transparent_0)] bg-[length:32px_32px]"
             >
-              <svg className="pointer-events-none absolute inset-0 h-full w-full" strokeWidth={2}>
-                {connectionLines.map((line) => (
-                  <g key={line.id}>
-                    <line
-                      x1={line.x1}
-                      y1={line.y1}
-                      x2={line.x2}
-                      y2={line.y2}
-                      stroke="hsl(var(--primary))"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    />
-                    {line.label && (
-                      <text
-                        x={(line.x1 + line.x2) / 2}
-                        y={(line.y1 + line.y2) / 2 - 6}
-                        className="fill-muted-foreground text-xs"
-                      >
-                        {line.label}
-                      </text>
-                    )}
-                  </g>
-                ))}
-              </svg>
+              <div
+                className="absolute inset-0 origin-top-left"
+                style={{ transform: `scale(${zoomLevel})`, transformOrigin: "top left" }}
+              >
+                <svg className="pointer-events-none absolute inset-0 h-full w-full" strokeWidth={2}>
+                  {connectionLines.map((line) => (
+                    <g key={line.id}>
+                      <line
+                        x1={line.x1}
+                        y1={line.y1}
+                        x2={line.x2}
+                        y2={line.y2}
+                        stroke="hsl(var(--primary))"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      />
+                      {line.label && (
+                        <text
+                          x={(line.x1 + line.x2) / 2}
+                          y={(line.y1 + line.y2) / 2 - 6}
+                          className="fill-muted-foreground text-xs"
+                        >
+                          {line.label}
+                        </text>
+                      )}
+                    </g>
+                  ))}
+                </svg>
 
-              {workflow.nodes.map((node) => (
-                <div
-                  key={node.id}
-                  className={cn(getNodeClassName(node), selectedNodeId === node.id && "ring-2 ring-primary/80", !node.active && "opacity-70")}
-                  style={{ left: node.x, top: node.y }}
-                  onPointerDown={(event) => handlePointerDown(event, node)}
-                  onClick={() => setSelectedNodeId(node.id)}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-foreground">{node.title}</p>
-                      <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                        {node.description || "Noch keine Beschreibung"}
-                      </p>
+                {workflow.nodes.map((node) => (
+                  <div
+                    key={node.id}
+                    className={cn(
+                      getNodeClassName(node),
+                      selectedNodeId === node.id && "ring-2 ring-primary/80",
+                      !node.active && "opacity-70",
+                    )}
+                    style={{ left: node.x, top: node.y }}
+                    onPointerDown={(event) => handlePointerDown(event, node)}
+                    onClick={() => setSelectedNodeId(node.id)}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold text-foreground">{node.title}</p>
+                        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                          {node.description || "Noch keine Beschreibung"}
+                        </p>
+                        {node.agentPrompt ? (
+                          <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground/90">
+                            {node.agentPrompt}
+                          </p>
+                        ) : null}
+                      </div>
+                      <Badge variant="secondary" className={cn("text-[10px] uppercase", statusBadgeClasses[node.status])}>
+                        {statusOptions.find((option) => option.value === node.status)?.label ?? "Status"}
+                      </Badge>
                     </div>
-                    <Badge variant="secondary" className={cn("text-[10px] uppercase", statusBadgeClasses[node.status])}>
-                      {statusOptions.find((option) => option.value === node.status)?.label ?? "Status"}
-                    </Badge>
                   </div>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
 
             <aside className="hidden w-[280px] shrink-0 flex-col rounded-2xl border border-border/60 bg-muted/20 p-4 md:flex">
@@ -455,6 +514,19 @@ const WorkflowPanelDialog = ({
                       value={selectedNode.description}
                       onChange={(event) => updateNode(selectedNode.id, { description: event.target.value })}
                       placeholder="Beschreibe die Aufgabe für diesen Schritt"
+                      rows={3}
+                    />
+                  </div>
+
+                  <div className="space-y-2">
+                    <label className="text-xs font-medium text-muted-foreground" htmlFor="workflow-node-agent-prompt">
+                      Agent Prompt
+                    </label>
+                    <Textarea
+                      id="workflow-node-agent-prompt"
+                      value={selectedNode.agentPrompt ?? ""}
+                      onChange={(event) => updateNode(selectedNode.id, { agentPrompt: event.target.value })}
+                      placeholder="Ergänze Anweisungen für den Agent in diesem Schritt"
                       rows={3}
                     />
                   </div>
