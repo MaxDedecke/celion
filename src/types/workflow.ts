@@ -10,6 +10,7 @@ export interface WorkflowNode {
   status: WorkflowNodeStatus;
   priority: number;
   active: boolean;
+  agentType?: string;
 }
 
 export interface WorkflowConnection {

@@ -48,6 +48,21 @@ const colorOptions: Array<{ value: string; label: string }> = [
   { value: "rose", label: "Rose" },
 ];
 
+const agentTypes = [
+  { value: "system-detection", label: "System Detection Agent", phase: "1. Discovery", description: "Erkennt automatisch, welches System (z. B. Jira Cloud, Asana, Azure DevOps) hinter einer angegebenen URL steckt und welche API-Version verfügbar ist." },
+  { value: "auth-flow", label: "Auth Flow Agent", phase: "2. Authentication", description: "Leitet anhand des erkannten Systems den passenden Authentifizierungsprozess ein (API Token, OAuth2, Basic Auth etc.) und prüft die Berechtigungen." },
+  { value: "schema-discovery", label: "Schema Discovery Agent", phase: "3. Capability Analysis", description: "Ermittelt alle verfügbaren Datenobjekte und Felder im Quellsystem (z. B. Issues, Projects, Users) durch strukturierte API-Probes." },
+  { value: "model-mapping", label: "Model Mapping Agent", phase: "4. Meta-Model Alignment", description: "Ordnet die erkannten Datenfelder des Quellsystems dem Celion-Meta-Modell zu, um eine standardisierte interne Repräsentation zu erzeugen." },
+  { value: "target-schema", label: "Target Schema Agent", phase: "5. Target Preparation", description: "Analysiert das Zielsystem (z. B. Asana) und identifiziert, wie dessen Felder mit dem Celion-Meta-Modell kompatibel sind." },
+  { value: "mapping-suggestion", label: "Mapping Suggestion Agent", phase: "6. Auto-Mapping", description: "Erstellt ein initiales Feld-zu-Feld-Mapping (Source → Target) basierend auf Ähnlichkeit, Bezeichnung, Typ und Kontext der Daten." },
+  { value: "consistency-validation", label: "Consistency & Validation Agent", phase: "7. Validation", description: "Überprüft das vorgeschlagene Mapping auf Typinkonsistenzen, Pflichtfelder und mögliche Datenverluste." },
+  { value: "dry-run", label: "Dry-Run Agent", phase: "8. Simulation", description: "Führt eine Simulation der Migration durch (ohne zu schreiben), um Fehler, leere Felder oder API-Limits frühzeitig zu erkennen." },
+  { value: "data-transfer", label: "Data Transfer Agent", phase: "9. Execution", description: "Führt die eigentliche Datenmigration aus, orchestriert Requests, Batch-Verarbeitung und Error-Recovery." },
+  { value: "verification", label: "Verification Agent", phase: "10. Post-Migration", description: "Prüft, ob alle Objekte korrekt und vollständig im Zielsystem angekommen sind, und erstellt einen Abweichungsreport." },
+  { value: "audit", label: "Audit Agent", phase: "11. Audit & Logging", description: "Dokumentiert jede Aktion, API-Request und Datenveränderung revisionssicher für Nachvollziehbarkeit und Compliance." },
+  { value: "feedback", label: "Feedback Agent", phase: "12. Optimization & Learning", description: "Lernt aus durchgeführten Migrationen (manuellen Korrekturen, Fehlern, Feedback) und verbessert Mapping-Heuristiken automatisch." },
+];
+
 const statusBadgeClasses: Record<WorkflowNodeStatus, string> = {
   pending: "bg-muted text-muted-foreground",
   "in-progress": "bg-sky-500/15 text-sky-600 dark:text-sky-300",
@@ -203,6 +218,7 @@ const WorkflowPanelDialog = ({
       status: "pending",
       priority: workflow.nodes.length + 1,
       active: true,
+      agentType: undefined,
     };
 
     onWorkflowChange((previous) => ({
@@ -408,6 +424,35 @@ const WorkflowPanelDialog = ({
                   </div>
 
                   <div className="space-y-2">
+                    <label className="text-xs font-medium text-muted-foreground">Agent-Typ</label>
+                    <Select
+                      value={selectedNode.agentType || ""}
+                      onValueChange={(value) => {
+                        const agent = agentTypes.find(a => a.value === value);
+                        updateNode(selectedNode.id, { 
+                          agentType: value,
+                          title: agent?.label || selectedNode.title,
+                          description: agent?.description || selectedNode.description,
+                        });
+                      }}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="Agent auswählen" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {agentTypes.map((agent) => (
+                          <SelectItem key={agent.value} value={agent.value}>
+                            <div className="flex flex-col">
+                              <span className="font-medium">{agent.label}</span>
+                              <span className="text-xs text-muted-foreground">{agent.phase}</span>
+                            </div>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+
+                  <div className="space-y-2">
                     <label className="text-xs font-medium text-muted-foreground" htmlFor="workflow-node-title">
                       Titel
                     </label>
@@ -428,7 +473,7 @@ const WorkflowPanelDialog = ({
                       value={selectedNode.description}
                       onChange={(event) => updateNode(selectedNode.id, { description: event.target.value })}
                       placeholder="Beschreibe die Aufgabe für diesen Schritt"
-                      rows={4}
+                      rows={3}
                     />
                   </div>
 
