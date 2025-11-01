@@ -354,9 +354,6 @@ const WorkflowPanelDialog = ({
                   {isFullscreen ? "Vollbildmodus beenden" : "Vollbildmodus aktivieren"}
                 </span>
               </Button>
-              <Button size="sm" onClick={addNode} className="gap-2">
-                <Plus className="h-4 w-4" /> Schritt hinzufügen
-              </Button>
             </div>
           </div>
 
@@ -425,31 +422,16 @@ const WorkflowPanelDialog = ({
 
                   <div className="space-y-2">
                     <label className="text-xs font-medium text-muted-foreground">Agent-Typ</label>
-                    <Select
-                      value={selectedNode.agentType || ""}
-                      onValueChange={(value) => {
-                        const agent = agentTypes.find(a => a.value === value);
-                        updateNode(selectedNode.id, { 
-                          agentType: value,
-                          title: agent?.label || selectedNode.title,
-                          description: agent?.description || selectedNode.description,
-                        });
-                      }}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Agent auswählen" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {agentTypes.map((agent) => (
-                          <SelectItem key={agent.value} value={agent.value}>
-                            <div className="flex flex-col">
-                              <span className="font-medium">{agent.label}</span>
-                              <span className="text-xs text-muted-foreground">{agent.phase}</span>
-                            </div>
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
+                    <div className="rounded-lg border border-border bg-muted/40 px-3 py-2">
+                      <div className="flex flex-col gap-1">
+                        <span className="text-xs font-medium text-foreground">
+                          {agentTypes.find(a => a.value === selectedNode.agentType)?.label || "Nicht zugewiesen"}
+                        </span>
+                        <span className="text-[10px] text-muted-foreground">
+                          {agentTypes.find(a => a.value === selectedNode.agentType)?.phase || ""}
+                        </span>
+                      </div>
+                    </div>
                   </div>
 
                   <div className="space-y-2">

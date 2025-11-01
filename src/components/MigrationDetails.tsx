@@ -8,6 +8,7 @@ import {
   Trash2,
   Workflow,
 } from "lucide-react";
+import { AGENT_WORKFLOW_STEPS } from "@/constants/agentWorkflow";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import CircularProgress from "./CircularProgress";
@@ -57,46 +58,27 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [isWorkflowPanelOpen, setIsWorkflowPanelOpen] = useState(false);
   const [workflowPanelSelection, setWorkflowPanelSelection] = useState<string | null>(null);
-  const [workflowBoard, setWorkflowBoard] = useState<WorkflowBoardState>({
-    nodes: [
-      {
-        id: "discover",
-        title: "Analyse & Scope",
-        description: "Initiale Bewertung der Migration",
-        x: 80,
-        y: 80,
-        color: "sky",
-        status: "pending",
-        priority: 1,
-        active: true,
-      },
-      {
-        id: "build",
-        title: "Vorbereitung",
-        description: "Mappings & Datenquellen harmonisieren",
-        x: 340,
-        y: 160,
-        color: "emerald",
-        status: "pending",
-        priority: 2,
-        active: true,
-      },
-      {
-        id: "validate",
-        title: "Validierung",
-        description: "Tests & Qualitätssicherung",
-        x: 600,
-        y: 80,
-        color: "violet",
-        status: "pending",
-        priority: 3,
-        active: true,
-      },
-    ],
-    connections: [
-      { id: "discover-build", sourceId: "discover", targetId: "build" },
-      { id: "build-validate", sourceId: "build", targetId: "validate" },
-    ],
+  const [workflowBoard, setWorkflowBoard] = useState<WorkflowBoardState>(() => {
+    const nodes = AGENT_WORKFLOW_STEPS.map((step, index) => ({
+      id: step.id,
+      title: step.title,
+      description: step.description,
+      x: 80 + (index % 3) * 280,
+      y: 80 + Math.floor(index / 3) * 180,
+      color: step.color,
+      status: "pending" as const,
+      priority: index + 1,
+      active: true,
+      agentType: step.agentType,
+    }));
+
+    const connections = nodes.slice(0, -1).map((node, index) => ({
+      id: `${node.id}-${nodes[index + 1].id}`,
+      sourceId: node.id,
+      targetId: nodes[index + 1].id,
+    }));
+
+    return { nodes, connections };
   });
 
   const normalizeWorkflowState = useCallback((state: WorkflowBoardState): WorkflowBoardState => {
@@ -402,15 +384,6 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                               aria-label={node.active ? "Workflow-Schritt deaktivieren" : "Workflow-Schritt aktivieren"}
                             >
                               <Power className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8 text-destructive hover:text-destructive"
-                              onClick={() => handleDeleteWorkflowNode(node.id)}
-                              aria-label="Workflow-Schritt löschen"
-                            >
-                              <Trash2 className="h-4 w-4" />
                             </Button>
                           </div>
                         </div>
