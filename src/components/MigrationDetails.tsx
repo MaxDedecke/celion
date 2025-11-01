@@ -3,9 +3,10 @@ import {
   ArrowRight,
   CheckCircle2,
   Loader2,
+  PauseCircle,
   Pencil,
+  Play,
   Power,
-  Trash2,
   Workflow,
 } from "lucide-react";
 import { AGENT_WORKFLOW_STEPS } from "@/constants/agentWorkflow";
@@ -21,6 +22,7 @@ import WorkflowPanelDialog from "./dialogs/WorkflowPanelDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { WorkflowBoardState } from "@/types/workflow";
+import type { MigrationStatus } from "@/types/migration";
 import { cn } from "@/lib/utils";
 
 interface MigrationProject {
@@ -34,6 +36,7 @@ interface MigrationProject {
   projectId?: string;
   activities: Activity[];
   notes?: string;
+  status: MigrationStatus;
 }
 
 interface MigrationDetailsProps {
@@ -48,6 +51,32 @@ const PROGRESS_STAGES: Array<{ label: string; threshold: number }> = [
   { label: "Go-live vorbereitet", threshold: 100 },
 ];
 
+const MIGRATION_STATUS_META: Record<MigrationStatus, { label: string; description: string; badgeClassName: string }> = {
+  not_started: {
+    label: "Bereit zum Start",
+    description: "Alles vorbereitet – du kannst die Migration mit einem Klick starten.",
+    badgeClassName: "bg-muted text-muted-foreground",
+  },
+  running: {
+    label: "Laufend",
+    description: "Die Migration verarbeitet gerade Daten. Du kannst den Fortschritt hier entspannt verfolgen.",
+    badgeClassName: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
+  },
+  paused: {
+    label: "Pausiert",
+    description: "Der Prozess ruht. Starte ihn erneut, sobald alle offenen Fragen geklärt sind.",
+    badgeClassName: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+  },
+  completed: {
+    label: "Abgeschlossen",
+    description: "Die Migration ist erfolgreich beendet. Nutze die Notizen, um Learnings festzuhalten.",
+    badgeClassName: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300",
+  },
+};
+
+const MIGRATION_STATUS_FLOW = ["not_started", "running", "completed"] as const;
+type StatusFlowStep = typeof MIGRATION_STATUS_FLOW[number];
+
 const parseProgressPair = (value: string) => {
   const [current, total] = value.split("/").map((part) => Number(part) || 0);
   return { current, total };
@@ -56,6 +85,9 @@ const parseProgressPair = (value: string) => {
 const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const [notes, setNotes] = useState(project.notes ?? "");
   const [isSavingNotes, setIsSavingNotes] = useState(false);
+  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
+  const [status, setStatus] = useState<MigrationStatus>(project.status ?? "not_started");
+  const [activityLog, setActivityLog] = useState<Activity[]>(project.activities ?? []);
   const [isWorkflowPanelOpen, setIsWorkflowPanelOpen] = useState(false);
   const [workflowPanelSelection, setWorkflowPanelSelection] = useState<string | null>(null);
   const [workflowBoard, setWorkflowBoard] = useState<WorkflowBoardState>(() => {
@@ -222,10 +254,69 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     [handleWorkflowChange],
   );
 
+  const handleUpdateStatus = useCallback(
+    async (nextStatus: MigrationStatus) => {
+      if (nextStatus === status) {
+        return;
+      }
+
+      try {
+        setIsUpdatingStatus(true);
+        await new Promise((resolve) => setTimeout(resolve, 400));
+
+        setStatus(nextStatus);
+
+        const activityTitle =
+          nextStatus === "running"
+            ? "Migration gestartet"
+            : nextStatus === "completed"
+              ? "Migration abgeschlossen"
+              : nextStatus === "paused"
+                ? "Migration pausiert"
+                : "Migrationsstatus aktualisiert";
+
+        const activityType =
+          nextStatus === "completed"
+            ? "success"
+            : nextStatus === "paused"
+              ? "warning"
+              : "info";
+
+        setActivityLog((previous) => [
+          {
+            id: `status-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            type: activityType,
+            title: activityTitle,
+            timestamp: new Date().toLocaleString("de-DE"),
+          },
+          ...previous,
+        ]);
+
+        if (nextStatus === "running") {
+          toast.success("Migration erfolgreich gestartet");
+        } else if (nextStatus === "completed") {
+          toast.success("Migration abgeschlossen");
+        } else if (nextStatus === "paused") {
+          toast.info("Migration pausiert");
+        } else {
+          toast.success("Status aktualisiert");
+        }
+      } catch (error) {
+        console.error("Fehler beim Aktualisieren des Migrationsstatus:", error);
+        toast.error("Status konnte nicht aktualisiert werden");
+      } finally {
+        setIsUpdatingStatus(false);
+      }
+    },
+    [status],
+  );
+
 
   useEffect(() => {
     setNotes(project.notes ?? "");
-  }, [project.id, project.notes]);
+    setStatus(project.status ?? "not_started");
+    setActivityLog(project.activities ?? []);
+  }, [project.activities, project.id, project.notes, project.status]);
 
   useEffect(() => {
     if (!isWorkflowPanelOpen) {
@@ -241,6 +332,14 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const transferRate = transferInfo.total > 0 ? Math.round((transferInfo.current / transferInfo.total) * 100) : 0;
   const mappedRate = mappedInfo.total > 0 ? Math.round((mappedInfo.current / mappedInfo.total) * 100) : 0;
   const overallProgress = Math.min(100, Math.max(0, Math.round(Number(project.progress) || 0)));
+  const statusMeta = MIGRATION_STATUS_META[status];
+  const normalizedStatusForFlow: StatusFlowStep =
+    status === "completed"
+      ? "completed"
+      : status === "not_started"
+        ? "not_started"
+        : "running";
+  const currentStatusIndex = MIGRATION_STATUS_FLOW.indexOf(normalizedStatusForFlow);
 
   const handleSaveNotes = async () => {
     if (!isNotesDirty) return;
@@ -276,6 +375,119 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
               </p>
             </CardHeader>
             <CardContent>
+              <div className="mb-6 rounded-xl border border-border/60 bg-background/80 p-4">
+                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                  <div>
+                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</p>
+                    <div className="mt-2 flex flex-wrap items-center gap-2">
+                      <Badge
+                        variant="secondary"
+                        className={cn("px-3 py-1 text-xs font-semibold", statusMeta.badgeClassName)}
+                      >
+                        {statusMeta.label}
+                      </Badge>
+                      {status === "running" && (
+                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                          Läuft im Hintergrund
+                        </span>
+                      )}
+                      {status === "paused" && (
+                        <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-300">
+                          <PauseCircle className="h-3.5 w-3.5" />
+                          Kurz pausiert
+                        </span>
+                      )}
+                      {status === "completed" && (
+                        <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-300">
+                          <CheckCircle2 className="h-3.5 w-3.5" />
+                          Geschafft!
+                        </span>
+                      )}
+                    </div>
+                    <p className="mt-2 text-xs text-muted-foreground">{statusMeta.description}</p>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+                    {status === "not_started" && (
+                      <Button
+                        onClick={() => handleUpdateStatus("running")}
+                        disabled={isUpdatingStatus}
+                        className="min-w-[180px] justify-center"
+                      >
+                        {isUpdatingStatus ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Play className="mr-2 h-4 w-4" />
+                        )}
+                        Prozess starten
+                      </Button>
+                    )}
+                    {status === "running" && (
+                      <Button
+                        variant="outline"
+                        onClick={() => handleUpdateStatus("completed")}
+                        disabled={isUpdatingStatus}
+                        className="min-w-[180px] justify-center"
+                      >
+                        {isUpdatingStatus ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <CheckCircle2 className="mr-2 h-4 w-4" />
+                        )}
+                        Als abgeschlossen markieren
+                      </Button>
+                    )}
+                    {status === "paused" && (
+                      <Button
+                        onClick={() => handleUpdateStatus("running")}
+                        disabled={isUpdatingStatus}
+                        className="min-w-[180px] justify-center"
+                      >
+                        {isUpdatingStatus ? (
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        ) : (
+                          <Play className="mr-2 h-4 w-4" />
+                        )}
+                        Fortsetzen
+                      </Button>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-4 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
+                  {MIGRATION_STATUS_FLOW.map((step, index) => {
+                    const stepMeta = MIGRATION_STATUS_META[step];
+                    const reached = index <= currentStatusIndex;
+                    return (
+                      <div key={step} className="flex items-center gap-2">
+                        {index > 0 && <span className="h-px w-6 bg-border/60" aria-hidden="true" />}
+                        <span
+                          className={cn(
+                            "inline-flex items-center gap-1 rounded-full border px-2 py-1 transition-colors",
+                            reached
+                              ? "border-primary/60 bg-primary/5 text-foreground"
+                              : "border-border/60 text-muted-foreground",
+                          )}
+                        >
+                          <Workflow className="h-3 w-3" />
+                          {stepMeta.label}
+                          {index === currentStatusIndex && status !== "completed" && (
+                            <span className="sr-only">(aktueller Schritt)</span>
+                          )}
+                        </span>
+                      </div>
+                    );
+                  })}
+                  {status === "paused" && (
+                    <div className="flex items-center gap-2">
+                      <span className="h-px w-6 bg-border/60" aria-hidden="true" />
+                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/60 bg-amber-500/10 px-2 py-1 text-amber-700 dark:text-amber-300">
+                        <PauseCircle className="h-3 w-3" />
+                        Pausiert
+                      </span>
+                    </div>
+                  )}
+                </div>
+              </div>
               <div className="grid gap-6 lg:grid-cols-[220px,1fr]">
                 <div className="flex items-center justify-center rounded-xl bg-muted/40 p-4">
                   <CircularProgress progress={overallProgress} size={200} />
@@ -553,9 +765,9 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
               <p className="text-sm text-muted-foreground">Alle wichtigen Ereignisse rund um die Migration im Überblick.</p>
             </CardHeader>
             <CardContent className="flex-1 overflow-hidden">
-              {project.activities.length > 0 ? (
+              {activityLog.length > 0 ? (
                 <ScrollArea className="h-full pr-2">
-                  <ActivityTimeline activities={project.activities} />
+                  <ActivityTimeline activities={activityLog} />
                 </ScrollArea>
               ) : (
                 <div className="flex h-full items-center justify-center text-sm text-muted-foreground">

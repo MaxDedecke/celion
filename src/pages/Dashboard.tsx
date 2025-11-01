@@ -32,13 +32,27 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import type { NewMigrationInput } from "@/types/migration";
+import type { MigrationStatus, NewMigrationInput } from "@/types/migration";
 import {
   AUTH_DETAIL_CREDENTIALS,
   AUTH_DETAIL_TOKEN,
   CONNECTOR_AUTH_LABEL,
   CONNECTOR_ENDPOINT_LABEL,
 } from "@/constants/migrations";
+
+const deriveMigrationStatus = (migration: any): MigrationStatus => {
+  const progress = Number(migration?.progress ?? 0);
+
+  if (progress >= 100) {
+    return "completed";
+  }
+
+  if (progress > 0) {
+    return "running";
+  }
+
+  return "not_started";
+};
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -128,31 +142,32 @@ const Dashboard = () => {
 
   const loadMigrationDetails = async (migrationsData: any[], projectId: string | null) => {
     return await Promise.all(
-        migrationsData.map(async (migration) => {
-          const { data: activitiesData } = await supabase
-            .from('migration_activities')
-            .select('*')
-            .eq('migration_id', migration.id)
-            .order('created_at', { ascending: false });
+      migrationsData.map(async (migration) => {
+        const { data: activitiesData } = await supabase
+          .from('migration_activities')
+          .select('*')
+          .eq('migration_id', migration.id)
+          .order('created_at', { ascending: false });
 
-          return {
-            id: migration.id,
-            name: migration.name,
-            progress: migration.progress,
-            sourceSystem: migration.source_system,
-            targetSystem: migration.target_system,
-            inConnector: migration.in_connector,
-            inConnectorDetail: migration.in_connector_detail,
-            outConnector: migration.out_connector,
-            outConnectorDetail: migration.out_connector_detail,
-            objectsTransferred: migration.objects_transferred,
-            mappedObjects: migration.mapped_objects,
-            projectId: projectId,
-            activities: activitiesData || [],
-            notes: migration.notes ?? "",
-          };
-        })
-      );
+        return {
+          id: migration.id,
+          name: migration.name,
+          progress: migration.progress,
+          sourceSystem: migration.source_system,
+          targetSystem: migration.target_system,
+          inConnector: migration.in_connector,
+          inConnectorDetail: migration.in_connector_detail,
+          outConnector: migration.out_connector,
+          outConnectorDetail: migration.out_connector_detail,
+          objectsTransferred: migration.objects_transferred,
+          mappedObjects: migration.mapped_objects,
+          projectId: projectId,
+          activities: activitiesData || [],
+          notes: migration.notes ?? "",
+          status: deriveMigrationStatus(migration),
+        };
+      }),
+    );
   };
 
   // Optimized refresh for only the current migration
@@ -231,6 +246,7 @@ const Dashboard = () => {
           in_connector_detail: apiUrl,
           out_connector: CONNECTOR_AUTH_LABEL,
           out_connector_detail: authDetail,
+          status: "not_started",
         })
         .select()
         .single();
