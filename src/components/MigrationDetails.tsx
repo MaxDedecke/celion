@@ -1,8 +1,7 @@
-import { type DragEvent, useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   CheckCircle2,
-  GripVertical,
   Loader2,
   Pencil,
   Power,
@@ -99,8 +98,6 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       { id: "build-validate", sourceId: "build", targetId: "validate" },
     ],
   });
-  const [draggedNodeId, setDraggedNodeId] = useState<string | null>(null);
-  const [dragOverNodeId, setDragOverNodeId] = useState<string | "end" | null>(null);
 
   const normalizeWorkflowState = useCallback((state: WorkflowBoardState): WorkflowBoardState => {
     const nodesWithDefaults = state.nodes.map((node, index) => ({
@@ -177,81 +174,6 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     [handleWorkflowChange],
   );
 
-  const handleDragStart = useCallback(
-    (event: DragEvent<HTMLDivElement>, nodeId: string) => {
-      event.dataTransfer.effectAllowed = "move";
-      event.dataTransfer.setData("text/plain", nodeId);
-      setDraggedNodeId(nodeId);
-    },
-    [],
-  );
-
-  const handleDragEnter = useCallback((targetId: string | "end") => {
-    setDragOverNodeId((current) => (current === targetId ? current : targetId));
-  }, []);
-
-  const handleDragOver = useCallback(
-    (event: DragEvent<HTMLDivElement>, targetId: string | "end") => {
-      event.preventDefault();
-      event.dataTransfer.dropEffect = "move";
-      if (draggedNodeId) {
-        setDragOverNodeId(targetId);
-      }
-    },
-    [draggedNodeId],
-  );
-
-  const handleDragLeave = useCallback((event: DragEvent<HTMLDivElement>, targetId: string | "end") => {
-    event.preventDefault();
-    setDragOverNodeId((current) => (current === targetId ? null : current));
-  }, []);
-
-  const handleDrop = useCallback(
-    (event: DragEvent<HTMLDivElement>, targetId: string | "end") => {
-      event.preventDefault();
-      const sourceId = event.dataTransfer.getData("text/plain");
-      if (!sourceId || sourceId === targetId) {
-        setDragOverNodeId(null);
-        return;
-      }
-
-      handleWorkflowChange((previous) => {
-        const sourceIndex = previous.nodes.findIndex((node) => node.id === sourceId);
-        if (sourceIndex === -1) {
-          return previous;
-        }
-
-        const targetIndex = targetId === "end"
-          ? previous.nodes.length
-          : previous.nodes.findIndex((node) => node.id === targetId);
-
-        if (targetIndex === -1) {
-          return previous;
-        }
-
-        const updatedNodes = [...previous.nodes];
-        const [movedNode] = updatedNodes.splice(sourceIndex, 1);
-        updatedNodes.splice(targetIndex, 0, movedNode);
-
-        return {
-          ...previous,
-          nodes: updatedNodes.map((node, index) => ({
-            ...node,
-            priority: index + 1,
-          })),
-        };
-      });
-
-      setDragOverNodeId(null);
-      setDraggedNodeId(null);
-    },
-    [handleWorkflowChange],
-  );
-
-  const handleDragEnd = useCallback(() => {
-    setDraggedNodeId(null);
-    setDragOverNodeId(null);
-  }, []);
 
   useEffect(() => {
     setNotes(project.notes ?? "");
@@ -419,21 +341,10 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                         key={node.id}
                         className={cn(
                           "flex items-stretch gap-3 rounded-xl border border-border/60 bg-background/60 p-4 shadow-sm transition",
-                          "cursor-grab active:cursor-grabbing",
-                          dragOverNodeId === node.id && "ring-2 ring-primary/40",
-                          draggedNodeId === node.id && "opacity-80",
                           !node.active && "border-dashed opacity-70",
                         )}
-                        draggable
-                        onDragStart={(event) => handleDragStart(event, node.id)}
-                        onDragEnter={() => handleDragEnter(node.id)}
-                        onDragOver={(event) => handleDragOver(event, node.id)}
-                        onDragLeave={(event) => handleDragLeave(event, node.id)}
-                        onDrop={(event) => handleDrop(event, node.id)}
-                        onDragEnd={handleDragEnd}
                       >
                         <div className="flex w-12 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 bg-muted/40 py-2 text-muted-foreground">
-                          <GripVertical className="h-4 w-4" aria-hidden="true" />
                           <span className="text-xs font-medium">#{node.priority}</span>
                         </div>
                         <div className="flex flex-1 flex-col gap-3">
@@ -505,21 +416,6 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                         </div>
                       </div>
                     ))}
-
-                    {draggedNodeId && (
-                      <div
-                        className={cn(
-                          "flex h-12 items-center justify-center rounded-xl border border-dashed border-border/40 bg-muted/20 text-xs font-medium uppercase tracking-wide text-muted-foreground transition",
-                          dragOverNodeId === "end" && "border-primary/60 bg-primary/10 text-primary",
-                        )}
-                        onDragEnter={() => handleDragEnter("end")}
-                        onDragOver={(event) => handleDragOver(event, "end")}
-                        onDragLeave={(event) => handleDragLeave(event, "end")}
-                        onDrop={(event) => handleDrop(event, "end")}
-                      >
-                        An das Ende verschieben
-                      </div>
-                    )}
                   </div>
                 </ScrollArea>
               ) : (
