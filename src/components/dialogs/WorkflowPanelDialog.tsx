@@ -685,7 +685,7 @@ const WorkflowPanelDialog = ({
 
                       <div className="space-y-2">
                         <label className="text-xs font-medium text-muted-foreground">Farbe</label>
-                        <div className="flex flex-wrap gap-2">
+                        <div className="flex flex-wrap justify-center gap-2">
                           {colorOptions.map((option) => (
                         <button
                           key={option.value}
