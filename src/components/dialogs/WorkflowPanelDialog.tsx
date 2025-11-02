@@ -106,6 +106,7 @@ const WorkflowPanelDialog = ({
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
   const [draggingNodeId, setDraggingNodeId] = useState<string | null>(null);
   const dragOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const lastDragPositionRef = useRef<{ x: number; y: number } | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [newConnectionTarget, setNewConnectionTarget] = useState<string>("");
   const [zoomLevel, setZoomLevel] = useState(DEFAULT_ZOOM);
@@ -220,6 +221,8 @@ const WorkflowPanelDialog = ({
   useEffect(() => {
     if (!draggingNodeId) return;
 
+    const MAX_MOVE_SPEED = 15; // Maximum pixels per frame
+
     const handlePointerMove = (event: PointerEvent) => {
       event.preventDefault();
       const boardElement = boardRef.current;
@@ -230,14 +233,32 @@ const WorkflowPanelDialog = ({
         (event.clientX - rect.left - boardOffset.x) / zoomLevel + boardContentBounds.offsetX;
       const relativeY =
         (event.clientY - rect.top - boardOffset.y) / zoomLevel + boardContentBounds.offsetY;
-      const newX = relativeX - dragOffsetRef.current.x;
-      const newY = relativeY - dragOffsetRef.current.y;
+      const targetX = relativeX - dragOffsetRef.current.x;
+      const targetY = relativeY - dragOffsetRef.current.y;
 
       onWorkflowChange((previous) => {
         const updatedNodes = previous.nodes.map((node) => {
           if (node.id !== draggingNodeId) {
             return node;
           }
+
+          // Apply speed limit for smoother dragging
+          let newX = targetX;
+          let newY = targetY;
+
+          if (lastDragPositionRef.current) {
+            const deltaX = targetX - lastDragPositionRef.current.x;
+            const deltaY = targetY - lastDragPositionRef.current.y;
+            const distance = Math.sqrt(deltaX * deltaX + deltaY * deltaY);
+
+            if (distance > MAX_MOVE_SPEED) {
+              const ratio = MAX_MOVE_SPEED / distance;
+              newX = lastDragPositionRef.current.x + deltaX * ratio;
+              newY = lastDragPositionRef.current.y + deltaY * ratio;
+            }
+          }
+
+          lastDragPositionRef.current = { x: newX, y: newY };
 
           return { ...node, x: newX, y: newY };
         });
@@ -251,6 +272,7 @@ const WorkflowPanelDialog = ({
 
     const handlePointerUp = () => {
       setDraggingNodeId(null);
+      lastDragPositionRef.current = null;
     };
 
     window.addEventListener("pointermove", handlePointerMove);
@@ -284,6 +306,7 @@ const WorkflowPanelDialog = ({
       y:
         (event.clientY - rect.top - boardOffset.y) / zoomLevel + boardContentBounds.offsetY - node.y,
     };
+    lastDragPositionRef.current = { x: node.x, y: node.y };
     setDraggingNodeId(node.id);
     setSelectedNodeId(node.id);
   };
