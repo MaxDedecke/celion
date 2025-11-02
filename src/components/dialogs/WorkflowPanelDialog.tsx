@@ -585,17 +585,9 @@ const WorkflowPanelDialog = ({
                         onPointerDown={(event) => handlePointerDown(event, node)}
                         onClick={() => setSelectedNodeId(node.id)}
                       >
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
+                       <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0 flex-1">
                             <p className="truncate text-sm font-semibold text-foreground">{node.title}</p>
-                            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                              {node.description || "Noch keine Beschreibung"}
-                            </p>
-                            {node.agentPrompt ? (
-                              <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground/90">
-                                {node.agentPrompt}
-                              </p>
-                            ) : null}
                           </div>
                           <Badge variant="secondary" className={cn("text-[10px] uppercase", statusBadgeClasses[node.status])}>
                             {statusOptions.find((option) => option.value === node.status)?.label ?? "Status"}
@@ -608,7 +600,7 @@ const WorkflowPanelDialog = ({
               </div>
             </div>
 
-            <aside className="hidden w-[280px] shrink-0 flex-col overflow-hidden rounded-2xl border border-border/60 bg-muted/20 p-4 md:flex">
+            <aside className="hidden w-[280px] shrink-0 flex-col overflow-hidden rounded-2xl border border-border/60 bg-muted/20 p-5 md:flex">
               {selectedNode ? (
                 <div className="flex h-full flex-col gap-4">
                   <div className="space-y-1">
@@ -618,7 +610,7 @@ const WorkflowPanelDialog = ({
                     </p>
                   </div>
 
-                  <ScrollArea className="-mr-4 flex-1 pr-4">
+                  <ScrollArea className="flex-1">
                     <div className="space-y-4">
                       <div className="space-y-2">
                         <label className="text-xs font-medium text-muted-foreground">Agent-Typ</label>
@@ -798,18 +790,6 @@ const WorkflowPanelDialog = ({
                   </div>
                     </div>
                   </ScrollArea>
-
-                  <div className="mt-auto flex items-center justify-between">
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="text-destructive hover:text-destructive"
-                      onClick={() => removeNode(selectedNode.id)}
-                    >
-                      <Trash2 className="mr-2 h-4 w-4" /> Schritt löschen
-                    </Button>
-                  </div>
                 </div>
               ) : (
                 <div className="flex h-full flex-col items-center justify-center gap-3 text-center">
