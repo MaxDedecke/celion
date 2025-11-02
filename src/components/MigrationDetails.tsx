@@ -2,11 +2,13 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowRight,
   CheckCircle2,
+  ChevronRight,
   Loader2,
   PauseCircle,
   Pencil,
   Play,
   Power,
+  Sparkles,
   Workflow,
 } from "lucide-react";
 import { AGENT_WORKFLOW_STEPS } from "@/constants/agentWorkflow";
@@ -77,9 +79,65 @@ const MIGRATION_STATUS_META: Record<MigrationStatus, { label: string; descriptio
 const MIGRATION_STATUS_FLOW = ["not_started", "running", "completed"] as const;
 type StatusFlowStep = typeof MIGRATION_STATUS_FLOW[number];
 
+const WORKFLOW_COLOR_THEME = {
+  sky: {
+    gradient: "from-sky-500/40 via-sky-500/10 to-transparent",
+    accentText: "text-sky-600 dark:text-sky-300",
+    accentBadge: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
+    progressBar: "bg-sky-500",
+    activeCard: "border-sky-500/50 bg-sky-500/10",
+  },
+  violet: {
+    gradient: "from-violet-500/40 via-violet-500/10 to-transparent",
+    accentText: "text-violet-600 dark:text-violet-300",
+    accentBadge: "bg-violet-500/15 text-violet-700 dark:text-violet-300",
+    progressBar: "bg-violet-500",
+    activeCard: "border-violet-500/50 bg-violet-500/10",
+  },
+  emerald: {
+    gradient: "from-emerald-500/40 via-emerald-500/10 to-transparent",
+    accentText: "text-emerald-600 dark:text-emerald-300",
+    accentBadge: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300",
+    progressBar: "bg-emerald-500",
+    activeCard: "border-emerald-500/50 bg-emerald-500/10",
+  },
+  amber: {
+    gradient: "from-amber-500/40 via-amber-500/10 to-transparent",
+    accentText: "text-amber-600 dark:text-amber-300",
+    accentBadge: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
+    progressBar: "bg-amber-500",
+    activeCard: "border-amber-500/50 bg-amber-500/10",
+  },
+  rose: {
+    gradient: "from-rose-500/40 via-rose-500/10 to-transparent",
+    accentText: "text-rose-600 dark:text-rose-300",
+    accentBadge: "bg-rose-500/15 text-rose-700 dark:text-rose-300",
+    progressBar: "bg-rose-500",
+    activeCard: "border-rose-500/50 bg-rose-500/10",
+  },
+} as const;
+
+type WorkflowThemeKey = keyof typeof WORKFLOW_COLOR_THEME;
+
+const getWorkflowTheme = (color?: string) => {
+  if (!color) {
+    return WORKFLOW_COLOR_THEME.sky;
+  }
+
+  return WORKFLOW_COLOR_THEME[(color as WorkflowThemeKey) ?? "sky"] ?? WORKFLOW_COLOR_THEME.sky;
+};
+
 const parseProgressPair = (value: string) => {
   const [current, total] = value.split("/").map((part) => Number(part) || 0);
   return { current, total };
+};
+
+type AgentWorkflowStepState = (typeof AGENT_WORKFLOW_STEPS)[number] & {
+  index: number;
+  status: "completed" | "active" | "upcoming";
+  progress: number;
+  startThreshold: number;
+  endThreshold: number;
 };
 
 const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
@@ -341,6 +399,72 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         : "running";
   const currentStatusIndex = MIGRATION_STATUS_FLOW.indexOf(normalizedStatusForFlow);
 
+  const agentWorkflowProgress = useMemo(() => {
+    const stepCount = AGENT_WORKFLOW_STEPS.length;
+
+    if (stepCount === 0) {
+      return {
+        steps: [] as AgentWorkflowStepState[],
+        activeStep: null as AgentWorkflowStepState | null,
+        nextStep: null as AgentWorkflowStepState | null,
+        completedCount: 0,
+        progressPerStep: 0,
+      };
+    }
+
+    const normalizedProgress = Math.max(0, Math.min(100, overallProgress));
+    const progressPerStep = 100 / stepCount;
+    const activeIndex =
+      normalizedProgress >= 100 ? stepCount - 1 : Math.floor(normalizedProgress / progressPerStep);
+
+    const steps: AgentWorkflowStepState[] = AGENT_WORKFLOW_STEPS.map((step, index) => {
+      const startThreshold = index * progressPerStep;
+      const endThreshold = (index + 1) * progressPerStep;
+      const isLastStep = index === stepCount - 1;
+      const isCompleted = isLastStep
+        ? normalizedProgress >= 100
+        : normalizedProgress >= endThreshold;
+      const isActive = !isCompleted && index === activeIndex;
+      const progressFraction = isCompleted
+        ? 1
+        : isActive
+          ? Math.max(0, Math.min(1, (normalizedProgress - startThreshold) / progressPerStep))
+          : 0;
+      const status: AgentWorkflowStepState["status"] = isCompleted
+        ? "completed"
+        : isActive
+          ? "active"
+          : "upcoming";
+
+      return {
+        ...step,
+        index,
+        status,
+        progress: progressFraction,
+        startThreshold,
+        endThreshold,
+      };
+    });
+
+    const activeStep =
+      steps.find((step) => step.status === "active") ??
+      (normalizedProgress >= 100 ? steps[steps.length - 1] ?? null : steps[0] ?? null);
+    const nextStep = steps.find((step) => step.status === "upcoming") ?? null;
+    const completedCount = steps.filter((step) => step.status === "completed").length;
+
+    return {
+      steps,
+      activeStep,
+      nextStep,
+      completedCount,
+      progressPerStep,
+    };
+  }, [overallProgress]);
+
+  const { steps: agentSteps, activeStep, nextStep, completedCount } = agentWorkflowProgress;
+  const activeStepProgressPercent = Math.round((activeStep?.progress ?? 0) * 100);
+  const activeColorTheme = getWorkflowTheme(activeStep?.color);
+
   const handleSaveNotes = async () => {
     if (!isNotesDirty) return;
 
@@ -375,8 +499,23 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
               </p>
             </CardHeader>
             <CardContent>
-              <div className="mb-6 rounded-xl border border-border/60 bg-background/80 p-4">
-                <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+              <div
+                className={cn(
+                  "relative overflow-hidden rounded-2xl border border-border/60 bg-background/90 p-4 transition-all",
+                  status === "running" && "ring-2 ring-sky-500/20",
+                  status === "paused" && "ring-2 ring-amber-500/20",
+                  status === "completed" && "ring-2 ring-emerald-500/20",
+                )}
+              >
+                <div className="pointer-events-none absolute inset-0">
+                  <div
+                    className={cn(
+                      "absolute inset-x-0 -top-20 h-36 bg-gradient-to-br opacity-60 blur-3xl",
+                      activeColorTheme.gradient,
+                    )}
+                  />
+                </div>
+                <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
                   <div>
                     <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</p>
                     <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -453,46 +592,116 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                     )}
                   </div>
                 </div>
-                <div className="mt-4 flex flex-wrap items-center gap-2 text-[11px] text-muted-foreground">
-                  {MIGRATION_STATUS_FLOW.map((step, index) => {
-                    const stepMeta = MIGRATION_STATUS_META[step];
-                    const reached = index <= currentStatusIndex;
-                    return (
-                      <div key={step} className="flex items-center gap-2">
-                        {index > 0 && <span className="h-px w-6 bg-border/60" aria-hidden="true" />}
-                        <span
-                          className={cn(
-                            "inline-flex items-center gap-1 rounded-full border px-2 py-1 transition-colors",
-                            reached
-                              ? "border-primary/60 bg-primary/5 text-foreground"
-                              : "border-border/60 text-muted-foreground",
-                          )}
-                        >
-                          <Workflow className="h-3 w-3" />
-                          {stepMeta.label}
-                          {index === currentStatusIndex && status !== "completed" && (
-                            <span className="sr-only">(aktueller Schritt)</span>
-                          )}
+                <div className="relative mt-4 flex flex-wrap items-center justify-between gap-3 text-[11px] text-muted-foreground">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {MIGRATION_STATUS_FLOW.map((step, index) => {
+                      const stepMeta = MIGRATION_STATUS_META[step];
+                      const reached = index <= currentStatusIndex;
+                      return (
+                        <div key={step} className="flex items-center gap-2">
+                          {index > 0 && <span className="h-px w-6 bg-border/60" aria-hidden="true" />}
+                          <span
+                            className={cn(
+                              "inline-flex items-center gap-1 rounded-full border px-2 py-1 transition-colors",
+                              reached
+                                ? "border-primary/60 bg-primary/5 text-foreground"
+                                : "border-border/60 text-muted-foreground",
+                            )}
+                          >
+                            <Workflow className="h-3 w-3" />
+                            {stepMeta.label}
+                            {index === currentStatusIndex && status !== "completed" && (
+                              <span className="sr-only">(aktueller Schritt)</span>
+                            )}
+                          </span>
+                        </div>
+                      );
+                    })}
+                    {status === "paused" && (
+                      <div className="flex items-center gap-2">
+                        <span className="h-px w-6 bg-border/60" aria-hidden="true" />
+                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/60 bg-amber-500/10 px-2 py-1 text-amber-700 dark:text-amber-300">
+                          <PauseCircle className="h-3 w-3" />
+                          Pausiert
                         </span>
                       </div>
-                    );
-                  })}
-                  {status === "paused" && (
-                    <div className="flex items-center gap-2">
-                      <span className="h-px w-6 bg-border/60" aria-hidden="true" />
-                      <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/60 bg-amber-500/10 px-2 py-1 text-amber-700 dark:text-amber-300">
-                        <PauseCircle className="h-3 w-3" />
-                        Pausiert
-                      </span>
-                    </div>
-                  )}
+                    )}
+                  </div>
+                  <div className={cn("inline-flex items-center gap-2", activeColorTheme.accentText)}>
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <span>
+                      Aktiver Agent: {activeStep ? `${activeStep.title}` : "Vorbereitung"}
+                    </span>
+                  </div>
+                </div>
+                <div className="relative mt-5 h-2 w-full overflow-hidden rounded-full bg-border/40">
+                  <div
+                    className={cn(
+                      "h-full rounded-full transition-all duration-700 ease-out",
+                      status === "paused"
+                        ? "bg-amber-500"
+                        : status === "completed"
+                          ? "bg-emerald-500"
+                          : activeColorTheme.progressBar,
+                      status === "running" && "animate-pulse [animation-duration:2.2s]",
+                    )}
+                    style={{ width: `${overallProgress}%` }}
+                    aria-hidden="true"
+                  />
+                  <span className="sr-only">Gesamtfortschritt {overallProgress}%</span>
                 </div>
               </div>
-              <div className="grid gap-6 lg:grid-cols-[220px,1fr]">
+              <div className="mt-6 grid gap-6 lg:grid-cols-[220px,1fr]">
                 <div className="flex items-center justify-center rounded-xl bg-muted/40 p-4">
                   <CircularProgress progress={overallProgress} size={200} />
                 </div>
                 <div className="space-y-5">
+                  <div className="rounded-xl border border-border/60 bg-background/80 p-4 shadow-sm">
+                    <div className="flex flex-wrap items-start justify-between gap-3">
+                      <div className="flex flex-col gap-2">
+                        <div className={cn("flex items-center gap-2 text-xs font-semibold uppercase tracking-wide", activeColorTheme.accentText)}>
+                          <Sparkles className="h-3.5 w-3.5" />
+                          <span>Aktiver Agent</span>
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-foreground">
+                            <span>{activeStep ? activeStep.title : "Noch kein Agent aktiv"}</span>
+                            {activeStep && (
+                              <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", activeColorTheme.accentBadge)}>
+                                {activeStep.phase}
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            {activeStep?.description ?? "Starte die Migration, um den Workflow der Agenten zu aktivieren."}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="min-w-[120px] text-right">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                          Schritt {activeStep ? activeStep.index + 1 : 0} / {agentSteps.length || 12}
+                        </p>
+                        <p className="mt-1 text-lg font-semibold text-foreground">{activeStepProgressPercent}%</p>
+                        <p className="text-[11px] text-muted-foreground">innerhalb dieses Agentenschritts</p>
+                      </div>
+                    </div>
+                    <div className="mt-4 h-1.5 w-full rounded-full bg-muted">
+                      <div
+                        className={cn("h-full rounded-full transition-all duration-700 ease-out", activeColorTheme.progressBar)}
+                        style={{ width: `${activeStepProgressPercent}%` }}
+                      />
+                    </div>
+                    {nextStep && (
+                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                        <ChevronRight className="h-3 w-3" />
+                        <span>
+                          Nächster Agent: <span className="font-medium text-foreground">{nextStep.title}</span>
+                          {" "}
+                          <span className="text-muted-foreground/70">({nextStep.phase})</span>
+                        </span>
+                      </div>
+                    )}
+                  </div>
                   <div className="rounded-xl border border-border/60 bg-background/80 p-4">
                     <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                       <Workflow className="h-4 w-4" />
@@ -542,6 +751,75 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                       })}
                     </div>
                   </div>
+                </div>
+              </div>
+              <div className="mt-6 rounded-2xl border border-border/60 bg-background/80 p-4">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+                    <Workflow className="h-3.5 w-3.5" />
+                    <span>Agenten-Workflow (12 Schritte)</span>
+                  </div>
+                  <Badge variant="outline" className="text-[11px]">
+                    {completedCount}/{agentSteps.length || 12} abgeschlossen
+                  </Badge>
+                </div>
+                <div className="mt-4 max-h-[260px]">
+                  <ScrollArea className="max-h-[260px] pr-2">
+                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                      {agentSteps.map((step) => {
+                        const stepTheme = getWorkflowTheme(step.color);
+                        const isCompleted = step.status === "completed";
+                        const isActive = step.status === "active";
+                        return (
+                          <div
+                            key={step.id}
+                            className={cn(
+                              "relative flex flex-col gap-2 rounded-xl border border-border/60 bg-background/60 p-4 transition-all",
+                              isActive && cn(stepTheme.activeCard, "shadow-lg shadow-black/5"),
+                              isCompleted && "border-emerald-500/40 bg-emerald-500/10",
+                            )}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex flex-col gap-1">
+                                <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+                                  <span className="rounded-full border border-border/60 bg-background/60 px-2 py-0.5">
+                                    #{step.index + 1}
+                                  </span>
+                                  {isCompleted ? (
+                                    <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-300">
+                                      <CheckCircle2 className="h-3.5 w-3.5" />
+                                      Fertig
+                                    </span>
+                                  ) : isActive ? (
+                                    <span className={cn("inline-flex items-center gap-1", stepTheme.accentText)}>
+                                      <Sparkles className="h-3.5 w-3.5" />
+                                      Aktiv
+                                    </span>
+                                  ) : (
+                                    <span className="text-muted-foreground">Bereit</span>
+                                  )}
+                                </div>
+                                <p className="text-sm font-semibold text-foreground">{step.title}</p>
+                                <p className="text-xs text-muted-foreground">{step.description}</p>
+                              </div>
+                              <Badge className={cn("text-[11px]", stepTheme.accentBadge)}>{step.phase}</Badge>
+                            </div>
+                            <div className="mt-3 h-1.5 w-full rounded-full bg-muted">
+                              <div
+                                className={cn(
+                                  "h-full rounded-full transition-all duration-700 ease-out",
+                                  isCompleted
+                                    ? "bg-emerald-500"
+                                    : stepTheme.progressBar,
+                                )}
+                                style={{ width: `${Math.round(step.progress * 100)}%` }}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </ScrollArea>
                 </div>
               </div>
             </CardContent>
