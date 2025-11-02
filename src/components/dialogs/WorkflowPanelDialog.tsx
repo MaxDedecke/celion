@@ -585,10 +585,8 @@ const WorkflowPanelDialog = ({
                         onPointerDown={(event) => handlePointerDown(event, node)}
                         onClick={() => setSelectedNodeId(node.id)}
                       >
-                       <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0 flex-1">
-                            <p className="truncate text-sm font-semibold text-foreground">{node.title}</p>
-                          </div>
+                        <div className="flex flex-col items-center gap-2">
+                          <p className="truncate text-sm font-semibold text-foreground text-center w-full">{node.title}</p>
                           <Badge variant="secondary" className={cn("text-[10px] uppercase", statusBadgeClasses[node.status])}>
                             {statusOptions.find((option) => option.value === node.status)?.label ?? "Status"}
                           </Badge>
