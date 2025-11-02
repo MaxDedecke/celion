@@ -109,6 +109,9 @@ const WorkflowPanelDialog = ({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [newConnectionTarget, setNewConnectionTarget] = useState<string>("");
   const [zoomLevel, setZoomLevel] = useState(DEFAULT_ZOOM);
+  const [boardOffset, setBoardOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [isPanning, setIsPanning] = useState(false);
+  const panStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
 
   const nodesById = useMemo(() => {
     return workflow.nodes.reduce<Record<string, WorkflowNode>>((result, node) => {
@@ -122,6 +125,8 @@ const WorkflowPanelDialog = ({
       setSelectedNodeId(null);
       setIsFullscreen(false);
       setZoomLevel(DEFAULT_ZOOM);
+      setBoardOffset({ x: 0, y: 0 });
+      setIsPanning(false);
     }
   }, [open]);
 
@@ -150,8 +155,8 @@ const WorkflowPanelDialog = ({
       if (!boardElement) return;
 
       const rect = boardElement.getBoundingClientRect();
-      const relativeX = (event.clientX - rect.left) / zoomLevel;
-      const relativeY = (event.clientY - rect.top) / zoomLevel;
+      const relativeX = (event.clientX - rect.left - boardOffset.x) / zoomLevel;
+      const relativeY = (event.clientY - rect.top - boardOffset.y) / zoomLevel;
       const newX = relativeX - dragOffsetRef.current.x;
       const newY = relativeY - dragOffsetRef.current.y;
 
@@ -187,22 +192,62 @@ const WorkflowPanelDialog = ({
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
     };
-  }, [draggingNodeId, onWorkflowChange, zoomLevel]);
+  }, [boardOffset.x, boardOffset.y, draggingNodeId, onWorkflowChange, zoomLevel]);
 
   const selectedNode = selectedNodeId ? nodesById[selectedNodeId] ?? null : null;
 
   const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>, node: WorkflowNode) => {
+    event.stopPropagation();
     const boardElement = boardRef.current;
     if (!boardElement) return;
 
     const rect = boardElement.getBoundingClientRect();
     dragOffsetRef.current = {
-      x: (event.clientX - rect.left) / zoomLevel - node.x,
-      y: (event.clientY - rect.top) / zoomLevel - node.y,
+      x: (event.clientX - rect.left - boardOffset.x) / zoomLevel - node.x,
+      y: (event.clientY - rect.top - boardOffset.y) / zoomLevel - node.y,
     };
     setDraggingNodeId(node.id);
     setSelectedNodeId(node.id);
   };
+
+  const handleBoardPointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    const target = event.target as HTMLElement;
+    if (target.closest('[data-workflow-node="true"]')) {
+      return;
+    }
+
+    event.preventDefault();
+    panStartRef.current = {
+      x: event.clientX - boardOffset.x,
+      y: event.clientY - boardOffset.y,
+    };
+    setIsPanning(true);
+  };
+
+  useEffect(() => {
+    if (!isPanning) return;
+
+    const handlePointerMove = (event: PointerEvent) => {
+      event.preventDefault();
+      setBoardOffset({
+        x: event.clientX - panStartRef.current.x,
+        y: event.clientY - panStartRef.current.y,
+      });
+    };
+
+    const handlePointerUp = () => {
+      setIsPanning(false);
+    };
+
+    window.addEventListener("pointermove", handlePointerMove);
+    window.addEventListener("pointerup", handlePointerUp, { once: true });
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+    };
+  }, [isPanning]);
 
   const updateNode = (nodeId: string, patch: Partial<WorkflowNode>) => {
     onWorkflowChange((previous) => ({
@@ -409,12 +454,20 @@ const WorkflowPanelDialog = ({
               className="relative flex-1 overflow-hidden rounded-2xl border border-dashed border-border/60 bg-[radial-gradient(circle_at_1px_1px,theme(colors.border/40)_1px,transparent_0)] bg-[length:32px_32px]"
             >
               <div
-                className="absolute inset-0 origin-top-left"
-                style={{ transform: `scale(${zoomLevel})`, transformOrigin: "top left" }}
+                className={cn(
+                  "absolute inset-0 cursor-grab",
+                  isPanning && "cursor-grabbing",
+                )}
+                style={{ transform: `translate(${boardOffset.x}px, ${boardOffset.y}px)` }}
+                onPointerDown={handleBoardPointerDown}
               >
-                <svg className="pointer-events-none absolute inset-0 h-full w-full" strokeWidth={2}>
-                  {connectionLines.map((line) => (
-                    <g key={line.id}>
+                <div
+                  className="absolute inset-0 origin-top-left"
+                  style={{ transform: `scale(${zoomLevel})`, transformOrigin: "top left" }}
+                >
+                  <svg className="pointer-events-none absolute inset-0 h-full w-full" strokeWidth={2}>
+                    {connectionLines.map((line) => (
+                      <g key={line.id}>
                       <line
                         x1={line.x1}
                         y1={line.y1}
@@ -437,36 +490,39 @@ const WorkflowPanelDialog = ({
                   ))}
                 </svg>
 
-                {workflow.nodes.map((node) => (
-                  <div
-                    key={node.id}
-                    className={cn(
-                      getNodeClassName(node),
-                      selectedNodeId === node.id && "ring-2 ring-primary/80",
-                      !node.active && "opacity-70",
-                    )}
-                    style={{ left: node.x, top: node.y }}
-                    onPointerDown={(event) => handlePointerDown(event, node)}
-                    onClick={() => setSelectedNodeId(node.id)}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold text-foreground">{node.title}</p>
-                        <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                          {node.description || "Noch keine Beschreibung"}
-                        </p>
-                        {node.agentPrompt ? (
-                          <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground/90">
-                            {node.agentPrompt}
+                  {workflow.nodes.map((node) => (
+                    <div
+                      key={node.id}
+                      data-workflow-node="true"
+                      className={cn(
+                        getNodeClassName(node),
+                        selectedNodeId === node.id && "ring-2 ring-primary/80",
+                        !node.active && "opacity-70",
+                        draggingNodeId === node.id ? "cursor-grabbing" : "cursor-default",
+                      )}
+                      style={{ left: node.x, top: node.y }}
+                      onPointerDown={(event) => handlePointerDown(event, node)}
+                      onClick={() => setSelectedNodeId(node.id)}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold text-foreground">{node.title}</p>
+                          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                            {node.description || "Noch keine Beschreibung"}
                           </p>
-                        ) : null}
+                          {node.agentPrompt ? (
+                            <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground/90">
+                              {node.agentPrompt}
+                            </p>
+                          ) : null}
+                        </div>
+                        <Badge variant="secondary" className={cn("text-[10px] uppercase", statusBadgeClasses[node.status])}>
+                          {statusOptions.find((option) => option.value === node.status)?.label ?? "Status"}
+                        </Badge>
                       </div>
-                      <Badge variant="secondary" className={cn("text-[10px] uppercase", statusBadgeClasses[node.status])}>
-                        {statusOptions.find((option) => option.value === node.status)?.label ?? "Status"}
-                      </Badge>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
             </div>
 
