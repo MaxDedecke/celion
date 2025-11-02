@@ -112,6 +112,77 @@ const WorkflowPanelDialog = ({
   const [boardOffset, setBoardOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isPanning, setIsPanning] = useState(false);
   const panStartRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
+  const [boardViewportSize, setBoardViewportSize] = useState<{ width: number; height: number }>({
+    width: 0,
+    height: 0,
+  });
+
+  useEffect(() => {
+    const element = boardRef.current;
+    if (!element) {
+      return;
+    }
+
+    const updateViewportSize = () => {
+      setBoardViewportSize({ width: element.clientWidth, height: element.clientHeight });
+    };
+
+    updateViewportSize();
+
+    const observer = new ResizeObserver(() => {
+      updateViewportSize();
+    });
+
+    observer.observe(element);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, []);
+
+  const boardContentBounds = useMemo(() => {
+    const padding = 400;
+    const baseWidth = boardViewportSize.width ? boardViewportSize.width / zoomLevel : 0;
+    const baseHeight = boardViewportSize.height ? boardViewportSize.height / zoomLevel : 0;
+
+    if (workflow.nodes.length === 0) {
+      return {
+        width: Math.max(baseWidth, 1200),
+        height: Math.max(baseHeight, 800),
+        offsetX: 0,
+        offsetY: 0,
+      };
+    }
+
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+
+    workflow.nodes.forEach((node) => {
+      minX = Math.min(minX, node.x);
+      minY = Math.min(minY, node.y);
+      maxX = Math.max(maxX, node.x + NODE_WIDTH);
+      maxY = Math.max(maxY, node.y + NODE_HEIGHT);
+    });
+
+    const offsetX = minX < 0 ? minX - padding : 0;
+    const offsetY = minY < 0 ? minY - padding : 0;
+
+    const width = Math.max(baseWidth, maxX + padding - offsetX);
+    const height = Math.max(baseHeight, maxY + padding - offsetY);
+
+    return { width, height, offsetX, offsetY };
+  }, [boardViewportSize.height, boardViewportSize.width, workflow.nodes, zoomLevel]);
+
+  const boardScaleStyle = useMemo(() => {
+    return {
+      transform: `scale(${zoomLevel})`,
+      transformOrigin: "top left",
+      width: boardContentBounds.width,
+      height: boardContentBounds.height,
+    } as const;
+  }, [boardContentBounds.height, boardContentBounds.width, zoomLevel]);
 
   const nodesById = useMemo(() => {
     return workflow.nodes.reduce<Record<string, WorkflowNode>>((result, node) => {
@@ -155,8 +226,10 @@ const WorkflowPanelDialog = ({
       if (!boardElement) return;
 
       const rect = boardElement.getBoundingClientRect();
-      const relativeX = (event.clientX - rect.left - boardOffset.x) / zoomLevel;
-      const relativeY = (event.clientY - rect.top - boardOffset.y) / zoomLevel;
+      const relativeX =
+        (event.clientX - rect.left - boardOffset.x) / zoomLevel + boardContentBounds.offsetX;
+      const relativeY =
+        (event.clientY - rect.top - boardOffset.y) / zoomLevel + boardContentBounds.offsetY;
       const newX = relativeX - dragOffsetRef.current.x;
       const newY = relativeY - dragOffsetRef.current.y;
 
@@ -166,12 +239,7 @@ const WorkflowPanelDialog = ({
             return node;
           }
 
-          const boundsWidth = rect.width / zoomLevel;
-          const boundsHeight = rect.height / zoomLevel;
-          const clampedX = Math.min(Math.max(newX, 12), Math.max(boundsWidth - NODE_WIDTH - 12, 12));
-          const clampedY = Math.min(Math.max(newY, 12), Math.max(boundsHeight - NODE_HEIGHT - 12, 12));
-
-          return { ...node, x: clampedX, y: clampedY };
+          return { ...node, x: newX, y: newY };
         });
 
         return {
@@ -192,7 +260,15 @@ const WorkflowPanelDialog = ({
       window.removeEventListener("pointermove", handlePointerMove);
       window.removeEventListener("pointerup", handlePointerUp);
     };
-  }, [boardOffset.x, boardOffset.y, draggingNodeId, onWorkflowChange, zoomLevel]);
+  }, [
+    boardContentBounds.offsetX,
+    boardContentBounds.offsetY,
+    boardOffset.x,
+    boardOffset.y,
+    draggingNodeId,
+    onWorkflowChange,
+    zoomLevel,
+  ]);
 
   const selectedNode = selectedNodeId ? nodesById[selectedNodeId] ?? null : null;
 
@@ -203,8 +279,10 @@ const WorkflowPanelDialog = ({
 
     const rect = boardElement.getBoundingClientRect();
     dragOffsetRef.current = {
-      x: (event.clientX - rect.left - boardOffset.x) / zoomLevel - node.x,
-      y: (event.clientY - rect.top - boardOffset.y) / zoomLevel - node.y,
+      x:
+        (event.clientX - rect.left - boardOffset.x) / zoomLevel + boardContentBounds.offsetX - node.x,
+      y:
+        (event.clientY - rect.top - boardOffset.y) / zoomLevel + boardContentBounds.offsetY - node.y,
     };
     setDraggingNodeId(node.id);
     setSelectedNodeId(node.id);
@@ -458,75 +536,79 @@ const WorkflowPanelDialog = ({
                   "absolute inset-0 cursor-grab",
                   isPanning && "cursor-grabbing",
                 )}
-                style={{ transform: `translate(${boardOffset.x}px, ${boardOffset.y}px)` }}
                 onPointerDown={handleBoardPointerDown}
               >
                 <div
-                  className="absolute inset-0 origin-top-left"
-                  style={{ transform: `scale(${zoomLevel})`, transformOrigin: "top left" }}
+                  className="absolute inset-0"
+                  style={{ transform: `translate(${boardOffset.x}px, ${boardOffset.y}px)` }}
                 >
-                  <svg className="pointer-events-none absolute inset-0 h-full w-full" strokeWidth={2}>
-                    {connectionLines.map((line) => (
-                      <g key={line.id}>
-                      <line
-                        x1={line.x1}
-                        y1={line.y1}
-                        x2={line.x2}
-                        y2={line.y2}
-                        stroke="hsl(var(--primary))"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      />
-                      {line.label && (
-                        <text
-                          x={(line.x1 + line.x2) / 2}
-                          y={(line.y1 + line.y2) / 2 - 6}
-                          className="fill-muted-foreground text-xs"
-                        >
-                          {line.label}
-                        </text>
-                      )}
-                    </g>
-                  ))}
-                </svg>
+                  <div className="absolute inset-0 origin-top-left" style={boardScaleStyle}>
+                    <svg className="pointer-events-none absolute inset-0 h-full w-full" strokeWidth={2}>
+                      {connectionLines.map((line) => (
+                        <g key={line.id}>
+                          <line
+                            x1={line.x1 - boardContentBounds.offsetX}
+                            y1={line.y1 - boardContentBounds.offsetY}
+                            x2={line.x2 - boardContentBounds.offsetX}
+                            y2={line.y2 - boardContentBounds.offsetY}
+                            stroke="hsl(var(--primary))"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          />
+                          {line.label && (
+                            <text
+                              x={(line.x1 + line.x2) / 2 - boardContentBounds.offsetX}
+                              y={(line.y1 + line.y2) / 2 - 6 - boardContentBounds.offsetY}
+                              className="fill-muted-foreground text-xs"
+                            >
+                              {line.label}
+                            </text>
+                          )}
+                        </g>
+                      ))}
+                    </svg>
 
-                  {workflow.nodes.map((node) => (
-                    <div
-                      key={node.id}
-                      data-workflow-node="true"
-                      className={cn(
-                        getNodeClassName(node),
-                        selectedNodeId === node.id && "ring-2 ring-primary/80",
-                        !node.active && "opacity-70",
-                        draggingNodeId === node.id ? "cursor-grabbing" : "cursor-default",
-                      )}
-                      style={{ left: node.x, top: node.y }}
-                      onPointerDown={(event) => handlePointerDown(event, node)}
-                      onClick={() => setSelectedNodeId(node.id)}
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-semibold text-foreground">{node.title}</p>
-                          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                            {node.description || "Noch keine Beschreibung"}
-                          </p>
-                          {node.agentPrompt ? (
-                            <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground/90">
-                              {node.agentPrompt}
+                    {workflow.nodes.map((node) => (
+                      <div
+                        key={node.id}
+                        data-workflow-node="true"
+                        className={cn(
+                          getNodeClassName(node),
+                          selectedNodeId === node.id && "ring-2 ring-primary/80",
+                          !node.active && "opacity-70",
+                          draggingNodeId === node.id ? "cursor-grabbing" : "cursor-default",
+                        )}
+                        style={{
+                          left: node.x - boardContentBounds.offsetX,
+                          top: node.y - boardContentBounds.offsetY,
+                        }}
+                        onPointerDown={(event) => handlePointerDown(event, node)}
+                        onClick={() => setSelectedNodeId(node.id)}
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="min-w-0">
+                            <p className="truncate text-sm font-semibold text-foreground">{node.title}</p>
+                            <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
+                              {node.description || "Noch keine Beschreibung"}
                             </p>
-                          ) : null}
+                            {node.agentPrompt ? (
+                              <p className="mt-1 line-clamp-2 text-[11px] text-muted-foreground/90">
+                                {node.agentPrompt}
+                              </p>
+                            ) : null}
+                          </div>
+                          <Badge variant="secondary" className={cn("text-[10px] uppercase", statusBadgeClasses[node.status])}>
+                            {statusOptions.find((option) => option.value === node.status)?.label ?? "Status"}
+                          </Badge>
                         </div>
-                        <Badge variant="secondary" className={cn("text-[10px] uppercase", statusBadgeClasses[node.status])}>
-                          {statusOptions.find((option) => option.value === node.status)?.label ?? "Status"}
-                        </Badge>
                       </div>
-                    </div>
-                  ))}
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
 
-            <aside className="hidden w-[280px] shrink-0 flex-col rounded-2xl border border-border/60 bg-muted/20 p-4 md:flex">
+            <aside className="hidden w-[280px] shrink-0 flex-col overflow-hidden rounded-2xl border border-border/60 bg-muted/20 p-4 md:flex">
               {selectedNode ? (
                 <div className="flex h-full flex-col gap-4">
                   <div className="space-y-1">
@@ -536,81 +618,83 @@ const WorkflowPanelDialog = ({
                     </p>
                   </div>
 
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-muted-foreground">Agent-Typ</label>
-                    <div className="rounded-lg border border-border bg-muted/40 px-3 py-2">
-                      <div className="flex flex-col gap-1">
-                        <span className="text-xs font-medium text-foreground">
-                          {agentTypes.find(a => a.value === selectedNode.agentType)?.label || "Nicht zugewiesen"}
-                        </span>
-                        <span className="text-[10px] text-muted-foreground">
-                          {agentTypes.find(a => a.value === selectedNode.agentType)?.phase || ""}
-                        </span>
+                  <ScrollArea className="-mr-4 flex-1 pr-4">
+                    <div className="space-y-4">
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-muted-foreground">Agent-Typ</label>
+                        <div className="rounded-lg border border-border bg-muted/40 px-3 py-2">
+                          <div className="flex flex-col gap-1">
+                            <span className="text-xs font-medium text-foreground">
+                              {agentTypes.find((a) => a.value === selectedNode.agentType)?.label || "Nicht zugewiesen"}
+                            </span>
+                            <span className="text-[10px] text-muted-foreground">
+                              {agentTypes.find((a) => a.value === selectedNode.agentType)?.phase || ""}
+                            </span>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
 
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-muted-foreground" htmlFor="workflow-node-title">
-                      Titel
-                    </label>
-                    <Input
-                      id="workflow-node-title"
-                      value={selectedNode.title}
-                      onChange={(event) => updateNode(selectedNode.id, { title: event.target.value })}
-                      placeholder="z. B. Validierung vorbereiten"
-                    />
-                  </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-muted-foreground" htmlFor="workflow-node-title">
+                          Titel
+                        </label>
+                        <Input
+                          id="workflow-node-title"
+                          value={selectedNode.title}
+                          onChange={(event) => updateNode(selectedNode.id, { title: event.target.value })}
+                          placeholder="z. B. Validierung vorbereiten"
+                        />
+                      </div>
 
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-muted-foreground" htmlFor="workflow-node-description">
-                      Beschreibung
-                    </label>
-                    <Textarea
-                      id="workflow-node-description"
-                      value={selectedNode.description}
-                      onChange={(event) => updateNode(selectedNode.id, { description: event.target.value })}
-                      placeholder="Beschreibe die Aufgabe für diesen Schritt"
-                      rows={3}
-                    />
-                  </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-muted-foreground" htmlFor="workflow-node-description">
+                          Beschreibung
+                        </label>
+                        <Textarea
+                          id="workflow-node-description"
+                          value={selectedNode.description}
+                          onChange={(event) => updateNode(selectedNode.id, { description: event.target.value })}
+                          placeholder="Beschreibe die Aufgabe für diesen Schritt"
+                          rows={3}
+                        />
+                      </div>
 
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-muted-foreground" htmlFor="workflow-node-agent-prompt">
-                      Agent Prompt
-                    </label>
-                    <Textarea
-                      id="workflow-node-agent-prompt"
-                      value={selectedNode.agentPrompt ?? ""}
-                      onChange={(event) => updateNode(selectedNode.id, { agentPrompt: event.target.value })}
-                      placeholder="Ergänze Anweisungen für den Agent in diesem Schritt"
-                      rows={3}
-                    />
-                  </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-muted-foreground" htmlFor="workflow-node-agent-prompt">
+                          Agent Prompt
+                        </label>
+                        <Textarea
+                          id="workflow-node-agent-prompt"
+                          value={selectedNode.agentPrompt ?? ""}
+                          onChange={(event) => updateNode(selectedNode.id, { agentPrompt: event.target.value })}
+                          placeholder="Ergänze Anweisungen für den Agent in diesem Schritt"
+                          rows={3}
+                        />
+                      </div>
 
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-muted-foreground">Status</label>
-                    <Select
-                      value={selectedNode.status}
-                      onValueChange={(value) => updateNode(selectedNode.id, { status: value as WorkflowNodeStatus })}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Status auswählen" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {statusOptions.map((option) => (
-                          <SelectItem key={option.value} value={option.value}>
-                            {option.label}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-muted-foreground">Status</label>
+                        <Select
+                          value={selectedNode.status}
+                          onValueChange={(value) => updateNode(selectedNode.id, { status: value as WorkflowNodeStatus })}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Status auswählen" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {statusOptions.map((option) => (
+                              <SelectItem key={option.value} value={option.value}>
+                                {option.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      </div>
 
-                  <div className="space-y-2">
-                    <label className="text-xs font-medium text-muted-foreground">Farbe</label>
-                    <div className="flex flex-wrap gap-2">
-                      {colorOptions.map((option) => (
+                      <div className="space-y-2">
+                        <label className="text-xs font-medium text-muted-foreground">Farbe</label>
+                        <div className="flex flex-wrap gap-2">
+                          {colorOptions.map((option) => (
                         <button
                           key={option.value}
                           type="button"
@@ -712,6 +796,8 @@ const WorkflowPanelDialog = ({
                       </div>
                     </ScrollArea>
                   </div>
+                    </div>
+                  </ScrollArea>
 
                   <div className="mt-auto flex items-center justify-between">
                     <Button
