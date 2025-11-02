@@ -36,6 +36,7 @@ const NODE_HEIGHT = 130;
 const MIN_ZOOM = 0.6;
 const MAX_ZOOM = 1.6;
 const ZOOM_STEP = 0.1;
+const DEFAULT_ZOOM = 0.8;
 
 const statusOptions: Array<{ value: WorkflowNodeStatus; label: string }> = [
   { value: "pending", label: "Geplant" },
@@ -107,7 +108,7 @@ const WorkflowPanelDialog = ({
   const dragOffsetRef = useRef<{ x: number; y: number }>({ x: 0, y: 0 });
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [newConnectionTarget, setNewConnectionTarget] = useState<string>("");
-  const [zoomLevel, setZoomLevel] = useState(1);
+  const [zoomLevel, setZoomLevel] = useState(DEFAULT_ZOOM);
 
   const nodesById = useMemo(() => {
     return workflow.nodes.reduce<Record<string, WorkflowNode>>((result, node) => {
@@ -120,7 +121,7 @@ const WorkflowPanelDialog = ({
     if (!open) {
       setSelectedNodeId(null);
       setIsFullscreen(false);
-      setZoomLevel(1);
+      setZoomLevel(DEFAULT_ZOOM);
     }
   }, [open]);
 
@@ -378,9 +379,9 @@ const WorkflowPanelDialog = ({
               <Button
                 variant="outline"
                 size="icon"
-                onClick={() => setZoomLevel(1)}
+                onClick={() => setZoomLevel(DEFAULT_ZOOM)}
                 aria-label="Zoom zurücksetzen"
-                disabled={Math.abs(zoomLevel - 1) < 0.01}
+                disabled={Math.abs(zoomLevel - DEFAULT_ZOOM) < 0.01}
               >
                 <RotateCcw className="h-4 w-4" />
               </Button>
