@@ -36,7 +36,7 @@ const Login = () => {
         if (error) throw error;
         
         toast.success("Account created successfully!");
-        navigate("/projects");
+        navigate("/dashboard");
       } else {
         const { error } = await supabase.auth.signInWithPassword({
           email,
@@ -46,7 +46,7 @@ const Login = () => {
         if (error) throw error;
         
         toast.success("Login successful");
-        navigate("/projects");
+        navigate("/dashboard");
       }
     } catch (error) {
       const message = error instanceof Error ? error.message : "An error occurred";

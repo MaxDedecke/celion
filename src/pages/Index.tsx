@@ -14,7 +14,7 @@ const Index = () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
         if (session) {
-          navigate("/projects");
+          navigate("/dashboard");
         } else {
           navigate("/");
         }
