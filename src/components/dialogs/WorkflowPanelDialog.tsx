@@ -414,18 +414,88 @@ const WorkflowPanelDialog = ({
       return [] as Array<{ id: string; x1: number; y1: number; x2: number; y2: number; label?: string }>;
     }
 
+    // Helper function to calculate edge point on rectangle
+    const getEdgePoint = (
+      fromX: number,
+      fromY: number,
+      toX: number,
+      toY: number,
+      nodeWidth: number,
+      nodeHeight: number
+    ) => {
+      const dx = toX - fromX;
+      const dy = toY - fromY;
+      
+      if (dx === 0 && dy === 0) {
+        return { x: fromX, y: fromY };
+      }
+
+      // Calculate intersection with rectangle edges
+      const halfWidth = nodeWidth / 2;
+      const halfHeight = nodeHeight / 2;
+
+      // Normalize direction
+      const angle = Math.atan2(dy, dx);
+      
+      // Check which edge the line intersects first
+      const tanAngle = Math.abs(dy / dx);
+      const rectRatio = halfHeight / halfWidth;
+
+      let edgeX: number, edgeY: number;
+
+      if (tanAngle > rectRatio) {
+        // Intersects top or bottom edge
+        edgeY = dy > 0 ? halfHeight : -halfHeight;
+        edgeX = edgeY / Math.tan(angle);
+      } else {
+        // Intersects left or right edge
+        edgeX = dx > 0 ? halfWidth : -halfWidth;
+        edgeY = edgeX * Math.tan(angle);
+      }
+
+      return {
+        x: fromX + edgeX,
+        y: fromY + edgeY,
+      };
+    };
+
     return workflow.connections
       .map((connection) => {
         const source = nodesById[connection.sourceId];
         const target = nodesById[connection.targetId];
         if (!source || !target) return null;
 
+        // Center points of nodes
+        const sourceCenterX = source.x + NODE_WIDTH / 2;
+        const sourceCenterY = source.y + NODE_HEIGHT / 2;
+        const targetCenterX = target.x + NODE_WIDTH / 2;
+        const targetCenterY = target.y + NODE_HEIGHT / 2;
+
+        // Calculate edge points
+        const sourceEdge = getEdgePoint(
+          sourceCenterX,
+          sourceCenterY,
+          targetCenterX,
+          targetCenterY,
+          NODE_WIDTH,
+          NODE_HEIGHT
+        );
+
+        const targetEdge = getEdgePoint(
+          targetCenterX,
+          targetCenterY,
+          sourceCenterX,
+          sourceCenterY,
+          NODE_WIDTH,
+          NODE_HEIGHT
+        );
+
         return {
           id: connection.id,
-          x1: source.x + NODE_WIDTH / 2,
-          y1: source.y + NODE_HEIGHT / 2,
-          x2: target.x + NODE_WIDTH / 2,
-          y2: target.y + NODE_HEIGHT / 2,
+          x1: sourceEdge.x,
+          y1: sourceEdge.y,
+          x2: targetEdge.x,
+          y2: targetEdge.y,
           label: connection.label,
         };
       })
