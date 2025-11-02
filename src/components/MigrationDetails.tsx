@@ -549,30 +549,30 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
 
           <Card className="flex h-full flex-col border-border bg-card">
             <CardHeader>
-              <CardTitle className="text-base">Notizen &amp; Kontext</CardTitle>
+              <CardTitle className="text-base">Prompt: Notizen &amp; Kontext</CardTitle>
               <p className="text-sm text-muted-foreground">
-                Dokumentiere Ziele, Einschränkungen und Kontext für die Migration, damit alle Beteiligten informiert bleiben.
+                Formuliere hier deinen Prompt mit Zielen, Einschränkungen und Kontext, damit die KI dich bei der Migration optimal unterstützen kann.
               </p>
             </CardHeader>
             <CardContent className="flex flex-1 min-h-0 flex-col gap-4">
               <div className="flex flex-1 min-h-0 flex-col gap-2">
                 <Label htmlFor="migration-notes" className="sr-only">
-                  Notizen zur Migration
+                  Prompt zur Migration
                 </Label>
                 <Textarea
                   id="migration-notes"
                   value={notes}
                   onChange={(event) => setNotes(event.target.value)}
-                  placeholder="Beschreibe hier das Ziel der Migration, relevante Randbedingungen und nächste Schritte."
+                  placeholder="Beschreibe hier dein Prompt: Ziel der Migration, relevante Randbedingungen und gewünschte Unterstützung."
                   rows={8}
                   className="min-h-[180px] flex-1"
                 />
-                <p className="text-xs text-muted-foreground">Änderungen werden nicht automatisch gespeichert.</p>
+                <p className="text-xs text-muted-foreground">Hinweis: Dieses Prompt-Fenster speichert Änderungen nicht automatisch.</p>
               </div>
               <div className="flex items-center justify-end gap-2">
                 <Button onClick={handleSaveNotes} disabled={!isNotesDirty || isSavingNotes} variant="default">
                   {isSavingNotes && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Notizen speichern
+                  Prompt speichern
                 </Button>
               </div>
             </CardContent>
