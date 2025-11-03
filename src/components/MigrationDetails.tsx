@@ -402,16 +402,6 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const agentWorkflowProgress = useMemo(() => {
     const stepCount = AGENT_WORKFLOW_STEPS.length;
 
-    if (stepCount === 0) {
-      return {
-        steps: [] as AgentWorkflowStepState[],
-        activeStep: null as AgentWorkflowStepState | null,
-        nextStep: null as AgentWorkflowStepState | null,
-        completedCount: 0,
-        progressPerStep: 0,
-      };
-    }
-
     const normalizedProgress = Math.max(0, Math.min(100, overallProgress));
     const progressPerStep = 100 / stepCount;
     const activeIndex =
@@ -705,7 +695,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                   <div className="rounded-xl border border-border/60 bg-background/80 p-4">
                     <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                       <Workflow className="h-4 w-4" />
-                      <span>Systemfluss</span>
+                      <span>Migration</span>
                     </div>
                     <div className="mt-3 flex flex-wrap items-center gap-2 text-lg font-semibold text-foreground">
                       <span>{project.sourceSystem}</span>
@@ -728,27 +718,26 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                   </div>
 
                   <div>
-                    <h4 className="text-sm font-semibold text-foreground">Meilensteine</h4>
-                    <div className="mt-3 space-y-2">
-                      {PROGRESS_STAGES.map((stage) => {
-                        const reached = overallProgress >= stage.threshold;
+                    <h4 className="text-sm font-semibold text-foreground">Aktueller Meilenstein</h4>
+                    <div className="mt-3">
+                      {(() => {
+                        const currentStage = PROGRESS_STAGES.filter(stage => overallProgress >= stage.threshold).pop() 
+                          || PROGRESS_STAGES[0];
+                        const reached = overallProgress >= currentStage.threshold;
                         return (
-                          <div
-                            key={stage.label}
-                            className="flex items-center justify-between rounded-lg border border-border/60 bg-background/60 px-3 py-2"
-                          >
+                          <div className="flex items-center justify-between rounded-lg border border-primary/40 bg-primary/5 px-3 py-2">
                             <div className="flex items-center gap-3">
                               {reached ? (
                                 <CheckCircle2 className="h-4 w-4 text-success" />
                               ) : (
                                 <Workflow className="h-4 w-4 text-muted-foreground" />
                               )}
-                              <span className="text-sm font-medium text-foreground">{stage.label}</span>
+                              <span className="text-sm font-medium text-foreground">{currentStage.label}</span>
                             </div>
-                            <Badge variant={reached ? "secondary" : "outline"}>{stage.threshold}%</Badge>
+                            <Badge variant={reached ? "secondary" : "outline"}>{currentStage.threshold}%</Badge>
                           </div>
                         );
-                      })}
+                      })()}
                     </div>
                   </div>
                 </div>
@@ -763,9 +752,9 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                     {completedCount}/{agentSteps.length || 12} abgeschlossen
                   </Badge>
                 </div>
-                <div className="mt-4 max-h-[260px]">
-                  <ScrollArea className="max-h-[260px] pr-2">
-                    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+                <div className="mt-4">
+                  <ScrollArea className="h-[500px] pr-2">
+                    <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
                       {agentSteps.map((step) => {
                         const stepTheme = getWorkflowTheme(step.color);
                         const isCompleted = step.status === "completed";
@@ -800,9 +789,9 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                                   )}
                                 </div>
                                 <p className="text-sm font-semibold text-foreground">{step.title}</p>
-                                <p className="text-xs text-muted-foreground">{step.description}</p>
+                                <p className="text-xs text-muted-foreground line-clamp-2">{step.description}</p>
                               </div>
-                              <Badge className={cn("text-[11px]", stepTheme.accentBadge)}>{step.phase}</Badge>
+                              <Badge className={cn("text-[11px] shrink-0", stepTheme.accentBadge)}>{step.phase}</Badge>
                             </div>
                             <div className="mt-3 h-1.5 w-full rounded-full bg-muted">
                               <div
