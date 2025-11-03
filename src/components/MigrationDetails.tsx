@@ -479,571 +479,174 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex flex-1 flex-col gap-6 overflow-auto p-6">
-        <div className="grid gap-6 xl:grid-cols-[2fr,1fr]">
+      <div className="flex flex-1 flex-col gap-4 overflow-auto p-6">
+        <div className="grid gap-4 xl:grid-cols-[1.5fr,1fr]">
           <Card className="border-border bg-card">
-            <CardHeader>
-              <CardTitle className="text-base">Migrationsübersicht</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Behalte Fortschritt, Systeme und Kennzahlen dieser Migration im Blick.
-              </p>
+            <CardHeader className="pb-3">
+              <CardTitle className="text-base">Migration</CardTitle>
             </CardHeader>
             <CardContent>
-              <div
-                className={cn(
-                  "relative overflow-hidden rounded-2xl border border-border/60 bg-background/90 p-4 transition-all",
-                  status === "running" && "ring-2 ring-sky-500/20",
-                  status === "paused" && "ring-2 ring-amber-500/20",
-                  status === "completed" && "ring-2 ring-emerald-500/20",
-                )}
-              >
-                <div className="pointer-events-none absolute inset-0">
-                  <div
-                    className={cn(
-                      "absolute inset-x-0 -top-20 h-36 bg-gradient-to-br opacity-60 blur-3xl",
-                      activeColorTheme.gradient,
-                    )}
-                  />
-                </div>
-                <div className="relative flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-                  <div>
-                    <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Status</p>
-                    <div className="mt-2 flex flex-wrap items-center gap-2">
-                      <Badge
-                        variant="secondary"
-                        className={cn("px-3 py-1 text-xs font-semibold", statusMeta.badgeClassName)}
-                      >
-                        {statusMeta.label}
-                      </Badge>
-                      {status === "running" && (
-                        <span className="inline-flex items-center gap-1 text-xs text-muted-foreground">
-                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                          Läuft im Hintergrund
-                        </span>
-                      )}
-                      {status === "paused" && (
-                        <span className="inline-flex items-center gap-1 text-xs text-amber-600 dark:text-amber-300">
-                          <PauseCircle className="h-3.5 w-3.5" />
-                          Kurz pausiert
-                        </span>
-                      )}
-                      {status === "completed" && (
-                        <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-300">
-                          <CheckCircle2 className="h-3.5 w-3.5" />
-                          Geschafft!
-                        </span>
-                      )}
-                    </div>
-                    <p className="mt-2 text-xs text-muted-foreground">{statusMeta.description}</p>
+              <div className="grid gap-3 md:grid-cols-2">
+                <div className="flex items-center gap-3 rounded-lg border border-border/60 bg-background/80 p-3">
+                  <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+                    <CircularProgress progress={overallProgress} size={48} />
                   </div>
-                  <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
+                  <div>
+                    <p className="text-xs text-muted-foreground">Gesamtfortschritt</p>
+                    <p className="text-lg font-semibold">{overallProgress}%</p>
+                  </div>
+                </div>
+                
+                <div className="flex items-center gap-3 rounded-lg border border-border/60 bg-background/80 p-3">
+                  <Badge variant="secondary" className={cn("text-xs", statusMeta.badgeClassName)}>
+                    {statusMeta.label}
+                  </Badge>
+                  <div className="flex-1">
                     {status === "not_started" && (
-                      <Button
-                        onClick={() => handleUpdateStatus("running")}
-                        disabled={isUpdatingStatus}
-                        className="min-w-[180px] justify-center"
-                      >
-                        {isUpdatingStatus ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <Play className="mr-2 h-4 w-4" />
-                        )}
-                        Prozess starten
+                      <Button size="sm" onClick={() => handleUpdateStatus("running")} disabled={isUpdatingStatus}>
+                        <Play className="mr-1 h-3 w-3" />
+                        Starten
                       </Button>
                     )}
                     {status === "running" && (
-                      <Button
-                        variant="outline"
-                        onClick={() => handleUpdateStatus("completed")}
-                        disabled={isUpdatingStatus}
-                        className="min-w-[180px] justify-center"
-                      >
-                        {isUpdatingStatus ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <CheckCircle2 className="mr-2 h-4 w-4" />
-                        )}
-                        Als abgeschlossen markieren
+                      <Button size="sm" variant="outline" onClick={() => handleUpdateStatus("completed")} disabled={isUpdatingStatus}>
+                        <CheckCircle2 className="mr-1 h-3 w-3" />
+                        Abschließen
                       </Button>
                     )}
                     {status === "paused" && (
-                      <Button
-                        onClick={() => handleUpdateStatus("running")}
-                        disabled={isUpdatingStatus}
-                        className="min-w-[180px] justify-center"
-                      >
-                        {isUpdatingStatus ? (
-                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        ) : (
-                          <Play className="mr-2 h-4 w-4" />
-                        )}
+                      <Button size="sm" onClick={() => handleUpdateStatus("running")} disabled={isUpdatingStatus}>
+                        <Play className="mr-1 h-3 w-3" />
                         Fortsetzen
                       </Button>
                     )}
                   </div>
                 </div>
-                <div className="relative mt-4 flex flex-wrap items-center justify-between gap-3 text-[11px] text-muted-foreground">
-                  <div className="flex flex-wrap items-center gap-2">
-                    {MIGRATION_STATUS_FLOW.map((step, index) => {
-                      const stepMeta = MIGRATION_STATUS_META[step];
-                      const reached = index <= currentStatusIndex;
-                      return (
-                        <div key={step} className="flex items-center gap-2">
-                          {index > 0 && <span className="h-px w-6 bg-border/60" aria-hidden="true" />}
-                          <span
-                            className={cn(
-                              "inline-flex items-center gap-1 rounded-full border px-2 py-1 transition-colors",
-                              reached
-                                ? "border-primary/60 bg-primary/5 text-foreground"
-                                : "border-border/60 text-muted-foreground",
-                            )}
-                          >
-                            <Workflow className="h-3 w-3" />
-                            {stepMeta.label}
-                            {index === currentStatusIndex && status !== "completed" && (
-                              <span className="sr-only">(aktueller Schritt)</span>
-                            )}
-                          </span>
-                        </div>
-                      );
-                    })}
-                    {status === "paused" && (
-                      <div className="flex items-center gap-2">
-                        <span className="h-px w-6 bg-border/60" aria-hidden="true" />
-                        <span className="inline-flex items-center gap-1 rounded-full border border-amber-400/60 bg-amber-500/10 px-2 py-1 text-amber-700 dark:text-amber-300">
-                          <PauseCircle className="h-3 w-3" />
-                          Pausiert
-                        </span>
-                      </div>
-                    )}
-                  </div>
-                  <div className={cn("inline-flex items-center gap-2", activeColorTheme.accentText)}>
-                    <Sparkles className="h-3.5 w-3.5" />
-                    <span>
-                      Aktiver Agent: {activeStep ? `${activeStep.title}` : "Vorbereitung"}
-                    </span>
-                  </div>
-                </div>
-                <div className="relative mt-5 h-2 w-full overflow-hidden rounded-full bg-border/40">
-                  <div
-                    className={cn(
-                      "h-full rounded-full transition-all duration-700 ease-out",
-                      status === "paused"
-                        ? "bg-amber-500"
-                        : status === "completed"
-                          ? "bg-emerald-500"
-                          : activeColorTheme.progressBar,
-                      status === "running" && "animate-pulse [animation-duration:2.2s]",
-                    )}
-                    style={{ width: `${overallProgress}%` }}
-                    aria-hidden="true"
-                  />
-                  <span className="sr-only">Gesamtfortschritt {overallProgress}%</span>
-                </div>
               </div>
-              <div className="mt-6 grid gap-6 lg:grid-cols-[220px,1fr]">
-                <div className="flex items-center justify-center rounded-xl bg-muted/40 p-4">
-                  <CircularProgress progress={overallProgress} size={200} />
-                </div>
-                <div className="space-y-5">
-                  <div className="rounded-xl border border-border/60 bg-background/80 p-4 shadow-sm">
-                    <div className="flex flex-wrap items-start justify-between gap-3">
-                      <div className="flex flex-col gap-2">
-                        <div className={cn("flex items-center gap-2 text-xs font-semibold uppercase tracking-wide", activeColorTheme.accentText)}>
-                          <Sparkles className="h-3.5 w-3.5" />
-                          <span>Aktiver Agent</span>
-                        </div>
-                        <div className="flex flex-col gap-1">
-                          <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-foreground">
-                            <span>{activeStep ? activeStep.title : "Noch kein Agent aktiv"}</span>
-                            {activeStep && (
-                              <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", activeColorTheme.accentBadge)}>
-                                {activeStep.phase}
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            {activeStep?.description ?? "Starte die Migration, um den Workflow der Agenten zu aktivieren."}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="min-w-[120px] text-right">
-                        <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+              <div className="mt-3 space-y-3">
+                <div className="rounded-lg border border-border/60 bg-background/80 p-3">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className={cn("h-4 w-4", activeColorTheme.accentText)} />
+                      <div>
+                        <p className="text-sm font-semibold">{activeStep ? activeStep.title : "Noch kein Agent aktiv"}</p>
+                        <p className="text-xs text-muted-foreground">
                           Schritt {activeStep ? activeStep.index + 1 : 0} / {agentSteps.length || 12}
                         </p>
-                        <p className="mt-1 text-lg font-semibold text-foreground">{activeStepProgressPercent}%</p>
-                        <p className="text-[11px] text-muted-foreground">innerhalb dieses Agentenschritts</p>
                       </div>
                     </div>
-                    <div className="mt-4 h-1.5 w-full rounded-full bg-muted">
-                      <div
-                        className={cn("h-full rounded-full transition-all duration-700 ease-out", activeColorTheme.progressBar)}
-                        style={{ width: `${activeStepProgressPercent}%` }}
-                      />
+                    <div className="text-right">
+                      <p className="text-lg font-semibold">{activeStepProgressPercent}%</p>
                     </div>
-                    {nextStep && (
-                      <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                        <ChevronRight className="h-3 w-3" />
-                        <span>
-                          Nächster Agent: <span className="font-medium text-foreground">{nextStep.title}</span>
-                          {" "}
-                          <span className="text-muted-foreground/70">({nextStep.phase})</span>
-                        </span>
-                      </div>
-                    )}
                   </div>
-                  <div className="rounded-xl border border-border/60 bg-background/80 p-4">
-                    <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                      <Workflow className="h-4 w-4" />
+                  <div className="mt-2 h-1.5 w-full rounded-full bg-muted">
+                    <div
+                      className={cn("h-full rounded-full transition-all duration-700 ease-out", activeColorTheme.progressBar)}
+                      style={{ width: `${activeStepProgressPercent}%` }}
+                    />
+                  </div>
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="rounded-lg border border-border/60 bg-background/80 p-3">
+                    <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                      <Workflow className="h-3.5 w-3.5" />
                       <span>Migration</span>
                     </div>
-                    <div className="mt-3 flex flex-wrap items-center gap-2 text-lg font-semibold text-foreground">
+                    <div className="mt-1 flex items-center gap-2 text-sm font-semibold">
                       <span>{project.sourceSystem}</span>
-                      <ArrowRight className="h-4 w-4 text-muted-foreground" />
+                      <ArrowRight className="h-3 w-3" />
                       <span>{project.targetSystem}</span>
                     </div>
                   </div>
 
-                  <div className="grid gap-4 sm:grid-cols-2">
-                    <div className="rounded-xl border border-dashed border-primary/40 bg-primary/5 p-4">
-                      <p className="text-xs font-medium uppercase tracking-wide text-primary/80">Objekte übertragen</p>
-                      <p className="mt-2 text-xl font-semibold text-foreground">{project.objectsTransferred}</p>
-                      <p className="text-xs text-muted-foreground">{transferRate}% abgeschlossen</p>
-                    </div>
-                    <div className="rounded-xl border border-border/60 bg-background/80 p-4">
-                      <p className="text-xs font-medium uppercase tracking-wide text-muted-foreground">Mapping-Abdeckung</p>
-                      <p className="mt-2 text-xl font-semibold text-foreground">{project.mappedObjects}</p>
-                      <p className="text-xs text-muted-foreground">{mappedRate}% vorbereitet</p>
-                    </div>
-                  </div>
-
-                  <div>
-                    <h4 className="text-sm font-semibold text-foreground">Aktueller Meilenstein</h4>
-                    <div className="mt-3">
-                      {(() => {
-                        const currentStage = PROGRESS_STAGES.filter(stage => overallProgress >= stage.threshold).pop() 
-                          || PROGRESS_STAGES[0];
-                        const reached = overallProgress >= currentStage.threshold;
-                        return (
-                          <div className="flex items-center justify-between rounded-lg border border-primary/40 bg-primary/5 px-3 py-2">
-                            <div className="flex items-center gap-3">
-                              {reached ? (
-                                <CheckCircle2 className="h-4 w-4 text-success" />
-                              ) : (
-                                <Workflow className="h-4 w-4 text-muted-foreground" />
-                              )}
-                              <span className="text-sm font-medium text-foreground">{currentStage.label}</span>
-                            </div>
-                            <Badge variant={reached ? "secondary" : "outline"}>{currentStage.threshold}%</Badge>
-                          </div>
-                        );
-                      })()}
-                    </div>
+                  <div className="rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3">
+                    <p className="text-xs text-muted-foreground">Objekte übertragen</p>
+                    <p className="mt-1 text-sm font-semibold">{project.objectsTransferred}</p>
                   </div>
                 </div>
               </div>
-              <div className="mt-6 rounded-2xl border border-border/60 bg-background/80 p-4">
-                <div className="flex flex-wrap items-center justify-between gap-3">
-                  <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                    <Workflow className="h-3.5 w-3.5" />
-                    <span>Agenten-Workflow (12 Schritte)</span>
+              <div className="mt-3 rounded-lg border border-border/60 bg-background/80 p-3">
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-2">
+                    <Workflow className="h-3.5 w-3.5 text-muted-foreground" />
+                    <span className="text-xs font-semibold text-muted-foreground">Workflow</span>
                   </div>
                   <Badge variant="outline" className="text-[11px]">
-                    {completedCount}/{agentSteps.length || 12} abgeschlossen
+                    {completedCount}/{agentSteps.length || 12}
                   </Badge>
                 </div>
-                <div className="mt-4">
-                  <ScrollArea className="h-[500px] pr-2">
-                    <div className="grid gap-3 lg:grid-cols-2 2xl:grid-cols-3">
-                      {agentSteps.map((step) => {
-                        const stepTheme = getWorkflowTheme(step.color);
-                        const isCompleted = step.status === "completed";
-                        const isActive = step.status === "active";
-                        return (
-                          <div
-                            key={step.id}
-                            className={cn(
-                              "relative flex flex-col gap-2 rounded-xl border border-border/60 bg-background/60 p-4 transition-all",
-                              isActive && cn(stepTheme.activeCard, "shadow-lg shadow-black/5"),
-                              isCompleted && "border-emerald-500/40 bg-emerald-500/10",
-                            )}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex flex-col gap-1">
-                                <div className="inline-flex items-center gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
-                                  <span className="rounded-full border border-border/60 bg-background/60 px-2 py-0.5">
-                                    #{step.index + 1}
-                                  </span>
-                                  {isCompleted ? (
-                                    <span className="inline-flex items-center gap-1 text-emerald-600 dark:text-emerald-300">
-                                      <CheckCircle2 className="h-3.5 w-3.5" />
-                                      Fertig
-                                    </span>
-                                  ) : isActive ? (
-                                    <span className={cn("inline-flex items-center gap-1", stepTheme.accentText)}>
-                                      <Sparkles className="h-3.5 w-3.5" />
-                                      Aktiv
-                                    </span>
-                                  ) : (
-                                    <span className="text-muted-foreground">Bereit</span>
-                                  )}
-                                </div>
-                                <p className="text-sm font-semibold text-foreground">{step.title}</p>
-                                <p className="text-xs text-muted-foreground line-clamp-2">{step.description}</p>
-                              </div>
-                              <Badge className={cn("text-[11px] shrink-0", stepTheme.accentBadge)}>{step.phase}</Badge>
-                            </div>
-                            <div className="mt-3 h-1.5 w-full rounded-full bg-muted">
-                              <div
-                                className={cn(
-                                  "h-full rounded-full transition-all duration-700 ease-out",
-                                  isCompleted
-                                    ? "bg-emerald-500"
-                                    : stepTheme.progressBar,
-                                )}
-                                style={{ width: `${Math.round(step.progress * 100)}%` }}
-                              />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </ScrollArea>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card className="flex h-full flex-col border-border bg-card">
-            <CardHeader>
-              <CardTitle className="text-base">Prompt: Notizen &amp; Kontext</CardTitle>
-              <p className="text-sm text-muted-foreground">
-                Formuliere hier deinen Prompt mit Zielen, Einschränkungen und Kontext, damit die KI dich bei der Migration optimal unterstützen kann.
-              </p>
-            </CardHeader>
-            <CardContent className="flex flex-1 min-h-0 flex-col gap-4">
-              <div className="flex flex-1 min-h-0 flex-col gap-2">
-                <Label htmlFor="migration-notes" className="sr-only">
-                  Prompt zur Migration
-                </Label>
-                <Textarea
-                  id="migration-notes"
-                  value={notes}
-                  onChange={(event) => setNotes(event.target.value)}
-                  placeholder="Beschreibe hier dein Prompt: Ziel der Migration, relevante Randbedingungen und gewünschte Unterstützung."
-                  rows={8}
-                  className="min-h-[180px] flex-1"
-                />
-                <p className="text-xs text-muted-foreground">Hinweis: Dieses Prompt-Fenster speichert Änderungen nicht automatisch.</p>
-              </div>
-              <div className="flex items-center justify-end gap-2">
-                <Button onClick={handleSaveNotes} disabled={!isNotesDirty || isSavingNotes} variant="default">
-                  {isSavingNotes && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Prompt speichern
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-
-        <div className="grid gap-6 xl:grid-cols-[2fr,1fr]">
-          <Card className="flex h-full flex-col border-border bg-card">
-            <CardHeader className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
-              <div>
-                <CardTitle className="text-base">Migrationsworkflow</CardTitle>
-                <p className="text-sm text-muted-foreground">
-                  Plane die wichtigsten Schritte dieser Migration und passe sie bei Bedarf an.
-                </p>
-              </div>
-              <Button variant="outline" size="sm" onClick={() => handleOpenWorkflowPanel()}>
-                Workflow bearbeiten
-              </Button>
-            </CardHeader>
-            <CardContent className="flex-1 overflow-hidden">
-              {customWorkflowNodes.length > 0 ? (
-                customWorkflowNodes.length > 2 ? (
-                  <ScrollArea className="max-h-[360px] pr-2">
-                    <div className="space-y-3 pb-2">
-                      {customWorkflowNodes.map((node) => (
+                <ScrollArea className="h-[280px]">
+                  <div className="space-y-1.5 pr-3">
+                    {agentSteps.map((step) => {
+                      const stepTheme = getWorkflowTheme(step.color);
+                      const isCompleted = step.status === "completed";
+                      const isActive = step.status === "active";
+                      return (
                         <div
-                          key={node.id}
+                          key={step.id}
                           className={cn(
-                            "flex items-stretch gap-3 rounded-xl border border-border/60 bg-background/60 p-4 shadow-sm transition",
-                            !node.active && "border-dashed opacity-70",
+                            "flex items-center gap-2 rounded-md border border-border/60 bg-background/60 p-2 transition-all",
+                            isActive && cn(stepTheme.activeCard, "shadow-sm"),
+                            isCompleted && "border-emerald-500/40 bg-emerald-500/10",
                           )}
                         >
-                          <div className="flex w-12 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 bg-muted/40 py-2 text-muted-foreground">
-                            <span className="text-xs font-medium">#{node.priority}</span>
+                          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/80 text-[10px] font-semibold">
+                            {step.index + 1}
                           </div>
-                          <div className="flex flex-1 flex-col gap-3">
-                            <div className="flex flex-col gap-2">
-                              <div className="flex flex-wrap items-start justify-between gap-3">
-                                <div className="flex flex-col gap-1">
-                                  <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
-                                    <Workflow className="h-3.5 w-3.5" />
-                                    <span>Schritt {node.priority}</span>
-                                    <span className="hidden text-muted-foreground/60 sm:inline">•</span>
-                                    <span className="text-muted-foreground/80">Prio {node.priority}</span>
-                                  </div>
-                                  <h3 className="text-sm font-semibold text-foreground">{node.title}</h3>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <Badge
-                                    variant="secondary"
-                                    className={cn(
-                                      "capitalize",
-                                      node.status === "done"
-                                        ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
-                                        : node.status === "in-progress"
-                                          ? "bg-sky-500/15 text-sky-600 dark:text-sky-300"
-                                          : "bg-muted text-muted-foreground",
-                                    )}
-                                  >
-                                    {node.status === "done"
-                                      ? "Erledigt"
-                                      : node.status === "in-progress"
-                                        ? "In Arbeit"
-                                        : "Geplant"}
-                                  </Badge>
-                                </div>
-                              </div>
-                              <p className="text-xs text-muted-foreground">{node.description || "Noch keine Beschreibung"}</p>
-                            </div>
-                            <div className="flex flex-wrap items-center justify-end gap-2">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                                onClick={() => handleOpenWorkflowPanel(node.id)}
-                                aria-label="Workflow-Schritt bearbeiten"
-                              >
-                                <Pencil className="h-4 w-4" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className={cn(
-                                  "h-8 w-8 text-muted-foreground hover:text-foreground",
-                                  !node.active && "text-amber-600 hover:text-amber-500",
-                                )}
-                                onClick={() => handleToggleWorkflowNodeActive(node.id)}
-                                aria-label={node.active ? "Workflow-Schritt deaktivieren" : "Workflow-Schritt aktivieren"}
-                              >
-                                <Power className="h-4 w-4" />
-                              </Button>
-                            </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-xs font-medium truncate">{step.title}</p>
+                          </div>
+                          <div className="shrink-0">
+                            {isCompleted ? (
+                              <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-300" />
+                            ) : isActive ? (
+                              <Sparkles className={cn("h-3.5 w-3.5", stepTheme.accentText)} />
+                            ) : (
+                              <div className="h-3.5 w-3.5 rounded-full border border-border/60" />
+                            )}
                           </div>
                         </div>
-                      ))}
-                    </div>
-                  </ScrollArea>
-                ) : (
-                  <div className="space-y-3">
-                    {customWorkflowNodes.map((node) => (
-                      <div
-                        key={node.id}
-                        className={cn(
-                          "flex items-stretch gap-3 rounded-xl border border-border/60 bg-background/60 p-4 shadow-sm transition",
-                          !node.active && "border-dashed opacity-70",
-                        )}
-                      >
-                        <div className="flex w-12 flex-col items-center justify-center gap-2 rounded-lg border border-dashed border-border/60 bg-muted/40 py-2 text-muted-foreground">
-                          <span className="text-xs font-medium">#{node.priority}</span>
-                        </div>
-                        <div className="flex flex-1 flex-col gap-3">
-                          <div className="flex flex-col gap-2">
-                            <div className="flex flex-wrap items-start justify-between gap-3">
-                              <div className="flex flex-col gap-1">
-                                <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-muted-foreground">
-                                  <Workflow className="h-3.5 w-3.5" />
-                                  <span>Schritt {node.priority}</span>
-                                  <span className="hidden text-muted-foreground/60 sm:inline">•</span>
-                                  <span className="text-muted-foreground/80">Prio {node.priority}</span>
-                                </div>
-                                <h3 className="text-sm font-semibold text-foreground">{node.title}</h3>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Badge
-                                  variant="secondary"
-                                  className={cn(
-                                    "capitalize",
-                                    node.status === "done"
-                                      ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
-                                      : node.status === "in-progress"
-                                        ? "bg-sky-500/15 text-sky-600 dark:text-sky-300"
-                                        : "bg-muted text-muted-foreground",
-                                  )}
-                                >
-                                  {node.status === "done"
-                                    ? "Erledigt"
-                                    : node.status === "in-progress"
-                                      ? "In Arbeit"
-                                      : "Geplant"}
-                                </Badge>
-                              </div>
-                            </div>
-                            <p className="text-xs text-muted-foreground">{node.description || "Noch keine Beschreibung"}</p>
-                          </div>
-                          <div className="flex flex-wrap items-center justify-end gap-2">
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-8 w-8"
-                              onClick={() => handleOpenWorkflowPanel(node.id)}
-                              aria-label="Workflow-Schritt bearbeiten"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </Button>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className={cn(
-                                "h-8 w-8 text-muted-foreground hover:text-foreground",
-                                !node.active && "text-amber-600 hover:text-amber-500",
-                              )}
-                              onClick={() => handleToggleWorkflowNodeActive(node.id)}
-                              aria-label={node.active ? "Workflow-Schritt deaktivieren" : "Workflow-Schritt aktivieren"}
-                            >
-                              <Power className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
-                )
-              ) : (
-                <div className="flex h-full flex-col items-center justify-center rounded-xl border border-dashed border-border/70 bg-muted/30 p-6 text-center text-sm text-muted-foreground">
-                  <p>Keine individuellen Workflow-Schritte konfiguriert.</p>
-                  <p className="mt-1 text-xs text-muted-foreground/80">
-                    Bearbeite den Workflow, um angepasste Schritte hervorzuheben.
-                  </p>
-                  <Button className="mt-4" onClick={() => handleOpenWorkflowPanel()}>
-                    Workflow bearbeiten
-                  </Button>
-                </div>
-              )}
+                </ScrollArea>
+              </div>
             </CardContent>
           </Card>
 
-          <Card className="flex h-full flex-col border-border bg-card">
-            <CardHeader>
+          <Card className="border-border bg-card">
+            <CardHeader className="pb-3">
               <CardTitle className="text-base">Aktivitäten</CardTitle>
-              <p className="text-sm text-muted-foreground">Alle wichtigen Ereignisse rund um die Migration im Überblick.</p>
             </CardHeader>
-            <CardContent className="flex-1 overflow-hidden">
-              {activityLog.length > 0 ? (
-                <ScrollArea className="h-full pr-2">
-                  <ActivityTimeline activities={activityLog} />
-                </ScrollArea>
-              ) : (
-                <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-                  Noch keine Aktivitäten dokumentiert.
-                </div>
-              )}
+            <CardContent className="pt-0">
+              <ScrollArea className="h-[320px] pr-3">
+                <ActivityTimeline activities={activityLog} />
+              </ScrollArea>
             </CardContent>
           </Card>
         </div>
+        <Card className="border-border bg-card">
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">Anmerkungen</CardTitle>
+          </CardHeader>
+          <CardContent className="pt-0">
+            <div className="flex flex-col gap-3">
+              <Textarea
+                id="migration-notes"
+                value={notes}
+                onChange={(event) => setNotes(event.target.value)}
+                placeholder="Beschreibe hier dein Prompt: Ziel der Migration, relevante Randbedingungen und gewünschte Unterstützung."
+                rows={6}
+                className="min-h-[120px]"
+              />
+              <Button onClick={handleSaveNotes} disabled={!isNotesDirty || isSavingNotes} size="sm" className="self-end">
+                {isSavingNotes && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                Speichern
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       </div>
 
       <WorkflowPanelDialog
