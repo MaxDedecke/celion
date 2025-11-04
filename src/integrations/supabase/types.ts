@@ -297,17 +297,19 @@ export type Database = {
           in_connector_detail: string
           mapped_objects: string
           meta_model_approved: boolean
-          notes: string
           name: string
+          notes: string | null
           objects_transferred: string
           out_connector: string
           out_connector_detail: string
           progress: number
           project_id: string | null
           source_system: string
+          status: string
           target_system: string
           updated_at: string
           user_id: string
+          workflow_state: Json | null
         }
         Insert: {
           created_at?: string
@@ -316,17 +318,19 @@ export type Database = {
           in_connector_detail: string
           mapped_objects?: string
           meta_model_approved?: boolean
-          notes?: string
           name: string
+          notes?: string | null
           objects_transferred?: string
           out_connector: string
           out_connector_detail: string
           progress?: number
           project_id?: string | null
           source_system: string
+          status?: string
           target_system: string
           updated_at?: string
           user_id: string
+          workflow_state?: Json | null
         }
         Update: {
           created_at?: string
@@ -335,17 +339,19 @@ export type Database = {
           in_connector_detail?: string
           mapped_objects?: string
           meta_model_approved?: boolean
-          notes?: string
           name?: string
+          notes?: string | null
           objects_transferred?: string
           out_connector?: string
           out_connector_detail?: string
           progress?: number
           project_id?: string | null
           source_system?: string
+          status?: string
           target_system?: string
           updated_at?: string
           user_id?: string
+          workflow_state?: Json | null
         }
         Relationships: [
           {
