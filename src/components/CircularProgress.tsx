@@ -39,7 +39,6 @@ const CircularProgress = ({ progress, size = 200, strokeWidth = 8 }: CircularPro
           className="transition-all duration-500"
         />
       </svg>
-      <span className="text-4xl font-bold absolute">{progress} %</span>
     </div>
   );
 };
