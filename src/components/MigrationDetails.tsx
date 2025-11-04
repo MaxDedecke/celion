@@ -369,6 +369,107 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     [status],
   );
 
+  const handleNextWorkflowStep = useCallback(async () => {
+    try {
+      setIsUpdatingStatus(true);
+      
+      // Find current active step
+      const currentStepIndex = workflowBoard.nodes.findIndex(node => node.status === "in-progress");
+      
+      // If no step is in progress, start with the first one
+      if (currentStepIndex === -1) {
+        const updatedNodes = workflowBoard.nodes.map((node, idx) => ({
+          ...node,
+          status: idx === 0 ? ("in-progress" as const) : ("pending" as const)
+        }));
+        
+        const newProgress = Math.round((1 / workflowBoard.nodes.length) * 100);
+        
+        setWorkflowBoard({ ...workflowBoard, nodes: updatedNodes });
+        setStatus("running");
+        
+        const { error } = await supabase
+          .from("migrations")
+          .update({ 
+            progress: newProgress,
+            status: "running",
+            workflow_state: JSON.stringify({ nodes: updatedNodes, connections: workflowBoard.connections })
+          })
+          .eq("id", project.id);
+
+        if (error) throw error;
+
+        const activity = `Workflow gestartet: ${updatedNodes[0].title}`;
+        setActivityLog((previous) => [
+          {
+            id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            type: "info",
+            title: activity,
+            timestamp: new Date().toLocaleString("de-DE"),
+          },
+          ...previous,
+        ]);
+        toast.success(activity);
+        await onRefresh();
+        return;
+      }
+
+      // Mark current step as done and activate next step
+      const updatedNodes = workflowBoard.nodes.map((node, idx) => {
+        if (idx === currentStepIndex) {
+          return { ...node, status: "done" as const };
+        }
+        if (idx === currentStepIndex + 1) {
+          return { ...node, status: "in-progress" as const };
+        }
+        return node;
+      });
+
+      const newProgress = Math.round(((currentStepIndex + 2) / workflowBoard.nodes.length) * 100);
+      const isCompleted = currentStepIndex + 1 >= workflowBoard.nodes.length - 1;
+      
+      setWorkflowBoard({ ...workflowBoard, nodes: updatedNodes });
+      
+      const { error } = await supabase
+        .from("migrations")
+        .update({ 
+          progress: isCompleted ? 100 : newProgress,
+          status: isCompleted ? "completed" : "running",
+          workflow_state: JSON.stringify({ nodes: updatedNodes, connections: workflowBoard.connections })
+        })
+        .eq("id", project.id);
+
+      if (error) throw error;
+
+      const nextStep = updatedNodes[currentStepIndex + 1];
+      const activity = nextStep 
+        ? `Workflow fortgesetzt: ${nextStep.title}` 
+        : "Workflow abgeschlossen";
+      
+      setActivityLog((previous) => [
+        {
+          id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          type: nextStep ? "info" : "success",
+          title: activity,
+          timestamp: new Date().toLocaleString("de-DE"),
+        },
+        ...previous,
+      ]);
+      
+      if (isCompleted) {
+        setStatus("completed");
+      }
+      
+      toast.success(activity);
+      await onRefresh();
+    } catch (error) {
+      console.error("Error progressing workflow:", error);
+      toast.error("Fehler beim Fortschreiten des Workflows");
+    } finally {
+      setIsUpdatingStatus(false);
+    }
+  }, [workflowBoard, project.id, onRefresh]);
+
 
   useEffect(() => {
     setNotes(project.notes ?? "");
@@ -501,14 +602,14 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                   <Badge variant="secondary" className={cn("text-xs", statusMeta.badgeClassName)}>
                     {statusMeta.label}
                   </Badge>
-                  <div className="flex-1">
-                    {status === "not_started" && (
-                      <Button size="sm" onClick={() => handleUpdateStatus("running")} disabled={isUpdatingStatus}>
+                  <div className="flex-1 flex gap-2">
+                    {(status === "not_started" || status === "running") && overallProgress < 100 && (
+                      <Button size="sm" onClick={handleNextWorkflowStep} disabled={isUpdatingStatus}>
                         <Play className="mr-1 h-3 w-3" />
-                        Starten
+                        {status === "not_started" ? "Starten" : "Fortfahren"}
                       </Button>
                     )}
-                    {status === "running" && (
+                    {overallProgress >= 100 && status !== "completed" && (
                       <Button size="sm" variant="outline" onClick={() => handleUpdateStatus("completed")} disabled={isUpdatingStatus}>
                         <CheckCircle2 className="mr-1 h-3 w-3" />
                         Abschließen
