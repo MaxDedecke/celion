@@ -572,9 +572,19 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                     <Workflow className="h-3.5 w-3.5 text-muted-foreground" />
                     <span className="text-xs font-semibold text-muted-foreground">Workflow</span>
                   </div>
-                  <Badge variant="outline" className="text-[11px]">
-                    {completedCount}/{agentSteps.length || 12}
-                  </Badge>
+                  <div className="flex items-center gap-2">
+                    <Badge variant="outline" className="text-[11px]">
+                      {completedCount}/{agentSteps.length || 12}
+                    </Badge>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => handleOpenWorkflowPanel()}
+                      className="h-7 px-2"
+                    >
+                      <Pencil className="h-3 w-3" />
+                    </Button>
+                  </div>
                 </div>
                 <ScrollArea className="h-[280px]">
                   <div className="space-y-1.5 pr-3">
