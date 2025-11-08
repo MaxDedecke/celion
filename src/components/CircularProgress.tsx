@@ -5,7 +5,10 @@ interface CircularProgressProps {
 }
 
 const CircularProgress = ({ progress, size = 200, strokeWidth = 8 }: CircularProgressProps) => {
-  const radius = (size - strokeWidth) / 2;
+  const backgroundStrokeWidth = strokeWidth;
+  const progressStrokeWidth = strokeWidth + 2;
+  const maxStrokeWidth = Math.max(backgroundStrokeWidth, progressStrokeWidth);
+  const radius = (size - maxStrokeWidth) / 2;
   const circumference = radius * 2 * Math.PI;
   const offset = circumference - (progress / 100) * circumference;
 
@@ -22,7 +25,7 @@ const CircularProgress = ({ progress, size = 200, strokeWidth = 8 }: CircularPro
           cy={size / 2}
           r={radius}
           stroke="hsl(var(--border))"
-          strokeWidth={strokeWidth}
+          strokeWidth={backgroundStrokeWidth}
           fill="none"
           opacity="0.3"
         />
@@ -31,7 +34,7 @@ const CircularProgress = ({ progress, size = 200, strokeWidth = 8 }: CircularPro
           cy={size / 2}
           r={radius}
           stroke={getColor()}
-          strokeWidth={strokeWidth + 2}
+          strokeWidth={progressStrokeWidth}
           fill="none"
           strokeDasharray={circumference}
           strokeDashoffset={offset}
