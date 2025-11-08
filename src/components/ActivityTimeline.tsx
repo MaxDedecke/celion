@@ -46,6 +46,19 @@ const ActivityTimeline = ({ activities }: ActivityTimelineProps) => {
     }
   };
 
+  const formatTimestamp = (value: string) => {
+    if (!value) {
+      return "";
+    }
+
+    const parsedDate = new Date(value);
+    if (Number.isNaN(parsedDate.getTime())) {
+      return value;
+    }
+
+    return parsedDate.toLocaleString("de-DE");
+  };
+
   return (
     <div className="space-y-4">
       {activities.map((activity) => (
@@ -55,7 +68,7 @@ const ActivityTimeline = ({ activities }: ActivityTimelineProps) => {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm text-foreground">{activity.title}</p>
-            <p className="text-xs text-muted-foreground mt-1">{activity.timestamp}</p>
+            <p className="text-xs text-muted-foreground mt-1">{formatTimestamp(activity.timestamp)}</p>
           </div>
         </div>
       ))}

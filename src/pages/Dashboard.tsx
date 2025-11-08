@@ -22,6 +22,7 @@ import {
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useMinimumLoader } from "@/hooks/useMinimumLoader";
+import type { Activity } from "@/components/ActivityTimeline";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -52,6 +53,37 @@ const deriveMigrationStatus = (migration: any): MigrationStatus => {
   }
 
   return "not_started";
+};
+
+type RawActivityRecord = {
+  id?: string;
+  type?: Activity["type"];
+  title?: string;
+  timestamp?: string | Date | null;
+  created_at?: string | Date | null;
+};
+
+const normalizeActivityRecord = (activity: RawActivityRecord): Activity => {
+  const rawTimestamp = activity?.timestamp ?? activity?.created_at ?? "";
+
+  let timestamp = "";
+  if (typeof rawTimestamp === "string" && rawTimestamp.trim() !== "") {
+    timestamp = rawTimestamp;
+  } else if (rawTimestamp instanceof Date) {
+    timestamp = rawTimestamp.toISOString();
+  } else if (rawTimestamp) {
+    const parsed = new Date(rawTimestamp);
+    timestamp = Number.isNaN(parsed.getTime()) ? String(rawTimestamp) : parsed.toISOString();
+  } else {
+    timestamp = new Date().toISOString();
+  }
+
+  return {
+    id: activity?.id ?? `activity-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    type: (activity?.type ?? "info") as Activity["type"],
+    title: activity?.title ?? "",
+    timestamp,
+  };
 };
 
 const Dashboard = () => {
@@ -149,6 +181,8 @@ const Dashboard = () => {
           .eq('migration_id', migration.id)
           .order('created_at', { ascending: false });
 
+        const activities = (activitiesData || []).map(normalizeActivityRecord);
+
         return {
           id: migration.id,
           name: migration.name,
@@ -162,7 +196,7 @@ const Dashboard = () => {
           objectsTransferred: migration.objects_transferred,
           mappedObjects: migration.mapped_objects,
           projectId: projectId,
-          activities: activitiesData || [],
+          activities,
           notes: migration.notes ?? "",
           status: deriveMigrationStatus(migration),
         };
@@ -272,14 +306,14 @@ const Dashboard = () => {
       if (connectorError) throw connectorError;
 
       // Create initial activity
-      await supabase
-        .from('migration_activities')
-        .insert({
-          migration_id: migration.id,
-          type: 'info',
-          title: 'Neues Migrationsprojekt erstellt',
-          timestamp: new Date().toLocaleString('de-DE'),
-        });
+        await supabase
+          .from('migration_activities')
+          .insert({
+            migration_id: migration.id,
+            type: 'info',
+            title: 'Neues Migrationsprojekt erstellt',
+            timestamp: new Date().toISOString(),
+          });
 
       toast.success(`Migration "${name}" erstellt`);
       setProjectIdForNewMigration(null);

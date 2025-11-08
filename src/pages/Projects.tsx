@@ -294,7 +294,7 @@ const Projects = () => {
           migration_id: migration.id,
           type: 'info',
           title: 'Neues Migrationsprojekt erstellt',
-          timestamp: new Date().toLocaleString('de-DE'),
+          timestamp: new Date().toISOString(),
         });
 
       toast.success(`Migration "${name}" erstellt`);

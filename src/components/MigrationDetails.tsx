@@ -167,6 +167,14 @@ type AgentWorkflowStepState = (typeof AGENT_WORKFLOW_STEPS)[number] & {
   endThreshold: number;
 };
 
+type RawActivityRecord = {
+  id?: string;
+  type?: Activity["type"];
+  title?: string;
+  timestamp?: string | Date | null;
+  created_at?: string | Date | null;
+};
+
 const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const [notes, setNotes] = useState(project.notes ?? "");
   const [isSavingNotes, setIsSavingNotes] = useState(false);
@@ -347,6 +355,9 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         return;
       }
 
+      const eventTimestamp = new Date();
+      const timestampIso = eventTimestamp.toISOString();
+
       try {
         setIsUpdatingStatus(true);
         await new Promise((resolve) => setTimeout(resolve, 400));
@@ -369,12 +380,23 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
               ? "warning"
               : "info";
 
+        const { error: activityError } = await supabase
+          .from("migration_activities")
+          .insert({
+            migration_id: project.id,
+            type: activityType,
+            title: activityTitle,
+            timestamp: timestampIso,
+          });
+
+        if (activityError) throw activityError;
+
         setActivityLog((previous) => [
           {
             id: `status-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             type: activityType,
             title: activityTitle,
-            timestamp: new Date().toLocaleString("de-DE"),
+            timestamp: timestampIso,
           },
           ...previous,
         ]);
@@ -395,7 +417,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         setIsUpdatingStatus(false);
       }
     },
-    [status],
+    [status, project.id],
   );
 
   const handleNextWorkflowStep = useCallback(async () => {
@@ -469,7 +491,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
             id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             type: "info",
             title: activity,
-            timestamp: new Date().toLocaleString("de-DE"),
+            timestamp: new Date().toISOString(),
           },
           ...previous,
         ]);
@@ -495,7 +517,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           type: "success",
           title: completedActivity,
-          timestamp: new Date().toLocaleString("de-DE"),
+          timestamp: new Date().toISOString(),
         },
         ...previous,
       ]);
@@ -544,7 +566,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
             id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             type: "info",
             title: nextStepActivity,
-            timestamp: new Date().toLocaleString("de-DE"),
+            timestamp: new Date().toISOString(),
           },
           ...previous,
         ]);
@@ -565,7 +587,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
             id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
             type: "success",
             title: finalActivity,
-            timestamp: new Date().toLocaleString("de-DE"),
+            timestamp: new Date().toISOString(),
           },
           ...previous,
         ]);
@@ -588,11 +610,34 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   }, [workflowBoard, project.id, onRefresh, isStepRunning]);
 
 
+  const normalizeActivity = useCallback((activity: RawActivityRecord): Activity => {
+    const rawTimestamp = activity?.timestamp ?? activity?.created_at ?? "";
+
+    let timestamp = "";
+    if (typeof rawTimestamp === "string" && rawTimestamp.trim() !== "") {
+      timestamp = rawTimestamp;
+    } else if (rawTimestamp instanceof Date) {
+      timestamp = rawTimestamp.toISOString();
+    } else if (rawTimestamp) {
+      const parsed = new Date(rawTimestamp);
+      timestamp = Number.isNaN(parsed.getTime()) ? String(rawTimestamp) : parsed.toISOString();
+    } else {
+      timestamp = new Date().toISOString();
+    }
+
+    return {
+      id: activity?.id ?? `activity-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      type: (activity?.type ?? "info") as Activity["type"],
+      title: activity?.title ?? "",
+      timestamp,
+    };
+  }, []);
+
   useEffect(() => {
     setNotes(project.notes ?? "");
     setStatus(project.status ?? "not_started");
-    setActivityLog(project.activities ?? []);
-  }, [project.activities, project.id, project.notes, project.status]);
+    setActivityLog((project.activities ?? []).map(normalizeActivity));
+  }, [project.activities, project.id, project.notes, project.status, normalizeActivity]);
 
   useEffect(() => {
     if (!isWorkflowPanelOpen) {
