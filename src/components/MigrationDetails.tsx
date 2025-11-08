@@ -427,7 +427,16 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
 
         if (error) throw error;
 
-        const activity = `Workflow gestartet: ${updatedNodes[0].title}`;
+        const activity = `Schritt gestartet: ${updatedNodes[0].title}`;
+        
+        // Save activity to database
+        await supabase.from("migration_activities").insert({
+          migration_id: project.id,
+          type: "info",
+          title: activity,
+          timestamp: new Date().toISOString()
+        });
+        
         setActivityLog((previous) => [
           {
             id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -443,6 +452,27 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       }
 
       // Mark current step as done and activate next step
+      const completedStepTitle = workflowBoard.nodes[currentStepIndex].title;
+      const completedActivity = `Schritt abgeschlossen: ${completedStepTitle}`;
+      
+      // Save completed step activity to database
+      await supabase.from("migration_activities").insert({
+        migration_id: project.id,
+        type: "success",
+        title: completedActivity,
+        timestamp: new Date().toISOString()
+      });
+      
+      setActivityLog((previous) => [
+        {
+          id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          type: "success",
+          title: completedActivity,
+          timestamp: new Date().toLocaleString("de-DE"),
+        },
+        ...previous,
+      ]);
+      
       const updatedNodes = workflowBoard.nodes.map((node, idx) => {
         if (idx === currentStepIndex) {
           return { ...node, status: "done" as const };
@@ -470,25 +500,55 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       if (error) throw error;
 
       const nextStep = updatedNodes[currentStepIndex + 1];
-      const activity = nextStep 
-        ? `Workflow fortgesetzt: ${nextStep.title}` 
-        : "Workflow abgeschlossen";
       
-      setActivityLog((previous) => [
-        {
-          id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          type: nextStep ? "info" : "success",
-          title: activity,
-          timestamp: new Date().toLocaleString("de-DE"),
-        },
-        ...previous,
-      ]);
+      if (nextStep) {
+        const nextStepActivity = `Schritt gestartet: ${nextStep.title}`;
+        
+        // Save next step activity to database
+        await supabase.from("migration_activities").insert({
+          migration_id: project.id,
+          type: "info",
+          title: nextStepActivity,
+          timestamp: new Date().toISOString()
+        });
+        
+        setActivityLog((previous) => [
+          {
+            id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            type: "info",
+            title: nextStepActivity,
+            timestamp: new Date().toLocaleString("de-DE"),
+          },
+          ...previous,
+        ]);
+        toast.success(nextStepActivity);
+      } else {
+        const finalActivity = "Alle Schritte abgeschlossen";
+        
+        // Save final activity to database
+        await supabase.from("migration_activities").insert({
+          migration_id: project.id,
+          type: "success",
+          title: finalActivity,
+          timestamp: new Date().toISOString()
+        });
+        
+        setActivityLog((previous) => [
+          {
+            id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            type: "success",
+            title: finalActivity,
+            timestamp: new Date().toLocaleString("de-DE"),
+          },
+          ...previous,
+        ]);
+        toast.success(finalActivity);
+      }
       
       if (isCompleted) {
         setStatus("completed");
       }
       
-      toast.success(activity);
       await onRefresh();
     } catch (error) {
       console.error("Error progressing workflow:", error);
