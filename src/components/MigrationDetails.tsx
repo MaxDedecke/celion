@@ -375,8 +375,9 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     if (isStepRunning) return;
 
     try {
-      setIsStepRunning(true);
+      // Reset progress to 0 at the start of a new step
       setStepProgress(0);
+      setIsStepRunning(true);
 
       // Animate progress from 0 to 100 over 2 seconds
       const animationDuration = 2000;
@@ -495,7 +496,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     } finally {
       setIsUpdatingStatus(false);
       setIsStepRunning(false);
-      setStepProgress(0);
+      // Keep stepProgress at 100 until next step starts
     }
   }, [workflowBoard, project.id, onRefresh, isStepRunning]);
 
@@ -677,7 +678,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                     </div>
                     <div className="text-right">
                       <p className="text-lg font-semibold">
-                        {isStepRunning ? Math.round(stepProgress) : activeStepProgressPercent}%
+                        {stepProgress > 0 ? Math.round(stepProgress) : activeStepProgressPercent}%
                       </p>
                     </div>
                   </div>
@@ -688,7 +689,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                         activeColorTheme.progressBar,
                         isStepRunning ? "duration-100" : "duration-700"
                       )}
-                      style={{ width: `${isStepRunning ? stepProgress : activeStepProgressPercent}%` }}
+                      style={{ width: `${stepProgress > 0 ? stepProgress : activeStepProgressPercent}%` }}
                     />
                   </div>
                 </div>
