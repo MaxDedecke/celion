@@ -132,6 +132,33 @@ const parseProgressPair = (value: string) => {
   return { current, total };
 };
 
+const formatProgressPair = (pair: { current: number; total: number }) => `${pair.current}/${pair.total}`;
+
+const sumCharCodes = (value: string) =>
+  value.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
+
+const simulateSourceObjects = (seed: string) => {
+  const safeSeed = seed.trim() ? seed : "celion";
+  const sum = sumCharCodes(safeSeed);
+  const total = 180 + (sum % 420);
+  return { current: total, total };
+};
+
+const simulateTargetObjects = (seed: string, sourceTotal: number) => {
+  if (sourceTotal <= 0) {
+    return { current: 0, total: 0 };
+  }
+
+  const safeSeed = seed.trim() ? seed : "celion-target";
+  const sum = sumCharCodes(safeSeed);
+  const minimumCompletion = Math.floor(sourceTotal * 0.6);
+  const variabilityWindow = Math.max(1, Math.floor(sourceTotal * 0.25));
+  const deduction = sum % variabilityWindow;
+  const current = Math.max(minimumCompletion, sourceTotal - deduction);
+
+  return { current: Math.min(current, sourceTotal), total: sourceTotal };
+};
+
 type AgentWorkflowStepState = (typeof AGENT_WORKFLOW_STEPS)[number] & {
   index: number;
   status: "completed" | "active" | "upcoming";
@@ -578,6 +605,25 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const transferInfo = useMemo(() => parseProgressPair(project.objectsTransferred), [project.objectsTransferred]);
   const mappedInfo = useMemo(() => parseProgressPair(project.mappedObjects), [project.mappedObjects]);
 
+  const identitySeed = `${project.id ?? ""}-${project.name ?? ""}-${project.sourceSystem ?? ""}`;
+  const targetSeed = `${project.id ?? ""}-${project.targetSystem ?? ""}`;
+
+  const sourceObjectEstimate = useMemo(() => {
+    if (mappedInfo.total > 0) {
+      return mappedInfo;
+    }
+
+    return simulateSourceObjects(identitySeed);
+  }, [identitySeed, mappedInfo]);
+
+  const targetObjectEstimate = useMemo(() => {
+    if (transferInfo.total > 0) {
+      return transferInfo;
+    }
+
+    return simulateTargetObjects(targetSeed, sourceObjectEstimate.total);
+  }, [sourceObjectEstimate, targetSeed, transferInfo]);
+
   const transferRate = transferInfo.total > 0 ? Math.round((transferInfo.current / transferInfo.total) * 100) : 0;
   const mappedRate = mappedInfo.total > 0 ? Math.round((mappedInfo.current / mappedInfo.total) * 100) : 0;
   const overallProgress = Math.min(100, Math.max(0, Math.round(Number(project.progress) || 0)));
@@ -645,6 +691,36 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const { steps: agentSteps, activeStep, nextStep, completedCount } = agentWorkflowProgress;
   const activeStepProgressPercent = Math.round((activeStep?.progress ?? 0) * 100);
   const activeColorTheme = getWorkflowTheme(activeStep?.color);
+
+  const schemaDiscoveryStepState = agentSteps.find((step) => step.id === "schema-discovery");
+  const dryRunStepState = agentSteps.find((step) => step.id === "dry-run");
+  const verificationStepState = agentSteps.find((step) => step.id === "verification");
+
+  const sourceTotalsVisible = schemaDiscoveryStepState
+    ? overallProgress >= schemaDiscoveryStepState.endThreshold
+    : false;
+  const targetTotalsVisible = dryRunStepState ? overallProgress >= dryRunStepState.endThreshold : false;
+  const finalCountsVisible = verificationStepState
+    ? overallProgress >= verificationStepState.endThreshold
+    : false;
+
+  const computeDisplayPair = (
+    totalsUnlocked: boolean,
+    finalUnlocked: boolean,
+    estimate: { current: number; total: number }
+  ) => {
+    if (!totalsUnlocked) {
+      return "0/0";
+    }
+
+    const resolvedTotal = Math.max(estimate.total, estimate.current, 0);
+    const resolvedCurrent = finalUnlocked ? resolvedTotal : 0;
+
+    return formatProgressPair({ current: resolvedCurrent, total: resolvedTotal });
+  };
+
+  const sourceObjectsDisplay = computeDisplayPair(sourceTotalsVisible, finalCountsVisible, sourceObjectEstimate);
+  const targetObjectsDisplay = computeDisplayPair(targetTotalsVisible, finalCountsVisible, targetObjectEstimate);
 
   const handleSaveNotes = async () => {
     if (!isNotesDirty) return;
@@ -767,9 +843,21 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                     </div>
                   </div>
 
-                  <div className="rounded-lg border border-dashed border-primary/40 bg-primary/5 p-3">
-                    <p className="text-xs text-muted-foreground">Objekte übertragen</p>
-                    <p className="mt-1 text-sm font-semibold">{project.objectsTransferred}</p>
+                  <div className="rounded-lg border border-dashed border-primary/40 bg-primary/5">
+                    <div className="grid grid-cols-1 sm:grid-cols-2">
+                      <div className="p-3">
+                        <p className="text-xs text-muted-foreground">
+                          Objekte in {project.sourceSystem || "Quellsystem"}
+                        </p>
+                        <p className="mt-1 text-sm font-semibold">{sourceObjectsDisplay}</p>
+                      </div>
+                      <div className="border-t border-primary/30 p-3 sm:border-t-0 sm:border-l">
+                        <p className="text-xs text-muted-foreground">
+                          Objekte in {project.targetSystem || "Zielsystem"}
+                        </p>
+                        <p className="mt-1 text-sm font-semibold">{targetObjectsDisplay}</p>
+                      </div>
+                    </div>
                   </div>
                 </div>
               </div>
