@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   CheckCircle2,
@@ -185,6 +185,9 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const [workflowPanelSelection, setWorkflowPanelSelection] = useState<string | null>(null);
   const [isStepRunning, setIsStepRunning] = useState(false);
   const [stepProgress, setStepProgress] = useState(0);
+  const migrationCardRef = useRef<HTMLDivElement | null>(null);
+  const [isWideLayout, setIsWideLayout] = useState(false);
+  const [migrationCardHeight, setMigrationCardHeight] = useState<number | null>(null);
   const [workflowBoard, setWorkflowBoard] = useState<WorkflowBoardState>(() => {
     const nodes = AGENT_WORKFLOW_STEPS.map((step, index) => ({
       id: step.id,
@@ -789,11 +792,56 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     }
   };
 
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    const mediaQuery = window.matchMedia("(min-width: 1280px)");
+    const handleMediaChange = (event: MediaQueryListEvent) => {
+      setIsWideLayout(event.matches);
+    };
+
+    setIsWideLayout(mediaQuery.matches);
+
+    if (typeof mediaQuery.addEventListener === "function") {
+      mediaQuery.addEventListener("change", handleMediaChange);
+      return () => mediaQuery.removeEventListener("change", handleMediaChange);
+    }
+
+    mediaQuery.addListener(handleMediaChange);
+    return () => mediaQuery.removeListener(handleMediaChange);
+  }, []);
+
+  useEffect(() => {
+    if (!isWideLayout || !migrationCardRef.current) {
+      setMigrationCardHeight(null);
+      return;
+    }
+
+    const element = migrationCardRef.current;
+
+    const updateHeight = () => {
+      if (!element) return;
+      const nextHeight = element.getBoundingClientRect().height;
+      setMigrationCardHeight(nextHeight);
+    };
+
+    updateHeight();
+
+    const resizeObserver = new ResizeObserver(updateHeight);
+    resizeObserver.observe(element);
+
+    return () => {
+      resizeObserver.disconnect();
+    };
+  }, [isWideLayout]);
+
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="flex flex-1 flex-col gap-4 overflow-auto p-6">
         <div className="grid gap-4 xl:grid-cols-[1.5fr,1fr]">
-          <Card className="border-border bg-card">
+          <Card ref={migrationCardRef} className="border-border bg-card">
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Migration</CardTitle>
             </CardHeader>
@@ -965,12 +1013,17 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
             </CardContent>
           </Card>
 
-          <Card className="border-border bg-card">
+          <Card
+            className="flex h-full flex-col overflow-hidden border-border bg-card"
+            style={
+              isWideLayout && migrationCardHeight ? { maxHeight: migrationCardHeight } : undefined
+            }
+          >
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Aktivitäten</CardTitle>
             </CardHeader>
-            <CardContent className="pt-0">
-              <ScrollArea className="h-[320px] pr-3">
+            <CardContent className="flex min-h-0 flex-1 flex-col pt-0">
+              <ScrollArea className="flex-1 min-h-0 pr-3">
                 <ActivityTimeline activities={activityLog} />
               </ScrollArea>
             </CardContent>
