@@ -68,6 +68,7 @@ const Login = () => {
           <Logo
             className="flex-col items-center gap-2 text-foreground"
             textClassName="text-3xl tracking-[0.55em] text-foreground"
+            imageClassName="h-24 w-24"
           />
           <p className="text-sm text-muted-foreground">Melde dich an, um fortzufahren.</p>
         </div>
