@@ -148,6 +148,8 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const [activityLog, setActivityLog] = useState<Activity[]>(project.activities ?? []);
   const [isWorkflowPanelOpen, setIsWorkflowPanelOpen] = useState(false);
   const [workflowPanelSelection, setWorkflowPanelSelection] = useState<string | null>(null);
+  const [isStepRunning, setIsStepRunning] = useState(false);
+  const [stepProgress, setStepProgress] = useState(0);
   const [workflowBoard, setWorkflowBoard] = useState<WorkflowBoardState>(() => {
     const nodes = AGENT_WORKFLOW_STEPS.map((step, index) => ({
       id: step.id,
@@ -370,7 +372,32 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   );
 
   const handleNextWorkflowStep = useCallback(async () => {
+    if (isStepRunning) return;
+
     try {
+      setIsStepRunning(true);
+      setStepProgress(0);
+
+      // Animate progress from 0 to 100 over 2 seconds
+      const animationDuration = 2000;
+      const animationSteps = 60;
+      const stepIncrement = 100 / animationSteps;
+      const stepInterval = animationDuration / animationSteps;
+
+      let currentProgress = 0;
+      const progressInterval = setInterval(() => {
+        currentProgress += stepIncrement;
+        if (currentProgress >= 100) {
+          setStepProgress(100);
+          clearInterval(progressInterval);
+        } else {
+          setStepProgress(currentProgress);
+        }
+      }, stepInterval);
+
+      // Wait for animation to complete
+      await new Promise((resolve) => setTimeout(resolve, animationDuration + 100));
+
       setIsUpdatingStatus(true);
       
       // Find current active step
@@ -467,8 +494,10 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       toast.error("Fehler beim Fortschreiten des Workflows");
     } finally {
       setIsUpdatingStatus(false);
+      setIsStepRunning(false);
+      setStepProgress(0);
     }
-  }, [workflowBoard, project.id, onRefresh]);
+  }, [workflowBoard, project.id, onRefresh, isStepRunning]);
 
 
   useEffect(() => {
@@ -604,9 +633,18 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                   </Badge>
                   <div className="flex-1 flex gap-2">
                     {(status === "not_started" || status === "running") && overallProgress < 100 && (
-                      <Button size="sm" onClick={handleNextWorkflowStep} disabled={isUpdatingStatus}>
-                        <Play className="mr-1 h-3 w-3" />
-                        {status === "not_started" ? "Starten" : "Fortfahren"}
+                      <Button size="sm" onClick={handleNextWorkflowStep} disabled={isUpdatingStatus || isStepRunning}>
+                        {isStepRunning ? (
+                          <>
+                            <Loader2 className="mr-1 h-3 w-3 animate-spin" />
+                            Läuft...
+                          </>
+                        ) : (
+                          <>
+                            <Play className="mr-1 h-3 w-3" />
+                            {status === "not_started" ? "Starten" : "Fortsetzen"}
+                          </>
+                        )}
                       </Button>
                     )}
                     {overallProgress >= 100 && status !== "completed" && (
@@ -628,22 +666,29 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                 <div className="rounded-lg border border-border/60 bg-background/80 p-3">
                   <div className="flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2">
-                      <Sparkles className={cn("h-4 w-4", activeColorTheme.accentText)} />
+                      <Sparkles className={cn("h-4 w-4", activeColorTheme.accentText, isStepRunning && "animate-pulse")} />
                       <div>
                         <p className="text-sm font-semibold">{activeStep ? activeStep.title : "Noch kein Agent aktiv"}</p>
                         <p className="text-xs text-muted-foreground">
                           Schritt {activeStep ? activeStep.index + 1 : 0} / {agentSteps.length || 12}
+                          {isStepRunning && " · Wird ausgeführt..."}
                         </p>
                       </div>
                     </div>
                     <div className="text-right">
-                      <p className="text-lg font-semibold">{activeStepProgressPercent}%</p>
+                      <p className="text-lg font-semibold">
+                        {isStepRunning ? Math.round(stepProgress) : activeStepProgressPercent}%
+                      </p>
                     </div>
                   </div>
                   <div className="mt-2 h-1.5 w-full rounded-full bg-muted">
                     <div
-                      className={cn("h-full rounded-full transition-all duration-700 ease-out", activeColorTheme.progressBar)}
-                      style={{ width: `${activeStepProgressPercent}%` }}
+                      className={cn(
+                        "h-full rounded-full transition-all ease-out", 
+                        activeColorTheme.progressBar,
+                        isStepRunning ? "duration-100" : "duration-700"
+                      )}
+                      style={{ width: `${isStepRunning ? stepProgress : activeStepProgressPercent}%` }}
                     />
                   </div>
                 </div>
