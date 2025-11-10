@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useCallback } from "react";
+﻿import { useState, useEffect, useCallback, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   ArrowLeft,
@@ -389,6 +389,7 @@ const DataSources = () => {
   const [editingSource, setEditingSource] = useState<DataSourceWithProjects | null>(null);
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [formData, setFormData] = useState<DataSourceFormData>(() => createInitialDataSourceFormData());
+  const nameInputRef = useRef<HTMLInputElement | null>(null);
 
   const totalSteps = DATA_SOURCE_WIZARD_STEPS.length;
   const isLastStep = currentStep === totalSteps - 1;
@@ -497,6 +498,18 @@ const DataSources = () => {
     setCurrentStep(0);
     setIsDialogOpen(true);
   };
+
+  useEffect(() => {
+    if (!isDialogOpen || currentStep !== 0) {
+      return;
+    }
+
+    const timeoutId = window.setTimeout(() => {
+      nameInputRef.current?.focus();
+    }, 0);
+
+    return () => window.clearTimeout(timeoutId);
+  }, [isDialogOpen, currentStep]);
 
   const handleSave = async () => {
     try {
@@ -754,7 +767,10 @@ const DataSources = () => {
       </div>
 
       <Dialog open={isDialogOpen} onOpenChange={handleDialogOpenChange}>
-        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
+        <DialogContent
+          className="max-w-5xl max-h-[90vh] overflow-y-auto"
+          onOpenAutoFocus={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>
               {editingSource ? "Datenquelle bearbeiten" : "Neue Datenquelle"}
@@ -790,6 +806,7 @@ const DataSources = () => {
                       </div>
                       <Input
                         id="name"
+                        ref={nameInputRef}
                         value={formData.name}
                         onChange={(e) => setFormData({ ...formData, name: e.target.value })}
                       />
