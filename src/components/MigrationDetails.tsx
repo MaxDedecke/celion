@@ -454,60 +454,45 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
 
       setIsUpdatingStatus(true);
       
-      // Find current active step
-      const currentStepIndex = workflowBoard.nodes.findIndex(node => node.status === "in-progress");
-      
-      // If no step is in progress, start with the first one
-      if (currentStepIndex === -1) {
-        const updatedNodes = workflowBoard.nodes.map((node, idx) => ({
-          ...node,
-          status: idx === 0 ? ("in-progress" as const) : ("pending" as const)
-        }));
-        
-        const newProgress = Math.round((1 / workflowBoard.nodes.length) * 100);
-        
-        setWorkflowBoard({ ...workflowBoard, nodes: updatedNodes });
-        setStatus("running");
-        
-        const { error } = await supabase
-          .from("migrations")
-          .update({ 
-            progress: newProgress,
-            status: "running",
-            workflow_state: JSON.stringify({ nodes: updatedNodes, connections: workflowBoard.connections })
-          })
-          .eq("id", project.id);
+      const nodesSnapshot = workflowBoard.nodes.map((node) => ({ ...node }));
+      const activeStepIndex = nodesSnapshot.findIndex((node) => node.status === "in-progress");
+      const nextPendingIndex = nodesSnapshot.findIndex((node) => node.status !== "done");
+      const stepIndexToComplete = activeStepIndex !== -1 ? activeStepIndex : nextPendingIndex;
 
-        if (error) throw error;
-
-        const activity = `Schritt gestartet: ${updatedNodes[0].title}`;
-        
-        // Save activity to database
-        await supabase.from("migration_activities").insert({
-          migration_id: project.id,
-          type: "info",
-          title: activity,
-          timestamp: new Date().toISOString()
-        });
-        
-        setActivityLog((previous) => [
-          {
-            id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            type: "info",
-            title: activity,
-            timestamp: new Date().toISOString(),
-          },
-          ...previous,
-        ]);
-        toast.success(activity);
+      if (stepIndexToComplete === -1) {
+        setStatus("completed");
         await onRefresh();
         return;
       }
 
+      const completedStepNode = nodesSnapshot[stepIndexToComplete];
+
+      if (activeStepIndex === -1) {
+        const startedActivity = `Schritt gestartet: ${completedStepNode.title}`;
+
+        await supabase.from("migration_activities").insert({
+          migration_id: project.id,
+          type: "info",
+          title: startedActivity,
+          timestamp: new Date().toISOString()
+        });
+
+        setActivityLog((previous) => [
+          {
+            id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            type: "info",
+            title: startedActivity,
+            timestamp: new Date().toISOString(),
+          },
+          ...previous,
+        ]);
+        toast.success(startedActivity);
+      }
+
       // Mark current step as done and activate next step
-      const completedStepTitle = workflowBoard.nodes[currentStepIndex].title;
+      const completedStepTitle = completedStepNode.title;
       const completedActivity = `Schritt abgeschlossen: ${completedStepTitle}`;
-      
+
       // Save completed step activity to database
       await supabase.from("migration_activities").insert({
         migration_id: project.id,
@@ -515,7 +500,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         title: completedActivity,
         timestamp: new Date().toISOString()
       });
-      
+
       setActivityLog((previous) => [
         {
           id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -525,26 +510,29 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         },
         ...previous,
       ]);
-      
-      const updatedNodes = workflowBoard.nodes.map((node, idx) => {
-        if (idx === currentStepIndex) {
+
+      const updatedNodes = nodesSnapshot.map((node, idx) => {
+        if (idx === stepIndexToComplete) {
           return { ...node, status: "done" as const };
         }
-        if (idx === currentStepIndex + 1) {
+        if (idx === stepIndexToComplete + 1 && node.status !== "done") {
           return { ...node, status: "in-progress" as const };
         }
         return node;
       });
 
-      const newProgress = Math.round(((currentStepIndex + 2) / workflowBoard.nodes.length) * 100);
-      const isCompleted = currentStepIndex + 1 >= workflowBoard.nodes.length - 1;
-      
-      setWorkflowBoard({ ...workflowBoard, nodes: updatedNodes });
-      
+      const completedCount = updatedNodes.filter((node) => node.status === "done").length;
+      const stepCount = updatedNodes.length;
+      const normalizedProgress = stepCount > 0 ? Math.round((completedCount / stepCount) * 100) : 0;
+      const clampedProgress = Math.max(0, Math.min(100, normalizedProgress));
+      const isCompleted = completedCount >= stepCount && stepCount > 0;
+
+      setWorkflowBoard((previous) => ({ ...previous, nodes: updatedNodes }));
+
       const { error } = await supabase
         .from("migrations")
-        .update({ 
-          progress: isCompleted ? 100 : newProgress,
+        .update({
+          progress: isCompleted ? 100 : clampedProgress,
           status: isCompleted ? "completed" : "running",
           workflow_state: JSON.stringify({ nodes: updatedNodes, connections: workflowBoard.connections })
         })
@@ -552,11 +540,11 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
 
       if (error) throw error;
 
-      const nextStep = updatedNodes[currentStepIndex + 1];
+      const nextStep = updatedNodes[stepIndexToComplete + 1];
       
-      if (nextStep) {
+      if (nextStep && nextStep.status === "in-progress") {
         const nextStepActivity = `Schritt gestartet: ${nextStep.title}`;
-        
+
         // Save next step activity to database
         await supabase.from("migration_activities").insert({
           migration_id: project.id,
@@ -600,6 +588,8 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       
       if (isCompleted) {
         setStatus("completed");
+      } else {
+        setStatus("running");
       }
       
       await onRefresh();
@@ -701,56 +691,144 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const currentStatusIndex = MIGRATION_STATUS_FLOW.indexOf(normalizedStatusForFlow);
 
   const agentWorkflowProgress = useMemo(() => {
-    const stepCount = AGENT_WORKFLOW_STEPS.length;
+    const nodes = workflowBoard.nodes;
 
-    const normalizedProgress = Math.max(0, Math.min(100, overallProgress));
-    const progressPerStep = 100 / stepCount;
-    const activeIndex =
-      normalizedProgress >= 100 ? stepCount - 1 : Math.floor(normalizedProgress / progressPerStep);
+    if (nodes.length === 0) {
+      const fallbackStepCount = AGENT_WORKFLOW_STEPS.length;
+      const normalizedProgress = Math.max(0, Math.min(100, overallProgress));
+      const progressPerStep = fallbackStepCount > 0 ? 100 / fallbackStepCount : 0;
+      const activeIndex =
+        normalizedProgress >= 100 || progressPerStep === 0
+          ? fallbackStepCount - 1
+          : Math.floor(normalizedProgress / progressPerStep);
 
-    const steps: AgentWorkflowStepState[] = AGENT_WORKFLOW_STEPS.map((step, index) => {
-      const startThreshold = index * progressPerStep;
-      const endThreshold = (index + 1) * progressPerStep;
-      const isLastStep = index === stepCount - 1;
-      const isCompleted = isLastStep
-        ? normalizedProgress >= 100
-        : normalizedProgress >= endThreshold;
-      const isActive = !isCompleted && index === activeIndex;
-      const progressFraction = isCompleted
-        ? 1
-        : isActive
-          ? Math.max(0, Math.min(1, (normalizedProgress - startThreshold) / progressPerStep))
-          : 0;
-      const status: AgentWorkflowStepState["status"] = isCompleted
-        ? "completed"
-        : isActive
-          ? "active"
-          : "upcoming";
+      const fallbackSteps: AgentWorkflowStepState[] = AGENT_WORKFLOW_STEPS.map((step, index) => {
+        const startThreshold = progressPerStep * index;
+        const endThreshold = progressPerStep * (index + 1);
+        const isLastStep = index === fallbackStepCount - 1;
+        const isCompleted = isLastStep ? normalizedProgress >= 100 : normalizedProgress >= endThreshold;
+        const isActive = !isCompleted && index === activeIndex;
+        const progressFraction = isCompleted
+          ? 1
+          : isActive && progressPerStep > 0
+            ? Math.max(0, Math.min(1, (normalizedProgress - startThreshold) / progressPerStep))
+            : 0;
+        const status: AgentWorkflowStepState["status"] = isCompleted
+          ? "completed"
+          : isActive
+            ? "active"
+            : "upcoming";
+
+        return {
+          ...step,
+          index,
+          status,
+          progress: progressFraction,
+          startThreshold,
+          endThreshold,
+        };
+      });
+
+      const fallbackActiveStep =
+        fallbackSteps.find((step) => step.status === "active") ??
+        (normalizedProgress >= 100 ? fallbackSteps[fallbackSteps.length - 1] ?? null : fallbackSteps[0] ?? null);
 
       return {
-        ...step,
+        steps: fallbackSteps,
+        activeStep: fallbackActiveStep,
+        nextStep: fallbackSteps.find((step) => step.status === "upcoming") ?? null,
+        completedCount: fallbackSteps.filter((step) => step.status === "completed").length,
+        progressPerStep,
+      };
+    }
+
+    const stepCount = nodes.length;
+    const progressPerStep = stepCount > 0 ? 100 / stepCount : 0;
+    const highlightInitialStep =
+      status === "not_started" && nodes.length > 0 && nodes.every((node) => node.status === "pending");
+
+    let steps: AgentWorkflowStepState[] = nodes.map((node, index) => {
+      const defaultAgentStep = AGENT_WORKFLOW_STEPS.find((step) => step.id === node.id);
+      const baseStep = defaultAgentStep ?? {
+        id: node.id,
+        title: node.title ?? `Schritt ${index + 1}`,
+        description: node.description ?? "",
+        phase: "",
+        agentType: node.agentType ?? "",
+        color: node.color ?? "sky",
+      };
+
+      let statusForStep: AgentWorkflowStepState["status"];
+
+      if (node.status === "done") {
+        statusForStep = "completed";
+      } else if (node.status === "in-progress") {
+        statusForStep = "active";
+      } else if (highlightInitialStep && index === 0) {
+        statusForStep = "active";
+      } else {
+        statusForStep = "upcoming";
+      }
+
+      const startThreshold = progressPerStep * index;
+      const endThreshold = progressPerStep * (index + 1);
+
+      let progressFraction = 0;
+      if (statusForStep === "completed") {
+        progressFraction = 1;
+      } else if (statusForStep === "active") {
+        if (stepProgress > 0) {
+          progressFraction = Math.min(1, Math.max(0, stepProgress / 100));
+        } else if (overallProgress >= endThreshold) {
+          progressFraction = 1;
+        } else if (overallProgress <= startThreshold) {
+          progressFraction = 0;
+        } else if (endThreshold - startThreshold > 0) {
+          progressFraction = (overallProgress - startThreshold) / (endThreshold - startThreshold);
+        }
+      }
+
+      return {
+        ...baseStep,
+        title: node.title ?? baseStep.title,
+        description: node.description ?? baseStep.description,
+        color: node.color ?? baseStep.color,
+        agentType: node.agentType ?? baseStep.agentType,
         index,
-        status,
-        progress: progressFraction,
+        status: statusForStep,
+        progress: Math.max(0, Math.min(1, progressFraction)),
         startThreshold,
         endThreshold,
       };
     });
 
+    const hasExplicitActiveStep = steps.some((step) => step.status === "active");
+    const allStepsCompleted = steps.every((step) => step.status === "completed");
+
+    if (!hasExplicitActiveStep && !allStepsCompleted) {
+      const nextUpcomingIndex = steps.findIndex((step) => step.status === "upcoming");
+
+      if (nextUpcomingIndex !== -1) {
+        steps = steps.map((step, index) =>
+          index === nextUpcomingIndex
+            ? { ...step, status: "active" as const, progress: 0 }
+            : step,
+        );
+      }
+    }
+
     const activeStep =
       steps.find((step) => step.status === "active") ??
-      (normalizedProgress >= 100 ? steps[steps.length - 1] ?? null : steps[0] ?? null);
-    const nextStep = steps.find((step) => step.status === "upcoming") ?? null;
-    const completedCount = steps.filter((step) => step.status === "completed").length;
+      (allStepsCompleted ? steps[steps.length - 1] ?? null : null);
 
     return {
       steps,
       activeStep,
-      nextStep,
-      completedCount,
+      nextStep: steps.find((step) => step.status === "upcoming") ?? null,
+      completedCount: steps.filter((step) => step.status === "completed").length,
       progressPerStep,
     };
-  }, [overallProgress]);
+  }, [workflowBoard.nodes, overallProgress, stepProgress, status]);
 
   const { steps: agentSteps, activeStep, nextStep, completedCount } = agentWorkflowProgress;
   const activeStepProgressPercent = Math.round((activeStep?.progress ?? 0) * 100);
@@ -992,13 +1070,13 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                 </div>
                 <ScrollArea className="h-[280px]">
                   <div className="space-y-1.5 pr-3">
-                    {workflowBoard.nodes.map((node, index) => {
-                      const isCompleted = node.status === "done";
-                      const isActive = node.status === "in-progress";
-                      const isPending = node.status === "pending";
+                    {agentSteps.map((step) => {
+                      const isCompleted = step.status === "completed";
+                      const isActive = step.status === "active";
+                      const isPending = step.status === "upcoming";
                       return (
                         <div
-                          key={node.id}
+                          key={step.id}
                           className={cn(
                             "flex items-center gap-2 rounded-md border p-2 transition-all",
                             isCompleted && "border-emerald-500/50 bg-emerald-500/10",
@@ -1012,10 +1090,10 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                             isActive && "border-amber-500/50 bg-amber-500/20 text-amber-700 dark:text-amber-300",
                             isPending && "border-border/60 bg-background/80 text-muted-foreground"
                           )}>
-                            {index + 1}
+                            {step.index + 1}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium truncate">{node.title}</p>
+                            <p className="text-xs font-medium truncate">{step.title}</p>
                           </div>
                           <div className="shrink-0">
                             {isCompleted ? (
