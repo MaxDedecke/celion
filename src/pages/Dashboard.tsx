@@ -182,6 +182,7 @@ const Dashboard = () => {
           .order('created_at', { ascending: false });
 
         const activities = (activitiesData || []).map(normalizeActivityRecord);
+        const workflowState = migration.workflow_state;
 
         return {
           id: migration.id,
@@ -199,6 +200,7 @@ const Dashboard = () => {
           activities,
           notes: migration.notes ?? "",
           status: deriveMigrationStatus(migration),
+          workflowState,
         };
       }),
     );

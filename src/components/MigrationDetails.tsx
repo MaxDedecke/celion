@@ -39,6 +39,7 @@ interface MigrationProject {
   activities: Activity[];
   notes?: string;
   status: MigrationStatus;
+  workflowState?: any;
 }
 
 interface MigrationDetailsProps {
@@ -640,7 +641,22 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     setNotes(project.notes ?? "");
     setStatus(project.status ?? "not_started");
     setActivityLog((project.activities ?? []).map(normalizeActivity));
-  }, [project.activities, project.id, project.notes, project.status, normalizeActivity]);
+    
+    // Load workflow state from database if it exists
+    if (project.workflowState) {
+      try {
+        const parsedState = typeof project.workflowState === 'string' 
+          ? JSON.parse(project.workflowState) 
+          : project.workflowState;
+        
+        if (parsedState && parsedState.nodes && Array.isArray(parsedState.nodes)) {
+          setWorkflowBoard(normalizeWorkflowState(parsedState));
+        }
+      } catch (error) {
+        console.error("Error parsing workflow state:", error);
+      }
+    }
+  }, [project.activities, project.id, project.notes, project.status, project.workflowState, normalizeActivity, normalizeWorkflowState]);
 
   useEffect(() => {
     if (!isWorkflowPanelOpen) {
