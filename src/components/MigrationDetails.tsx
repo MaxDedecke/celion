@@ -962,7 +962,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className="text-[11px]">
-                      {completedCount}/{agentSteps.length || 12}
+                      {workflowBoard.nodes.filter(n => n.status === "done").length}/{workflowBoard.nodes.length}
                     </Badge>
                     <Button
                       size="sm"
@@ -976,30 +976,36 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                 </div>
                 <ScrollArea className="h-[280px]">
                   <div className="space-y-1.5 pr-3">
-                    {agentSteps.map((step) => {
-                      const stepTheme = getWorkflowTheme(step.color);
-                      const isCompleted = step.status === "completed";
-                      const isActive = step.status === "active";
+                    {workflowBoard.nodes.map((node, index) => {
+                      const isCompleted = node.status === "done";
+                      const isActive = node.status === "in-progress";
+                      const isPending = node.status === "pending";
                       return (
                         <div
-                          key={step.id}
+                          key={node.id}
                           className={cn(
-                            "flex items-center gap-2 rounded-md border border-border/60 bg-background/60 p-2 transition-all",
-                            isActive && cn(stepTheme.activeCard, "shadow-sm"),
-                            isCompleted && "border-emerald-500/40 bg-emerald-500/10",
+                            "flex items-center gap-2 rounded-md border p-2 transition-all",
+                            isCompleted && "border-emerald-500/50 bg-emerald-500/10",
+                            isActive && "border-amber-500/50 bg-amber-500/10 shadow-sm",
+                            isPending && "border-border/60 bg-background/60"
                           )}
                         >
-                          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-border/60 bg-background/80 text-[10px] font-semibold">
-                            {step.index + 1}
+                          <div className={cn(
+                            "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold",
+                            isCompleted && "border-emerald-500/50 bg-emerald-500/20 text-emerald-700 dark:text-emerald-300",
+                            isActive && "border-amber-500/50 bg-amber-500/20 text-amber-700 dark:text-amber-300",
+                            isPending && "border-border/60 bg-background/80 text-muted-foreground"
+                          )}>
+                            {index + 1}
                           </div>
                           <div className="flex-1 min-w-0">
-                            <p className="text-xs font-medium truncate">{step.title}</p>
+                            <p className="text-xs font-medium truncate">{node.title}</p>
                           </div>
                           <div className="shrink-0">
                             {isCompleted ? (
                               <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-300" />
                             ) : isActive ? (
-                              <Sparkles className={cn("h-3.5 w-3.5", stepTheme.accentText)} />
+                              <Sparkles className="h-3.5 w-3.5 text-amber-600 dark:text-amber-300" />
                             ) : (
                               <div className="h-3.5 w-3.5 rounded-full border border-border/60" />
                             )}

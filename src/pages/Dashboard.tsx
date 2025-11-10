@@ -14,7 +14,7 @@ import {
   Workflow,
   CheckCircle2,
   Timer,
-  Activity,
+  Activity as ActivityIcon,
   BarChart3,
   Rocket,
   ArrowRight
@@ -57,7 +57,7 @@ const deriveMigrationStatus = (migration: any): MigrationStatus => {
 
 type RawActivityRecord = {
   id?: string;
-  type?: Activity["type"];
+  type?: string;
   title?: string;
   timestamp?: string | Date | null;
   created_at?: string | Date | null;
@@ -522,7 +522,7 @@ const Dashboard = () => {
                 <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
                   <div className="app-subtle rounded-2xl p-6">
                     <h3 className="flex items-center gap-2 text-lg font-semibold text-foreground">
-                      <Activity className="h-5 w-5 text-muted-foreground" />
+                      <ActivityIcon className="h-5 w-5 text-muted-foreground" />
                       Aktuelle Migrationen
                     </h3>
                     <div className="mt-4 space-y-4">
