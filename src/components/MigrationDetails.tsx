@@ -978,7 +978,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant="outline" className="text-[11px]">
-                      {workflowBoard.nodes.filter(n => n.status === "done").length}/{workflowBoard.nodes.length}
+                      {workflowBoard.nodes.filter(n => n.status === "done" || n.status === "in-progress").length}/{workflowBoard.nodes.length}
                     </Badge>
                     <Button
                       size="sm"
