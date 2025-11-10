@@ -90,13 +90,13 @@ const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogPro
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-popover border-border max-w-md">
+      <DialogContent className="bg-popover border-border w-full sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="text-xl">Add new migration</DialogTitle>
+          <DialogTitle className="text-xl">Migration hinzufügen</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="migration-name">Migration Name</Label>
+            <Label htmlFor="migration-name">Migrationsname</Label>
             <Input
               id="migration-name"
               placeholder="Name"
@@ -110,7 +110,7 @@ const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogPro
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="api-url">API URL</Label>
+            <Label htmlFor="api-url">API-URL</Label>
             <Input
               id="api-url"
               type="url"
@@ -183,7 +183,7 @@ const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogPro
               <div className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${authType === "token" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}>
                 <RadioGroupItem value="token" id="auth-token" className="mt-1" />
                 <div>
-                  <Label htmlFor="auth-token" className="text-sm font-medium">API Token</Label>
+                  <Label htmlFor="auth-token" className="text-sm font-medium">API-Token</Label>
                   <p className="text-xs text-muted-foreground">
                     Verwende einen bestehenden Token für den Zugriff auf die API.
                   </p>
@@ -203,11 +203,11 @@ const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogPro
 
           {authType === "token" && (
             <div className="space-y-2">
-              <Label htmlFor="api-token">API Token</Label>
+              <Label htmlFor="api-token">API-Token</Label>
               <Input
                 id="api-token"
                 type="password"
-                placeholder="Token"
+                placeholder="API-Token"
                 value={apiToken}
                 onChange={(e) => {
                   setApiToken(e.target.value);
@@ -224,7 +224,7 @@ const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogPro
                 <Label htmlFor="username">Benutzername</Label>
                 <Input
                   id="username"
-                  placeholder="api-user"
+                  placeholder="api-benutzer"
                   value={username}
                   onChange={(e) => {
                     setUsername(e.target.value);
@@ -261,7 +261,7 @@ const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogPro
             onClick={handleSubmit}
             className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground"
           >
-            Migration erstellen
+            Migration hinzufügen
           </Button>
         </div>
       </DialogContent>
