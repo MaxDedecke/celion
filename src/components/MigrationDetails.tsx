@@ -23,8 +23,10 @@ import { Badge } from "./ui/badge";
 import WorkflowPanelDialog from "./dialogs/WorkflowPanelDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import type { WorkflowBoardState } from "@/types/workflow";
+import type { WorkflowBoardState, WorkflowNode } from "@/types/workflow";
 import type { MigrationStatus } from "@/types/migration";
+import type { SystemDetectionResult } from "@/types/agents";
+import { runSystemDetectionAgent } from "@/lib/agentService";
 import { cn } from "@/lib/utils";
 
 interface MigrationProject {
@@ -176,6 +178,13 @@ type RawActivityRecord = {
   created_at?: string | Date | null;
 };
 
+class AgentExecutionError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "AgentExecutionError";
+  }
+}
+
 const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const [notes, setNotes] = useState(project.notes ?? "");
   const [isSavingNotes, setIsSavingNotes] = useState(false);
@@ -202,6 +211,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       active: true,
       agentType: step.agentType,
       agentPrompt: "",
+      agentResult: undefined,
     }));
 
     const connections = nodes.slice(0, -1).map((node, index) => ({
@@ -212,6 +222,34 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
 
     return { nodes, connections };
   });
+
+  const appendActivity = useCallback(
+    async (type: Activity["type"], title: string) => {
+      const timestampIso = new Date().toISOString();
+
+      try {
+        await supabase.from("migration_activities").insert({
+          migration_id: project.id,
+          type,
+          title,
+          timestamp: timestampIso,
+        });
+      } catch (error) {
+        console.error("Fehler beim Schreiben eines Aktivitätseintrags:", error);
+      }
+
+      setActivityLog((previous) => [
+        {
+          id: `activity-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          type,
+          title,
+          timestamp: timestampIso,
+        },
+        ...previous,
+      ]);
+    },
+    [project.id, setActivityLog],
+  );
 
   const defaultWorkflowSteps = useMemo(() => {
     return AGENT_WORKFLOW_STEPS.reduce(
@@ -424,6 +462,65 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     [status, project.id],
   );
 
+  const executeAgentForStep = useCallback(
+    async (node: WorkflowNode): Promise<SystemDetectionResult | undefined> => {
+      if (!node.agentType || node.active === false) {
+        return undefined;
+      }
+
+      if (node.agentType === "system-detection") {
+        const baseUrl = project.inConnectorDetail?.trim();
+
+        if (!baseUrl) {
+          toast.error("Für die Systemerkennung ist keine API-URL hinterlegt.");
+          throw new AgentExecutionError("Keine API-URL für die Systemerkennung hinterlegt.");
+        }
+
+        await appendActivity("info", `Systemerkennung gestartet: ${baseUrl}`);
+
+        try {
+          const detection = await runSystemDetectionAgent(baseUrl);
+
+          const normalizedConfidence =
+            typeof detection.confidence === "number" && Number.isFinite(detection.confidence)
+              ? detection.confidence <= 1
+                ? detection.confidence * 100
+                : detection.confidence
+              : null;
+
+          const summaryParts = [
+            detection.system ?? "Unbekanntes System",
+            detection.api_version ? `API ${detection.api_version}` : null,
+          ].filter(Boolean);
+
+          const confidenceText =
+            normalizedConfidence !== null ? `Confidence ${Math.round(normalizedConfidence)}%` : null;
+
+          const statusLabel = detection.detected ? "erfolgreich" : "unvollständig";
+          const titleParts = [
+            `Systemerkennung ${statusLabel}`,
+            summaryParts.join(" · ") || baseUrl,
+            confidenceText,
+          ].filter(Boolean);
+
+          await appendActivity(detection.detected ? "success" : "warning", titleParts.join(" · "));
+
+          toast.success("Systemerkennung abgeschlossen");
+
+          return detection;
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          await appendActivity("error", `Systemerkennung fehlgeschlagen: ${message}`);
+          toast.error(`Systemerkennung fehlgeschlagen: ${message}`);
+          throw new AgentExecutionError(message);
+        }
+      }
+
+      return undefined;
+    },
+    [appendActivity, project.inConnectorDetail],
+  );
+
   const handleNextWorkflowStep = useCallback(async () => {
     if (isStepRunning) return;
 
@@ -489,6 +586,16 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         toast.success(startedActivity);
       }
 
+      let completedAgentResult: SystemDetectionResult | undefined;
+      try {
+        completedAgentResult = await executeAgentForStep(completedStepNode);
+      } catch (error) {
+        if (error instanceof AgentExecutionError) {
+          return;
+        }
+        throw error;
+      }
+
       // Mark current step as done and activate next step
       const completedStepTitle = completedStepNode.title;
       const completedActivity = `Schritt abgeschlossen: ${completedStepTitle}`;
@@ -513,7 +620,11 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
 
       const updatedNodes = nodesSnapshot.map((node, idx) => {
         if (idx === stepIndexToComplete) {
-          return { ...node, status: "done" as const };
+          return {
+            ...node,
+            status: "done" as const,
+            agentResult: completedAgentResult ?? node.agentResult,
+          };
         }
         if (idx === stepIndexToComplete + 1 && node.status !== "done") {
           return { ...node, status: "in-progress" as const };
@@ -601,7 +712,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       setIsStepRunning(false);
       // Keep stepProgress at 100 until next step starts
     }
-  }, [workflowBoard, project.id, onRefresh, isStepRunning]);
+  }, [workflowBoard, project.id, onRefresh, isStepRunning, executeAgentForStep]);
 
 
   const normalizeActivity = useCallback((activity: RawActivityRecord): Activity => {
@@ -834,6 +945,82 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const activeStepProgressPercent = Math.round((activeStep?.progress ?? 0) * 100);
   const activeColorTheme = getWorkflowTheme(activeStep?.color);
 
+  const systemDetectionNode = useMemo(
+    () => workflowBoard.nodes.find((node) => node.id === "system-detection"),
+    [workflowBoard.nodes],
+  );
+
+  const systemDetectionResult = useMemo<SystemDetectionResult | null>(() => {
+    if (!systemDetectionNode?.agentResult || typeof systemDetectionNode.agentResult !== "object") {
+      return null;
+    }
+
+    const candidate = systemDetectionNode.agentResult as Partial<SystemDetectionResult>;
+    if (typeof candidate.detected !== "boolean") {
+      return null;
+    }
+
+    const evidence =
+      candidate.detection_evidence && typeof candidate.detection_evidence === "object"
+        ? candidate.detection_evidence
+        : {};
+
+    let confidence: number | null = null;
+    if (typeof candidate.confidence === "number" && Number.isFinite(candidate.confidence)) {
+      confidence = candidate.confidence;
+    } else if (typeof candidate.confidence === "string") {
+      const parsed = Number.parseFloat(candidate.confidence);
+      confidence = Number.isFinite(parsed) ? parsed : null;
+    }
+
+    return {
+      detected: candidate.detected,
+      system: candidate.system ?? null,
+      api_version: candidate.api_version ?? null,
+      confidence,
+      base_url: candidate.base_url ?? null,
+      detection_evidence: evidence,
+      raw_output: candidate.raw_output ?? "",
+    };
+  }, [systemDetectionNode]);
+
+  const systemDetectionConfidencePercent = useMemo(() => {
+    if (!systemDetectionResult?.confidence || !Number.isFinite(systemDetectionResult.confidence)) {
+      return null;
+    }
+
+    const normalized =
+      systemDetectionResult.confidence <= 1
+        ? systemDetectionResult.confidence * 100
+        : systemDetectionResult.confidence;
+
+    return Math.round(normalized);
+  }, [systemDetectionResult]);
+
+  const systemDetectionStatusSummary = useMemo(() => {
+    const statusCodes = systemDetectionResult?.detection_evidence?.status_codes;
+
+    if (!statusCodes || typeof statusCodes !== "object") {
+      return null;
+    }
+
+    const summaryParts = Object.entries(statusCodes)
+      .filter(([, value]) => typeof value === "number")
+      .map(([key, value]) => `${key}: ${value}`);
+
+    return summaryParts.length > 0 ? summaryParts.join(" · ") : null;
+  }, [systemDetectionResult]);
+
+  const systemDetectionHeaderSummary = useMemo(() => {
+    const headers = systemDetectionResult?.detection_evidence?.headers;
+
+    if (!Array.isArray(headers) || headers.length === 0) {
+      return null;
+    }
+
+    return headers.slice(0, 3).join(", ");
+  }, [systemDetectionResult]);
+
   const schemaDiscoveryStepState = agentSteps.find((step) => step.id === "schema-discovery");
   const dryRunStepState = agentSteps.find((step) => step.id === "dry-run");
   const verificationStepState = agentSteps.find((step) => step.id === "verification");
@@ -1016,6 +1203,66 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                     />
                   </div>
                 </div>
+
+                {systemDetectionResult && (
+                  <div className="rounded-lg border border-border/60 bg-background/80 p-3">
+                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                      <div className="flex flex-1 items-start gap-2">
+                        <Power className="mt-0.5 h-3.5 w-3.5 text-muted-foreground" />
+                        <div className="space-y-1">
+                          <p className="text-sm font-semibold">System Detection</p>
+                          <p className="text-xs text-muted-foreground">
+                            {systemDetectionResult.base_url || project.inConnectorDetail || "Keine Basis-URL hinterlegt"}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge
+                          variant={systemDetectionResult.detected ? "secondary" : "outline"}
+                          className={cn(
+                            "text-xs",
+                            systemDetectionResult.detected
+                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
+                              : "text-muted-foreground",
+                          )}
+                        >
+                          {systemDetectionResult.detected ? "Erkannt" : "Unklar"}
+                        </Badge>
+                        {systemDetectionConfidencePercent !== null && (
+                          <Badge variant="outline" className="text-xs">
+                            {systemDetectionConfidencePercent}% Confidence
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    <div className="mt-3 space-y-1 text-xs text-muted-foreground">
+                      <p>
+                        System:{" "}
+                        <span className="font-medium text-foreground">
+                          {systemDetectionResult.system ?? "Keine Angabe"}
+                        </span>
+                      </p>
+                      <p>
+                        API-Version:{" "}
+                        <span className="font-medium text-foreground">
+                          {systemDetectionResult.api_version ?? "Keine Angabe"}
+                        </span>
+                      </p>
+                      {systemDetectionHeaderSummary && (
+                        <p>
+                          Header-Indikatoren:{" "}
+                          <span className="font-medium text-foreground">{systemDetectionHeaderSummary}</span>
+                        </p>
+                      )}
+                      {systemDetectionStatusSummary && (
+                        <p>
+                          Statuscodes:{" "}
+                          <span className="font-medium text-foreground">{systemDetectionStatusSummary}</span>
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                )}
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-lg border border-border/60 bg-background/80 p-3">

@@ -1,0 +1,18 @@
+export interface SystemDetectionEvidence {
+  headers?: string[];
+  status_codes?: Record<string, number>;
+  raw_response?: string;
+  raw?: unknown;
+  [key: string]: unknown;
+}
+
+export interface SystemDetectionResult {
+  detected: boolean;
+  system: string | null;
+  api_version: string | null;
+  confidence: number | null;
+  base_url: string | null;
+  detection_evidence: SystemDetectionEvidence;
+  raw_output: string;
+}
+

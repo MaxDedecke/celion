@@ -12,6 +12,7 @@ export interface WorkflowNode {
   active: boolean;
   agentType?: string;
   agentPrompt?: string;
+  agentResult?: unknown;
 }
 
 export interface WorkflowConnection {
