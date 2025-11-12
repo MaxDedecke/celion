@@ -213,9 +213,12 @@ type RawActivityRecord = {
 };
 
 class AgentExecutionError extends Error {
-  constructor(message: string) {
+  agentResult?: unknown;
+
+  constructor(message: string, agentResult?: unknown) {
     super(message);
     this.name = "AgentExecutionError";
+    this.agentResult = agentResult;
   }
 }
 
@@ -537,11 +540,12 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
               .filter(Boolean)
               .join(" · ");
 
+            const failureMessage =
+              "Die Systemerkennung konnte keine API-Version ermitteln. Bitte Eingaben prüfen und erneut versuchen.";
             await appendActivity("warning", failureTitle);
             toast.error("Systemerkennung unvollständig: Keine API-Version ermittelt.");
-            throw new AgentExecutionError(
-              "Die Systemerkennung konnte keine API-Version ermitteln. Bitte Eingaben prüfen und erneut versuchen.",
-            );
+            const errorPayload = { ...detection, error: failureMessage };
+            throw new AgentExecutionError(failureMessage, errorPayload);
           }
 
           await appendActivity(detection.detected ? "success" : "warning", titleParts.join(" · "));
@@ -550,10 +554,14 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
 
           return detection;
         } catch (error) {
+          if (error instanceof AgentExecutionError) {
+            throw error;
+          }
+
           const message = error instanceof Error ? error.message : String(error);
           await appendActivity("error", `Systemerkennung fehlgeschlagen: ${message}`);
           toast.error(`Systemerkennung fehlgeschlagen: ${message}`);
-          throw new AgentExecutionError(message);
+          throw new AgentExecutionError(message, { error: message });
         }
       }
 
@@ -632,6 +640,45 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         completedAgentResult = await executeAgentForStep(completedStepNode);
       } catch (error) {
         if (error instanceof AgentExecutionError) {
+          const derivedAgentResult = (() => {
+            if (error.agentResult === undefined) {
+              return error.message;
+            }
+
+            if (
+              error.agentResult &&
+              typeof error.agentResult === "object" &&
+              !Array.isArray(error.agentResult)
+            ) {
+              const resultRecord = error.agentResult as Record<string, unknown>;
+              if (typeof resultRecord.error === "string" && resultRecord.error.trim().length > 0) {
+                return { ...resultRecord };
+              }
+              return { ...resultRecord, error: error.message };
+            }
+
+            return error.agentResult;
+          })();
+
+          setWorkflowBoard((previous) => {
+            const updatedNodes = previous.nodes.map((node) => {
+              if (node.id !== completedStepNode.id) {
+                return node;
+              }
+
+              const nextStatus = node.status === "done" ? node.status : ("in-progress" as const);
+
+              return {
+                ...node,
+                status: nextStatus,
+                agentResult: derivedAgentResult,
+              };
+            });
+
+            return { ...previous, nodes: updatedNodes };
+          });
+
+          setAgentResultDialogStepId(completedStepNode.id);
           return;
         }
         throw error;
@@ -1553,7 +1600,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                             ) : (
                               <div className="h-3.5 w-3.5 rounded-full border border-border/60" />
                             )}
-                            {isCompleted && (
+                            {(isCompleted || hasAgentResult) && (
                               <Button
                                 size="icon"
                                 variant="ghost"
