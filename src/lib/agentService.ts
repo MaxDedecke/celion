@@ -76,16 +76,22 @@ const createAssistant = async (
   baseUrl: string,
   headers: Record<string, string>,
   model: string,
+  expectedSystem?: string,
   signal?: AbortSignal,
 ): Promise<OpenAiAssistant> => {
+  const expectedSystemNote = expectedSystem
+    ? ` WICHTIG: Der Benutzer erwartet, dass es sich bei der URL um ein "${expectedSystem}"-System handelt. Deine Hauptaufgabe ist es zu validieren, ob die URL tatsächlich zu diesem erwarteten System passt. Setze "detected" nur dann auf true, wenn das erkannte System mit "${expectedSystem}" übereinstimmt.`
+    : "";
+
   const instructions = [
     "Du bist der Celion System Detection Agent.",
-    "Analysiere die bereitgestellte System-URL und leite daraus das wahrscheinlich angesprochene System ab.",
+    "Analysiere die bereitgestellte System-URL und validiere, ob sie zum erwarteten Systemtyp passt.",
     "Falls verfügbar, gib auch die vermutete API-Version, relevante HTTP-Header sowie Status-Codes an.",
     "Antworte ausschließlich im JSON-Format und verwende die Felder detected, system, api_version, confidence, base_url, detection_evidence und raw_output.",
-    "Setze detected auf true, falls ausreichend Hinweise vorliegen, andernfalls false.",
+    "Setze detected auf true, falls das System mit dem erwarteten Typ übereinstimmt und ausreichend Hinweise vorliegen, andernfalls false.",
     "Confidence soll ein Wert zwischen 0 und 1 sein, der die Sicherheit der Erkennung widerspiegelt.",
     "detection_evidence darf zusätzliche strukturierte Hinweise enthalten (z. B. headers als Liste oder status_codes als Objekt).",
+    expectedSystemNote,
   ].join(" ");
 
   const response = await fetch(`${baseUrl}/assistants`, {
@@ -145,8 +151,13 @@ const postThreadMessage = async (
   headers: Record<string, string>,
   threadId: string,
   url: string,
+  expectedSystem?: string,
   signal?: AbortSignal,
 ) => {
+  const message = expectedSystem
+    ? `Validiere, ob die URL "${url}" zum erwarteten System "${expectedSystem}" gehört. Prüfe, ob die API hinter dieser URL mit dem erwarteten Systemtyp übereinstimmt. Gib das Ergebnis als JSON im oben beschriebenen Format zurück.`
+    : `Führe eine Systemerkennung für folgende Basis-URL durch: ${url}. Bitte gib das Ergebnis als JSON im oben beschriebenen Format zurück.`;
+
   const response = await fetch(`${baseUrl}/threads/${threadId}/messages`, {
     method: "POST",
     headers,
@@ -155,7 +166,7 @@ const postThreadMessage = async (
       content: [
         {
           type: "text",
-          text: `Führe eine Systemerkennung für folgende Basis-URL durch: ${url}. Bitte gib das Ergebnis als JSON im oben beschriebenen Format zurück.`,
+          text: message,
         },
       ],
     }),
@@ -364,6 +375,7 @@ const parseDetectionResultFromMessage = (message: OpenAiMessage | null, baseUrl:
 
 export const runSystemDetectionAgent = async (
   url: string,
+  expectedSystem?: string,
   options: AgentExecutionOptions = {},
 ): Promise<SystemDetectionResult> => {
   if (!url || !url.trim()) {
@@ -374,9 +386,9 @@ export const runSystemDetectionAgent = async (
   const { apiKey, baseUrl, projectId, model } = resolveOpenAiConfig();
   const headers = buildOpenAiHeaders(apiKey, projectId);
 
-  const assistant = await createAssistant(baseUrl, headers, model, options.signal);
+  const assistant = await createAssistant(baseUrl, headers, model, expectedSystem, options.signal);
   const threadId = await createThread(baseUrl, headers, options.signal);
-  await postThreadMessage(baseUrl, headers, threadId, trimmedUrl, options.signal);
+  await postThreadMessage(baseUrl, headers, threadId, trimmedUrl, expectedSystem, options.signal);
   const run = await createRun(baseUrl, headers, threadId, assistant.id, options.signal);
   await pollRunStatus(baseUrl, headers, threadId, run.id, options.signal);
   const message = await fetchLatestAssistantMessage(baseUrl, headers, threadId, options.signal);

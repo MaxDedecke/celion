@@ -492,7 +492,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         await appendActivity("info", `Systemerkennung gestartet: ${baseUrl}`);
 
         try {
-          const detection = await runSystemDetectionAgent(baseUrl);
+          const detection = await runSystemDetectionAgent(baseUrl, project.sourceSystem || undefined);
 
           const normalizedConfidence =
             typeof detection.confidence === "number" && Number.isFinite(detection.confidence)
