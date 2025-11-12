@@ -8,6 +8,7 @@ import {
   Pencil,
   Play,
   Power,
+  SquareArrowOutUpRight,
   Sparkles,
   Workflow,
 } from "lucide-react";
@@ -20,6 +21,13 @@ import { Button } from "./ui/button";
 import { Textarea } from "./ui/textarea";
 import { Label } from "./ui/label";
 import { Badge } from "./ui/badge";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+} from "./ui/dialog";
 import WorkflowPanelDialog from "./dialogs/WorkflowPanelDialog";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
@@ -195,6 +203,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const [workflowPanelSelection, setWorkflowPanelSelection] = useState<string | null>(null);
   const [isStepRunning, setIsStepRunning] = useState(false);
   const [stepProgress, setStepProgress] = useState(0);
+  const [agentResultDialogStepId, setAgentResultDialogStepId] = useState<string | null>(null);
   const migrationCardRef = useRef<HTMLDivElement | null>(null);
   const [isWideLayout, setIsWideLayout] = useState(false);
   const [migrationCardHeight, setMigrationCardHeight] = useState<number | null>(null);
@@ -488,9 +497,21 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                 : detection.confidence
               : null;
 
+          const hasApiVersion = (() => {
+            if (typeof detection.api_version === "string") {
+              return detection.api_version.trim().length > 0;
+            }
+
+            if (typeof detection.api_version === "number") {
+              return Number.isFinite(detection.api_version);
+            }
+
+            return false;
+          })();
+
           const summaryParts = [
             detection.system ?? "Unbekanntes System",
-            detection.api_version ? `API ${detection.api_version}` : null,
+            hasApiVersion && detection.api_version ? `API ${detection.api_version}` : null,
           ].filter(Boolean);
 
           const confidenceText =
@@ -502,6 +523,22 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
             summaryParts.join(" · ") || baseUrl,
             confidenceText,
           ].filter(Boolean);
+
+          if (!hasApiVersion) {
+            const failureTitle = [
+              `Systemerkennung unvollständig`,
+              summaryParts.join(" · ") || baseUrl,
+              "Keine API-Version ermittelt",
+            ]
+              .filter(Boolean)
+              .join(" · ");
+
+            await appendActivity("warning", failureTitle);
+            toast.error("Systemerkennung unvollständig: Keine API-Version ermittelt.");
+            throw new AgentExecutionError(
+              "Die Systemerkennung konnte keine API-Version ermitteln. Bitte Eingaben prüfen und erneut versuchen.",
+            );
+          }
 
           await appendActivity(detection.detected ? "success" : "warning", titleParts.join(" · "));
 
@@ -713,6 +750,12 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       // Keep stepProgress at 100 until next step starts
     }
   }, [workflowBoard, project.id, onRefresh, isStepRunning, executeAgentForStep]);
+
+  const handleAgentResultDialogOpenChange = useCallback((open: boolean) => {
+    if (!open) {
+      setAgentResultDialogStepId(null);
+    }
+  }, []);
 
 
   const normalizeActivity = useCallback((activity: RawActivityRecord): Activity => {
@@ -944,6 +987,47 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const { steps: agentSteps, activeStep, nextStep, completedCount } = agentWorkflowProgress;
   const activeStepProgressPercent = Math.round((activeStep?.progress ?? 0) * 100);
   const activeColorTheme = getWorkflowTheme(activeStep?.color);
+
+  const workflowNodeMap = useMemo(() => {
+    return workflowBoard.nodes.reduce<Record<string, WorkflowNode>>((accumulator, node) => {
+      accumulator[node.id] = node;
+      return accumulator;
+    }, {});
+  }, [workflowBoard.nodes]);
+
+  const agentResultDialogNode = useMemo(() => {
+    if (!agentResultDialogStepId) {
+      return null;
+    }
+
+    return workflowNodeMap[agentResultDialogStepId] ?? null;
+  }, [agentResultDialogStepId, workflowNodeMap]);
+
+  const agentResultDialogStep = useMemo(() => {
+    if (!agentResultDialogStepId) {
+      return null;
+    }
+
+    return agentSteps.find((step) => step.id === agentResultDialogStepId) ?? null;
+  }, [agentResultDialogStepId, agentSteps]);
+
+  const formattedAgentResult = useMemo(() => {
+    if (!agentResultDialogNode || agentResultDialogNode.agentResult === undefined) {
+      return null;
+    }
+
+    const result = agentResultDialogNode.agentResult;
+
+    if (typeof result === "string") {
+      return result.trim();
+    }
+
+    try {
+      return JSON.stringify(result, null, 2);
+    } catch (error) {
+      return String(result);
+    }
+  }, [agentResultDialogNode]);
 
   const systemDetectionNode = useMemo(
     () => workflowBoard.nodes.find((node) => node.id === "system-detection"),
@@ -1321,6 +1405,15 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                       const isCompleted = step.status === "completed";
                       const isActive = step.status === "active";
                       const isPending = step.status === "upcoming";
+                      const associatedNode = workflowNodeMap[step.id];
+                      const hasAgentResult = Boolean(
+                        associatedNode &&
+                          associatedNode.agentResult !== undefined &&
+                          associatedNode.agentResult !== null &&
+                          (typeof associatedNode.agentResult === "string"
+                            ? associatedNode.agentResult.trim().length > 0
+                            : true),
+                      );
                       return (
                         <div
                           key={step.id}
@@ -1342,13 +1435,33 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                           <div className="flex-1 min-w-0">
                             <p className="text-xs font-medium truncate">{step.title}</p>
                           </div>
-                          <div className="shrink-0">
+                          <div className="flex shrink-0 items-center gap-1.5">
                             {isCompleted ? (
                               <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-300" />
                             ) : isActive ? (
                               <Sparkles className="h-3.5 w-3.5 text-amber-600 dark:text-amber-300" />
                             ) : (
                               <div className="h-3.5 w-3.5 rounded-full border border-border/60" />
+                            )}
+                            {isCompleted && (
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="h-7 w-7"
+                                onClick={() => hasAgentResult && setAgentResultDialogStepId(step.id)}
+                                disabled={!hasAgentResult}
+                                aria-label="Agenten-Output anzeigen"
+                                title={hasAgentResult ? "Agenten-Output anzeigen" : "Kein Agenten-Output verfügbar"}
+                              >
+                                <SquareArrowOutUpRight
+                                  className={cn(
+                                    "h-3.5 w-3.5",
+                                    hasAgentResult
+                                      ? "text-foreground"
+                                      : "text-muted-foreground",
+                                  )}
+                                />
+                              </Button>
                             )}
                           </div>
                         </div>
@@ -1398,6 +1511,30 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           </CardContent>
         </Card>
       </div>
+
+      <Dialog open={agentResultDialogStepId !== null} onOpenChange={handleAgentResultDialogOpenChange}>
+        <DialogContent className="sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Agenten-Output</DialogTitle>
+            {agentResultDialogStep && (
+              <DialogDescription>
+                Schritt {agentResultDialogStep.index + 1}: {agentResultDialogStep.title}
+              </DialogDescription>
+            )}
+          </DialogHeader>
+          <div className="max-h-[60vh] overflow-y-auto rounded-md border border-border/60 bg-muted/40 p-4">
+            {formattedAgentResult ? (
+              <pre className="whitespace-pre-wrap break-words font-mono text-xs text-foreground">
+                {formattedAgentResult}
+              </pre>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                Für diesen Schritt wurde kein Agenten-Output gespeichert.
+              </p>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <WorkflowPanelDialog
         open={isWorkflowPanelOpen}

@@ -263,6 +263,24 @@ const fetchLatestAssistantMessage = async (
   return payload.data.find((message) => message.role === "assistant") ?? payload.data[0] ?? null;
 };
 
+const extractJsonPayload = (content: string) => {
+  const trimmed = content.trim();
+
+  const fencedMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fencedMatch && typeof fencedMatch[1] === "string") {
+    return fencedMatch[1].trim();
+  }
+
+  const firstBraceIndex = trimmed.indexOf("{");
+  const lastBraceIndex = trimmed.lastIndexOf("}");
+
+  if (firstBraceIndex !== -1 && lastBraceIndex !== -1 && lastBraceIndex > firstBraceIndex) {
+    return trimmed.slice(firstBraceIndex, lastBraceIndex + 1).trim();
+  }
+
+  return trimmed;
+};
+
 const parseDetectionResultFromMessage = (message: OpenAiMessage | null, baseUrl: string) => {
   if (!message) {
     throw new Error("Der Agent lieferte keine Antwort zurück.");
@@ -297,11 +315,24 @@ const parseDetectionResultFromMessage = (message: OpenAiMessage | null, baseUrl:
     throw new Error("Die Agent-Antwort enthielt keinen Text.");
   }
 
-  let parsed: Partial<SystemDetectionResult & { detection_evidence?: SystemDetectionEvidence }> | null = null;
+  const sanitizedContent = extractJsonPayload(textContent);
 
-  try {
-    parsed = JSON.parse(textContent);
-  } catch (error) {
+  let parsed: Partial<SystemDetectionResult & { detection_evidence?: SystemDetectionEvidence }> | null = null;
+  const parseCandidates = [sanitizedContent];
+  if (sanitizedContent !== textContent) {
+    parseCandidates.push(textContent);
+  }
+
+  for (const candidate of parseCandidates) {
+    try {
+      parsed = JSON.parse(candidate);
+      break;
+    } catch (error) {
+      parsed = null;
+    }
+  }
+
+  if (!parsed) {
     throw new Error(
       `Die Agent-Antwort konnte nicht als JSON interpretiert werden. Antwort: ${textContent}`,
     );
