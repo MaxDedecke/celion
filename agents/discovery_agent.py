@@ -5,10 +5,21 @@ from __future__ import annotations
 import json
 import time
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any, Dict
 
 import requests
+from dotenv import load_dotenv
 from openai import OpenAI
+
+
+# Ensure environment variables from the local .env file are available when the
+# agent service starts. This allows the OpenAI client to pick up the API key
+# that is configured for the project without requiring additional shell
+# configuration.
+_DOTENV_PATH = Path(__file__).resolve().parent.parent / ".env"
+if _DOTENV_PATH.exists():
+    load_dotenv(dotenv_path=_DOTENV_PATH, override=True)
 
 
 @dataclass
