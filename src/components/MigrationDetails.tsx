@@ -917,7 +917,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     const highlightInitialStep =
       status === "not_started" && nodes.length > 0 && nodes.every((node) => node.status === "pending");
 
-    let steps: AgentWorkflowStepState[] = nodes.map((node, index) => {
+    let steps = nodes.map((node, index) => {
       const defaultAgentStep = AGENT_WORKFLOW_STEPS.find((step) => step.id === node.id);
       const baseStep = defaultAgentStep ?? {
         id: node.id,
@@ -928,7 +928,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         color: node.color ?? "sky",
       };
 
-      let statusForStep: AgentWorkflowStepState["status"];
+      let statusForStep: "completed" | "active" | "upcoming";
 
       if (node.status === "done") {
         statusForStep = "completed";
@@ -969,7 +969,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         progress: Math.max(0, Math.min(1, progressFraction)),
         startThreshold,
         endThreshold,
-      };
+      } as AgentWorkflowStepState;
     });
 
     const hasExplicitActiveStep = steps.some((step) => step.status === "active");
@@ -1558,16 +1558,16 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           </Card>
 
           <Card
-            className="flex h-full flex-col overflow-hidden border-border bg-card"
-            style={
-              isWideLayout && migrationCardHeight ? { maxHeight: migrationCardHeight } : undefined
-            }
+            className="flex flex-col overflow-hidden border-border bg-card"
+            style={{
+              height: isWideLayout && migrationCardHeight ? `${migrationCardHeight}px` : '600px',
+            }}
           >
             <CardHeader className="pb-3">
               <CardTitle className="text-base">Aktivitäten</CardTitle>
             </CardHeader>
-            <CardContent className="flex min-h-0 flex-1 flex-col pt-0">
-              <ScrollArea className="flex-1 min-h-0 pr-3">
+            <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden pt-0">
+              <ScrollArea className="h-full pr-3">
                 <ActivityTimeline activities={activityLog} />
               </ScrollArea>
             </CardContent>
