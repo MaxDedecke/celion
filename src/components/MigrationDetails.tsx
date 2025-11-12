@@ -1432,16 +1432,6 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                   </div>
                 </div>
 
-                {systemDetectionResult && (
-                  <SystemDetectionOverview
-                    result={systemDetectionResult}
-                    confidencePercent={systemDetectionConfidencePercent}
-                    headerSummary={systemDetectionHeaderSummary}
-                    statusSummary={systemDetectionStatusSummary}
-                    fallbackBaseUrl={project.inConnectorDetail ?? null}
-                  />
-                )}
-
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-lg border border-border/60 bg-background/80 p-3">
                     <div className="flex items-center gap-2 text-xs text-muted-foreground">
