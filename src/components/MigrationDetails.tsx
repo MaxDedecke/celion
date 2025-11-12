@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
 import {
   ArrowRight,
   CheckCircle2,
@@ -7,7 +7,6 @@ import {
   PauseCircle,
   Pencil,
   Play,
-  Power,
   SquareArrowOutUpRight,
   Sparkles,
   Workflow,
@@ -36,6 +35,7 @@ import type { MigrationStatus } from "@/types/migration";
 import type { SystemDetectionResult } from "@/types/agents";
 import { runSystemDetectionAgent } from "@/lib/agentService";
 import { cn } from "@/lib/utils";
+import SystemDetectionOverview from "./SystemDetectionOverview";
 
 interface MigrationProject {
   id: string;
@@ -50,6 +50,7 @@ interface MigrationProject {
   notes?: string;
   status: MigrationStatus;
   workflowState?: any;
+  inConnectorDetail?: string | null;
 }
 
 interface MigrationDetailsProps {
@@ -204,6 +205,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const [isStepRunning, setIsStepRunning] = useState(false);
   const [stepProgress, setStepProgress] = useState(0);
   const [agentResultDialogStepId, setAgentResultDialogStepId] = useState<string | null>(null);
+  const agentDialogRawOutputId = useId();
   const migrationCardRef = useRef<HTMLDivElement | null>(null);
   const [isWideLayout, setIsWideLayout] = useState(false);
   const [migrationCardHeight, setMigrationCardHeight] = useState<number | null>(null);
@@ -1011,22 +1013,150 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     return agentSteps.find((step) => step.id === agentResultDialogStepId) ?? null;
   }, [agentResultDialogStepId, agentSteps]);
 
-  const formattedAgentResult = useMemo(() => {
-    if (!agentResultDialogNode || agentResultDialogNode.agentResult === undefined) {
-      return null;
+  const {
+    formatted: agentResultDialogFormatted,
+    rawOutput: agentResultDialogRawOutput,
+  } = useMemo(() => {
+    if (!agentResultDialogNode || agentResultDialogNode.agentResult === undefined || agentResultDialogNode.agentResult === null) {
+      return { formatted: null as string | null, rawOutput: null as string | null };
     }
 
     const result = agentResultDialogNode.agentResult;
+    let extractedRawOutput: string | null = null;
+
+    const normalizeRawOutput = (value: unknown, depth = 0): string | null => {
+      if (value === null || value === undefined) {
+        return null;
+      }
+
+      if (depth > 4) {
+        return null;
+      }
+
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+
+        if (!trimmed) {
+          return null;
+        }
+
+        const firstChar = trimmed[0];
+        if (firstChar === "{" || firstChar === "[") {
+          try {
+            const parsed = JSON.parse(trimmed);
+            if (parsed && typeof parsed === "object" && !Array.isArray(parsed) && "raw_output" in parsed) {
+              return normalizeRawOutput((parsed as Record<string, unknown>).raw_output, depth + 1);
+            }
+          } catch (error) {
+            // Ignore JSON parse errors and fall back to returning the trimmed string.
+          }
+        }
+
+        return trimmed;
+      }
+
+      if (Array.isArray(value)) {
+        const flattened = value
+          .map((entry) => normalizeRawOutput(entry, depth + 1))
+          .filter((entry): entry is string => Boolean(entry && entry.length > 0));
+
+        return flattened.length > 0 ? flattened.join("\n") : null;
+      }
+
+      if (typeof value === "object") {
+        const record = value as Record<string, unknown>;
+        if ("raw_output" in record) {
+          return normalizeRawOutput(record.raw_output, depth + 1);
+        }
+
+        const lines = Object.entries(record)
+          .map(([key, entry]) => {
+            const normalized = normalizeRawOutput(entry, depth + 1);
+            return normalized ? `${key}: ${normalized}` : null;
+          })
+          .filter((entry): entry is string => Boolean(entry && entry.length > 0));
+
+        return lines.length > 0 ? lines.join("\n") : null;
+      }
+
+      return String(value);
+    };
+
+    const removeRawOutput = (input: unknown): unknown => {
+      if (input && typeof input === "object" && !Array.isArray(input)) {
+        const { raw_output, ...rest } = input as Record<string, unknown>;
+        const normalizedRawOutput = normalizeRawOutput(raw_output);
+        if (normalizedRawOutput !== null) {
+          extractedRawOutput = normalizedRawOutput;
+        }
+        return rest;
+      }
+
+      return input;
+    };
+
+    const hasStructuredContent = (value: unknown): boolean => {
+      if (value === null || value === undefined) {
+        return false;
+      }
+
+      if (typeof value === "string") {
+        return value.trim().length > 0;
+      }
+
+      if (Array.isArray(value)) {
+        return value.length > 0;
+      }
+
+      if (typeof value === "object") {
+        return Object.keys(value as Record<string, unknown>).length > 0;
+      }
+
+      return true;
+    };
+
+    const formatValue = (value: unknown): string | null => {
+      if (value === null || value === undefined) {
+        return null;
+      }
+
+      if (typeof value === "string") {
+        const trimmed = value.trim();
+        return trimmed.length > 0 ? trimmed : null;
+      }
+
+      try {
+        return JSON.stringify(value, null, 2);
+      } catch (error) {
+        return String(value);
+      }
+    };
 
     if (typeof result === "string") {
-      return result.trim();
+      const trimmed = result.trim();
+
+      if (!trimmed) {
+        return { formatted: null, rawOutput: extractedRawOutput };
+      }
+
+      try {
+        const parsed = JSON.parse(trimmed);
+        const sanitized = removeRawOutput(parsed);
+        return {
+          formatted: hasStructuredContent(sanitized) ? formatValue(sanitized) : null,
+          rawOutput: extractedRawOutput,
+        };
+      } catch (error) {
+        return { formatted: trimmed, rawOutput: null };
+      }
     }
 
-    try {
-      return JSON.stringify(result, null, 2);
-    } catch (error) {
-      return String(result);
-    }
+    const sanitized = removeRawOutput(result);
+
+    return {
+      formatted: hasStructuredContent(sanitized) ? formatValue(sanitized) : null,
+      rawOutput: extractedRawOutput,
+    };
   }, [agentResultDialogNode]);
 
   const systemDetectionNode = useMemo(
@@ -1289,63 +1419,13 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                 </div>
 
                 {systemDetectionResult && (
-                  <div className="rounded-lg border border-border/60 bg-background/80 p-3">
-                    <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-                      <div className="flex flex-1 items-start gap-2">
-                        <Power className="mt-0.5 h-3.5 w-3.5 text-muted-foreground" />
-                        <div className="space-y-1">
-                          <p className="text-sm font-semibold">System Detection</p>
-                          <p className="text-xs text-muted-foreground">
-                            {systemDetectionResult.base_url || project.inConnectorDetail || "Keine Basis-URL hinterlegt"}
-                          </p>
-                        </div>
-                      </div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <Badge
-                          variant={systemDetectionResult.detected ? "secondary" : "outline"}
-                          className={cn(
-                            "text-xs",
-                            systemDetectionResult.detected
-                              ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
-                              : "text-muted-foreground",
-                          )}
-                        >
-                          {systemDetectionResult.detected ? "Erkannt" : "Unklar"}
-                        </Badge>
-                        {systemDetectionConfidencePercent !== null && (
-                          <Badge variant="outline" className="text-xs">
-                            {systemDetectionConfidencePercent}% Confidence
-                          </Badge>
-                        )}
-                      </div>
-                    </div>
-                    <div className="mt-3 space-y-1 text-xs text-muted-foreground">
-                      <p>
-                        System:{" "}
-                        <span className="font-medium text-foreground">
-                          {systemDetectionResult.system ?? "Keine Angabe"}
-                        </span>
-                      </p>
-                      <p>
-                        API-Version:{" "}
-                        <span className="font-medium text-foreground">
-                          {systemDetectionResult.api_version ?? "Keine Angabe"}
-                        </span>
-                      </p>
-                      {systemDetectionHeaderSummary && (
-                        <p>
-                          Header-Indikatoren:{" "}
-                          <span className="font-medium text-foreground">{systemDetectionHeaderSummary}</span>
-                        </p>
-                      )}
-                      {systemDetectionStatusSummary && (
-                        <p>
-                          Statuscodes:{" "}
-                          <span className="font-medium text-foreground">{systemDetectionStatusSummary}</span>
-                        </p>
-                      )}
-                    </div>
-                  </div>
+                  <SystemDetectionOverview
+                    result={systemDetectionResult}
+                    confidencePercent={systemDetectionConfidencePercent}
+                    headerSummary={systemDetectionHeaderSummary}
+                    statusSummary={systemDetectionStatusSummary}
+                    fallbackBaseUrl={project.inConnectorDetail ?? null}
+                  />
                 )}
 
                 <div className="grid gap-3 sm:grid-cols-2">
@@ -1522,15 +1602,41 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
               </DialogDescription>
             )}
           </DialogHeader>
-          <div className="max-h-[60vh] overflow-y-auto rounded-md border border-border/60 bg-muted/40 p-4">
-            {formattedAgentResult ? (
-              <pre className="whitespace-pre-wrap break-words font-mono text-xs text-foreground">
-                {formattedAgentResult}
-              </pre>
-            ) : (
-              <p className="text-sm text-muted-foreground">
-                Für diesen Schritt wurde kein Agenten-Output gespeichert.
-              </p>
+          <div className="space-y-4">
+            {agentResultDialogStep?.id === "system-detection" && systemDetectionResult && (
+              <SystemDetectionOverview
+                result={systemDetectionResult}
+                confidencePercent={systemDetectionConfidencePercent}
+                headerSummary={systemDetectionHeaderSummary}
+                statusSummary={systemDetectionStatusSummary}
+                fallbackBaseUrl={project.inConnectorDetail ?? null}
+                className="bg-background"
+              />
+            )}
+            <div className="max-h-[50vh] overflow-y-auto rounded-md border border-border/60 bg-muted/40 p-4">
+              {agentResultDialogFormatted ? (
+                <pre className="whitespace-pre-wrap break-words font-mono text-xs text-foreground">
+                  {agentResultDialogFormatted}
+                </pre>
+              ) : (
+                <p className="text-sm text-muted-foreground">
+                  Für diesen Schritt wurde kein Agenten-Output gespeichert.
+                </p>
+              )}
+            </div>
+            {agentResultDialogRawOutput !== null && (
+              <div className="space-y-2">
+                <Label htmlFor={agentDialogRawOutputId} className="text-xs font-medium text-muted-foreground">
+                  Raw Output
+                </Label>
+                <Textarea
+                  id={agentDialogRawOutputId}
+                  value={agentResultDialogRawOutput}
+                  readOnly
+                  spellCheck={false}
+                  className="min-h-[160px] resize-none bg-muted/20 font-mono text-xs"
+                />
+              </div>
             )}
           </div>
         </DialogContent>
