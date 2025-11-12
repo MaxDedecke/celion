@@ -149,6 +149,31 @@ const formatProgressPair = (pair: { current: number; total: number }) => `${pair
 const sumCharCodes = (value: string) =>
   value.split("").reduce((sum, char) => sum + char.charCodeAt(0), 0);
 
+const createDefaultWorkflowBoard = (): WorkflowBoardState => {
+  const nodes = AGENT_WORKFLOW_STEPS.map((step, index) => ({
+    id: step.id,
+    title: step.title,
+    description: step.description,
+    x: 80 + (index % 3) * 280,
+    y: 80 + Math.floor(index / 3) * 180,
+    color: step.color,
+    status: "pending" as const,
+    priority: index + 1,
+    active: true,
+    agentType: step.agentType,
+    agentPrompt: "",
+    agentResult: undefined,
+  }));
+
+  const connections = nodes.slice(0, -1).map((node, index) => ({
+    id: `${node.id}-${nodes[index + 1].id}`,
+    sourceId: node.id,
+    targetId: nodes[index + 1].id,
+  }));
+
+  return { nodes, connections };
+};
+
 const simulateSourceObjects = (seed: string) => {
   const safeSeed = seed.trim() ? seed : "celion";
   const sum = sumCharCodes(safeSeed);
@@ -209,30 +234,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const migrationCardRef = useRef<HTMLDivElement | null>(null);
   const [isWideLayout, setIsWideLayout] = useState(false);
   const [migrationCardHeight, setMigrationCardHeight] = useState<number | null>(null);
-  const [workflowBoard, setWorkflowBoard] = useState<WorkflowBoardState>(() => {
-    const nodes = AGENT_WORKFLOW_STEPS.map((step, index) => ({
-      id: step.id,
-      title: step.title,
-      description: step.description,
-      x: 80 + (index % 3) * 280,
-      y: 80 + Math.floor(index / 3) * 180,
-      color: step.color,
-      status: "pending" as const,
-      priority: index + 1,
-      active: true,
-      agentType: step.agentType,
-      agentPrompt: "",
-      agentResult: undefined,
-    }));
-
-    const connections = nodes.slice(0, -1).map((node, index) => ({
-      id: `${node.id}-${nodes[index + 1].id}`,
-      sourceId: node.id,
-      targetId: nodes[index + 1].id,
-    }));
-
-    return { nodes, connections };
-  });
+  const [workflowBoard, setWorkflowBoard] = useState<WorkflowBoardState>(() => createDefaultWorkflowBoard());
 
   const appendActivity = useCallback(
     async (type: Activity["type"], title: string) => {
@@ -787,22 +789,34 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     setNotes(project.notes ?? "");
     setStatus(project.status ?? "not_started");
     setActivityLog((project.activities ?? []).map(normalizeActivity));
-    
+
     // Load workflow state from database if it exists
     if (project.workflowState) {
       try {
-        const parsedState = typeof project.workflowState === 'string' 
-          ? JSON.parse(project.workflowState) 
-          : project.workflowState;
-        
+        const parsedState =
+          typeof project.workflowState === "string"
+            ? JSON.parse(project.workflowState)
+            : project.workflowState;
+
         if (parsedState && parsedState.nodes && Array.isArray(parsedState.nodes)) {
           setWorkflowBoard(normalizeWorkflowState(parsedState));
+          return;
         }
       } catch (error) {
         console.error("Error parsing workflow state:", error);
       }
     }
-  }, [project.activities, project.id, project.notes, project.status, project.workflowState, normalizeActivity, normalizeWorkflowState]);
+
+    setWorkflowBoard(createDefaultWorkflowBoard());
+  }, [
+    project.activities,
+    project.id,
+    project.notes,
+    project.status,
+    project.workflowState,
+    normalizeActivity,
+    normalizeWorkflowState,
+  ]);
 
   useEffect(() => {
     if (!isWorkflowPanelOpen) {
