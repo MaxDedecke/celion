@@ -71,3 +71,21 @@ Yes, you can!
 To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
 
 Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+
+## OpenAI Agent Konfiguration
+
+Um den Celion System Detection Agent über die OpenAI Developer API ausführen zu können, werden folgende Umgebungsvariablen benötigt:
+
+```bash
+# OpenAI API Key (Pflicht)
+VITE_OPENAI_API_KEY="sk-..."
+
+# Optional: eigenes Projekt oder Workspace
+VITE_OPENAI_PROJECT_ID="proj_..."
+
+# Optional: alternatives API- oder Modell-Setup
+VITE_OPENAI_API_BASE_URL="https://api.openai.com/v1"
+VITE_OPENAI_SYSTEM_DETECTION_MODEL="gpt-4.1-mini"
+```
+
+Trage die Werte in deiner `.env` oder im Deployment-Setup ein. Der Start-Button der Migration erstellt anschließend automatisch einen temporären OpenAI-Agenten, führt ihn aus und zeigt das Ergebnis direkt in der Celion-Oberfläche an.
