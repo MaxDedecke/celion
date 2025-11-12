@@ -637,6 +637,32 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         throw error;
       }
 
+      // Validate system detection result if this is the system-detection step
+      if (completedStepNode.id === "system-detection" && completedAgentResult) {
+        const detectionResult = completedAgentResult as SystemDetectionResult;
+        
+        if (!detectionResult.detected) {
+          const errorMsg = "Systemerkennung fehlgeschlagen: Es konnte kein System hinter der URL erkannt werden.";
+          await appendActivity("error", errorMsg);
+          toast.error(errorMsg);
+          setIsUpdatingStatus(false);
+          return;
+        }
+
+        const expectedSystem = project.sourceSystem?.toLowerCase().trim();
+        const detectedSystem = detectionResult.system?.toLowerCase().trim();
+
+        if (!detectedSystem || !expectedSystem || !detectedSystem.includes(expectedSystem.split(' ')[0])) {
+          const errorMsg = `Systemerkennung fehlgeschlagen: Erkanntes System "${detectionResult.system}" stimmt nicht mit dem erwarteten Quellsystem "${project.sourceSystem}" überein.`;
+          await appendActivity("error", errorMsg);
+          toast.error(errorMsg);
+          setIsUpdatingStatus(false);
+          return;
+        }
+
+        await appendActivity("success", `System erfolgreich erkannt: ${detectionResult.system} (Konfidenz: ${Math.round((detectionResult.confidence || 0) * 100)}%)`);
+      }
+
       // Mark current step as done and activate next step
       const completedStepTitle = completedStepNode.title;
       const completedActivity = `Schritt abgeschlossen: ${completedStepTitle}`;
