@@ -1670,7 +1670,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       </div>
 
       <Dialog open={agentResultDialogStepId !== null} onOpenChange={handleAgentResultDialogOpenChange}>
-        <DialogContent className="sm:max-w-2xl">
+        <DialogContent className="max-w-[90vw] w-full">
           <DialogHeader>
             <DialogTitle>Agenten-Output</DialogTitle>
             {agentResultDialogStep && (
@@ -1679,40 +1679,37 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
               </DialogDescription>
             )}
           </DialogHeader>
-          <div className="space-y-4">
-            {agentResultDialogStep?.id === "system-detection" && systemDetectionResult && (
-              <SystemDetectionOverview
-                result={systemDetectionResult}
-                confidencePercent={systemDetectionConfidencePercent}
-                headerSummary={systemDetectionHeaderSummary}
-                statusSummary={systemDetectionStatusSummary}
-                fallbackBaseUrl={project.inConnectorDetail ?? null}
-                className="bg-background"
-              />
-            )}
-            <div className="max-h-[50vh] overflow-y-auto rounded-md border border-border/60 bg-muted/40 p-4">
-              {agentResultDialogFormatted ? (
-                <pre className="whitespace-pre-wrap break-words font-mono text-xs text-foreground">
-                  {agentResultDialogFormatted}
-                </pre>
-              ) : (
-                <p className="text-sm text-muted-foreground">
-                  Für diesen Schritt wurde kein Agenten-Output gespeichert.
-                </p>
-              )}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            <div className="space-y-2">
+              <Label className="text-xs font-medium text-muted-foreground">
+                Formatierte Ausgabe
+              </Label>
+              <ScrollArea className="h-[60vh] rounded-md border border-border/60 bg-muted/40 p-4">
+                {agentResultDialogFormatted ? (
+                  <pre className="whitespace-pre-wrap break-words font-mono text-xs text-foreground">
+                    {agentResultDialogFormatted}
+                  </pre>
+                ) : (
+                  <p className="text-sm text-muted-foreground">
+                    Für diesen Schritt wurde kein Agenten-Output gespeichert.
+                  </p>
+                )}
+              </ScrollArea>
             </div>
             {agentResultDialogRawOutput !== null && (
               <div className="space-y-2">
                 <Label htmlFor={agentDialogRawOutputId} className="text-xs font-medium text-muted-foreground">
                   Raw Output
                 </Label>
-                <Textarea
-                  id={agentDialogRawOutputId}
-                  value={agentResultDialogRawOutput}
-                  readOnly
-                  spellCheck={false}
-                  className="min-h-[160px] resize-none bg-muted/20 font-mono text-xs"
-                />
+                <ScrollArea className="h-[60vh]">
+                  <Textarea
+                    id={agentDialogRawOutputId}
+                    value={agentResultDialogRawOutput}
+                    readOnly
+                    spellCheck={false}
+                    className="min-h-[calc(60vh-8px)] resize-none bg-muted/20 font-mono text-xs border-border/60"
+                  />
+                </ScrollArea>
               </div>
             )}
           </div>
