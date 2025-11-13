@@ -36,6 +36,7 @@ import type { SystemDetectionResult } from "@/types/agents";
 import { runSystemDetectionAgent } from "@/lib/agentService";
 import { cn } from "@/lib/utils";
 import SystemDetectionOverview from "./SystemDetectionOverview";
+import AgentOutputDisplay from "./AgentOutputDisplay";
 
 interface MigrationProject {
   id: string;
@@ -1103,12 +1104,41 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const {
     formatted: agentResultDialogFormatted,
     rawOutput: agentResultDialogRawOutput,
+    structuredResult: agentResultDialogStructured,
   } = useMemo(() => {
     if (!agentResultDialogNode || agentResultDialogNode.agentResult === undefined || agentResultDialogNode.agentResult === null) {
-      return { formatted: null as string | null, rawOutput: null as string | null };
+      return { formatted: null as string | null, rawOutput: null as string | null, structuredResult: null as SystemDetectionResult | null };
     }
 
     const result = agentResultDialogNode.agentResult;
+    
+    // Check if result is a SystemDetectionResult
+    let structuredResult: SystemDetectionResult | null = null;
+    if (typeof result === "object" && result !== null && "detected" in result && typeof result.detected === "boolean") {
+      const candidate = result as Partial<SystemDetectionResult>;
+      const evidence =
+        candidate.detection_evidence && typeof candidate.detection_evidence === "object"
+          ? candidate.detection_evidence
+          : {};
+
+      let confidence: number | null = null;
+      if (typeof candidate.confidence === "number" && Number.isFinite(candidate.confidence)) {
+        confidence = candidate.confidence;
+      } else if (typeof candidate.confidence === "string") {
+        const parsed = Number.parseFloat(candidate.confidence);
+        confidence = Number.isFinite(parsed) ? parsed : null;
+      }
+
+      structuredResult = {
+        detected: candidate.detected,
+        system: candidate.system ?? null,
+        api_version: candidate.api_version ?? null,
+        confidence: confidence,
+        base_url: candidate.base_url ?? null,
+        detection_evidence: evidence as SystemDetectionResult["detection_evidence"],
+        raw_output: candidate.raw_output ?? "",
+      };
+    }
     let extractedRawOutput: string | null = null;
 
     const normalizeRawOutput = (value: unknown, depth = 0): string | null => {
@@ -1243,6 +1273,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     return {
       formatted: hasStructuredContent(sanitized) ? formatValue(sanitized) : null,
       rawOutput: extractedRawOutput,
+      structuredResult: structuredResult,
     };
   }, [agentResultDialogNode]);
 
@@ -1685,7 +1716,9 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                 Formatierte Ausgabe
               </Label>
               <ScrollArea className="h-[60vh] rounded-md border border-border/60 bg-muted/40 p-4">
-                {agentResultDialogFormatted ? (
+                {agentResultDialogStructured ? (
+                  <AgentOutputDisplay result={agentResultDialogStructured} />
+                ) : agentResultDialogFormatted ? (
                   <pre className="whitespace-pre-wrap break-words font-mono text-xs text-foreground">
                     {agentResultDialogFormatted}
                   </pre>
