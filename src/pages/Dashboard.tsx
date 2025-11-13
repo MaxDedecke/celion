@@ -5,6 +5,7 @@ import UserMenu from "@/components/UserMenu";
 import AccountDialog from "@/components/dialogs/AccountDialog";
 import AddMigrationDialog from "@/components/dialogs/AddMigrationDialog";
 import EditMigrationDialog from "@/components/dialogs/EditMigrationDialog";
+import EditMigrationConfigDialog from "@/components/dialogs/EditMigrationConfigDialog";
 import MigrationDetails from "@/components/MigrationDetails";
 import DataFlowLoader from "@/components/DataFlowLoader";
 import { Button } from "@/components/ui/button";
@@ -17,7 +18,8 @@ import {
   Activity as ActivityIcon,
   BarChart3,
   Rocket,
-  ArrowRight
+  ArrowRight,
+  Settings
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
@@ -99,6 +101,8 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [editingMigration, setEditingMigration] = useState<any>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
+  const [showEditConfigDialog, setShowEditConfigDialog] = useState(false);
+  const [editConfigData, setEditConfigData] = useState<any>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [migrationToDelete, setMigrationToDelete] = useState<string | null>(null);
   const [projectIdForNewMigration, setProjectIdForNewMigration] = useState<string | null>(null);
@@ -394,6 +398,85 @@ const Dashboard = () => {
     }
   };
 
+  const handleOpenEditConfig = async () => {
+    if (!currentMigration) return;
+
+    try {
+      // Load connector data
+      const { data: connectorData, error: connectorError } = await supabase
+        .from('connectors')
+        .select('*')
+        .eq('migration_id', currentMigration.id)
+        .eq('connector_type', 'source')
+        .single();
+
+      if (connectorError) throw connectorError;
+
+      setEditConfigData({
+        name: currentMigration.name,
+        apiUrl: connectorData?.api_url || "",
+        sourceSystem: currentMigration.sourceSystem,
+        targetSystem: currentMigration.targetSystem,
+        authType: (connectorData?.auth_type || "token") as "token" | "credentials",
+        apiToken: connectorData?.api_key || "",
+        username: connectorData?.username || "",
+      });
+      setShowEditConfigDialog(true);
+    } catch (error: any) {
+      toast.error("Fehler beim Laden der Konfigurationsdaten");
+      console.error(error);
+    }
+  };
+
+  const handleUpdateMigrationConfig = async (data: {
+    name: string;
+    apiUrl: string;
+    sourceSystem: string;
+    targetSystem: string;
+    authType: "token" | "credentials";
+    apiToken?: string;
+    username?: string;
+    password?: string;
+  }) => {
+    if (!currentMigration) return;
+
+    try {
+      // Update migration
+      const { error: migrationError } = await supabase
+        .from('migrations')
+        .update({
+          name: data.name,
+          source_system: data.sourceSystem,
+          target_system: data.targetSystem,
+        })
+        .eq('id', currentMigration.id);
+
+      if (migrationError) throw migrationError;
+
+      // Update source connector
+      const { error: connectorError } = await supabase
+        .from('connectors')
+        .update({
+          api_url: data.apiUrl,
+          auth_type: data.authType,
+          api_key: data.authType === "token" ? data.apiToken : null,
+          username: data.authType === "credentials" ? data.username : null,
+          password: data.authType === "credentials" ? data.password : null,
+        })
+        .eq('migration_id', currentMigration.id)
+        .eq('connector_type', 'source');
+
+      if (connectorError) throw connectorError;
+
+      toast.success("Konfiguration erfolgreich aktualisiert");
+      setShowEditConfigDialog(false);
+      await loadAllData();
+    } catch (error: any) {
+      toast.error("Fehler beim Aktualisieren der Konfiguration");
+      console.error(error);
+    }
+  };
+
   const currentMigration = selectedMigration 
     ? [...migrations, ...standaloneMigrations].find((m) => m.id === selectedMigration)
     : null;
@@ -444,12 +527,18 @@ const Dashboard = () => {
                 <div className="inline-flex items-center gap-2 rounded-full bg-foreground/5 px-4 py-1 text-sm text-muted-foreground">
                   Migration
                 </div>
-                <div className="text-base font-semibold text-foreground">
-                  <span className="inline-flex items-center gap-2">
-                    <span>{currentMigration.sourceSystem}</span>
-                    <ArrowRight className="h-4 w-4 text-muted-foreground" aria-hidden="true" />
-                    <span>{currentMigration.targetSystem}</span>
-                  </span>
+                <div className="flex items-center gap-3">
+                  <div className="text-base font-semibold text-foreground">
+                    {currentMigration.name}
+                  </div>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    onClick={handleOpenEditConfig}
+                    className="h-8 w-8"
+                  >
+                    <Settings className="h-4 w-4" />
+                  </Button>
                 </div>
               </div>
             ) : (
@@ -660,6 +749,14 @@ const Dashboard = () => {
         onUpdate={handleUpdateMigration}
         currentName={editingMigration?.name || ""}
       />
+      {editConfigData && (
+        <EditMigrationConfigDialog
+          open={showEditConfigDialog}
+          onOpenChange={setShowEditConfigDialog}
+          onUpdate={handleUpdateMigrationConfig}
+          currentData={editConfigData}
+        />
+      )}
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
