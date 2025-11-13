@@ -526,7 +526,7 @@ const Projects = () => {
       <AddMigrationDialog
         open={showAddMigrationDialog}
         onOpenChange={setShowAddMigrationDialog}
-        onAdd={handleAddMigration}
+        onSubmit={handleAddMigration}
       />
 
       <EditProjectDialog

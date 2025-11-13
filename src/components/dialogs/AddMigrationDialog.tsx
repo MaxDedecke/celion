@@ -23,39 +23,73 @@ import type { MigrationAuthType, NewMigrationInput } from "@/types/migration";
 interface AddMigrationDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAdd: (migration: NewMigrationInput) => void;
+  onSubmit: (migration: NewMigrationInput) => void;
+  mode?: "create" | "edit";
+  initialData?: Partial<NewMigrationInput>;
+  title?: string;
+  submitLabel?: string;
 }
 
-const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogProps) => {
-  const [name, setName] = useState("");
-  const [apiUrl, setApiUrl] = useState("");
-  const [sourceSystem, setSourceSystem] = useState("");
-  const [targetSystem, setTargetSystem] = useState("");
-  const [authType, setAuthType] = useState<MigrationAuthType>("token");
-  const [apiToken, setApiToken] = useState("");
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+const AddMigrationDialog = ({
+  open,
+  onOpenChange,
+  onSubmit,
+  mode = "create",
+  initialData,
+  title,
+  submitLabel,
+}: AddMigrationDialogProps) => {
+  const isEditMode = mode === "edit";
+  const [name, setName] = useState(initialData?.name ?? "");
+  const [apiUrl, setApiUrl] = useState(initialData?.apiUrl ?? "");
+  const [sourceSystem, setSourceSystem] = useState(initialData?.sourceSystem ?? "");
+  const [targetSystem, setTargetSystem] = useState(initialData?.targetSystem ?? "");
+  const [authType, setAuthType] = useState<MigrationAuthType>(initialData?.authType ?? "token");
+  const [apiToken, setApiToken] = useState(initialData?.apiToken ?? "");
+  const [username, setUsername] = useState(initialData?.username ?? "");
+  const [password, setPassword] = useState(initialData?.password ?? "");
   const [error, setError] = useState<string | null>(null);
 
   const resetForm = useCallback(() => {
-    setName("");
-    setApiUrl("");
-    setSourceSystem("");
-    setTargetSystem("");
-    setAuthType("token");
-    setApiToken("");
-    setUsername("");
-    setPassword("");
+    if (isEditMode && initialData) {
+      setName(initialData.name ?? "");
+      setApiUrl(initialData.apiUrl ?? "");
+      setSourceSystem(initialData.sourceSystem ?? "");
+      setTargetSystem(initialData.targetSystem ?? "");
+      setAuthType(initialData.authType ?? "token");
+      setApiToken(initialData.apiToken ?? "");
+      setUsername(initialData.username ?? "");
+      setPassword(initialData.password ?? "");
+    } else {
+      setName("");
+      setApiUrl("");
+      setSourceSystem("");
+      setTargetSystem("");
+      setAuthType("token");
+      setApiToken("");
+      setUsername("");
+      setPassword("");
+    }
     setError(null);
-  }, []);
+  }, [initialData, isEditMode]);
 
   useEffect(() => {
-    if (!open) {
-      resetForm();
-    } else {
+    if (open) {
+      if (isEditMode && initialData) {
+        setName(initialData.name ?? "");
+        setApiUrl(initialData.apiUrl ?? "");
+        setSourceSystem(initialData.sourceSystem ?? "");
+        setTargetSystem(initialData.targetSystem ?? "");
+        setAuthType(initialData.authType ?? "token");
+        setApiToken(initialData.apiToken ?? "");
+        setUsername(initialData.username ?? "");
+        setPassword(initialData.password ?? "");
+      }
       setError(null);
+    } else {
+      resetForm();
     }
-  }, [open, resetForm]);
+  }, [open, resetForm, initialData, isEditMode]);
 
   const handleSubmit = () => {
     if (!name.trim() || !apiUrl.trim() || !sourceSystem || !targetSystem) {
@@ -68,12 +102,20 @@ const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogPro
       return;
     }
 
-    if (authType === "credentials" && (!username.trim() || !password)) {
+    const requiresPassword =
+      authType === "credentials" && (!isEditMode || initialData?.authType !== "credentials");
+
+    if (authType === "credentials" && !username.trim()) {
       setError("Bitte hinterlege Benutzername und Passwort.");
       return;
     }
 
-    onAdd({
+    if (requiresPassword && !password) {
+      setError("Bitte hinterlege Benutzername und Passwort.");
+      return;
+    }
+
+    onSubmit({
       name: name.trim(),
       apiUrl: apiUrl.trim(),
       sourceSystem,
@@ -81,7 +123,7 @@ const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogPro
       authType,
       apiToken: authType === "token" ? apiToken.trim() : undefined,
       username: authType === "credentials" ? username.trim() : undefined,
-      password: authType === "credentials" ? password : undefined,
+      password: authType === "credentials" ? password || undefined : undefined,
     });
 
     resetForm();
@@ -92,7 +134,9 @@ const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogPro
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-popover border-border w-full sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle className="text-xl">Migration hinzufügen</DialogTitle>
+          <DialogTitle className="text-xl">
+            {title ?? (isEditMode ? "Migration konfigurieren" : "Migration hinzufügen")}
+          </DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
@@ -261,7 +305,7 @@ const AddMigrationDialog = ({ open, onOpenChange, onAdd }: AddMigrationDialogPro
             onClick={handleSubmit}
             className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground"
           >
-            Migration hinzufügen
+            {submitLabel ?? (isEditMode ? "Änderungen speichern" : "Migration hinzufügen")}
           </Button>
         </div>
       </DialogContent>

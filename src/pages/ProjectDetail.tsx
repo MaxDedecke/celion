@@ -561,7 +561,7 @@ const ProjectDetail = () => {
       <AddMigrationDialog
         open={showAddMigrationDialog}
         onOpenChange={setShowAddMigrationDialog}
-        onAdd={handleAddMigration}
+        onSubmit={handleAddMigration}
       />
 
       <EditMigrationDialog
