@@ -4,7 +4,8 @@ export type MigrationStatus = "not_started" | "running" | "paused" | "completed"
 
 export interface NewMigrationInput {
   name: string;
-  apiUrl: string;
+  sourceUrl: string;
+  targetUrl: string;
   sourceSystem: string;
   targetSystem: string;
   authType: MigrationAuthType;

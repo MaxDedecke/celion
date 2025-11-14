@@ -262,7 +262,8 @@ const Dashboard = () => {
 
       const {
         name,
-        apiUrl,
+        sourceUrl,
+        targetUrl,
         sourceSystem,
         targetSystem,
         authType,
@@ -281,8 +282,10 @@ const Dashboard = () => {
           name,
           source_system: sourceSystem,
           target_system: targetSystem,
+          source_url: sourceUrl,
+          target_url: targetUrl,
           in_connector: CONNECTOR_ENDPOINT_LABEL,
-          in_connector_detail: apiUrl,
+          in_connector_detail: sourceUrl,
           out_connector: CONNECTOR_AUTH_LABEL,
           out_connector_detail: authDetail,
           status: "not_started",
@@ -292,9 +295,18 @@ const Dashboard = () => {
 
       if (migrationError) throw migrationError;
 
-      const connectorPayload = {
+      const sourceConnectorPayload = {
         migration_id: migration.id,
-        api_url: apiUrl,
+        api_url: sourceUrl,
+        auth_type: connectorAuthType,
+        api_key: authType === "token" ? apiToken ?? null : null,
+        username: authType === "credentials" ? username ?? null : null,
+        password: authType === "credentials" ? password ?? null : null,
+      };
+
+      const targetConnectorPayload = {
+        migration_id: migration.id,
+        api_url: targetUrl,
         auth_type: connectorAuthType,
         api_key: authType === "token" ? apiToken ?? null : null,
         username: authType === "credentials" ? username ?? null : null,
@@ -304,8 +316,8 @@ const Dashboard = () => {
       const { error: connectorError } = await supabase
         .from('connectors')
         .insert([
-          { ...connectorPayload, connector_type: 'in' },
-          { ...connectorPayload, connector_type: 'out' },
+          { ...sourceConnectorPayload, connector_type: 'in' },
+          { ...targetConnectorPayload, connector_type: 'out' },
         ]);
 
       if (connectorError) throw connectorError;
@@ -401,26 +413,36 @@ const Dashboard = () => {
     if (!currentMigration) return;
 
     try {
-      // Load connector data
-      const { data: connectorData, error: connectorError } = await supabase
+      // Load connector data for both source and target
+      const { data: sourceConnectorData, error: sourceConnectorError } = await supabase
         .from('connectors')
         .select('*')
         .eq('migration_id', currentMigration.id)
         .eq('connector_type', 'in')
         .maybeSingle();
 
-      if (connectorError) throw connectorError;
+      if (sourceConnectorError) throw sourceConnectorError;
 
-      const connectorAuthType = connectorData?.auth_type === 'basic' ? 'credentials' : 'token';
+      const { data: targetConnectorData, error: targetConnectorError } = await supabase
+        .from('connectors')
+        .select('*')
+        .eq('migration_id', currentMigration.id)
+        .eq('connector_type', 'out')
+        .maybeSingle();
+
+      if (targetConnectorError) throw targetConnectorError;
+
+      const connectorAuthType = sourceConnectorData?.auth_type === 'basic' ? 'credentials' : 'token';
 
       setEditConfigData({
         name: currentMigration.name,
-        apiUrl: connectorData?.api_url || currentMigration.inConnectorDetail || "",
+        sourceUrl: sourceConnectorData?.api_url || currentMigration.sourceUrl || "",
+        targetUrl: targetConnectorData?.api_url || currentMigration.targetUrl || "",
         sourceSystem: currentMigration.sourceSystem,
         targetSystem: currentMigration.targetSystem,
         authType: connectorAuthType,
-        apiToken: connectorData?.api_key || undefined,
-        username: connectorData?.username || undefined,
+        apiToken: sourceConnectorData?.api_key || undefined,
+        username: sourceConnectorData?.username || undefined,
         password: undefined,
       });
       setShowEditConfigDialog(true);
@@ -432,7 +454,8 @@ const Dashboard = () => {
 
   const handleUpdateMigrationConfig = async (data: {
     name: string;
-    apiUrl: string;
+    sourceUrl: string;
+    targetUrl: string;
     sourceSystem: string;
     targetSystem: string;
     authType: "token" | "credentials";
@@ -450,7 +473,9 @@ const Dashboard = () => {
           name: data.name,
           source_system: data.sourceSystem,
           target_system: data.targetSystem,
-          in_connector_detail: data.apiUrl,
+          source_url: data.sourceUrl,
+          target_url: data.targetUrl,
+          in_connector_detail: data.sourceUrl,
           out_connector_detail: data.authType === "token" ? AUTH_DETAIL_TOKEN : AUTH_DETAIL_CREDENTIALS,
         })
         .eq('id', currentMigration.id);
@@ -458,8 +483,16 @@ const Dashboard = () => {
       if (migrationError) throw migrationError;
 
       const connectorAuthType = data.authType === "token" ? "api_key" : "basic";
-      const connectorUpdates: Record<string, any> = {
-        api_url: data.apiUrl,
+      
+      const sourceConnectorUpdates: Record<string, any> = {
+        api_url: data.sourceUrl,
+        auth_type: connectorAuthType,
+        api_key: data.authType === "token" ? (data.apiToken ?? null) : null,
+        username: data.authType === "credentials" ? (data.username ?? null) : null,
+      };
+
+      const targetConnectorUpdates: Record<string, any> = {
+        api_url: data.targetUrl,
         auth_type: connectorAuthType,
         api_key: data.authType === "token" ? (data.apiToken ?? null) : null,
         username: data.authType === "credentials" ? (data.username ?? null) : null,
@@ -467,22 +500,31 @@ const Dashboard = () => {
 
       if (data.authType === "credentials") {
         if (data.password) {
-          connectorUpdates.password = data.password;
+          sourceConnectorUpdates.password = data.password;
+          targetConnectorUpdates.password = data.password;
         }
       } else {
-        connectorUpdates.password = null;
+        sourceConnectorUpdates.password = null;
+        targetConnectorUpdates.password = null;
       }
 
-      const connectorTypes = ['in', 'out'];
-      for (const connectorType of connectorTypes) {
-        const { error: connectorError } = await supabase
-          .from('connectors')
-          .update(connectorUpdates)
-          .eq('migration_id', currentMigration.id)
-          .eq('connector_type', connectorType);
+      // Update source connector
+      const { error: sourceConnectorError } = await supabase
+        .from('connectors')
+        .update(sourceConnectorUpdates)
+        .eq('migration_id', currentMigration.id)
+        .eq('connector_type', 'in');
 
-        if (connectorError) throw connectorError;
-      }
+      if (sourceConnectorError) throw sourceConnectorError;
+
+      // Update target connector
+      const { error: targetConnectorError } = await supabase
+        .from('connectors')
+        .update(targetConnectorUpdates)
+        .eq('migration_id', currentMigration.id)
+        .eq('connector_type', 'out');
+
+      if (targetConnectorError) throw targetConnectorError;
 
       toast.success("Konfiguration erfolgreich aktualisiert");
       setShowEditConfigDialog(false);

@@ -25,7 +25,8 @@ interface EditMigrationConfigDialogProps {
   onOpenChange: (open: boolean) => void;
   onUpdate: (data: {
     name: string;
-    apiUrl: string;
+    sourceUrl: string;
+    targetUrl: string;
     sourceSystem: string;
     targetSystem: string;
     authType: MigrationAuthType;
@@ -35,7 +36,8 @@ interface EditMigrationConfigDialogProps {
   }) => void;
   currentData: {
     name: string;
-    apiUrl: string;
+    sourceUrl: string;
+    targetUrl: string;
     sourceSystem: string;
     targetSystem: string;
     authType: MigrationAuthType;
@@ -51,7 +53,8 @@ const EditMigrationConfigDialog = ({
   currentData,
 }: EditMigrationConfigDialogProps) => {
   const [name, setName] = useState(currentData.name);
-  const [apiUrl, setApiUrl] = useState(currentData.apiUrl);
+  const [sourceUrl, setSourceUrl] = useState(currentData.sourceUrl);
+  const [targetUrl, setTargetUrl] = useState(currentData.targetUrl);
   const [sourceSystem, setSourceSystem] = useState(currentData.sourceSystem);
   const [targetSystem, setTargetSystem] = useState(currentData.targetSystem);
   const [authType, setAuthType] = useState<MigrationAuthType>(currentData.authType);
@@ -63,7 +66,8 @@ const EditMigrationConfigDialog = ({
   useEffect(() => {
     if (open) {
       setName(currentData.name);
-      setApiUrl(currentData.apiUrl);
+      setSourceUrl(currentData.sourceUrl);
+      setTargetUrl(currentData.targetUrl);
       setSourceSystem(currentData.sourceSystem);
       setTargetSystem(currentData.targetSystem);
       setAuthType(currentData.authType);
@@ -75,7 +79,7 @@ const EditMigrationConfigDialog = ({
   }, [open, currentData]);
 
   const handleSubmit = () => {
-    if (!name.trim() || !apiUrl.trim() || !sourceSystem || !targetSystem) {
+    if (!name.trim() || !sourceUrl.trim() || !targetUrl.trim() || !sourceSystem || !targetSystem) {
       setError("Bitte fülle alle Pflichtfelder aus.");
       return;
     }
@@ -92,7 +96,8 @@ const EditMigrationConfigDialog = ({
 
     onUpdate({
       name: name.trim(),
-      apiUrl: apiUrl.trim(),
+      sourceUrl: sourceUrl.trim(),
+      targetUrl: targetUrl.trim(),
       sourceSystem,
       targetSystem,
       authType,
@@ -125,24 +130,11 @@ const EditMigrationConfigDialog = ({
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="edit-api-url">API-URL</Label>
-            <Input
-              id="edit-api-url"
-              type="url"
-              placeholder="https://api.partner.de"
-              value={apiUrl}
-              onChange={(e) => {
-                setApiUrl(e.target.value);
-                setError(null);
-              }}
-              className="bg-input border-border"
-            />
-          </div>
-
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          {/* Quellsystem Section */}
+          <div className="space-y-3 rounded-lg border border-border p-4">
+            <h3 className="text-sm font-semibold">Quellsystem</h3>
             <div className="space-y-2">
-              <Label htmlFor="edit-source-system">Quellsystem</Label>
+              <Label htmlFor="edit-source-system">System</Label>
               <Select value={sourceSystem} onValueChange={setSourceSystem}>
                 <SelectTrigger id="edit-source-system" className="bg-input border-border">
                   <SelectValue placeholder="Auswählen..." />
@@ -156,9 +148,27 @@ const EditMigrationConfigDialog = ({
                 </SelectContent>
               </Select>
             </div>
-
             <div className="space-y-2">
-              <Label htmlFor="edit-target-system">Zielsystem</Label>
+              <Label htmlFor="edit-source-url">API-URL</Label>
+              <Input
+                id="edit-source-url"
+                type="url"
+                placeholder="https://source-api.partner.de"
+                value={sourceUrl}
+                onChange={(e) => {
+                  setSourceUrl(e.target.value);
+                  setError(null);
+                }}
+                className="bg-input border-border"
+              />
+            </div>
+          </div>
+
+          {/* Zielsystem Section */}
+          <div className="space-y-3 rounded-lg border border-border p-4">
+            <h3 className="text-sm font-semibold">Zielsystem</h3>
+            <div className="space-y-2">
+              <Label htmlFor="edit-target-system">System</Label>
               <Select value={targetSystem} onValueChange={setTargetSystem}>
                 <SelectTrigger id="edit-target-system" className="bg-input border-border">
                   <SelectValue placeholder="Auswählen..." />
@@ -171,6 +181,20 @@ const EditMigrationConfigDialog = ({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="edit-target-url">API-URL</Label>
+              <Input
+                id="edit-target-url"
+                type="url"
+                placeholder="https://target-api.partner.de"
+                value={targetUrl}
+                onChange={(e) => {
+                  setTargetUrl(e.target.value);
+                  setError(null);
+                }}
+                className="bg-input border-border"
+              />
             </div>
           </div>
 
