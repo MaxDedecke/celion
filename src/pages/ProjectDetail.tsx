@@ -251,7 +251,8 @@ const ProjectDetail = () => {
 
       const {
         name,
-        apiUrl,
+        sourceUrl,
+        targetUrl,
         sourceSystem,
         targetSystem,
         authType,
@@ -270,8 +271,10 @@ const ProjectDetail = () => {
           name,
           source_system: sourceSystem,
           target_system: targetSystem,
+          source_url: sourceUrl,
+          target_url: targetUrl,
           in_connector: CONNECTOR_ENDPOINT_LABEL,
-          in_connector_detail: apiUrl,
+          in_connector_detail: sourceUrl,
           out_connector: CONNECTOR_AUTH_LABEL,
           out_connector_detail: authDetail,
         })
@@ -280,9 +283,18 @@ const ProjectDetail = () => {
 
       if (migrationError) throw migrationError;
 
-      const connectorPayload = {
+      const sourceConnectorPayload = {
         migration_id: migration.id,
-        api_url: apiUrl,
+        api_url: sourceUrl,
+        auth_type: connectorAuthType,
+        api_key: authType === "token" ? apiToken ?? null : null,
+        username: authType === "credentials" ? username ?? null : null,
+        password: authType === "credentials" ? password ?? null : null,
+      };
+
+      const targetConnectorPayload = {
+        migration_id: migration.id,
+        api_url: targetUrl,
         auth_type: connectorAuthType,
         api_key: authType === "token" ? apiToken ?? null : null,
         username: authType === "credentials" ? username ?? null : null,
@@ -292,8 +304,8 @@ const ProjectDetail = () => {
       const { error: connectorError } = await supabase
         .from("connectors")
         .insert([
-          { ...connectorPayload, connector_type: "in" },
-          { ...connectorPayload, connector_type: "out" },
+          { ...sourceConnectorPayload, connector_type: "in" },
+          { ...targetConnectorPayload, connector_type: "out" },
         ]);
 
       if (connectorError) throw connectorError;

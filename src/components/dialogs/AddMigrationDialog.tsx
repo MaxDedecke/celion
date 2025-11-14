@@ -41,7 +41,8 @@ const AddMigrationDialog = ({
 }: AddMigrationDialogProps) => {
   const isEditMode = mode === "edit";
   const [name, setName] = useState(initialData?.name ?? "");
-  const [apiUrl, setApiUrl] = useState(initialData?.apiUrl ?? "");
+  const [sourceUrl, setSourceUrl] = useState(initialData?.sourceUrl ?? "");
+  const [targetUrl, setTargetUrl] = useState(initialData?.targetUrl ?? "");
   const [sourceSystem, setSourceSystem] = useState(initialData?.sourceSystem ?? "");
   const [targetSystem, setTargetSystem] = useState(initialData?.targetSystem ?? "");
   const [authType, setAuthType] = useState<MigrationAuthType>(initialData?.authType ?? "token");
@@ -53,7 +54,8 @@ const AddMigrationDialog = ({
   const resetForm = useCallback(() => {
     if (isEditMode && initialData) {
       setName(initialData.name ?? "");
-      setApiUrl(initialData.apiUrl ?? "");
+      setSourceUrl(initialData.sourceUrl ?? "");
+      setTargetUrl(initialData.targetUrl ?? "");
       setSourceSystem(initialData.sourceSystem ?? "");
       setTargetSystem(initialData.targetSystem ?? "");
       setAuthType(initialData.authType ?? "token");
@@ -62,7 +64,8 @@ const AddMigrationDialog = ({
       setPassword(initialData.password ?? "");
     } else {
       setName("");
-      setApiUrl("");
+      setSourceUrl("");
+      setTargetUrl("");
       setSourceSystem("");
       setTargetSystem("");
       setAuthType("token");
@@ -77,7 +80,8 @@ const AddMigrationDialog = ({
     if (open) {
       if (isEditMode && initialData) {
         setName(initialData.name ?? "");
-        setApiUrl(initialData.apiUrl ?? "");
+        setSourceUrl(initialData.sourceUrl ?? "");
+        setTargetUrl(initialData.targetUrl ?? "");
         setSourceSystem(initialData.sourceSystem ?? "");
         setTargetSystem(initialData.targetSystem ?? "");
         setAuthType(initialData.authType ?? "token");
@@ -92,7 +96,7 @@ const AddMigrationDialog = ({
   }, [open, resetForm, initialData, isEditMode]);
 
   const handleSubmit = () => {
-    if (!name.trim() || !apiUrl.trim() || !sourceSystem || !targetSystem) {
+    if (!name.trim() || !sourceUrl.trim() || !targetUrl.trim() || !sourceSystem || !targetSystem) {
       setError("Bitte fülle alle Pflichtfelder aus.");
       return;
     }
@@ -117,7 +121,8 @@ const AddMigrationDialog = ({
 
     onSubmit({
       name: name.trim(),
-      apiUrl: apiUrl.trim(),
+      sourceUrl: sourceUrl.trim(),
+      targetUrl: targetUrl.trim(),
       sourceSystem,
       targetSystem,
       authType,
@@ -153,24 +158,11 @@ const AddMigrationDialog = ({
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="api-url">API-URL</Label>
-            <Input
-              id="api-url"
-              type="url"
-              placeholder="https://api.partner.de"
-              value={apiUrl}
-              onChange={(e) => {
-                setApiUrl(e.target.value);
-                setError(null);
-              }}
-              className="bg-input border-border"
-            />
-          </div>
-
-          <div className="grid gap-4 sm:grid-cols-2">
+          {/* Quellsystem Section */}
+          <div className="space-y-3 rounded-lg border border-border p-4">
+            <h3 className="text-sm font-semibold">Quellsystem</h3>
             <div className="space-y-2">
-              <Label htmlFor="source-system">Quellsystem</Label>
+              <Label htmlFor="source-system">System</Label>
               <Select
                 value={sourceSystem}
                 onValueChange={(value) => {
@@ -190,9 +182,27 @@ const AddMigrationDialog = ({
                 </SelectContent>
               </Select>
             </div>
-
             <div className="space-y-2">
-              <Label htmlFor="target-system">Zielsystem</Label>
+              <Label htmlFor="source-url">API-URL</Label>
+              <Input
+                id="source-url"
+                type="url"
+                placeholder="https://source-api.partner.de"
+                value={sourceUrl}
+                onChange={(e) => {
+                  setSourceUrl(e.target.value);
+                  setError(null);
+                }}
+                className="bg-input border-border"
+              />
+            </div>
+          </div>
+
+          {/* Zielsystem Section */}
+          <div className="space-y-3 rounded-lg border border-border p-4">
+            <h3 className="text-sm font-semibold">Zielsystem</h3>
+            <div className="space-y-2">
+              <Label htmlFor="target-system">System</Label>
               <Select
                 value={targetSystem}
                 onValueChange={(value) => {
@@ -211,6 +221,20 @@ const AddMigrationDialog = ({
                   ))}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="target-url">API-URL</Label>
+              <Input
+                id="target-url"
+                type="url"
+                placeholder="https://target-api.partner.de"
+                value={targetUrl}
+                onChange={(e) => {
+                  setTargetUrl(e.target.value);
+                  setError(null);
+                }}
+                className="bg-input border-border"
+              />
             </div>
           </div>
 

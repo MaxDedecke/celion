@@ -305,8 +305,10 @@ export type Database = {
           progress: number
           project_id: string | null
           source_system: string
+          source_url: string | null
           status: string
           target_system: string
+          target_url: string | null
           updated_at: string
           user_id: string
           workflow_state: Json | null
@@ -326,8 +328,10 @@ export type Database = {
           progress?: number
           project_id?: string | null
           source_system: string
+          source_url?: string | null
           status?: string
           target_system: string
+          target_url?: string | null
           updated_at?: string
           user_id: string
           workflow_state?: Json | null
@@ -347,8 +351,10 @@ export type Database = {
           progress?: number
           project_id?: string | null
           source_system?: string
+          source_url?: string | null
           status?: string
           target_system?: string
+          target_url?: string | null
           updated_at?: string
           user_id?: string
           workflow_state?: Json | null
