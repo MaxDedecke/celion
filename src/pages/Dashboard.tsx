@@ -193,6 +193,8 @@ const Dashboard = () => {
           progress: migration.progress,
           sourceSystem: migration.source_system,
           targetSystem: migration.target_system,
+          sourceUrl: migration.source_url,
+          targetUrl: migration.target_url,
           inConnector: migration.in_connector,
           inConnectorDetail: migration.in_connector_detail,
           outConnector: migration.out_connector,

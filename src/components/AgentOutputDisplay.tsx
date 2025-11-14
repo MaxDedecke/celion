@@ -126,7 +126,11 @@ const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayPr
 
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground">Base URL</p>
-              <p className="text-sm font-medium break-all">https://dedeckedev.atlassian.net</p>
+              <p className="text-sm font-medium break-all">
+                {result.base_url || (
+                  <span className="text-muted-foreground italic">Nicht verfügbar</span>
+                )}
+              </p>
             </div>
           </div>
 

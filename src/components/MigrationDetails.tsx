@@ -32,7 +32,7 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { WorkflowBoardState, WorkflowNode } from "@/types/workflow";
 import type { MigrationStatus } from "@/types/migration";
-import type { SystemDetectionResult } from "@/types/agents";
+import type { SystemDetectionResult, SystemDetectionStepResult } from "@/types/agents";
 import { runSystemDetectionAgent } from "@/lib/agentService";
 import { cn } from "@/lib/utils";
 import SystemDetectionOverview from "./SystemDetectionOverview";
@@ -44,6 +44,8 @@ interface MigrationProject {
   progress: number;
   sourceSystem: string;
   targetSystem: string;
+  sourceUrl?: string | null;
+  targetUrl?: string | null;
   objectsTransferred: string;
   mappedObjects: string;
   projectId?: string;
@@ -52,6 +54,7 @@ interface MigrationProject {
   status: MigrationStatus;
   workflowState?: any;
   inConnectorDetail?: string | null;
+  outConnectorDetail?: string | null;
 }
 
 interface MigrationDetailsProps {
@@ -195,6 +198,99 @@ const simulateTargetObjects = (seed: string, sourceTotal: number) => {
   const current = Math.max(minimumCompletion, sourceTotal - deduction);
 
   return { current: Math.min(current, sourceTotal), total: sourceTotal };
+};
+
+const clampProgressValue = (value: number) => {
+  if (!Number.isFinite(value)) {
+    return 0;
+  }
+
+  return Math.max(0, Math.min(100, value));
+};
+
+const normalizeSystemDetectionResult = (input: unknown): SystemDetectionResult | null => {
+  if (!input) {
+    return null;
+  }
+
+  if (typeof input === "string") {
+    try {
+      const parsed = JSON.parse(input);
+      return normalizeSystemDetectionResult(parsed);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  if (typeof input !== "object" || Array.isArray(input)) {
+    return null;
+  }
+
+  const candidate = input as Partial<SystemDetectionResult>;
+  if (typeof candidate.detected !== "boolean") {
+    return null;
+  }
+
+  const evidence =
+    candidate.detection_evidence && typeof candidate.detection_evidence === "object"
+      ? (candidate.detection_evidence as SystemDetectionResult["detection_evidence"])
+      : {};
+
+  let confidence: number | null = null;
+  if (typeof candidate.confidence === "number" && Number.isFinite(candidate.confidence)) {
+    confidence = candidate.confidence;
+  } else if (typeof candidate.confidence === "string") {
+    const parsed = Number.parseFloat(candidate.confidence);
+    confidence = Number.isFinite(parsed) ? parsed : null;
+  }
+
+  return {
+    detected: candidate.detected,
+    system: candidate.system ?? null,
+    api_version: candidate.api_version ?? null,
+    confidence,
+    base_url: candidate.base_url ?? null,
+    detection_evidence: evidence,
+    raw_output: candidate.raw_output ?? "",
+  };
+};
+
+const normalizeSystemDetectionStepResult = (input: unknown): SystemDetectionStepResult | null => {
+  if (!input) {
+    return null;
+  }
+
+  if (typeof input === "string") {
+    try {
+      const parsed = JSON.parse(input);
+      return normalizeSystemDetectionStepResult(parsed);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  if (typeof input !== "object") {
+    return null;
+  }
+
+  const record = input as Record<string, unknown>;
+  const source = normalizeSystemDetectionResult(record.source);
+  const target = normalizeSystemDetectionResult(record.target);
+
+  if (!source && !target) {
+    return null;
+  }
+
+  return { source, target };
+};
+
+const confidenceToPercent = (confidence: number | null): number | null => {
+  if (confidence === null || !Number.isFinite(confidence)) {
+    return null;
+  }
+
+  const value = confidence <= 1 ? confidence * 100 : confidence;
+  return Math.round(value);
 };
 
 type AgentWorkflowStepState = (typeof AGENT_WORKFLOW_STEPS)[number] & {
@@ -480,80 +576,142 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   );
 
   const executeAgentForStep = useCallback(
-    async (node: WorkflowNode): Promise<SystemDetectionResult | undefined> => {
+    async (
+      node: WorkflowNode,
+      options?: { onProgress?: (value: number) => void },
+    ): Promise<SystemDetectionStepResult | undefined> => {
       if (!node.agentType || node.active === false) {
         return undefined;
       }
 
-      if (node.agentType === "system-detection") {
-        const baseUrl = project.inConnectorDetail?.trim();
+      const reportProgress = (value: number) => {
+        if (options?.onProgress) {
+          options.onProgress(clampProgressValue(value));
+        }
+      };
 
-        if (!baseUrl) {
-          toast.error("Für die Systemerkennung ist keine API-URL hinterlegt.");
-          throw new AgentExecutionError("Keine API-URL für die Systemerkennung hinterlegt.");
+      if (node.agentType === "system-detection") {
+        const sourceBaseUrl = (project.sourceUrl ?? project.inConnectorDetail ?? "").trim();
+
+        if (!sourceBaseUrl) {
+          const message = "Für die Systemerkennung des Quellsystems ist keine API-URL hinterlegt.";
+          toast.error(message);
+          throw new AgentExecutionError(message);
         }
 
-        await appendActivity("info", `Systemerkennung gestartet: ${baseUrl}`);
+        const runDetectionForScope = async (
+          scope: "source" | "target",
+          baseUrl: string,
+          expectedSystem?: string | null,
+          completionProgress?: number,
+        ): Promise<SystemDetectionResult> => {
+          const scopeLabel = scope === "source" ? "Quellsystem" : "Zielsystem";
+          await appendActivity("info", `Systemerkennung gestartet (${scopeLabel}): ${baseUrl}`);
+
+          try {
+            const detection = await runSystemDetectionAgent(baseUrl, expectedSystem || undefined);
+
+            const hasApiVersion = (() => {
+              if (typeof detection.api_version === "string") {
+                return detection.api_version.trim().length > 0;
+              }
+
+              if (typeof detection.api_version === "number") {
+                return Number.isFinite(detection.api_version);
+              }
+
+              return false;
+            })();
+
+            const normalizedConfidence = confidenceToPercent(detection.confidence);
+            const summaryParts = [
+              detection.system ?? "Unbekanntes System",
+              hasApiVersion && detection.api_version ? `API ${detection.api_version}` : null,
+              normalizedConfidence !== null ? `Confidence ${normalizedConfidence}%` : null,
+            ].filter(Boolean);
+
+            const statusLabel = detection.detected ? "erfolgreich" : "unvollständig";
+            const titleParts = [
+              `Systemerkennung ${statusLabel} (${scopeLabel})`,
+              summaryParts.join(" · ") || baseUrl,
+            ].filter(Boolean);
+
+            if (!hasApiVersion) {
+              const failureTitle = [
+                `Systemerkennung unvollständig (${scopeLabel})`,
+                summaryParts.join(" · ") || baseUrl,
+                "Keine API-Version ermittelt",
+              ]
+                .filter(Boolean)
+                .join(" · ");
+
+              const failureMessage =
+                `Die Systemerkennung (${scopeLabel}) konnte keine API-Version ermitteln. Bitte Eingaben prüfen und erneut versuchen.`;
+              await appendActivity("warning", failureTitle);
+              toast.error(`Systemerkennung unvollständig (${scopeLabel}): Keine API-Version ermittelt.`);
+              const errorPayload =
+                scope === "source"
+                  ? { source: detection, error: failureMessage }
+                  : { target: detection, error: failureMessage };
+              throw new AgentExecutionError(failureMessage, errorPayload);
+            }
+
+            await appendActivity(detection.detected ? "success" : "warning", titleParts.join(" · "));
+
+            if (typeof completionProgress === "number") {
+              reportProgress(completionProgress);
+            }
+
+            return detection;
+          } catch (error) {
+            if (error instanceof AgentExecutionError) {
+              throw error;
+            }
+
+            const message = error instanceof Error ? error.message : String(error);
+            await appendActivity("error", `Systemerkennung fehlgeschlagen (${scopeLabel}): ${message}`);
+            toast.error(`Systemerkennung fehlgeschlagen (${scopeLabel}): ${message}`);
+            const errorPayload = scope === "source" ? { error: message } : { error: message };
+            throw new AgentExecutionError(message, errorPayload);
+          }
+        };
 
         try {
-          const detection = await runSystemDetectionAgent(baseUrl, project.sourceSystem || undefined);
+          const sourceDetection = await runDetectionForScope(
+            "source",
+            sourceBaseUrl,
+            project.sourceSystem,
+            50,
+          );
 
-          const normalizedConfidence =
-            typeof detection.confidence === "number" && Number.isFinite(detection.confidence)
-              ? detection.confidence <= 1
-                ? detection.confidence * 100
-                : detection.confidence
-              : null;
-
-          const hasApiVersion = (() => {
-            if (typeof detection.api_version === "string") {
-              return detection.api_version.trim().length > 0;
-            }
-
-            if (typeof detection.api_version === "number") {
-              return Number.isFinite(detection.api_version);
-            }
-
-            return false;
-          })();
-
-          const summaryParts = [
-            detection.system ?? "Unbekanntes System",
-            hasApiVersion && detection.api_version ? `API ${detection.api_version}` : null,
-          ].filter(Boolean);
-
-          const confidenceText =
-            normalizedConfidence !== null ? `Confidence ${Math.round(normalizedConfidence)}%` : null;
-
-          const statusLabel = detection.detected ? "erfolgreich" : "unvollständig";
-          const titleParts = [
-            `Systemerkennung ${statusLabel}`,
-            summaryParts.join(" · ") || baseUrl,
-            confidenceText,
-          ].filter(Boolean);
-
-          if (!hasApiVersion) {
-            const failureTitle = [
-              `Systemerkennung unvollständig`,
-              summaryParts.join(" · ") || baseUrl,
-              "Keine API-Version ermittelt",
-            ]
-              .filter(Boolean)
-              .join(" · ");
-
-            const failureMessage =
-              "Die Systemerkennung konnte keine API-Version ermitteln. Bitte Eingaben prüfen und erneut versuchen.";
-            await appendActivity("warning", failureTitle);
-            toast.error("Systemerkennung unvollständig: Keine API-Version ermittelt.");
-            const errorPayload = { ...detection, error: failureMessage };
-            throw new AgentExecutionError(failureMessage, errorPayload);
+          const targetBaseUrl = (project.targetUrl ?? project.outConnectorDetail ?? "").trim();
+          if (!targetBaseUrl) {
+            reportProgress(50);
+            const message = "Für die Systemerkennung des Zielsystems ist keine API-URL hinterlegt.";
+            await appendActivity("error", message);
+            toast.error(message);
+            throw new AgentExecutionError(message, { source: sourceDetection });
           }
 
-          await appendActivity(detection.detected ? "success" : "warning", titleParts.join(" · "));
+          let targetDetection: SystemDetectionResult;
+          try {
+            targetDetection = await runDetectionForScope("target", targetBaseUrl, project.targetSystem, 100);
+          } catch (error) {
+            if (error instanceof AgentExecutionError) {
+              const combinedPayload =
+                error.agentResult && typeof error.agentResult === "object"
+                  ? {
+                      source: sourceDetection,
+                      ...(error.agentResult as Record<string, unknown>),
+                    }
+                  : { source: sourceDetection, error: error.message };
+              throw new AgentExecutionError(error.message, combinedPayload);
+            }
+            throw error;
+          }
 
-          toast.success("Systemerkennung abgeschlossen");
-
-          return detection;
+          toast.success("Systemerkennung für Quelle und Ziel abgeschlossen");
+          return { source: sourceDetection, target: targetDetection };
         } catch (error) {
           if (error instanceof AgentExecutionError) {
             throw error;
@@ -568,39 +726,27 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
 
       return undefined;
     },
-    [appendActivity, project.inConnectorDetail],
+    [
+      appendActivity,
+      project.inConnectorDetail,
+      project.outConnectorDetail,
+      project.sourceUrl,
+      project.targetUrl,
+      project.sourceSystem,
+      project.targetSystem,
+    ],
   );
 
   const handleNextWorkflowStep = useCallback(async () => {
     if (isStepRunning) return;
+
+    let progressInterval: ReturnType<typeof setInterval> | null = null;
 
     try {
       // Reset progress to 0 at the start of a new step
       setStepProgress(0);
       setIsStepRunning(true);
 
-      // Animate progress from 0 to 100 over 2 seconds
-      const animationDuration = 2000;
-      const animationSteps = 60;
-      const stepIncrement = 100 / animationSteps;
-      const stepInterval = animationDuration / animationSteps;
-
-      let currentProgress = 0;
-      const progressInterval = setInterval(() => {
-        currentProgress += stepIncrement;
-        if (currentProgress >= 100) {
-          setStepProgress(100);
-          clearInterval(progressInterval);
-        } else {
-          setStepProgress(currentProgress);
-        }
-      }, stepInterval);
-
-      // Wait for animation to complete
-      await new Promise((resolve) => setTimeout(resolve, animationDuration + 100));
-
-      setIsUpdatingStatus(true);
-      
       const nodesSnapshot = workflowBoard.nodes.map((node) => ({ ...node }));
       const activeStepIndex = nodesSnapshot.findIndex((node) => node.status === "in-progress");
       const nextPendingIndex = nodesSnapshot.findIndex((node) => node.status !== "done");
@@ -613,6 +759,39 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       }
 
       const completedStepNode = nodesSnapshot[stepIndexToComplete];
+      const isSystemDetectionStep = completedStepNode.id === "system-detection";
+
+      if (!isSystemDetectionStep) {
+        // Animate progress from 0 to 100 over 2 seconds for non-detection steps
+        const animationDuration = 2000;
+        const animationSteps = 60;
+        const stepIncrement = 100 / animationSteps;
+        const stepInterval = animationDuration / animationSteps;
+
+        let currentProgress = 0;
+        progressInterval = setInterval(() => {
+          currentProgress += stepIncrement;
+          if (currentProgress >= 100) {
+            setStepProgress(100);
+            if (progressInterval) {
+              clearInterval(progressInterval);
+              progressInterval = null;
+            }
+          } else {
+            setStepProgress(currentProgress);
+          }
+        }, stepInterval);
+
+        await new Promise((resolve) => setTimeout(resolve, animationDuration + 100));
+
+        if (progressInterval) {
+          clearInterval(progressInterval);
+          progressInterval = null;
+          setStepProgress(100);
+        }
+      }
+
+      setIsUpdatingStatus(true);
 
       if (activeStepIndex === -1) {
         const startedActivity = `Schritt gestartet: ${completedStepNode.title}`;
@@ -634,11 +813,26 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           ...previous,
         ]);
         toast.success(startedActivity);
+
+        setWorkflowBoard((previous) => {
+          const runningNodes = previous.nodes.map((node, index) => {
+            if (index === stepIndexToComplete) {
+              return { ...node, status: "in-progress" as const };
+            }
+            return node;
+          });
+
+          return { ...previous, nodes: runningNodes };
+        });
       }
 
-      let completedAgentResult: SystemDetectionResult | undefined;
+      let completedAgentResult: SystemDetectionStepResult | undefined;
       try {
-        completedAgentResult = await executeAgentForStep(completedStepNode);
+        completedAgentResult = await executeAgentForStep(completedStepNode, {
+          onProgress: isSystemDetectionStep
+            ? (value) => setStepProgress(clampProgressValue(value))
+            : undefined,
+        });
       } catch (error) {
         if (error instanceof AgentExecutionError) {
           const derivedAgentResult = (() => {
@@ -687,28 +881,70 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
 
       // Validate system detection result if this is the system-detection step
       if (completedStepNode.id === "system-detection" && completedAgentResult) {
-        const detectionResult = completedAgentResult as SystemDetectionResult;
-        
-        if (!detectionResult.detected) {
-          const errorMsg = "Systemerkennung fehlgeschlagen: Es konnte kein System hinter der URL erkannt werden.";
+        const sourceDetection = completedAgentResult.source;
+        const targetDetection = completedAgentResult.target;
+
+        if (!sourceDetection || !sourceDetection.detected) {
+          const errorMsg =
+            "Systemerkennung fehlgeschlagen: Es konnte kein Quellsystem hinter der URL erkannt werden.";
           await appendActivity("error", errorMsg);
           toast.error(errorMsg);
           setIsUpdatingStatus(false);
           return;
         }
 
-        const expectedSystem = project.sourceSystem?.toLowerCase().trim();
-        const detectedSystem = detectionResult.system?.toLowerCase().trim();
+        const expectedSourceSystem = project.sourceSystem?.toLowerCase().trim();
+        const detectedSourceSystem = sourceDetection.system?.toLowerCase().trim();
 
-        if (!detectedSystem || !expectedSystem || !detectedSystem.includes(expectedSystem.split(' ')[0])) {
-          const errorMsg = `Systemerkennung fehlgeschlagen: Erkanntes System "${detectionResult.system}" stimmt nicht mit dem erwarteten Quellsystem "${project.sourceSystem}" überein.`;
+        if (
+          !detectedSourceSystem ||
+          !expectedSourceSystem ||
+          !detectedSourceSystem.includes(expectedSourceSystem.split(" ")[0])
+        ) {
+          const errorMsg = `Systemerkennung fehlgeschlagen: Erkanntes System "${sourceDetection.system}" stimmt nicht mit dem erwarteten Quellsystem "${project.sourceSystem}" überein.`;
           await appendActivity("error", errorMsg);
           toast.error(errorMsg);
           setIsUpdatingStatus(false);
           return;
         }
 
-        await appendActivity("success", `System erfolgreich erkannt: ${detectionResult.system} (Konfidenz: ${Math.round((detectionResult.confidence || 0) * 100)}%)`);
+        const sourceConfidence = confidenceToPercent(sourceDetection.confidence);
+        await appendActivity(
+          "success",
+          `Quellsystem erfolgreich erkannt: ${sourceDetection.system} (Konfidenz: ${sourceConfidence ?? 0}%)`,
+        );
+
+        if (!targetDetection || !targetDetection.detected) {
+          const errorMsg =
+            "Systemerkennung fehlgeschlagen: Es konnte kein Zielsystem hinter der URL erkannt werden.";
+          await appendActivity("error", errorMsg);
+          toast.error(errorMsg);
+          setIsUpdatingStatus(false);
+          return;
+        }
+
+        const expectedTargetSystem = project.targetSystem?.toLowerCase().trim();
+        const detectedTargetSystem = targetDetection.system?.toLowerCase().trim();
+
+        if (
+          !detectedTargetSystem ||
+          !expectedTargetSystem ||
+          !detectedTargetSystem.includes(expectedTargetSystem.split(" ")[0])
+        ) {
+          const errorMsg = `Systemerkennung fehlgeschlagen: Erkanntes System "${targetDetection.system}" stimmt nicht mit dem erwarteten Zielsystem "${project.targetSystem}" überein.`;
+          await appendActivity("error", errorMsg);
+          toast.error(errorMsg);
+          setIsUpdatingStatus(false);
+          return;
+        }
+
+        const targetConfidence = confidenceToPercent(targetDetection.confidence);
+        await appendActivity(
+          "success",
+          `Zielsystem erfolgreich erkannt: ${targetDetection.system} (Konfidenz: ${targetConfidence ?? 0}%)`,
+        );
+
+        setStepProgress(100);
       }
 
       // Mark current step as done and activate next step
@@ -817,12 +1053,15 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       } else {
         setStatus("running");
       }
-      
+
       await onRefresh();
     } catch (error) {
       console.error("Error progressing workflow:", error);
       toast.error("Fehler beim Fortschreiten des Workflows");
     } finally {
+      if (progressInterval) {
+        clearInterval(progressInterval);
+      }
       setIsUpdatingStatus(false);
       setIsStepRunning(false);
       // Keep stepProgress at 100 until next step starts
@@ -1106,38 +1345,27 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     rawOutput: agentResultDialogRawOutput,
     structuredResult: agentResultDialogStructured,
   } = useMemo(() => {
-    if (!agentResultDialogNode || agentResultDialogNode.agentResult === undefined || agentResultDialogNode.agentResult === null) {
-      return { formatted: null as string | null, rawOutput: null as string | null, structuredResult: null as SystemDetectionResult | null };
+    if (
+      !agentResultDialogNode ||
+      agentResultDialogNode.agentResult === undefined ||
+      agentResultDialogNode.agentResult === null
+    ) {
+      return {
+        formatted: null as string | null,
+        rawOutput: null as string | null,
+        structuredResult: null as SystemDetectionResult | SystemDetectionStepResult | null,
+      };
     }
 
     const result = agentResultDialogNode.agentResult;
-    
-    // Check if result is a SystemDetectionResult
-    let structuredResult: SystemDetectionResult | null = null;
-    if (typeof result === "object" && result !== null && "detected" in result && typeof result.detected === "boolean") {
-      const candidate = result as Partial<SystemDetectionResult>;
-      const evidence =
-        candidate.detection_evidence && typeof candidate.detection_evidence === "object"
-          ? candidate.detection_evidence
-          : {};
 
-      let confidence: number | null = null;
-      if (typeof candidate.confidence === "number" && Number.isFinite(candidate.confidence)) {
-        confidence = candidate.confidence;
-      } else if (typeof candidate.confidence === "string") {
-        const parsed = Number.parseFloat(candidate.confidence);
-        confidence = Number.isFinite(parsed) ? parsed : null;
+    let structuredResult: SystemDetectionResult | SystemDetectionStepResult | null = null;
+    if (typeof result === "object" && result !== null) {
+      if ("source" in result || "target" in result) {
+        structuredResult = normalizeSystemDetectionStepResult(result) ?? null;
+      } else if ("detected" in result && typeof (result as { detected: unknown }).detected === "boolean") {
+        structuredResult = normalizeSystemDetectionResult(result);
       }
-
-      structuredResult = {
-        detected: candidate.detected,
-        system: candidate.system ?? null,
-        api_version: candidate.api_version ?? null,
-        confidence: confidence,
-        base_url: candidate.base_url ?? null,
-        detection_evidence: evidence as SystemDetectionResult["detection_evidence"],
-        raw_output: candidate.raw_output ?? "",
-      };
     }
     let extractedRawOutput: string | null = null;
 
@@ -1277,60 +1505,74 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     };
   }, [agentResultDialogNode]);
 
+  const agentDialogSourceResult = useMemo<SystemDetectionResult | null>(() => {
+    if (!agentResultDialogStructured) {
+      return null;
+    }
+
+    if (
+      typeof agentResultDialogStructured === "object" &&
+      agentResultDialogStructured !== null &&
+      "source" in agentResultDialogStructured
+    ) {
+      const combined = agentResultDialogStructured as SystemDetectionStepResult;
+      return combined.source ?? null;
+    }
+
+    return agentResultDialogStructured as SystemDetectionResult;
+  }, [agentResultDialogStructured]);
+
+  const agentDialogTargetResult = useMemo<SystemDetectionResult | null>(() => {
+    if (
+      agentResultDialogStructured &&
+      typeof agentResultDialogStructured === "object" &&
+      agentResultDialogStructured !== null &&
+      "source" in agentResultDialogStructured
+    ) {
+      const combined = agentResultDialogStructured as SystemDetectionStepResult;
+      return combined.target ?? null;
+    }
+
+    return null;
+  }, [agentResultDialogStructured]);
+
   const systemDetectionNode = useMemo(
     () => workflowBoard.nodes.find((node) => node.id === "system-detection"),
     [workflowBoard.nodes],
   );
 
-  const systemDetectionResult = useMemo<SystemDetectionResult | null>(() => {
-    if (!systemDetectionNode?.agentResult || typeof systemDetectionNode.agentResult !== "object") {
-      return null;
+  const { systemDetectionSourceResult, systemDetectionTargetResult } = useMemo(() => {
+    if (!systemDetectionNode || systemDetectionNode.agentResult === undefined || systemDetectionNode.agentResult === null) {
+      return { systemDetectionSourceResult: null as SystemDetectionResult | null, systemDetectionTargetResult: null as SystemDetectionResult | null };
     }
 
-    const candidate = systemDetectionNode.agentResult as Partial<SystemDetectionResult>;
-    if (typeof candidate.detected !== "boolean") {
-      return null;
+    const combined = normalizeSystemDetectionStepResult(systemDetectionNode.agentResult);
+    if (combined) {
+      return {
+        systemDetectionSourceResult: combined.source,
+        systemDetectionTargetResult: combined.target,
+      };
     }
 
-    const evidence =
-      candidate.detection_evidence && typeof candidate.detection_evidence === "object"
-        ? candidate.detection_evidence
-        : {};
-
-    let confidence: number | null = null;
-    if (typeof candidate.confidence === "number" && Number.isFinite(candidate.confidence)) {
-      confidence = candidate.confidence;
-    } else if (typeof candidate.confidence === "string") {
-      const parsed = Number.parseFloat(candidate.confidence);
-      confidence = Number.isFinite(parsed) ? parsed : null;
-    }
-
+    const single = normalizeSystemDetectionResult(systemDetectionNode.agentResult);
     return {
-      detected: candidate.detected,
-      system: candidate.system ?? null,
-      api_version: candidate.api_version ?? null,
-      confidence,
-      base_url: candidate.base_url ?? null,
-      detection_evidence: evidence,
-      raw_output: candidate.raw_output ?? "",
+      systemDetectionSourceResult: single,
+      systemDetectionTargetResult: null,
     };
   }, [systemDetectionNode]);
 
-  const systemDetectionConfidencePercent = useMemo(() => {
-    if (!systemDetectionResult?.confidence || !Number.isFinite(systemDetectionResult.confidence)) {
-      return null;
-    }
+  const systemDetectionSourceConfidencePercent = useMemo(
+    () => confidenceToPercent(systemDetectionSourceResult?.confidence ?? null),
+    [systemDetectionSourceResult],
+  );
 
-    const normalized =
-      systemDetectionResult.confidence <= 1
-        ? systemDetectionResult.confidence * 100
-        : systemDetectionResult.confidence;
+  const systemDetectionTargetConfidencePercent = useMemo(
+    () => confidenceToPercent(systemDetectionTargetResult?.confidence ?? null),
+    [systemDetectionTargetResult],
+  );
 
-    return Math.round(normalized);
-  }, [systemDetectionResult]);
-
-  const systemDetectionStatusSummary = useMemo(() => {
-    const statusCodes = systemDetectionResult?.detection_evidence?.status_codes;
+  const systemDetectionSourceStatusSummary = useMemo(() => {
+    const statusCodes = systemDetectionSourceResult?.detection_evidence?.status_codes;
 
     if (!statusCodes || typeof statusCodes !== "object") {
       return null;
@@ -1341,17 +1583,41 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       .map(([key, value]) => `${key}: ${value}`);
 
     return summaryParts.length > 0 ? summaryParts.join(" · ") : null;
-  }, [systemDetectionResult]);
+  }, [systemDetectionSourceResult]);
 
-  const systemDetectionHeaderSummary = useMemo(() => {
-    const headers = systemDetectionResult?.detection_evidence?.headers;
+  const systemDetectionTargetStatusSummary = useMemo(() => {
+    const statusCodes = systemDetectionTargetResult?.detection_evidence?.status_codes;
+
+    if (!statusCodes || typeof statusCodes !== "object") {
+      return null;
+    }
+
+    const summaryParts = Object.entries(statusCodes)
+      .filter(([, value]) => typeof value === "number")
+      .map(([key, value]) => `${key}: ${value}`);
+
+    return summaryParts.length > 0 ? summaryParts.join(" · ") : null;
+  }, [systemDetectionTargetResult]);
+
+  const systemDetectionSourceHeaderSummary = useMemo(() => {
+    const headers = systemDetectionSourceResult?.detection_evidence?.headers;
 
     if (!Array.isArray(headers) || headers.length === 0) {
       return null;
     }
 
     return headers.slice(0, 3).join(", ");
-  }, [systemDetectionResult]);
+  }, [systemDetectionSourceResult]);
+
+  const systemDetectionTargetHeaderSummary = useMemo(() => {
+    const headers = systemDetectionTargetResult?.detection_evidence?.headers;
+
+    if (!Array.isArray(headers) || headers.length === 0) {
+      return null;
+    }
+
+    return headers.slice(0, 3).join(", ");
+  }, [systemDetectionTargetResult]);
 
   const schemaDiscoveryStepState = agentSteps.find((step) => step.id === "schema-discovery");
   const dryRunStepState = agentSteps.find((step) => step.id === "dry-run");
@@ -1712,7 +1978,10 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           </DialogHeader>
           <ScrollArea className="max-h-[78vh] px-8 pb-2">
             {agentResultDialogStructured ? (
-              <AgentOutputDisplay sourceResult={agentResultDialogStructured} targetResult={null} />
+              <AgentOutputDisplay
+                sourceResult={agentDialogSourceResult}
+                targetResult={agentDialogTargetResult}
+              />
             ) : agentResultDialogFormatted ? (
               <pre className="whitespace-pre-wrap break-words font-mono text-xs text-foreground p-4 rounded-md border border-border/60 bg-muted/40">
                 {agentResultDialogFormatted}

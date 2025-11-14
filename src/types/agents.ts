@@ -16,3 +16,8 @@ export interface SystemDetectionResult {
   raw_output: string;
 }
 
+export interface SystemDetectionStepResult {
+  source: SystemDetectionResult | null;
+  target: SystemDetectionResult | null;
+}
+
