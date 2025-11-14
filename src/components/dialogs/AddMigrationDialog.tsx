@@ -137,13 +137,13 @@ const AddMigrationDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-popover border-border w-full sm:max-w-2xl">
+      <DialogContent className="bg-popover border-border w-full sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle className="text-xl">
             {title ?? (isEditMode ? "Migration konfigurieren" : "Migration hinzufügen")}
           </DialogTitle>
         </DialogHeader>
-        <div className="space-y-4 py-4">
+        <div className="grid gap-6 py-4">
           <div className="space-y-2">
             <Label htmlFor="migration-name">Migrationsname</Label>
             <Input
@@ -158,83 +158,83 @@ const AddMigrationDialog = ({
             />
           </div>
 
-          {/* Quellsystem Section */}
-          <div className="space-y-3 rounded-lg border border-border p-4">
-            <h3 className="text-sm font-semibold">Quellsystem</h3>
-            <div className="space-y-2">
-              <Label htmlFor="source-system">System</Label>
-              <Select
-                value={sourceSystem}
-                onValueChange={(value) => {
-                  setSourceSystem(value);
-                  setError(null);
-                }}
-              >
-                <SelectTrigger id="source-system" className="bg-input border-border">
-                  <SelectValue placeholder="System wählen" />
-                </SelectTrigger>
-                <SelectContent>
-                  {DATA_SOURCE_TYPE_OPTIONS.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-3 rounded-lg border border-border p-4">
+              <h3 className="text-sm font-semibold">Quellsystem</h3>
+              <div className="space-y-2">
+                <Label htmlFor="source-system">System</Label>
+                <Select
+                  value={sourceSystem}
+                  onValueChange={(value) => {
+                    setSourceSystem(value);
+                    setError(null);
+                  }}
+                >
+                  <SelectTrigger id="source-system" className="bg-input border-border">
+                    <SelectValue placeholder="System wählen" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DATA_SOURCE_TYPE_OPTIONS.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="source-url">API-URL</Label>
+                <Input
+                  id="source-url"
+                  type="url"
+                  placeholder="https://source-api.partner.de"
+                  value={sourceUrl}
+                  onChange={(e) => {
+                    setSourceUrl(e.target.value);
+                    setError(null);
+                  }}
+                  className="bg-input border-border"
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="source-url">API-URL</Label>
-              <Input
-                id="source-url"
-                type="url"
-                placeholder="https://source-api.partner.de"
-                value={sourceUrl}
-                onChange={(e) => {
-                  setSourceUrl(e.target.value);
-                  setError(null);
-                }}
-                className="bg-input border-border"
-              />
-            </div>
-          </div>
 
-          {/* Zielsystem Section */}
-          <div className="space-y-3 rounded-lg border border-border p-4">
-            <h3 className="text-sm font-semibold">Zielsystem</h3>
-            <div className="space-y-2">
-              <Label htmlFor="target-system">System</Label>
-              <Select
-                value={targetSystem}
-                onValueChange={(value) => {
-                  setTargetSystem(value);
-                  setError(null);
-                }}
-              >
-                <SelectTrigger id="target-system" className="bg-input border-border">
-                  <SelectValue placeholder="System wählen" />
-                </SelectTrigger>
-                <SelectContent>
-                  {DATA_SOURCE_TYPE_OPTIONS.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="target-url">API-URL</Label>
-              <Input
-                id="target-url"
-                type="url"
-                placeholder="https://target-api.partner.de"
-                value={targetUrl}
-                onChange={(e) => {
-                  setTargetUrl(e.target.value);
-                  setError(null);
-                }}
-                className="bg-input border-border"
-              />
+            <div className="space-y-3 rounded-lg border border-border p-4">
+              <h3 className="text-sm font-semibold">Zielsystem</h3>
+              <div className="space-y-2">
+                <Label htmlFor="target-system">System</Label>
+                <Select
+                  value={targetSystem}
+                  onValueChange={(value) => {
+                    setTargetSystem(value);
+                    setError(null);
+                  }}
+                >
+                  <SelectTrigger id="target-system" className="bg-input border-border">
+                    <SelectValue placeholder="System wählen" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {DATA_SOURCE_TYPE_OPTIONS.map((option) => (
+                      <SelectItem key={option} value={option}>
+                        {option}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="target-url">API-URL</Label>
+                <Input
+                  id="target-url"
+                  type="url"
+                  placeholder="https://target-api.partner.de"
+                  value={targetUrl}
+                  onChange={(e) => {
+                    setTargetUrl(e.target.value);
+                    setError(null);
+                  }}
+                  className="bg-input border-border"
+                />
+              </div>
             </div>
           </div>
 
@@ -246,7 +246,7 @@ const AddMigrationDialog = ({
                 setAuthType(value as MigrationAuthType);
                 setError(null);
               }}
-              className="grid gap-3"
+              className="grid gap-3 md:grid-cols-2"
             >
               <div className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${authType === "token" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}>
                 <RadioGroupItem value="token" id="auth-token" className="mt-1" />
@@ -270,7 +270,7 @@ const AddMigrationDialog = ({
           </div>
 
           {authType === "token" && (
-            <div className="space-y-2">
+            <div className="space-y-2 md:max-w-md">
               <Label htmlFor="api-token">API-Token</Label>
               <Input
                 id="api-token"
@@ -318,19 +318,21 @@ const AddMigrationDialog = ({
             </div>
           )}
 
-          {error && (
-            <div className="flex items-center gap-2 text-destructive text-sm">
-              <AlertCircle className="h-4 w-4" />
-              <span>{error}</span>
-            </div>
-          )}
+          <div className="flex flex-col-reverse gap-3 md:flex-row md:items-center md:justify-between">
+            {error && (
+              <div className="flex items-center gap-2 text-destructive text-sm">
+                <AlertCircle className="h-4 w-4" />
+                <span>{error}</span>
+              </div>
+            )}
 
-          <Button
-            onClick={handleSubmit}
-            className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground"
-          >
-            {submitLabel ?? (isEditMode ? "Änderungen speichern" : "Migration hinzufügen")}
-          </Button>
+            <Button
+              onClick={handleSubmit}
+              className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground md:w-auto"
+            >
+              {submitLabel ?? (isEditMode ? "Änderungen speichern" : "Migration hinzufügen")}
+            </Button>
+          </div>
         </div>
       </DialogContent>
     </Dialog>
