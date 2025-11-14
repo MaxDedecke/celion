@@ -1717,7 +1717,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
               </Label>
               <ScrollArea className="h-[60vh] rounded-md border border-border/60 bg-muted/40 p-4">
                 {agentResultDialogStructured ? (
-                  <AgentOutputDisplay result={agentResultDialogStructured} />
+                  <AgentOutputDisplay sourceResult={agentResultDialogStructured} targetResult={null} />
                 ) : agentResultDialogFormatted ? (
                   <pre className="whitespace-pre-wrap break-words font-mono text-xs text-foreground">
                     {agentResultDialogFormatted}
