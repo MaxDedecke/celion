@@ -1,9 +1,9 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle2, XCircle, AlertCircle, ChevronDown } from "lucide-react";
+import { CheckCircle2, XCircle, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { SystemDetectionResult } from "@/types/agents";
-import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface AgentOutputDisplayProps {
@@ -52,44 +52,34 @@ const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayPr
             )}
           </CardTitle>
         </CardHeader>
-        <CardContent className="space-y-4">
-          {/* Detection Status */}
-          <div className="space-y-2">
-            <p className="text-xs text-muted-foreground">Status</p>
-            <Badge variant={result.detected ? "default" : "destructive"}>
-              {result.detected ? "Erkannt" : "Nicht erkannt"}
-            </Badge>
-          </div>
+        <CardContent className="space-y-5">
+          {/* Raw Output Tooltip */}
+          {result.raw_output && (
+            <Popover>
+              <PopoverTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex cursor-pointer text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                >
+                  Raw Output anzeigen
+                </button>
+              </PopoverTrigger>
+              <PopoverContent
+                side="top"
+                align="start"
+                className="w-[min(90vw,520px)] max-w-[min(90vw,640px)] p-0"
+              >
+                <ScrollArea className="max-h-[60vh]">
+                  <pre className="whitespace-pre-wrap break-all text-left text-xs font-mono px-4 py-3">
+                    {result.raw_output}
+                  </pre>
+                </ScrollArea>
+              </PopoverContent>
+            </Popover>
+          )}
 
-          {/* System Information */}
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">System</p>
-              <p className="text-sm font-medium">
-                {result.system || (
-                  <span className="text-muted-foreground italic">Nicht verfügbar</span>
-                )}
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">API Version</p>
-              <p className="text-sm font-medium">
-                {result.api_version || (
-                  <span className="text-muted-foreground italic">Nicht verfügbar</span>
-                )}
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">Base URL</p>
-              <p className="text-sm font-medium break-all">
-                {result.base_url || (
-                  <span className="text-muted-foreground italic">Nicht verfügbar</span>
-                )}
-              </p>
-            </div>
-
+          {/* Key Information */}
+          <div className="grid gap-4 sm:grid-cols-3">
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground">Konfidenz</p>
               <div className="flex items-center gap-2">
@@ -105,6 +95,39 @@ const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayPr
                 )}
               </div>
             </div>
+
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">Status</p>
+              <Badge variant={result.detected ? "default" : "destructive"}>
+                {result.detected ? "Erkannt" : "Nicht erkannt"}
+              </Badge>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">System</p>
+              <p className="text-sm font-medium">
+                {result.system || (
+                  <span className="text-muted-foreground italic">Nicht verfügbar</span>
+                )}
+              </p>
+            </div>
+          </div>
+
+          {/* Additional System Information */}
+          <div className="space-y-3">
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">API Version</p>
+              <p className="text-sm font-medium">
+                {result.api_version || (
+                  <span className="text-muted-foreground italic">Nicht verfügbar</span>
+                )}
+              </p>
+            </div>
+
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">Base URL</p>
+              <p className="text-sm font-medium break-all">https://dedeckedev.atlassian.net</p>
+            </div>
           </div>
 
           {/* Detection Evidence */}
@@ -117,7 +140,7 @@ const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayPr
               <div className="space-y-2">
                 {Object.entries(result.detection_evidence).map(([key, value]) => {
                   if (key === "raw" || key === "raw_response") return null;
-                  
+
                   let displayValue: string;
                   if (Array.isArray(value)) {
                     displayValue = value.join(", ");
@@ -138,23 +161,6 @@ const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayPr
                 })}
               </div>
             </div>
-          )}
-
-          {/* Raw Output Collapsible */}
-          {result.raw_output && (
-            <Collapsible>
-              <CollapsibleTrigger className="flex items-center gap-2 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors">
-                <ChevronDown className="h-4 w-4" />
-                Raw Output anzeigen
-              </CollapsibleTrigger>
-              <CollapsibleContent className="mt-2">
-                <ScrollArea className="h-[200px] w-full rounded-md border bg-muted/40 p-3">
-                  <pre className="text-xs text-muted-foreground font-mono whitespace-pre-wrap break-all">
-                    {result.raw_output}
-                  </pre>
-                </ScrollArea>
-              </CollapsibleContent>
-            </Collapsible>
           )}
         </CardContent>
       </Card>

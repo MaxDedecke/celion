@@ -1701,8 +1701,8 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       </div>
 
       <Dialog open={agentResultDialogStepId !== null} onOpenChange={handleAgentResultDialogOpenChange}>
-        <DialogContent className="max-w-[90vw] w-full">
-          <DialogHeader>
+        <DialogContent className="w-full max-w-[98vw] sm:max-w-[92rem]">
+          <DialogHeader className="px-8">
             <DialogTitle>Agenten-Output</DialogTitle>
             {agentResultDialogStep && (
               <DialogDescription>
@@ -1710,7 +1710,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
               </DialogDescription>
             )}
           </DialogHeader>
-          <ScrollArea className="h-[70vh] px-6">
+          <ScrollArea className="max-h-[78vh] px-8 pb-2">
             {agentResultDialogStructured ? (
               <AgentOutputDisplay sourceResult={agentResultDialogStructured} targetResult={null} />
             ) : agentResultDialogFormatted ? (
