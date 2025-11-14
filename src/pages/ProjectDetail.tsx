@@ -255,13 +255,12 @@ const ProjectDetail = () => {
         targetUrl,
         sourceSystem,
         targetSystem,
-        authType,
-        apiToken,
-        username,
-        password,
+        sourceAuth,
+        targetAuth,
       } = migrationData;
-      const authDetail = authType === "token" ? AUTH_DETAIL_TOKEN : AUTH_DETAIL_CREDENTIALS;
-      const connectorAuthType = authType === "token" ? "api_key" : "basic";
+      const targetAuthDetail = targetAuth.authType === "token" ? AUTH_DETAIL_TOKEN : AUTH_DETAIL_CREDENTIALS;
+      const sourceConnectorAuthType = sourceAuth.authType === "token" ? "api_key" : "basic";
+      const targetConnectorAuthType = targetAuth.authType === "token" ? "api_key" : "basic";
 
       const { data: migration, error: migrationError } = await supabase
         .from("migrations")
@@ -276,7 +275,7 @@ const ProjectDetail = () => {
           in_connector: CONNECTOR_ENDPOINT_LABEL,
           in_connector_detail: sourceUrl,
           out_connector: CONNECTOR_AUTH_LABEL,
-          out_connector_detail: authDetail,
+          out_connector_detail: targetAuthDetail,
         })
         .select()
         .single();
@@ -286,19 +285,19 @@ const ProjectDetail = () => {
       const sourceConnectorPayload = {
         migration_id: migration.id,
         api_url: sourceUrl,
-        auth_type: connectorAuthType,
-        api_key: authType === "token" ? apiToken ?? null : null,
-        username: authType === "credentials" ? username ?? null : null,
-        password: authType === "credentials" ? password ?? null : null,
+        auth_type: sourceConnectorAuthType,
+        api_key: sourceAuth.authType === "token" ? sourceAuth.apiToken ?? null : null,
+        username: sourceAuth.authType === "credentials" ? sourceAuth.username ?? null : null,
+        password: sourceAuth.authType === "credentials" ? sourceAuth.password ?? null : null,
       };
 
       const targetConnectorPayload = {
         migration_id: migration.id,
         api_url: targetUrl,
-        auth_type: connectorAuthType,
-        api_key: authType === "token" ? apiToken ?? null : null,
-        username: authType === "credentials" ? username ?? null : null,
-        password: authType === "credentials" ? password ?? null : null,
+        auth_type: targetConnectorAuthType,
+        api_key: targetAuth.authType === "token" ? targetAuth.apiToken ?? null : null,
+        username: targetAuth.authType === "credentials" ? targetAuth.username ?? null : null,
+        password: targetAuth.authType === "credentials" ? targetAuth.password ?? null : null,
       };
 
       const { error: connectorError } = await supabase

@@ -18,31 +18,20 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { DATA_SOURCE_TYPE_OPTIONS } from "@/constants/sourceTypes";
-import type { MigrationAuthType } from "@/types/migration";
+import type { MigrationAuthType, MigrationSystemAuthConfig, NewMigrationInput } from "@/types/migration";
 
 interface EditMigrationConfigDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onUpdate: (data: {
-    name: string;
-    sourceUrl: string;
-    targetUrl: string;
-    sourceSystem: string;
-    targetSystem: string;
-    authType: MigrationAuthType;
-    apiToken?: string;
-    username?: string;
-    password?: string;
-  }) => void;
+  onUpdate: (data: NewMigrationInput) => void;
   currentData: {
     name: string;
     sourceUrl: string;
     targetUrl: string;
     sourceSystem: string;
     targetSystem: string;
-    authType: MigrationAuthType;
-    apiToken?: string;
-    username?: string;
+    sourceAuth: MigrationSystemAuthConfig;
+    targetAuth: MigrationSystemAuthConfig;
   };
 }
 
@@ -57,10 +46,14 @@ const EditMigrationConfigDialog = ({
   const [targetUrl, setTargetUrl] = useState(currentData.targetUrl);
   const [sourceSystem, setSourceSystem] = useState(currentData.sourceSystem);
   const [targetSystem, setTargetSystem] = useState(currentData.targetSystem);
-  const [authType, setAuthType] = useState<MigrationAuthType>(currentData.authType);
-  const [apiToken, setApiToken] = useState(currentData.apiToken || "");
-  const [username, setUsername] = useState(currentData.username || "");
-  const [password, setPassword] = useState("");
+  const [sourceAuthType, setSourceAuthType] = useState<MigrationAuthType>(currentData.sourceAuth.authType);
+  const [targetAuthType, setTargetAuthType] = useState<MigrationAuthType>(currentData.targetAuth.authType);
+  const [sourceApiToken, setSourceApiToken] = useState(currentData.sourceAuth.apiToken ?? "");
+  const [targetApiToken, setTargetApiToken] = useState(currentData.targetAuth.apiToken ?? "");
+  const [sourceUsername, setSourceUsername] = useState(currentData.sourceAuth.username ?? "");
+  const [targetUsername, setTargetUsername] = useState(currentData.targetAuth.username ?? "");
+  const [sourcePassword, setSourcePassword] = useState("");
+  const [targetPassword, setTargetPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -70,10 +63,14 @@ const EditMigrationConfigDialog = ({
       setTargetUrl(currentData.targetUrl);
       setSourceSystem(currentData.sourceSystem);
       setTargetSystem(currentData.targetSystem);
-      setAuthType(currentData.authType);
-      setApiToken(currentData.apiToken || "");
-      setUsername(currentData.username || "");
-      setPassword("");
+      setSourceAuthType(currentData.sourceAuth.authType);
+      setTargetAuthType(currentData.targetAuth.authType);
+      setSourceApiToken(currentData.sourceAuth.apiToken ?? "");
+      setTargetApiToken(currentData.targetAuth.apiToken ?? "");
+      setSourceUsername(currentData.sourceAuth.username ?? "");
+      setTargetUsername(currentData.targetAuth.username ?? "");
+      setSourcePassword("");
+      setTargetPassword("");
       setError(null);
     }
   }, [open, currentData]);
@@ -84,13 +81,39 @@ const EditMigrationConfigDialog = ({
       return;
     }
 
-    if (authType === "token" && !apiToken.trim()) {
-      setError("Bitte hinterlege einen API Token.");
+    if (sourceAuthType === "token" && !sourceApiToken.trim()) {
+      setError("Bitte hinterlege einen API Token für das Quellsystem.");
       return;
     }
 
-    if (authType === "credentials" && (!username.trim() || !password)) {
-      setError("Bitte hinterlege Benutzername und Passwort.");
+    if (targetAuthType === "token" && !targetApiToken.trim()) {
+      setError("Bitte hinterlege einen API Token für das Zielsystem.");
+      return;
+    }
+
+    const requiresSourcePassword =
+      sourceAuthType === "credentials" && currentData.sourceAuth.authType !== "credentials";
+
+    const requiresTargetPassword =
+      targetAuthType === "credentials" && currentData.targetAuth.authType !== "credentials";
+
+    if (sourceAuthType === "credentials" && !sourceUsername.trim()) {
+      setError("Bitte hinterlege Benutzername und Passwort für das Quellsystem.");
+      return;
+    }
+
+    if (targetAuthType === "credentials" && !targetUsername.trim()) {
+      setError("Bitte hinterlege Benutzername und Passwort für das Zielsystem.");
+      return;
+    }
+
+    if (requiresSourcePassword && !sourcePassword) {
+      setError("Bitte hinterlege Benutzername und Passwort für das Quellsystem.");
+      return;
+    }
+
+    if (requiresTargetPassword && !targetPassword) {
+      setError("Bitte hinterlege Benutzername und Passwort für das Zielsystem.");
       return;
     }
 
@@ -100,10 +123,18 @@ const EditMigrationConfigDialog = ({
       targetUrl: targetUrl.trim(),
       sourceSystem,
       targetSystem,
-      authType,
-      apiToken: authType === "token" ? apiToken.trim() : undefined,
-      username: authType === "credentials" ? username.trim() : undefined,
-      password: authType === "credentials" ? password : undefined,
+      sourceAuth: {
+        authType: sourceAuthType,
+        apiToken: sourceAuthType === "token" ? sourceApiToken.trim() : undefined,
+        username: sourceAuthType === "credentials" ? sourceUsername.trim() : undefined,
+        password: sourceAuthType === "credentials" ? sourcePassword || undefined : undefined,
+      },
+      targetAuth: {
+        authType: targetAuthType,
+        apiToken: targetAuthType === "token" ? targetApiToken.trim() : undefined,
+        username: targetAuthType === "credentials" ? targetUsername.trim() : undefined,
+        password: targetAuthType === "credentials" ? targetPassword || undefined : undefined,
+      },
     });
 
     onOpenChange(false);
@@ -130,12 +161,17 @@ const EditMigrationConfigDialog = ({
             />
           </div>
 
-          {/* Quellsystem Section */}
           <div className="space-y-3 rounded-lg border border-border p-4">
             <h3 className="text-sm font-semibold">Quellsystem</h3>
             <div className="space-y-2">
               <Label htmlFor="edit-source-system">System</Label>
-              <Select value={sourceSystem} onValueChange={setSourceSystem}>
+              <Select
+                value={sourceSystem}
+                onValueChange={(value) => {
+                  setSourceSystem(value);
+                  setError(null);
+                }}
+              >
                 <SelectTrigger id="edit-source-system" className="bg-input border-border">
                   <SelectValue placeholder="Auswählen..." />
                 </SelectTrigger>
@@ -162,14 +198,104 @@ const EditMigrationConfigDialog = ({
                 className="bg-input border-border"
               />
             </div>
+            <div className="space-y-2">
+              <Label>Authentifizierung</Label>
+              <RadioGroup
+                value={sourceAuthType}
+                onValueChange={(value) => {
+                  setSourceAuthType(value as MigrationAuthType);
+                  setError(null);
+                }}
+                className="grid gap-3"
+              >
+                <div
+                  className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${sourceAuthType === "token" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+                >
+                  <RadioGroupItem value="token" id="edit-source-auth-token" className="mt-1" />
+                  <div>
+                    <Label htmlFor="edit-source-auth-token" className="text-sm font-medium">
+                      API-Token
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Verwende einen bestehenden Token für den Zugriff auf die Quelle.
+                    </p>
+                  </div>
+                </div>
+                <div
+                  className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${sourceAuthType === "credentials" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+                >
+                  <RadioGroupItem value="credentials" id="edit-source-auth-credentials" className="mt-1" />
+                  <div>
+                    <Label htmlFor="edit-source-auth-credentials" className="text-sm font-medium">
+                      Benutzername &amp; Passwort
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Hinterlege dedizierte Zugangsdaten für das Quellsystem.
+                    </p>
+                  </div>
+                </div>
+              </RadioGroup>
+            </div>
+            {sourceAuthType === "token" && (
+              <div className="space-y-2">
+                <Label htmlFor="edit-source-api-token">API-Token</Label>
+                <Input
+                  id="edit-source-api-token"
+                  type="password"
+                  placeholder="Token eingeben..."
+                  value={sourceApiToken}
+                  onChange={(e) => {
+                    setSourceApiToken(e.target.value);
+                    setError(null);
+                  }}
+                  className="bg-input border-border"
+                />
+              </div>
+            )}
+            {sourceAuthType === "credentials" && (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-source-username">Benutzername</Label>
+                  <Input
+                    id="edit-source-username"
+                    placeholder="Benutzername"
+                    value={sourceUsername}
+                    onChange={(e) => {
+                      setSourceUsername(e.target.value);
+                      setError(null);
+                    }}
+                    className="bg-input border-border"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-source-password">Passwort</Label>
+                  <Input
+                    id="edit-source-password"
+                    type="password"
+                    placeholder="Passwort"
+                    value={sourcePassword}
+                    onChange={(e) => {
+                      setSourcePassword(e.target.value);
+                      setError(null);
+                    }}
+                    className="bg-input border-border"
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Zielsystem Section */}
           <div className="space-y-3 rounded-lg border border-border p-4">
             <h3 className="text-sm font-semibold">Zielsystem</h3>
             <div className="space-y-2">
               <Label htmlFor="edit-target-system">System</Label>
-              <Select value={targetSystem} onValueChange={setTargetSystem}>
+              <Select
+                value={targetSystem}
+                onValueChange={(value) => {
+                  setTargetSystem(value);
+                  setError(null);
+                }}
+              >
                 <SelectTrigger id="edit-target-system" className="bg-input border-border">
                   <SelectValue placeholder="Auswählen..." />
                 </SelectTrigger>
@@ -196,80 +322,92 @@ const EditMigrationConfigDialog = ({
                 className="bg-input border-border"
               />
             </div>
-          </div>
-
-          <div className="space-y-3">
-            <Label>Authentifizierung</Label>
-            <RadioGroup
-              value={authType}
-              onValueChange={(value) => setAuthType(value as MigrationAuthType)}
-            >
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="token" id="edit-auth-token" />
-                <Label htmlFor="edit-auth-token" className="font-normal cursor-pointer">
-                  API Token
-                </Label>
-              </div>
-              <div className="flex items-center space-x-2">
-                <RadioGroupItem value="credentials" id="edit-auth-credentials" />
-                <Label
-                  htmlFor="edit-auth-credentials"
-                  className="font-normal cursor-pointer"
-                >
-                  Benutzername & Passwort
-                </Label>
-              </div>
-            </RadioGroup>
-          </div>
-
-          {authType === "token" && (
             <div className="space-y-2">
-              <Label htmlFor="edit-api-token">API Token</Label>
-              <Input
-                id="edit-api-token"
-                type="password"
-                placeholder="Token eingeben..."
-                value={apiToken}
-                onChange={(e) => {
-                  setApiToken(e.target.value);
+              <Label>Authentifizierung</Label>
+              <RadioGroup
+                value={targetAuthType}
+                onValueChange={(value) => {
+                  setTargetAuthType(value as MigrationAuthType);
                   setError(null);
                 }}
-                className="bg-input border-border"
-              />
+                className="grid gap-3"
+              >
+                <div
+                  className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${targetAuthType === "token" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+                >
+                  <RadioGroupItem value="token" id="edit-target-auth-token" className="mt-1" />
+                  <div>
+                    <Label htmlFor="edit-target-auth-token" className="text-sm font-medium">
+                      API-Token
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Verwende einen bestehenden Token für das Zielsystem.
+                    </p>
+                  </div>
+                </div>
+                <div
+                  className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${targetAuthType === "credentials" ? "border-primary bg-primary/5" : "border-border hover:border-primary/40"}`}
+                >
+                  <RadioGroupItem value="credentials" id="edit-target-auth-credentials" className="mt-1" />
+                  <div>
+                    <Label htmlFor="edit-target-auth-credentials" className="text-sm font-medium">
+                      Benutzername &amp; Passwort
+                    </Label>
+                    <p className="text-xs text-muted-foreground">
+                      Hinterlege dedizierte Zugangsdaten für das Zielsystem.
+                    </p>
+                  </div>
+                </div>
+              </RadioGroup>
             </div>
-          )}
-
-          {authType === "credentials" && (
-            <>
+            {targetAuthType === "token" && (
               <div className="space-y-2">
-                <Label htmlFor="edit-username">Benutzername</Label>
+                <Label htmlFor="edit-target-api-token">API-Token</Label>
                 <Input
-                  id="edit-username"
-                  placeholder="Benutzername"
-                  value={username}
-                  onChange={(e) => {
-                    setUsername(e.target.value);
-                    setError(null);
-                  }}
-                  className="bg-input border-border"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-password">Passwort</Label>
-                <Input
-                  id="edit-password"
+                  id="edit-target-api-token"
                   type="password"
-                  placeholder="Passwort"
-                  value={password}
+                  placeholder="Token eingeben..."
+                  value={targetApiToken}
                   onChange={(e) => {
-                    setPassword(e.target.value);
+                    setTargetApiToken(e.target.value);
                     setError(null);
                   }}
                   className="bg-input border-border"
                 />
               </div>
-            </>
-          )}
+            )}
+            {targetAuthType === "credentials" && (
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="edit-target-username">Benutzername</Label>
+                  <Input
+                    id="edit-target-username"
+                    placeholder="Benutzername"
+                    value={targetUsername}
+                    onChange={(e) => {
+                      setTargetUsername(e.target.value);
+                      setError(null);
+                    }}
+                    className="bg-input border-border"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="edit-target-password">Passwort</Label>
+                  <Input
+                    id="edit-target-password"
+                    type="password"
+                    placeholder="Passwort"
+                    value={targetPassword}
+                    onChange={(e) => {
+                      setTargetPassword(e.target.value);
+                      setError(null);
+                    }}
+                    className="bg-input border-border"
+                  />
+                </div>
+              </div>
+            )}
+          </div>
 
           {error && (
             <div className="flex items-center gap-2 text-destructive text-sm">

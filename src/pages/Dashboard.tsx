@@ -266,13 +266,12 @@ const Dashboard = () => {
         targetUrl,
         sourceSystem,
         targetSystem,
-        authType,
-        apiToken,
-        username,
-        password,
+        sourceAuth,
+        targetAuth,
       } = migrationData;
-      const authDetail = authType === "token" ? AUTH_DETAIL_TOKEN : AUTH_DETAIL_CREDENTIALS;
-      const connectorAuthType = authType === "token" ? "api_key" : "basic";
+      const targetAuthDetail = targetAuth.authType === "token" ? AUTH_DETAIL_TOKEN : AUTH_DETAIL_CREDENTIALS;
+      const sourceConnectorAuthType = sourceAuth.authType === "token" ? "api_key" : "basic";
+      const targetConnectorAuthType = targetAuth.authType === "token" ? "api_key" : "basic";
 
       const { data: migration, error: migrationError } = await supabase
         .from('migrations')
@@ -287,7 +286,7 @@ const Dashboard = () => {
           in_connector: CONNECTOR_ENDPOINT_LABEL,
           in_connector_detail: sourceUrl,
           out_connector: CONNECTOR_AUTH_LABEL,
-          out_connector_detail: authDetail,
+          out_connector_detail: targetAuthDetail,
           status: "not_started",
         })
         .select()
@@ -298,19 +297,19 @@ const Dashboard = () => {
       const sourceConnectorPayload = {
         migration_id: migration.id,
         api_url: sourceUrl,
-        auth_type: connectorAuthType,
-        api_key: authType === "token" ? apiToken ?? null : null,
-        username: authType === "credentials" ? username ?? null : null,
-        password: authType === "credentials" ? password ?? null : null,
+        auth_type: sourceConnectorAuthType,
+        api_key: sourceAuth.authType === "token" ? sourceAuth.apiToken ?? null : null,
+        username: sourceAuth.authType === "credentials" ? sourceAuth.username ?? null : null,
+        password: sourceAuth.authType === "credentials" ? sourceAuth.password ?? null : null,
       };
 
       const targetConnectorPayload = {
         migration_id: migration.id,
         api_url: targetUrl,
-        auth_type: connectorAuthType,
-        api_key: authType === "token" ? apiToken ?? null : null,
-        username: authType === "credentials" ? username ?? null : null,
-        password: authType === "credentials" ? password ?? null : null,
+        auth_type: targetConnectorAuthType,
+        api_key: targetAuth.authType === "token" ? targetAuth.apiToken ?? null : null,
+        username: targetAuth.authType === "credentials" ? targetAuth.username ?? null : null,
+        password: targetAuth.authType === "credentials" ? targetAuth.password ?? null : null,
       };
 
       const { error: connectorError } = await supabase
@@ -432,7 +431,8 @@ const Dashboard = () => {
 
       if (targetConnectorError) throw targetConnectorError;
 
-      const connectorAuthType = sourceConnectorData?.auth_type === 'basic' ? 'credentials' : 'token';
+      const sourceConnectorAuthType = sourceConnectorData?.auth_type === 'basic' ? 'credentials' : 'token';
+      const targetConnectorAuthType = targetConnectorData?.auth_type === 'basic' ? 'credentials' : 'token';
 
       setEditConfigData({
         name: currentMigration.name,
@@ -440,10 +440,16 @@ const Dashboard = () => {
         targetUrl: targetConnectorData?.api_url || currentMigration.targetUrl || "",
         sourceSystem: currentMigration.sourceSystem,
         targetSystem: currentMigration.targetSystem,
-        authType: connectorAuthType,
-        apiToken: sourceConnectorData?.api_key || undefined,
-        username: sourceConnectorData?.username || undefined,
-        password: undefined,
+        sourceAuth: {
+          authType: sourceConnectorAuthType,
+          apiToken: sourceConnectorAuthType === 'token' ? sourceConnectorData?.api_key || "" : undefined,
+          username: sourceConnectorAuthType === 'credentials' ? sourceConnectorData?.username || "" : undefined,
+        },
+        targetAuth: {
+          authType: targetConnectorAuthType,
+          apiToken: targetConnectorAuthType === 'token' ? targetConnectorData?.api_key || "" : undefined,
+          username: targetConnectorAuthType === 'credentials' ? targetConnectorData?.username || "" : undefined,
+        },
       });
       setShowEditConfigDialog(true);
     } catch (error: any) {
@@ -452,17 +458,7 @@ const Dashboard = () => {
     }
   };
 
-  const handleUpdateMigrationConfig = async (data: {
-    name: string;
-    sourceUrl: string;
-    targetUrl: string;
-    sourceSystem: string;
-    targetSystem: string;
-    authType: "token" | "credentials";
-    apiToken?: string;
-    username?: string;
-    password?: string;
-  }) => {
+  const handleUpdateMigrationConfig = async (data: NewMigrationInput) => {
     if (!currentMigration) return;
 
     try {
@@ -476,35 +472,42 @@ const Dashboard = () => {
           source_url: data.sourceUrl,
           target_url: data.targetUrl,
           in_connector_detail: data.sourceUrl,
-          out_connector_detail: data.authType === "token" ? AUTH_DETAIL_TOKEN : AUTH_DETAIL_CREDENTIALS,
+          out_connector_detail: data.targetAuth.authType === "token" ? AUTH_DETAIL_TOKEN : AUTH_DETAIL_CREDENTIALS,
         })
         .eq('id', currentMigration.id);
 
       if (migrationError) throw migrationError;
 
-      const connectorAuthType = data.authType === "token" ? "api_key" : "basic";
-      
+      const sourceConnectorAuthType = data.sourceAuth.authType === "token" ? "api_key" : "basic";
+      const targetConnectorAuthType = data.targetAuth.authType === "token" ? "api_key" : "basic";
+
       const sourceConnectorUpdates: Record<string, any> = {
         api_url: data.sourceUrl,
-        auth_type: connectorAuthType,
-        api_key: data.authType === "token" ? (data.apiToken ?? null) : null,
-        username: data.authType === "credentials" ? (data.username ?? null) : null,
+        auth_type: sourceConnectorAuthType,
+        api_key: data.sourceAuth.authType === "token" ? (data.sourceAuth.apiToken ?? null) : null,
+        username: data.sourceAuth.authType === "credentials" ? (data.sourceAuth.username ?? null) : null,
       };
 
       const targetConnectorUpdates: Record<string, any> = {
         api_url: data.targetUrl,
-        auth_type: connectorAuthType,
-        api_key: data.authType === "token" ? (data.apiToken ?? null) : null,
-        username: data.authType === "credentials" ? (data.username ?? null) : null,
+        auth_type: targetConnectorAuthType,
+        api_key: data.targetAuth.authType === "token" ? (data.targetAuth.apiToken ?? null) : null,
+        username: data.targetAuth.authType === "credentials" ? (data.targetAuth.username ?? null) : null,
       };
 
-      if (data.authType === "credentials") {
-        if (data.password) {
-          sourceConnectorUpdates.password = data.password;
-          targetConnectorUpdates.password = data.password;
+      if (data.sourceAuth.authType === "credentials") {
+        if (data.sourceAuth.password) {
+          sourceConnectorUpdates.password = data.sourceAuth.password;
         }
       } else {
         sourceConnectorUpdates.password = null;
+      }
+
+      if (data.targetAuth.authType === "credentials") {
+        if (data.targetAuth.password) {
+          targetConnectorUpdates.password = data.targetAuth.password;
+        }
+      } else {
         targetConnectorUpdates.password = null;
       }
 
