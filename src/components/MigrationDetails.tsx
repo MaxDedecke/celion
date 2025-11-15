@@ -178,6 +178,109 @@ const createDefaultWorkflowBoard = (): WorkflowBoardState => {
   return { nodes, connections };
 };
 
+const nodeHasAgentResult = (node?: WorkflowNode | null): boolean => {
+  if (!node) {
+    return false;
+  }
+
+  if (node.agentResult === undefined || node.agentResult === null) {
+    return false;
+  }
+
+  if (typeof node.agentResult === "string") {
+    return node.agentResult.trim().length > 0;
+  }
+
+  return true;
+};
+
+const serializeWorkflowState = (state: WorkflowBoardState): WorkflowBoardState => ({
+  nodes: state.nodes.map((node) => ({ ...node })),
+  connections: state.connections.map((connection) => ({ ...connection })),
+});
+
+const deserializeWorkflowState = (payload: unknown): WorkflowBoardState | null => {
+  if (!payload) {
+    return null;
+  }
+
+  try {
+    if (typeof payload === "string") {
+      const parsed = JSON.parse(payload);
+      return deserializeWorkflowState(parsed);
+    }
+
+    if (typeof payload !== "object") {
+      return null;
+    }
+
+    const record = payload as Partial<WorkflowBoardState> & { nodes?: unknown; connections?: unknown };
+    if (!Array.isArray(record.nodes)) {
+      return null;
+    }
+
+    return {
+      nodes: record.nodes as WorkflowBoardState["nodes"],
+      connections: Array.isArray(record.connections)
+        ? (record.connections as WorkflowBoardState["connections"])
+        : [],
+    };
+  } catch (error) {
+    console.error("Fehler beim Deserialisieren des Workflow-Status:", error);
+    return null;
+  }
+};
+
+const WORKFLOW_STATE_CACHE_PREFIX = "celion.workflow-state";
+
+const getWorkflowStateCacheKey = (migrationId?: string | null) => {
+  if (!migrationId) {
+    return null;
+  }
+  return `${WORKFLOW_STATE_CACHE_PREFIX}:${migrationId}`;
+};
+
+const cacheWorkflowStateSnapshot = (migrationId: string | null | undefined, state: WorkflowBoardState) => {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const cacheKey = getWorkflowStateCacheKey(migrationId);
+  if (!cacheKey) {
+    return;
+  }
+
+  try {
+    const snapshot = serializeWorkflowState(state);
+    window.localStorage.setItem(cacheKey, JSON.stringify(snapshot));
+  } catch (error) {
+    console.error("Fehler beim Zwischenspeichern des Workflow-Status:", error);
+  }
+};
+
+const loadCachedWorkflowState = (migrationId: string | null | undefined): WorkflowBoardState | null => {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const cacheKey = getWorkflowStateCacheKey(migrationId);
+  if (!cacheKey) {
+    return null;
+  }
+
+  try {
+    const cached = window.localStorage.getItem(cacheKey);
+    if (!cached) {
+      return null;
+    }
+
+    return deserializeWorkflowState(cached);
+  } catch (error) {
+    console.error("Fehler beim Laden des zwischengespeicherten Workflow-Status:", error);
+    return null;
+  }
+};
+
 const simulateSourceObjects = (seed: string) => {
   const safeSeed = seed.trim() ? seed : "celion";
   const sum = sumCharCodes(safeSeed);
@@ -282,6 +385,58 @@ const normalizeSystemDetectionStepResult = (input: unknown): SystemDetectionStep
   }
 
   return { source, target };
+};
+
+const detectionMatchesExpectedSystem = (
+  detection: SystemDetectionResult | null,
+  expectedSystem?: string | null,
+): boolean => {
+  if (!detection || !detection.detected) {
+    return false;
+  }
+
+  if (!expectedSystem) {
+    return true;
+  }
+
+  if (!detection.system) {
+    return false;
+  }
+
+  const normalizedDetected = detection.system.toLowerCase().trim();
+  const normalizedExpected = expectedSystem.toLowerCase().trim();
+
+  if (!normalizedDetected) {
+    return false;
+  }
+
+  if (!normalizedExpected) {
+    return true;
+  }
+
+  const expectedKeyword = normalizedExpected.split(" ")[0];
+  if (!expectedKeyword) {
+    return true;
+  }
+
+  return normalizedDetected.includes(expectedKeyword);
+};
+
+const hasSuccessfulSystemDetectionResult = (
+  result: WorkflowNode["agentResult"],
+  expectedSource?: string | null,
+  expectedTarget?: string | null,
+): boolean => {
+  const combined = normalizeSystemDetectionStepResult(result);
+
+  if (!combined?.source || !combined.target) {
+    return false;
+  }
+
+  return (
+    detectionMatchesExpectedSystem(combined.source, expectedSource) &&
+    detectionMatchesExpectedSystem(combined.target, expectedTarget)
+  );
 };
 
 const confidenceToPercent = (confidence: number | null): number | null => {
@@ -453,8 +608,8 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     });
 
     return {
-      ...state,
       nodes: normalizedNodes,
+      connections: state.connections,
     };
   }, []);
 
@@ -593,12 +748,6 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       if (node.agentType === "system-detection") {
         const sourceBaseUrl = (project.sourceUrl ?? project.inConnectorDetail ?? "").trim();
 
-        if (!sourceBaseUrl) {
-          const message = "Für die Systemerkennung des Quellsystems ist keine API-URL hinterlegt.";
-          toast.error(message);
-          throw new AgentExecutionError(message);
-        }
-
         const runDetectionForScope = async (
           scope: "source" | "target",
           baseUrl: string,
@@ -676,52 +825,86 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           }
         };
 
-        try {
-          const sourceDetection = await runDetectionForScope(
-            "source",
-            sourceBaseUrl,
-            project.sourceSystem,
-            50,
-          );
+        const toAgentError = (error: unknown, fallbackMessage: string) => {
+          if (error instanceof AgentExecutionError) {
+            return error;
+          }
+          const resolvedMessage = error instanceof Error ? error.message : fallbackMessage;
+          return new AgentExecutionError(resolvedMessage, { error: resolvedMessage });
+        };
 
-          const targetBaseUrl = (project.targetUrl ?? project.outConnectorDetail ?? "").trim();
-          if (!targetBaseUrl) {
-            reportProgress(50);
-            const message = "Für die Systemerkennung des Zielsystems ist keine API-URL hinterlegt.";
-            await appendActivity("error", message);
-            toast.error(message);
-            throw new AgentExecutionError(message, { source: sourceDetection });
+        const mergeAgentErrorPayload = (
+          payload: Record<string, unknown>,
+          scope: "source" | "target",
+          agentError: AgentExecutionError | null,
+        ) => {
+          if (!agentError) {
+            return;
           }
 
-          let targetDetection: SystemDetectionResult;
+          if (agentError.agentResult && typeof agentError.agentResult === "object" && !Array.isArray(agentError.agentResult)) {
+            Object.assign(payload, agentError.agentResult as Record<string, unknown>);
+          } else if (agentError.message) {
+            payload[`${scope}Error`] = agentError.message;
+          }
+        };
+
+        let sourceDetection: SystemDetectionResult | null = null;
+        let sourceError: AgentExecutionError | null = null;
+
+        if (!sourceBaseUrl) {
+          const message = "Für die Systemerkennung des Quellsystems ist keine API-URL hinterlegt.";
+          toast.error(message);
+          await appendActivity("error", message);
+          sourceError = new AgentExecutionError(message);
+        } else {
+          try {
+            sourceDetection = await runDetectionForScope("source", sourceBaseUrl, project.sourceSystem, 50);
+          } catch (error) {
+            sourceError = toAgentError(error, "Systemerkennung fehlgeschlagen (Quellsystem).");
+          }
+        }
+
+        const targetBaseUrl = (project.targetUrl ?? project.outConnectorDetail ?? "").trim();
+        let targetDetection: SystemDetectionResult | null = null;
+        let targetError: AgentExecutionError | null = null;
+
+        if (!targetBaseUrl) {
+          reportProgress(50);
+          const message = "Für die Systemerkennung des Zielsystems ist keine API-URL hinterlegt.";
+          await appendActivity("error", message);
+          toast.error(message);
+          targetError = new AgentExecutionError(message);
+        } else {
           try {
             targetDetection = await runDetectionForScope("target", targetBaseUrl, project.targetSystem, 100);
           } catch (error) {
-            if (error instanceof AgentExecutionError) {
-              const combinedPayload =
-                error.agentResult && typeof error.agentResult === "object"
-                  ? {
-                      source: sourceDetection,
-                      ...(error.agentResult as Record<string, unknown>),
-                    }
-                  : { source: sourceDetection, error: error.message };
-              throw new AgentExecutionError(error.message, combinedPayload);
-            }
-            throw error;
+            targetError = toAgentError(error, "Systemerkennung fehlgeschlagen (Zielsystem).");
           }
-
-          toast.success("Systemerkennung für Quelle und Ziel abgeschlossen");
-          return { source: sourceDetection, target: targetDetection };
-        } catch (error) {
-          if (error instanceof AgentExecutionError) {
-            throw error;
-          }
-
-          const message = error instanceof Error ? error.message : String(error);
-          await appendActivity("error", `Systemerkennung fehlgeschlagen: ${message}`);
-          toast.error(`Systemerkennung fehlgeschlagen: ${message}`);
-          throw new AgentExecutionError(message, { error: message });
         }
+
+        if (!sourceDetection || !targetDetection) {
+          const combinedPayload: Record<string, unknown> = {};
+          if (sourceDetection) {
+            combinedPayload.source = sourceDetection;
+          }
+          if (targetDetection) {
+            combinedPayload.target = targetDetection;
+          }
+
+          mergeAgentErrorPayload(combinedPayload, "source", sourceError);
+          mergeAgentErrorPayload(combinedPayload, "target", targetError);
+
+          const message =
+            sourceError?.message ||
+            targetError?.message ||
+            "Systemerkennung fehlgeschlagen: Bitte Eingaben prüfen und erneut versuchen.";
+
+          throw new AgentExecutionError(message, Object.keys(combinedPayload).length > 0 ? combinedPayload : undefined);
+        }
+
+        toast.success("Systemerkennung für Quelle und Ziel abgeschlossen");
+        return { source: sourceDetection, target: targetDetection };
       }
 
       return undefined;
@@ -737,6 +920,58 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     ],
   );
 
+  const ensureSystemDetectionRetryable = useCallback(
+    async (board: WorkflowBoardState): Promise<WorkflowBoardState> => {
+      const systemDetectionIndex = board.nodes.findIndex((node) => node.id === "system-detection");
+
+      if (systemDetectionIndex === -1) {
+        return board;
+      }
+
+      const detectionNode = board.nodes[systemDetectionIndex];
+      const detectionCompleted = hasSuccessfulSystemDetectionResult(
+        detectionNode.agentResult,
+        project.sourceSystem,
+        project.targetSystem,
+      );
+
+      if (detectionCompleted || detectionNode.status === "pending") {
+        return board;
+      }
+
+      const updatedNodes = board.nodes.map((node, index) => {
+        if (index !== systemDetectionIndex) {
+          return node;
+        }
+
+        return {
+          ...node,
+          status: "pending" as const,
+        };
+      });
+
+      const nextState: WorkflowBoardState = {
+        ...board,
+        nodes: updatedNodes,
+      };
+
+      setWorkflowBoard(nextState);
+      cacheWorkflowStateSnapshot(project.id, nextState);
+
+      try {
+        await supabase
+          .from("migrations")
+          .update({ workflow_state: serializeWorkflowState(nextState) })
+          .eq("id", project.id);
+      } catch (error) {
+        console.error("Fehler beim Aktualisieren des Workflow-Status für die Systemerkennung:", error);
+      }
+
+      return nextState;
+    },
+    [project.id, project.sourceSystem, project.targetSystem],
+  );
+
   const handleNextWorkflowStep = useCallback(async () => {
     if (isStepRunning) return;
 
@@ -747,7 +982,8 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       setStepProgress(0);
       setIsStepRunning(true);
 
-      const nodesSnapshot = workflowBoard.nodes.map((node) => ({ ...node }));
+      const boardForExecution = await ensureSystemDetectionRetryable(workflowBoard);
+      const nodesSnapshot = boardForExecution.nodes.map((node) => ({ ...node }));
       const activeStepIndex = nodesSnapshot.findIndex((node) => node.status === "in-progress");
       const nextPendingIndex = nodesSnapshot.findIndex((node) => node.status !== "done");
       const stepIndexToComplete = activeStepIndex !== -1 ? activeStepIndex : nextPendingIndex;
@@ -760,6 +996,49 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
 
       const completedStepNode = nodesSnapshot[stepIndexToComplete];
       const isSystemDetectionStep = completedStepNode.id === "system-detection";
+
+      const revertActiveNodeToPending = async (agentResultPayload?: unknown) => {
+        let nextWorkflowState: WorkflowBoardState | null = null;
+
+        setWorkflowBoard((previous) => {
+          const updatedNodes = previous.nodes.map((node, index) => {
+            if (index !== stepIndexToComplete) {
+              return node;
+            }
+
+            const nextStatus = node.status === "done" ? node.status : ("pending" as const);
+
+            return {
+              ...node,
+              status: nextStatus,
+              agentResult: agentResultPayload ?? node.agentResult,
+            };
+          });
+
+          nextWorkflowState = {
+            ...previous,
+            nodes: updatedNodes,
+          };
+
+          return nextWorkflowState;
+        });
+
+        if (nextWorkflowState) {
+          cacheWorkflowStateSnapshot(project.id, nextWorkflowState);
+          try {
+            await supabase
+              .from("migrations")
+              .update({
+                workflow_state: serializeWorkflowState(nextWorkflowState),
+              })
+              .eq("id", project.id);
+          } catch (error) {
+            console.error("Fehler beim Speichern des Agenten-Outputs:", error);
+          }
+
+          await onRefresh();
+        }
+      };
 
       if (!isSystemDetectionStep) {
         // Animate progress from 0 to 100 over 2 seconds for non-detection steps
@@ -855,34 +1134,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
             return error.agentResult;
           })();
 
-          let updatedNodesWithError: WorkflowNode[] = [];
-          setWorkflowBoard((previous) => {
-            const updatedNodes = previous.nodes.map((node) => {
-              if (node.id !== completedStepNode.id) {
-                return node;
-              }
-
-              const nextStatus = node.status === "done" ? node.status : ("in-progress" as const);
-
-              return {
-                ...node,
-                status: nextStatus,
-                agentResult: derivedAgentResult,
-              };
-            });
-
-            updatedNodesWithError = updatedNodes;
-            return { ...previous, nodes: updatedNodes };
-          });
-
-          // Persist failed detection result to database
-          await supabase
-            .from("migrations")
-            .update({
-              workflow_state: JSON.stringify({ nodes: updatedNodesWithError, connections: workflowBoard.connections })
-            })
-            .eq("id", project.id);
-
+          await revertActiveNodeToPending(derivedAgentResult);
           setAgentResultDialogStepId(completedStepNode.id);
           return;
         }
@@ -899,6 +1151,10 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
             "Systemerkennung fehlgeschlagen: Es konnte kein Quellsystem hinter der URL erkannt werden.";
           await appendActivity("error", errorMsg);
           toast.error(errorMsg);
+          await revertActiveNodeToPending(
+            completedAgentResult ? { ...completedAgentResult, error: errorMsg } : { error: errorMsg },
+          );
+          setAgentResultDialogStepId(completedStepNode.id);
           setIsUpdatingStatus(false);
           return;
         }
@@ -914,6 +1170,10 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           const errorMsg = `Systemerkennung fehlgeschlagen: Erkanntes System "${sourceDetection.system}" stimmt nicht mit dem erwarteten Quellsystem "${project.sourceSystem}" überein.`;
           await appendActivity("error", errorMsg);
           toast.error(errorMsg);
+          await revertActiveNodeToPending(
+            completedAgentResult ? { ...completedAgentResult, error: errorMsg } : { error: errorMsg },
+          );
+          setAgentResultDialogStepId(completedStepNode.id);
           setIsUpdatingStatus(false);
           return;
         }
@@ -929,6 +1189,10 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
             "Systemerkennung fehlgeschlagen: Es konnte kein Zielsystem hinter der URL erkannt werden.";
           await appendActivity("error", errorMsg);
           toast.error(errorMsg);
+          await revertActiveNodeToPending(
+            completedAgentResult ? { ...completedAgentResult, error: errorMsg } : { error: errorMsg },
+          );
+          setAgentResultDialogStepId(completedStepNode.id);
           setIsUpdatingStatus(false);
           return;
         }
@@ -944,6 +1208,10 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           const errorMsg = `Systemerkennung fehlgeschlagen: Erkanntes System "${targetDetection.system}" stimmt nicht mit dem erwarteten Zielsystem "${project.targetSystem}" überein.`;
           await appendActivity("error", errorMsg);
           toast.error(errorMsg);
+          await revertActiveNodeToPending(
+            completedAgentResult ? { ...completedAgentResult, error: errorMsg } : { error: errorMsg },
+          );
+          setAgentResultDialogStepId(completedStepNode.id);
           setIsUpdatingStatus(false);
           return;
         }
@@ -996,14 +1264,20 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       const clampedProgress = Math.max(0, Math.min(100, normalizedProgress));
       const isCompleted = completedCount >= stepCount && stepCount > 0;
 
-      setWorkflowBoard((previous) => ({ ...previous, nodes: updatedNodes }));
+      const nextWorkflowState: WorkflowBoardState = {
+        ...boardForExecution,
+        nodes: updatedNodes,
+      };
+
+      setWorkflowBoard(nextWorkflowState);
+      cacheWorkflowStateSnapshot(project.id, nextWorkflowState);
 
       const { error } = await supabase
         .from("migrations")
         .update({
           progress: isCompleted ? 100 : clampedProgress,
           status: isCompleted ? "completed" : "running",
-          workflow_state: JSON.stringify({ nodes: updatedNodes, connections: workflowBoard.connections })
+          workflow_state: serializeWorkflowState(nextWorkflowState)
         })
         .eq("id", project.id);
 
@@ -1051,7 +1325,17 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       setIsStepRunning(false);
       // Keep stepProgress at 100 until next step starts
     }
-  }, [workflowBoard, project.id, onRefresh, isStepRunning, executeAgentForStep]);
+  }, [
+    workflowBoard,
+    project.id,
+    project.sourceSystem,
+    project.targetSystem,
+    onRefresh,
+    isStepRunning,
+    executeAgentForStep,
+    ensureSystemDetectionRetryable,
+    appendActivity,
+  ]);
 
   const handleAgentResultDialogOpenChange = useCallback((open: boolean) => {
     if (!open) {
@@ -1083,29 +1367,34 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     };
   }, []);
 
+  const applyWorkflowState = useCallback(
+    (rawState: unknown): boolean => {
+      const parsedState = deserializeWorkflowState(rawState);
+      if (!parsedState) {
+        return false;
+      }
+
+      const normalized = normalizeWorkflowState(parsedState);
+      setWorkflowBoard(normalized);
+      cacheWorkflowStateSnapshot(project.id, normalized);
+      return true;
+    },
+    [normalizeWorkflowState, project.id],
+  );
+
   useEffect(() => {
     setNotes(project.notes ?? "");
     setStatus(project.status ?? "not_started");
     setActivityLog((project.activities ?? []).map(normalizeActivity));
 
-    // Load workflow state from database if it exists
-    if (project.workflowState) {
-      try {
-        const parsedState =
-          typeof project.workflowState === "string"
-            ? JSON.parse(project.workflowState)
-            : project.workflowState;
-
-        if (parsedState && parsedState.nodes && Array.isArray(parsedState.nodes)) {
-          setWorkflowBoard(normalizeWorkflowState(parsedState));
-          return;
-        }
-      } catch (error) {
-        console.error("Error parsing workflow state:", error);
+    if (!applyWorkflowState(project.workflowState)) {
+      const cachedState = loadCachedWorkflowState(project.id);
+      if (cachedState) {
+        setWorkflowBoard(normalizeWorkflowState(cachedState));
+      } else {
+        setWorkflowBoard(createDefaultWorkflowBoard());
       }
     }
-
-    setWorkflowBoard(createDefaultWorkflowBoard());
   }, [
     project.activities,
     project.id,
@@ -1113,8 +1402,50 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     project.status,
     project.workflowState,
     normalizeActivity,
+    applyWorkflowState,
     normalizeWorkflowState,
   ]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const fetchWorkflowState = async () => {
+      try {
+        const { data, error } = await supabase
+          .from("migrations")
+          .select("workflow_state")
+          .eq("id", project.id)
+          .single();
+
+        if (error) {
+          throw error;
+        }
+
+        if (!isCancelled) {
+          if (data?.workflow_state && applyWorkflowState(data.workflow_state)) {
+            return;
+          }
+
+          const cachedState = loadCachedWorkflowState(project.id);
+          if (cachedState) {
+            setWorkflowBoard(normalizeWorkflowState(cachedState));
+          }
+        }
+      } catch (error) {
+        console.error("Fehler beim Nachladen des Workflow-Status:", error);
+      }
+    };
+
+    void fetchWorkflowState();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [project.id, applyWorkflowState, normalizeWorkflowState]);
+
+  useEffect(() => {
+    void ensureSystemDetectionRetryable(workflowBoard);
+  }, [workflowBoard, ensureSystemDetectionRetryable]);
 
   useEffect(() => {
     if (!isWorkflowPanelOpen) {
@@ -1721,7 +2052,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                   </div>
                 </div>
                 
-                <div className="flex items-center gap-3 rounded-lg border border-border/60 bg-background/80 p-3">
+                  <div className="flex items-center gap-3 rounded-lg border border-border/60 bg-background/80 p-3">
                   <Badge variant="secondary" className={cn("text-xs", statusMeta.badgeClassName)}>
                     {statusMeta.label}
                   </Badge>
@@ -1845,14 +2176,8 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                       const isActive = step.status === "active";
                       const isPending = step.status === "upcoming";
                       const associatedNode = workflowNodeMap[step.id];
-                      const hasAgentResult = Boolean(
-                        associatedNode &&
-                          associatedNode.agentResult !== undefined &&
-                          associatedNode.agentResult !== null &&
-                          (typeof associatedNode.agentResult === "string"
-                            ? associatedNode.agentResult.trim().length > 0
-                            : true),
-                      );
+                      const hasAgentResult = nodeHasAgentResult(associatedNode);
+                      const canOpenAgentOutput = hasAgentResult;
                       return (
                         <div
                           key={step.id}
@@ -1882,26 +2207,26 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                             ) : (
                               <div className="h-3.5 w-3.5 rounded-full border border-border/60" />
                             )}
-                            {(isCompleted || hasAgentResult) && (
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="h-7 w-7"
-                                onClick={() => hasAgentResult && setAgentResultDialogStepId(step.id)}
-                                disabled={!hasAgentResult}
-                                aria-label="Agenten-Output anzeigen"
-                                title={hasAgentResult ? "Agenten-Output anzeigen" : "Kein Agenten-Output verfügbar"}
-                              >
-                                <SquareArrowOutUpRight
-                                  className={cn(
-                                    "h-3.5 w-3.5",
-                                    hasAgentResult
-                                      ? "text-foreground"
-                                      : "text-muted-foreground",
-                                  )}
-                                />
-                              </Button>
-                            )}
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="h-7 w-7"
+                              onClick={() => canOpenAgentOutput && setAgentResultDialogStepId(step.id)}
+                              disabled={!canOpenAgentOutput}
+                              aria-label="Agenten-Output anzeigen"
+                              title={
+                                canOpenAgentOutput
+                                  ? "Agenten-Output anzeigen"
+                                  : "Kein Agenten-Output verfügbar"
+                              }
+                            >
+                              <SquareArrowOutUpRight
+                                className={cn(
+                                  "h-3.5 w-3.5",
+                                  canOpenAgentOutput ? "text-foreground" : "text-muted-foreground",
+                                )}
+                              />
+                            </Button>
                           </div>
                         </div>
                       );

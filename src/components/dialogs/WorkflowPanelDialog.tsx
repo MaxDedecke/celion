@@ -389,6 +389,7 @@ const WorkflowPanelDialog = ({
 
   const removeNode = (nodeId: string) => {
     onWorkflowChange((previous) => ({
+      ...previous,
       nodes: previous.nodes.filter((node) => node.id !== nodeId),
       connections: previous.connections.filter(
         (connection) => connection.sourceId !== nodeId && connection.targetId !== nodeId,
