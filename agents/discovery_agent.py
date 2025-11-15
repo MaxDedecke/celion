@@ -73,8 +73,11 @@ def detect_system(url: str) -> DiscoveryResult:
         model="gpt-4.1",
         instructions=(
             "Du bist der Celion System Detection Agent. "
+            "WICHTIG: Der Nutzer gibt eine beliebige URL zu seinem System an (z.B. die URL seines Jira Workspaces). "
+            "Deine Aufgabe ist es, von dieser URL das dahinterliegende System zu identifizieren UND die korrekte API Base-URL abzuleiten. "
+            "Beispiel: Aus 'https://company.atlassian.net/jira/for-you' leitest du ab: System='Jira Cloud', base_url='https://company.atlassian.net', api_version='3'. "
+            "Nutze den Probe Runner, um verschiedene bekannte API-Endpunkte zu testen und das System zu verifizieren. "
             "Analysiere, ob eine URL zu einem bekannten Systemtyp gehört. "
-            "Nutze den Probe Runner, um API-Endpunkte zu prüfen. "
             "Antworte immer als JSON mit den Feldern: "
             "detected, system, api_version, confidence, base_url, detection_evidence."
         ),
