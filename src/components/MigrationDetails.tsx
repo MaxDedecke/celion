@@ -606,7 +606,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           completionProgress?: number,
         ): Promise<SystemDetectionResult> => {
           const scopeLabel = scope === "source" ? "Quellsystem" : "Zielsystem";
-          await appendActivity("info", `Systemerkennung gestartet (${scopeLabel}): ${baseUrl}`);
+          await appendActivity("info", `Systemerkennung gestartet (${scopeLabel}): ${expectedSystem || baseUrl}`);
 
           try {
             const detection = await runSystemDetectionAgent(baseUrl, expectedSystem || undefined);
