@@ -490,6 +490,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const [isWideLayout, setIsWideLayout] = useState(false);
   const [migrationCardHeight, setMigrationCardHeight] = useState<number | null>(null);
   const [workflowBoard, setWorkflowBoard] = useState<WorkflowBoardState>(() => createDefaultWorkflowBoard());
+  const agentResultPersistenceSignatureRef = useRef<string | null>(null);
 
   const appendActivity = useCallback(
     async (type: Activity["type"], title: string) => {
@@ -1446,6 +1447,47 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   useEffect(() => {
     void ensureSystemDetectionRetryable(workflowBoard);
   }, [workflowBoard, ensureSystemDetectionRetryable]);
+
+  useEffect(() => {
+    if (!project.id) {
+      return;
+    }
+
+    const nodesWithResults = workflowBoard.nodes.filter((node) => nodeHasAgentResult(node));
+    if (nodesWithResults.length === 0) {
+      agentResultPersistenceSignatureRef.current = null;
+      return;
+    }
+
+    const signature = JSON.stringify(
+      nodesWithResults.map((node) => ({
+        id: node.id,
+        result: node.agentResult,
+      })),
+    );
+
+    if (agentResultPersistenceSignatureRef.current === signature) {
+      return;
+    }
+
+    agentResultPersistenceSignatureRef.current = signature;
+
+    const persistAgentResults = async () => {
+      const snapshot = serializeWorkflowState(workflowBoard);
+      cacheWorkflowStateSnapshot(project.id, snapshot);
+
+      try {
+        await supabase
+          .from("migrations")
+          .update({ workflow_state: snapshot })
+          .eq("id", project.id);
+      } catch (error) {
+        console.error("Fehler beim automatischen Speichern des Agenten-Outputs:", error);
+      }
+    };
+
+    void persistAgentResults();
+  }, [workflowBoard, project.id]);
 
   useEffect(() => {
     if (!isWorkflowPanelOpen) {
