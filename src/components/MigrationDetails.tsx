@@ -947,7 +947,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         setStepProgress(100);
       }
 
-      // Mark current step as done and activate next step
+      // Mark current step as done (but don't activate next step yet)
       const completedStepTitle = completedStepNode.title;
       const completedActivity = `Schritt abgeschlossen: ${completedStepTitle}`;
 
@@ -977,9 +977,6 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
             agentResult: completedAgentResult ?? node.agentResult,
           };
         }
-        if (idx === stepIndexToComplete + 1 && node.status !== "done") {
-          return { ...node, status: "in-progress" as const };
-        }
         return node;
       });
 
@@ -1002,30 +999,8 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
 
       if (error) throw error;
 
-      const nextStep = updatedNodes[stepIndexToComplete + 1];
-      
-      if (nextStep && nextStep.status === "in-progress") {
-        const nextStepActivity = `Schritt gestartet: ${nextStep.title}`;
-
-        // Save next step activity to database
-        await supabase.from("migration_activities").insert({
-          migration_id: project.id,
-          type: "info",
-          title: nextStepActivity,
-          timestamp: new Date().toISOString()
-        });
-        
-        setActivityLog((previous) => [
-          {
-            id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            type: "info",
-            title: nextStepActivity,
-            timestamp: new Date().toISOString(),
-          },
-          ...previous,
-        ]);
-        toast.success(nextStepActivity);
-      } else {
+      // Check if all steps are completed
+      if (isCompleted) {
         const finalActivity = "Alle Schritte abgeschlossen";
         
         // Save final activity to database
@@ -1779,7 +1754,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
                       <div>
                         <p className="text-sm font-semibold">{activeStep ? activeStep.title : "Noch kein Agent aktiv"}</p>
                         <p className="text-xs text-muted-foreground">
-                          Schritt {activeStep ? activeStep.index + 1 : 0} / {agentSteps.length || 12}
+                          Schritt {completedCount + (isStepRunning ? 1 : 0)} / {agentSteps.length || 12}
                           {isStepRunning && " · Wird ausgeführt..."}
                         </p>
                       </div>
