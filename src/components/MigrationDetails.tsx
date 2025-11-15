@@ -855,6 +855,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
             return error.agentResult;
           })();
 
+          let updatedNodesWithError: WorkflowNode[] = [];
           setWorkflowBoard((previous) => {
             const updatedNodes = previous.nodes.map((node) => {
               if (node.id !== completedStepNode.id) {
@@ -870,8 +871,17 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
               };
             });
 
+            updatedNodesWithError = updatedNodes;
             return { ...previous, nodes: updatedNodes };
           });
+
+          // Persist failed detection result to database
+          await supabase
+            .from("migrations")
+            .update({
+              workflow_state: JSON.stringify({ nodes: updatedNodesWithError, connections: workflowBoard.connections })
+            })
+            .eq("id", project.id);
 
           setAgentResultDialogStepId(completedStepNode.id);
           return;
