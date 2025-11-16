@@ -5,7 +5,12 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { WorkflowBoardState, WorkflowNode } from "@/types/workflow";
 import type { MigrationStatus } from "@/types/migration";
-import type { SystemDetectionResult, SystemDetectionStepResult, AuthFlowResult, AuthFlowStepResult } from "@/types/agents";
+import type {
+  SystemDetectionResult,
+  SystemDetectionStepResult,
+  AuthFlowResult,
+  AuthFlowStepResult,
+} from "@/types/agents";
 import { runSystemDetectionAgent, runAuthFlowAgent } from "@/lib/agentService";
 import SystemDetectionOverview from "./SystemDetectionOverview";
 import type { Activity } from "./ActivityTimeline";
@@ -333,6 +338,88 @@ const hasSuccessfulSystemDetectionResult = (
   return (
     detectionMatchesExpectedSystem(combined.source, expectedSource) &&
     detectionMatchesExpectedSystem(combined.target, expectedTarget)
+  );
+};
+
+const normalizeAuthFlowResult = (input: unknown): AuthFlowResult | null => {
+  if (!input) {
+    return null;
+  }
+
+  if (typeof input === "string") {
+    try {
+      const parsed = JSON.parse(input);
+      return normalizeAuthFlowResult(parsed);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  if (typeof input !== "object" || Array.isArray(input)) {
+    return null;
+  }
+
+  const candidate = input as Partial<AuthFlowResult>;
+
+  if (typeof candidate.authenticated !== "boolean") {
+    return null;
+  }
+
+  const permissions = Array.isArray(candidate.permissions)
+    ? candidate.permissions.filter((permission): permission is string => typeof permission === "string")
+    : [];
+
+  const validationEvidence =
+    candidate.validation_evidence && typeof candidate.validation_evidence === "object" && !Array.isArray(candidate.validation_evidence)
+      ? (candidate.validation_evidence as Record<string, unknown>)
+      : {};
+
+  return {
+    authenticated: candidate.authenticated,
+    auth_method: typeof candidate.auth_method === "string" ? candidate.auth_method : null,
+    permissions,
+    validation_evidence: validationEvidence,
+    error_message: typeof candidate.error_message === "string" ? candidate.error_message : null,
+    raw_output: typeof candidate.raw_output === "string" ? candidate.raw_output : "",
+  };
+};
+
+const normalizeAuthFlowStepResult = (input: unknown): AuthFlowStepResult | null => {
+  if (!input) {
+    return null;
+  }
+
+  if (typeof input === "string") {
+    try {
+      const parsed = JSON.parse(input);
+      return normalizeAuthFlowStepResult(parsed);
+    } catch (error) {
+      return null;
+    }
+  }
+
+  if (typeof input !== "object") {
+    return null;
+  }
+
+  const record = input as Record<string, unknown>;
+  const source = normalizeAuthFlowResult(record.source);
+  const target = normalizeAuthFlowResult(record.target);
+
+  if (!source && !target) {
+    return null;
+  }
+
+  return { source, target };
+};
+
+const isStepStructuredResult = (
+  result: unknown,
+): result is SystemDetectionStepResult | AuthFlowStepResult => {
+  return Boolean(
+    result &&
+      typeof result === "object" &&
+      ("source" in (result as Record<string, unknown>) || "target" in (result as Record<string, unknown>)),
   );
 };
 
@@ -1760,20 +1847,37 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       return {
         formatted: null as string | null,
         rawOutput: null as string | null,
-        structuredResult: null as SystemDetectionResult | SystemDetectionStepResult | null,
+        structuredResult: null as
+          | SystemDetectionResult
+          | SystemDetectionStepResult
+          | AuthFlowResult
+          | AuthFlowStepResult
+          | null,
       };
     }
 
     const result = agentResultDialogNode.agentResult;
 
-    let structuredResult: SystemDetectionResult | SystemDetectionStepResult | null = null;
-    if (typeof result === "object" && result !== null) {
-      if ("source" in result || "target" in result) {
-        structuredResult = normalizeSystemDetectionStepResult(result) ?? null;
-      } else if ("detected" in result && typeof (result as { detected: unknown }).detected === "boolean") {
-        structuredResult = normalizeSystemDetectionResult(result);
+    const normalizeByAgentType = () => {
+      if (agentResultDialogNode.agentType === "system-detection") {
+        return (
+          normalizeSystemDetectionStepResult(result) ?? normalizeSystemDetectionResult(result)
+        );
       }
-    }
+
+      if (agentResultDialogNode.agentType === "auth-flow") {
+        return normalizeAuthFlowStepResult(result) ?? normalizeAuthFlowResult(result);
+      }
+
+      return (
+        normalizeSystemDetectionStepResult(result) ??
+        normalizeSystemDetectionResult(result) ??
+        normalizeAuthFlowStepResult(result) ??
+        normalizeAuthFlowResult(result)
+      );
+    };
+
+    const structuredResult = normalizeByAgentType();
     let extractedRawOutput: string | null = null;
 
     const normalizeRawOutput = (value: unknown, depth = 0): string | null => {
@@ -1912,32 +2016,25 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     };
   }, [agentResultDialogNode]);
 
-  const agentDialogSourceResult = useMemo<SystemDetectionResult | null>(() => {
+  const agentDialogSourceResult = useMemo<
+    SystemDetectionResult | AuthFlowResult | null
+  >(() => {
     if (!agentResultDialogStructured) {
       return null;
     }
 
-    if (
-      typeof agentResultDialogStructured === "object" &&
-      agentResultDialogStructured !== null &&
-      "source" in agentResultDialogStructured
-    ) {
-      const combined = agentResultDialogStructured as SystemDetectionStepResult;
-      return combined.source ?? null;
+    if (isStepStructuredResult(agentResultDialogStructured)) {
+      return agentResultDialogStructured.source ?? null;
     }
 
-    return agentResultDialogStructured as SystemDetectionResult;
+    return agentResultDialogStructured as SystemDetectionResult | AuthFlowResult;
   }, [agentResultDialogStructured]);
 
-  const agentDialogTargetResult = useMemo<SystemDetectionResult | null>(() => {
-    if (
-      agentResultDialogStructured &&
-      typeof agentResultDialogStructured === "object" &&
-      agentResultDialogStructured !== null &&
-      "source" in agentResultDialogStructured
-    ) {
-      const combined = agentResultDialogStructured as SystemDetectionStepResult;
-      return combined.target ?? null;
+  const agentDialogTargetResult = useMemo<
+    SystemDetectionResult | AuthFlowResult | null
+  >(() => {
+    if (isStepStructuredResult(agentResultDialogStructured)) {
+      return agentResultDialogStructured.target ?? null;
     }
 
     return null;
