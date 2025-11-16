@@ -16,6 +16,7 @@ import AgentResultDialog from "./migration/AgentResultDialog";
 import type { AgentWorkflowStepState, MigrationProject, MigrationStatusMeta } from "./migration/types";
 import { getWorkflowTheme } from "./migration/workflowThemes";
 import { nodeHasAgentResult } from "./migration/workflowUtils";
+import type { Database } from "@/integrations/supabase/types";
 
 interface MigrationDetailsProps {
   project: MigrationProject;
@@ -352,6 +353,8 @@ type RawActivityRecord = {
   created_at?: string | Date | null;
 };
 
+type ConnectorRecord = Database["public"]["Tables"]["connectors"]["Row"];
+
 class AgentExecutionError extends Error {
   agentResult?: unknown;
 
@@ -635,23 +638,103 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       };
 
       if (node.agentType === "auth-flow") {
-        const sourceBaseUrl = (project.sourceUrl ?? project.inConnectorDetail ?? "").trim();
-        const targetBaseUrl = (project.targetUrl ?? project.outConnectorDetail ?? "").trim();
+        type AuthContext = {
+          baseUrl: string;
+          authType: "token" | "credentials";
+          apiToken?: string;
+          username?: string;
+          password?: string;
+        };
+
+        const { data: connectorRows, error: connectorsError } = await supabase
+          .from("connectors")
+          .select("*")
+          .eq("migration_id", project.id);
+
+        if (connectorsError) {
+          const message = connectorsError.message || "Konnektordaten konnten nicht geladen werden.";
+          await appendActivity("error", message);
+          toast.error(message);
+          throw new AgentExecutionError(message);
+        }
+
+        const connectors = (connectorRows ?? []) as ConnectorRecord[];
+        const sourceConnector = connectors.find((record) => record.connector_type === "in");
+        const targetConnector = connectors.find((record) => record.connector_type === "out");
+        const fallbackSourceBaseUrl = (project.sourceUrl ?? project.inConnectorDetail ?? "").trim();
+        const fallbackTargetBaseUrl = (project.targetUrl ?? project.outConnectorDetail ?? "").trim();
+
+        const resolveConnectorAuth = async (
+          scope: "source" | "target",
+          connector: ConnectorRecord | undefined,
+          fallbackBaseUrl: string,
+        ): Promise<AuthContext> => {
+          const scopeLabel = scope === "source" ? "Quellsystem" : "Zielsystem";
+
+          if (!connector) {
+            const message = `Keine Connector-Konfiguration für das ${scopeLabel} vorhanden.`;
+            await appendActivity("error", message);
+            toast.error(message);
+            throw new AgentExecutionError(message);
+          }
+
+          const baseUrl = (connector.api_url ?? fallbackBaseUrl ?? "").trim();
+          if (!baseUrl) {
+            const message = `Für das ${scopeLabel} ist keine API-URL hinterlegt.`;
+            await appendActivity("error", message);
+            toast.error(message);
+            throw new AgentExecutionError(message);
+          }
+
+          const normalizedAuthType = (connector.auth_type ?? "").toLowerCase();
+          const authType: "token" | "credentials" =
+            normalizedAuthType === "api_key" || normalizedAuthType === "token"
+              ? "token"
+              : "credentials";
+          const apiToken = connector.api_key ?? undefined;
+          const username = connector.username ?? undefined;
+          const password = connector.password ?? undefined;
+
+          if (authType === "token" && !apiToken) {
+            const message = `Für das ${scopeLabel} wurde kein API-Token hinterlegt.`;
+            await appendActivity("error", message);
+            toast.error(message);
+            throw new AgentExecutionError(message);
+          }
+
+          if (authType === "credentials" && (!username || !password)) {
+            const message = `Für das ${scopeLabel} fehlen Benutzername oder Passwort.`;
+            await appendActivity("error", message);
+            toast.error(message);
+            throw new AgentExecutionError(message);
+          }
+
+          return { baseUrl, authType, apiToken, username, password };
+        };
+
+        const sourceAuthContext = await resolveConnectorAuth("source", sourceConnector, fallbackSourceBaseUrl);
+        const targetAuthContext = await resolveConnectorAuth("target", targetConnector, fallbackTargetBaseUrl);
 
         const runAuthForScope = async (
           scope: "source" | "target",
-          baseUrl: string,
           system: string,
-          authType: "token" | "credentials",
-          apiToken?: string,
-          username?: string,
-          password?: string,
+          auth: AuthContext,
         ): Promise<AuthFlowResult> => {
           const scopeLabel = scope === "source" ? "Quellsystem" : "Zielsystem";
-          await appendActivity("info", `Authentifizierung gestartet (${scopeLabel}): ${system}`);
+          await appendActivity(
+            "info",
+            `Authentifizierung gestartet (${scopeLabel}): ${system} @ ${auth.baseUrl}`,
+          );
 
           try {
-            const result = await runAuthFlowAgent(baseUrl, system, authType, apiToken, username, password);
+            const result = await runAuthFlowAgent(
+              auth.baseUrl,
+              system,
+              auth.authType,
+              auth.apiToken,
+              auth.username,
+              auth.password,
+            );
 
             const statusLabel = result.authenticated ? "erfolgreich" : "fehlgeschlagen";
             const summaryParts = [
@@ -669,7 +752,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
               const errorMsg = result.error_message || "Authentifizierung fehlgeschlagen";
               await appendActivity("error", `${titleParts.join(" · ")} - ${errorMsg}`);
               toast.error(`Authentifizierung fehlgeschlagen (${scopeLabel}): ${errorMsg}`);
-              const errorPayload = scope === "source" 
+              const errorPayload = scope === "source"
                 ? { source: result, error: errorMsg }
                 : { target: result, error: errorMsg };
               throw new AgentExecutionError(errorMsg, errorPayload);
@@ -690,26 +773,12 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           }
         };
 
-        // Get auth credentials from connector details
-        const sourceAuthType = project.inConnectorDetail?.includes("token") ? "token" as const : "credentials" as const;
-        const targetAuthType = project.outConnectorDetail?.includes("token") ? "token" as const : "credentials" as const;
-
         try {
           reportProgress(25);
-          const sourceAuth = await runAuthForScope(
-            "source",
-            sourceBaseUrl,
-            project.sourceSystem,
-            sourceAuthType,
-          );
+          const sourceAuth = await runAuthForScope("source", project.sourceSystem, sourceAuthContext);
 
           reportProgress(75);
-          const targetAuth = await runAuthForScope(
-            "target",
-            targetBaseUrl,
-            project.targetSystem,
-            targetAuthType,
-          );
+          const targetAuth = await runAuthForScope("target", project.targetSystem, targetAuthContext);
 
           reportProgress(100);
           return { source: sourceAuth, target: targetAuth };
@@ -888,6 +957,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     },
     [
       appendActivity,
+      project.id,
       project.inConnectorDetail,
       project.outConnectorDetail,
       project.sourceUrl,

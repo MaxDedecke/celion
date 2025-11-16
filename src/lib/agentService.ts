@@ -1,6 +1,7 @@
 import type { SystemDetectionEvidence, SystemDetectionResult, AuthFlowResult } from "@/types/agents";
 
 const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
+const DEFAULT_OPENAI_AUTH_MODEL = "gpt-4.1";
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
 const OPENAI_ASSISTANTS_HEADER = "assistants=v2";
 
@@ -16,6 +17,19 @@ type OpenAiRun = {
   id: string;
   status: string;
   last_error?: { message?: string } | null;
+  required_action?: {
+    type?: string;
+    submit_tool_outputs?: {
+      tool_calls: Array<{
+        id: string;
+        type: string;
+        function?: {
+          name?: string;
+          arguments?: string;
+        };
+      }>;
+    };
+  } | null;
 };
 
 type OpenAiMessageContent = {
@@ -56,6 +70,11 @@ const resolveOpenAiConfig = () => {
   ).trim();
 
   return { apiKey, baseUrl, projectId, model };
+};
+
+const resolveAuthFlowModel = () => {
+  const configuredModel = (import.meta.env.VITE_OPENAI_AUTH_FLOW_MODEL as string | undefined)?.trim();
+  return configuredModel && configuredModel.length > 0 ? configuredModel : DEFAULT_OPENAI_AUTH_MODEL;
 };
 
 const buildOpenAiHeaders = (apiKey: string, projectId?: string) => {
@@ -119,6 +138,72 @@ const createAssistant = async (
 
   if (!payload.id) {
     throw new Error("OpenAI Agent-Antwort enthielt keine ID.");
+  }
+
+  return { id: payload.id };
+};
+
+const createAuthFlowAssistant = async (
+  baseUrl: string,
+  headers: Record<string, string>,
+  model: string,
+  signal?: AbortSignal,
+): Promise<OpenAiAssistant> => {
+  const instructions = [
+    "Du bist der Celion Auth Flow Agent.",
+    "Validiere, ob die bereitgestellten Credentials für das angegebene System akzeptiert werden.",
+    "Nutze das Tool call_api_tester, um authentifizierte Requests gegen typische API-Endpunkte auszuführen (z. B. /rest/api/3/myself, /api/v1/users/me).",
+    "Führe mehrere Versuche aus, falls notwendig, um aussagekräftige Belege zu sammeln.",
+    "Antworte ausschließlich als JSON mit den Feldern authenticated (boolean), auth_method (string), permissions (array von strings), validation_evidence (object) und error_message (string oder null).",
+    "Beschreibe in validation_evidence genau, welche Endpunkte aufgerufen wurden und welche Statuscodes zurückkamen.",
+  ].join(" ");
+
+  const response = await fetch(`${baseUrl}/assistants`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model,
+      name: "Celion Auth Flow",
+      description: "Validiert API-Credentials für Celion Migrationen.",
+      instructions,
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "call_api_tester",
+            description:
+              "Führt einen authentifizierten API-Request aus und liefert Status, Header und Response.",
+            parameters: {
+              type: "object",
+              properties: {
+                endpoint: {
+                  type: "string",
+                  description: "API-Endpunkt relativ zur Base-URL oder absolute URL",
+                },
+                method: {
+                  type: "string",
+                  enum: ["GET", "POST"],
+                  description: "HTTP-Methode für den Request",
+                },
+              },
+              required: ["endpoint"],
+            },
+          },
+        },
+      ],
+    }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => response.statusText);
+    throw new Error(`OpenAI Auth Flow Agent konnte nicht erstellt werden: ${message}`);
+  }
+
+  const payload = (await response.json()) as Partial<OpenAiAssistant>;
+
+  if (!payload.id) {
+    throw new Error("OpenAI Auth Flow Agent-Antwort enthielt keine ID.");
   }
 
   return { id: payload.id };
@@ -211,6 +296,27 @@ const createRun = async (
   return { id: payload.id, status: payload.status ?? "queued" };
 };
 
+const submitToolOutputs = async (
+  baseUrl: string,
+  headers: Record<string, string>,
+  threadId: string,
+  runId: string,
+  toolOutputs: Array<{ tool_call_id: string; output: string }>,
+  signal?: AbortSignal,
+) => {
+  const response = await fetch(`${baseUrl}/threads/${threadId}/runs/${runId}/submit_tool_outputs`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ tool_outputs: toolOutputs }),
+    signal,
+  });
+
+  if (!response.ok) {
+    const message = await response.text().catch(() => response.statusText);
+    throw new Error(`Tool-Ausgaben konnten nicht übermittelt werden: ${message}`);
+  }
+};
+
 const pollRunStatus = async (
   baseUrl: string,
   headers: Record<string, string>,
@@ -278,25 +384,7 @@ const fetchLatestAssistantMessage = async (
   return payload.data.find((message) => message.role === "assistant") ?? payload.data[0] ?? null;
 };
 
-const extractJsonPayload = (content: string) => {
-  const trimmed = content.trim();
-
-  const fencedMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  if (fencedMatch && typeof fencedMatch[1] === "string") {
-    return fencedMatch[1].trim();
-  }
-
-  const firstBraceIndex = trimmed.indexOf("{");
-  const lastBraceIndex = trimmed.lastIndexOf("}");
-
-  if (firstBraceIndex !== -1 && lastBraceIndex !== -1 && lastBraceIndex > firstBraceIndex) {
-    return trimmed.slice(firstBraceIndex, lastBraceIndex + 1).trim();
-  }
-
-  return trimmed;
-};
-
-const parseDetectionResultFromMessage = (message: OpenAiMessage | null, baseUrl: string) => {
+const extractAssistantMessageText = (message: OpenAiMessage | null) => {
   if (!message) {
     throw new Error("Der Agent lieferte keine Antwort zurück.");
   }
@@ -329,6 +417,30 @@ const parseDetectionResultFromMessage = (message: OpenAiMessage | null, baseUrl:
   if (!textContent) {
     throw new Error("Die Agent-Antwort enthielt keinen Text.");
   }
+
+  return textContent;
+};
+
+const extractJsonPayload = (content: string) => {
+  const trimmed = content.trim();
+
+  const fencedMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (fencedMatch && typeof fencedMatch[1] === "string") {
+    return fencedMatch[1].trim();
+  }
+
+  const firstBraceIndex = trimmed.indexOf("{");
+  const lastBraceIndex = trimmed.lastIndexOf("}");
+
+  if (firstBraceIndex !== -1 && lastBraceIndex !== -1 && lastBraceIndex > firstBraceIndex) {
+    return trimmed.slice(firstBraceIndex, lastBraceIndex + 1).trim();
+  }
+
+  return trimmed;
+};
+
+const parseDetectionResultFromMessage = (message: OpenAiMessage | null, baseUrl: string) => {
+  const textContent = extractAssistantMessageText(message);
 
   const sanitizedContent = extractJsonPayload(textContent);
 
@@ -399,6 +511,226 @@ export const runSystemDetectionAgent = async (
 
   return parseDetectionResultFromMessage(message, trimmedUrl);
 };
+type AuthFlowToolCallArgs = {
+  endpoint?: string;
+  method?: string;
+};
+
+type AuthFlowContext = {
+  baseUrl: string;
+  authType: "token" | "credentials";
+  apiToken?: string;
+  username?: string;
+  password?: string;
+};
+
+const buildTargetUrl = (baseUrl: string, endpoint: string) => {
+  if (/^https?:\/\//i.test(endpoint)) {
+    return endpoint;
+  }
+
+  const sanitizedBase = baseUrl.replace(/\/$/, "");
+  const sanitizedEndpoint = endpoint.replace(/^\//, "");
+  return `${sanitizedBase}/${sanitizedEndpoint}`;
+};
+
+const encodeBasicAuth = (username: string, password: string) => {
+  if (typeof btoa !== "function") {
+    throw new Error("Base64-Encoding wird im aktuellen Kontext nicht unterstützt.");
+  }
+
+  return btoa(`${username}:${password}`);
+};
+
+const performAuthenticatedRequest = async (
+  args: AuthFlowContext & { endpoint: string; method: string },
+) => {
+  const url = buildTargetUrl(args.baseUrl, args.endpoint);
+  const headers: Record<string, string> = { Accept: "application/json" };
+  const requestInit: RequestInit = { method: args.method, headers };
+
+  if (args.authType === "token" && args.apiToken) {
+    headers.Authorization = `Bearer ${args.apiToken}`;
+  } else if (args.authType === "credentials" && args.username && args.password) {
+    headers.Authorization = `Basic ${encodeBasicAuth(args.username, args.password)}`;
+  }
+
+  try {
+    const response = await fetch(url, requestInit);
+    const responseHeaders: Record<string, string> = {};
+    response.headers.forEach((value, key) => {
+      responseHeaders[key] = value;
+    });
+
+    const rawBody = await response.text();
+    let parsedBody: unknown = rawBody;
+    try {
+      parsedBody = JSON.parse(rawBody);
+    } catch {
+      parsedBody = rawBody.slice(0, 2_000);
+    }
+
+    return {
+      status_code: response.status,
+      success: response.ok,
+      headers: responseHeaders,
+      body: parsedBody,
+      url,
+      method: args.method,
+    };
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return {
+      status_code: 0,
+      success: false,
+      error: message,
+      url,
+      method: args.method,
+    };
+  }
+};
+
+const executeApiTesterCall = async (
+  context: AuthFlowContext,
+  callArgs: AuthFlowToolCallArgs,
+) => {
+  const endpoint = typeof callArgs.endpoint === "string" ? callArgs.endpoint.trim() : "";
+  if (!endpoint) {
+    return { status_code: 0, success: false, error: "Ungültiger Endpoint" };
+  }
+
+  const method = (typeof callArgs.method === "string" ? callArgs.method : "GET").toUpperCase();
+  if (method !== "GET" && method !== "POST") {
+    return { status_code: 0, success: false, error: `Nicht unterstützte Methode: ${method}` };
+  }
+
+  return performAuthenticatedRequest({
+    baseUrl: context.baseUrl,
+    authType: context.authType,
+    apiToken: context.apiToken,
+    username: context.username,
+    password: context.password,
+    endpoint,
+    method,
+  });
+};
+
+const processRunUntilComplete = async (
+  baseUrl: string,
+  headers: Record<string, string>,
+  threadId: string,
+  runId: string,
+  context: AuthFlowContext,
+  signal?: AbortSignal,
+) => {
+  let attempts = 0;
+  const maxAttempts = 120;
+
+  while (attempts < maxAttempts) {
+    const response = await fetch(`${baseUrl}/threads/${threadId}/runs/${runId}`, {
+      method: "GET",
+      headers,
+      signal,
+    });
+
+    if (!response.ok) {
+      const message = await response.text().catch(() => response.statusText);
+      throw new Error(`Status des Auth Flow Runs konnte nicht ermittelt werden: ${message}`);
+    }
+
+    const run = (await response.json()) as OpenAiRun;
+
+    if (run.status === "completed") {
+      return run;
+    }
+
+    if (run.status === "requires_action" && run.required_action?.submit_tool_outputs?.tool_calls) {
+      const toolCalls = run.required_action.submit_tool_outputs.tool_calls;
+      const toolOutputs = await Promise.all(
+        toolCalls.map(async (toolCall) => {
+          if (toolCall.function?.name !== "call_api_tester") {
+            return {
+              tool_call_id: toolCall.id,
+              output: JSON.stringify({
+                status_code: 0,
+                success: false,
+                error: `Unbekanntes Tool: ${toolCall.function?.name ?? "unbekannt"}`,
+              }),
+            };
+          }
+
+          let parsedArgs: AuthFlowToolCallArgs = {};
+          try {
+            parsedArgs = JSON.parse(toolCall.function.arguments ?? "{}") as AuthFlowToolCallArgs;
+          } catch {
+            parsedArgs = {};
+          }
+
+          const result = await executeApiTesterCall(context, parsedArgs);
+          return { tool_call_id: toolCall.id, output: JSON.stringify(result) };
+        }),
+      );
+
+      await submitToolOutputs(baseUrl, headers, threadId, runId, toolOutputs, signal);
+    } else if (run.status === "failed" || run.status === "cancelled" || run.status === "expired") {
+      const errorMessage = run.last_error?.message || `Agent-Run wurde mit Status ${run.status} beendet.`;
+      throw new Error(errorMessage);
+    }
+
+    attempts += 1;
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  }
+
+  throw new Error("Auth Flow Agent-Run hat nicht rechtzeitig geantwortet.");
+};
+
+const parseAuthFlowResultFromMessage = (message: OpenAiMessage | null): AuthFlowResult => {
+  const textContent = extractAssistantMessageText(message);
+  const sanitizedContent = extractJsonPayload(textContent);
+
+  let parsed: Partial<AuthFlowResult> | null = null;
+  const parseCandidates = [sanitizedContent];
+  if (sanitizedContent !== textContent) {
+    parseCandidates.push(textContent);
+  }
+
+  for (const candidate of parseCandidates) {
+    try {
+      parsed = JSON.parse(candidate);
+      break;
+    } catch {
+      parsed = null;
+    }
+  }
+
+  if (!parsed) {
+    throw new Error(`Die Auth Flow Antwort konnte nicht als JSON interpretiert werden. Antwort: ${textContent}`);
+  }
+
+  const permissions = Array.isArray(parsed.permissions)
+    ? parsed.permissions.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
+    : [];
+
+  const validationEvidence =
+    parsed.validation_evidence && typeof parsed.validation_evidence === "object" && !Array.isArray(parsed.validation_evidence)
+      ? (parsed.validation_evidence as Record<string, unknown>)
+      : {};
+
+  const normalizedAuthMethod =
+    typeof parsed.auth_method === "string" && parsed.auth_method.trim().length > 0 ? parsed.auth_method : null;
+
+  const normalizedErrorMessage =
+    typeof parsed.error_message === "string" && parsed.error_message.trim().length > 0 ? parsed.error_message : null;
+
+  return {
+    authenticated: Boolean(parsed.authenticated),
+    auth_method: normalizedAuthMethod,
+    permissions,
+    validation_evidence: validationEvidence,
+    error_message: normalizedErrorMessage,
+    raw_output: textContent,
+  } satisfies AuthFlowResult;
+};
 
 export async function runAuthFlowAgent(
   baseUrl: string,
@@ -407,31 +739,62 @@ export async function runAuthFlowAgent(
   apiToken?: string,
   username?: string,
   password?: string,
-  options?: AgentExecutionOptions
+  options: AgentExecutionOptions = {},
 ): Promise<AuthFlowResult> {
-  const url = new URL("http://localhost:8000/auth-flow");
-  url.searchParams.set("base_url", baseUrl);
-  url.searchParams.set("system", system);
-  url.searchParams.set("auth_type", authType);
-  
-  if (authType === "token" && apiToken) {
-    url.searchParams.set("api_token", apiToken);
-  } else if (authType === "credentials" && username && password) {
-    url.searchParams.set("username", username);
-    url.searchParams.set("password", password);
+  if (!baseUrl.trim()) {
+    throw new Error("Für den Auth Flow Agent wurde keine gültige Base-URL angegeben.");
   }
 
-  const response = await fetch(url.toString(), {
-    method: "GET",
-    signal: options?.signal,
+  const normalizedBaseUrl = baseUrl.trim();
+  const { apiKey, baseUrl: openAiBaseUrl, projectId } = resolveOpenAiConfig();
+  const model = resolveAuthFlowModel();
+  const headers = buildOpenAiHeaders(apiKey, projectId);
+
+  const assistant = await createAuthFlowAssistant(openAiBaseUrl, headers, model, options.signal);
+  const threadId = await createThread(openAiBaseUrl, headers, options.signal);
+
+  const credentialsDescription = authType === "token"
+    ? apiToken
+      ? "API Token bereitgestellt"
+      : "Kein API Token vorhanden"
+    : username && password
+      ? `Credentials für ${username}`
+      : "Benutzername oder Passwort fehlen";
+
+  const messageContent = `Validiere die Authentifizierung für das System "${system}". Base-URL: ${normalizedBaseUrl}. Authentifizierungstyp: ${authType}. Hinweis zu den Credentials: ${credentialsDescription}. Nutze das call_api_tester Tool für alle Tests und dokumentiere die Ergebnisse.`;
+
+  const messageResponse = await fetch(`${openAiBaseUrl}/threads/${threadId}/messages`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: messageContent,
+        },
+      ],
+    }),
+    signal: options.signal,
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Auth flow agent failed: ${response.status} ${errorText}`);
+  if (!messageResponse.ok) {
+    const message = await messageResponse.text().catch(() => messageResponse.statusText);
+    throw new Error(`Die Authentifizierungsnachricht konnte nicht gesendet werden: ${message}`);
   }
 
-  const result = (await response.json()) as AuthFlowResult;
-  return result;
+  const run = await createRun(openAiBaseUrl, headers, threadId, assistant.id, options.signal);
+
+  await processRunUntilComplete(
+    openAiBaseUrl,
+    headers,
+    threadId,
+    run.id,
+    { baseUrl: normalizedBaseUrl, authType, apiToken, username, password },
+    options.signal,
+  );
+
+  const message = await fetchLatestAssistantMessage(openAiBaseUrl, headers, threadId, options.signal);
+  return parseAuthFlowResultFromMessage(message);
 }
 
