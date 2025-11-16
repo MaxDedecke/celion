@@ -2,13 +2,13 @@ import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { CheckCircle2, XCircle, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { SystemDetectionResult } from "@/types/agents";
+import type { SystemDetectionResult, AuthFlowResult } from "@/types/agents";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 
 interface AgentOutputDisplayProps {
-  sourceResult?: SystemDetectionResult | null;
-  targetResult?: SystemDetectionResult | null;
+  sourceResult?: SystemDetectionResult | AuthFlowResult | null;
+  targetResult?: SystemDetectionResult | AuthFlowResult | null;
 }
 
 const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayProps) => {
@@ -26,7 +26,7 @@ const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayPr
     return "destructive";
   };
 
-  const renderSystemDetails = (result: SystemDetectionResult | null | undefined, title: string) => {
+  const renderSystemDetails = (result: SystemDetectionResult | AuthFlowResult | null | undefined, title: string) => {
     if (!result) {
       return (
         <Card className="h-full">
@@ -40,15 +40,26 @@ const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayPr
       );
     }
 
+    // Check if it's an AuthFlowResult
+    const isAuthFlow = "authenticated" in result;
+
     return (
       <Card className="h-full">
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
             {title}
-            {result.detected ? (
-              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+            {isAuthFlow ? (
+              result.authenticated ? (
+                <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+              ) : (
+                <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+              )
             ) : (
-              <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+              (result as SystemDetectionResult).detected ? (
+                <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+              ) : (
+                <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+              )
             )}
           </CardTitle>
         </CardHeader>
@@ -78,8 +89,46 @@ const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayPr
             </Popover>
           )}
 
-          {/* Key Information */}
-          <div className="grid gap-4 sm:grid-cols-3">
+          {/* Auth Flow specific information */}
+          {isAuthFlow && (
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="space-y-2">
+                <p className="text-xs text-muted-foreground">Status</p>
+                <p className="text-sm font-medium">
+                  {result.authenticated ? "Authentifiziert" : "Fehlgeschlagen"}
+                </p>
+              </div>
+              {result.auth_method && (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">Methode</p>
+                  <p className="text-sm font-medium">{result.auth_method}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {isAuthFlow && result.error_message && (
+            <div className="space-y-2 p-3 rounded-md bg-destructive/10 border border-destructive/20">
+              <p className="text-xs text-muted-foreground">Fehler</p>
+              <p className="text-sm text-destructive">{result.error_message}</p>
+            </div>
+          )}
+
+          {isAuthFlow && result.permissions && result.permissions.length > 0 && (
+            <div className="space-y-2">
+              <p className="text-xs text-muted-foreground">Berechtigungen ({result.permissions.length})</p>
+              <div className="flex flex-wrap gap-1.5">
+                {result.permissions.map((permission, index) => (
+                  <Badge key={index} variant="secondary" className="text-xs">
+                    {permission}
+                  </Badge>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* System Detection specific information */}
+          {!isAuthFlow && (
             <div className="space-y-2">
               <p className="text-xs text-muted-foreground">Konfidenz</p>
               <div className="flex items-center gap-2">

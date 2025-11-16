@@ -2,16 +2,16 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ScrollArea } from "@/components/ui/scroll-area";
 import AgentOutputDisplay from "@/components/AgentOutputDisplay";
 import type { AgentWorkflowStepState } from "./types";
-import type { SystemDetectionResult, SystemDetectionStepResult } from "@/types/agents";
+import type { SystemDetectionResult, SystemDetectionStepResult, AuthFlowResult, AuthFlowStepResult } from "@/types/agents";
 
 interface AgentResultDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   step: AgentWorkflowStepState | null;
   formattedResult: string | null;
-  structuredResult: SystemDetectionResult | SystemDetectionStepResult | null;
-  sourceResult: SystemDetectionResult | null;
-  targetResult: SystemDetectionResult | null;
+  structuredResult: SystemDetectionResult | SystemDetectionStepResult | AuthFlowResult | AuthFlowStepResult | null;
+  sourceResult: SystemDetectionResult | AuthFlowResult | null;
+  targetResult: SystemDetectionResult | AuthFlowResult | null;
 }
 
 const AgentResultDialog = ({
