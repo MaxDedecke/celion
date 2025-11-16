@@ -151,11 +151,13 @@ const createAuthFlowAssistant = async (
 ): Promise<OpenAiAssistant> => {
   const instructions = [
     "Du bist der Celion Auth Flow Agent.",
-    "Validiere, ob die bereitgestellten Credentials für das angegebene System akzeptiert werden.",
-    "Nutze das Tool call_api_tester, um authentifizierte Requests gegen typische API-Endpunkte auszuführen (z. B. /rest/api/3/myself, /api/v1/users/me).",
-    "Führe mehrere Versuche aus, falls notwendig, um aussagekräftige Belege zu sammeln.",
+    "Hier hast du API Token oder Username & Password, ein System und seine Base-URL.",
+    "Recherchiere anhand deines Wissens, wie man die API des Systems anspricht (REST, GraphQL, SOAP oder proprietäre Varianten) und welche Endpunkte oder Queries geeignet sind, um die Credentials zu validieren.",
+    "Nutze das Tool call_api_tester, um konkrete Requests abzusetzen. Du kannst GET oder POST, eigene Header sowie einen Request-Body (z. B. GraphQL Query als JSON) setzen.",
+    "Führe mehrere Versuche durch, bis klar ist, ob die Authentifizierung gelingt. Ziel ist es, mindestens einmal echte Daten abzurufen (z. B. whoami/me-Endpunkte).",
+    "Dokumentiere in validation_evidence exakt, welche Endpunkte mit welchen Methoden, Headern und Bodies getestet wurden sowie welche Antworten zurückkamen.",
     "Antworte ausschließlich als JSON mit den Feldern authenticated (boolean), auth_method (string), permissions (array von strings), validation_evidence (object) und error_message (string oder null).",
-    "Beschreibe in validation_evidence genau, welche Endpunkte aufgerufen wurden und welche Statuscodes zurückkamen.",
+    "Wenn der Zugriff fehlschlägt, erkläre präzise warum und was beim Versuch falsch lief (z. B. fehlende Header, falsches Token, unerwartetes Protokoll).",
   ].join(" ");
 
   const response = await fetch(`${baseUrl}/assistants`, {
@@ -184,6 +186,19 @@ const createAuthFlowAssistant = async (
                   type: "string",
                   enum: ["GET", "POST"],
                   description: "HTTP-Methode für den Request",
+                },
+                body: {
+                  type: "string",
+                  description: "Optionaler Request-Body (z. B. GraphQL Query im JSON-Format)",
+                },
+                content_type: {
+                  type: "string",
+                  description: "Content-Type Header, falls ein Body gesendet wird",
+                },
+                headers: {
+                  type: "object",
+                  additionalProperties: { type: "string" },
+                  description: "Zusätzliche Header (z. B. X-Atlassian-Token)",
                 },
               },
               required: ["endpoint"],
@@ -514,6 +529,9 @@ export const runSystemDetectionAgent = async (
 type AuthFlowToolCallArgs = {
   endpoint?: string;
   method?: string;
+  body?: string;
+  content_type?: string;
+  headers?: Record<string, unknown>;
 };
 
 type AuthFlowContext = {
@@ -543,16 +561,38 @@ const encodeBasicAuth = (username: string, password: string) => {
 };
 
 const performAuthenticatedRequest = async (
-  args: AuthFlowContext & { endpoint: string; method: string },
+  args: AuthFlowContext & {
+    endpoint: string;
+    method: string;
+    body?: string;
+    contentType?: string;
+    customHeaders?: Record<string, string>;
+  },
 ) => {
   const url = buildTargetUrl(args.baseUrl, args.endpoint);
   const headers: Record<string, string> = { Accept: "application/json" };
+
+  if (args.customHeaders) {
+    for (const [key, value] of Object.entries(args.customHeaders)) {
+      if (typeof value === "string" && value.trim().length > 0 && key.trim().length > 0) {
+        headers[key] = value;
+      }
+    }
+  }
+
   const requestInit: RequestInit = { method: args.method, headers };
 
   if (args.authType === "token" && args.apiToken) {
     headers.Authorization = `Bearer ${args.apiToken}`;
   } else if (args.authType === "credentials" && args.username && args.password) {
     headers.Authorization = `Basic ${encodeBasicAuth(args.username, args.password)}`;
+  }
+
+  if (args.body && args.method !== "GET") {
+    requestInit.body = args.body;
+    if (!headers["Content-Type"]) {
+      headers["Content-Type"] = args.contentType?.trim() || "application/json";
+    }
   }
 
   try {
@@ -604,6 +644,26 @@ const executeApiTesterCall = async (
     return { status_code: 0, success: false, error: `Nicht unterstützte Methode: ${method}` };
   }
 
+  const body = typeof callArgs.body === "string" && callArgs.body.trim().length > 0 ? callArgs.body : undefined;
+  const contentType =
+    typeof callArgs.content_type === "string" && callArgs.content_type.trim().length > 0
+      ? callArgs.content_type
+      : undefined;
+
+  let customHeaders: Record<string, string> | undefined;
+  if (callArgs.headers && typeof callArgs.headers === "object" && !Array.isArray(callArgs.headers)) {
+    customHeaders = Object.entries(callArgs.headers).reduce<Record<string, string>>((acc, [key, value]) => {
+      if (typeof key === "string" && key.trim().length > 0 && typeof value === "string" && value.trim().length > 0) {
+        acc[key] = value;
+      }
+      return acc;
+    }, {});
+
+    if (customHeaders && Object.keys(customHeaders).length === 0) {
+      customHeaders = undefined;
+    }
+  }
+
   return performAuthenticatedRequest({
     baseUrl: context.baseUrl,
     authType: context.authType,
@@ -612,6 +672,9 @@ const executeApiTesterCall = async (
     password: context.password,
     endpoint,
     method,
+    body,
+    contentType,
+    customHeaders,
   });
 };
 
@@ -755,13 +818,18 @@ export async function runAuthFlowAgent(
 
   const credentialsDescription = authType === "token"
     ? apiToken
-      ? "API Token bereitgestellt"
-      : "Kein API Token vorhanden"
+      ? "Hier hast du ein API-Token (sicher im Tool hinterlegt)."
+      : "Es wurde kein API-Token bereitgestellt."
     : username && password
-      ? `Credentials für ${username}`
-      : "Benutzername oder Passwort fehlen";
+      ? `Hier hast du Benutzername (${username}) und ein Passwort (sicher im Tool hinterlegt).`
+      : "Benutzername oder Passwort fehlen.";
 
-  const messageContent = `Validiere die Authentifizierung für das System "${system}". Base-URL: ${normalizedBaseUrl}. Authentifizierungstyp: ${authType}. Hinweis zu den Credentials: ${credentialsDescription}. Nutze das call_api_tester Tool für alle Tests und dokumentiere die Ergebnisse.`;
+  const messageContent = [
+    `${credentialsDescription} System: ${system}. Base-URL: ${normalizedBaseUrl}. Authentifizierungstyp: ${authType}.`,
+    "Recherchiere selbstständig, wie die API dieses Systems angesprochen wird (REST, GraphQL, SOAP etc.) und welche Endpunkte oder Queries sich eignen, um einen ersten Datenzugriff zu testen.",
+    "Nutze ausschließlich das call_api_tester Tool, um echte Requests abzusetzen. Du kannst Methoden, Header und Bodies frei wählen (z. B. GraphQL Queries als JSON).",
+    "Starte mindestens einen konkreten Datenzugriff. Wenn du Zugriff erhältst, melde Erfolg und die gefundenen Berechtigungen. Wenn nicht, gib exakt zurück, warum es nicht funktioniert hat und welche Schritte fehlgeschlagen sind.",
+  ].join(" ");
 
   const messageResponse = await fetch(`${openAiBaseUrl}/threads/${threadId}/messages`, {
     method: "POST",
