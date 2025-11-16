@@ -21,3 +21,17 @@ export interface SystemDetectionStepResult {
   target: SystemDetectionResult | null;
 }
 
+export interface AuthFlowResult {
+  authenticated: boolean;
+  auth_method: string | null;
+  permissions: string[];
+  validation_evidence: Record<string, unknown>;
+  error_message: string | null;
+  raw_output: string;
+}
+
+export interface AuthFlowStepResult {
+  source: AuthFlowResult | null;
+  target: AuthFlowResult | null;
+}
+

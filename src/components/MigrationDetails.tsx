@@ -5,8 +5,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import type { WorkflowBoardState, WorkflowNode } from "@/types/workflow";
 import type { MigrationStatus } from "@/types/migration";
-import type { SystemDetectionResult, SystemDetectionStepResult } from "@/types/agents";
-import { runSystemDetectionAgent } from "@/lib/agentService";
+import type { SystemDetectionResult, SystemDetectionStepResult, AuthFlowResult, AuthFlowStepResult } from "@/types/agents";
+import { runSystemDetectionAgent, runAuthFlowAgent } from "@/lib/agentService";
 import SystemDetectionOverview from "./SystemDetectionOverview";
 import type { Activity } from "./ActivityTimeline";
 import MigrationOverviewCard from "./migration/MigrationOverviewCard";
@@ -623,7 +623,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     async (
       node: WorkflowNode,
       options?: { onProgress?: (value: number) => void },
-    ): Promise<SystemDetectionStepResult | undefined> => {
+    ): Promise<SystemDetectionStepResult | AuthFlowStepResult | undefined> => {
       if (!node.agentType || node.active === false) {
         return undefined;
       }
@@ -633,6 +633,94 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           options.onProgress(clampProgressValue(value));
         }
       };
+
+      if (node.agentType === "auth-flow") {
+        const sourceBaseUrl = (project.sourceUrl ?? project.inConnectorDetail ?? "").trim();
+        const targetBaseUrl = (project.targetUrl ?? project.outConnectorDetail ?? "").trim();
+
+        const runAuthForScope = async (
+          scope: "source" | "target",
+          baseUrl: string,
+          system: string,
+          authType: "token" | "credentials",
+          apiToken?: string,
+          username?: string,
+          password?: string,
+        ): Promise<AuthFlowResult> => {
+          const scopeLabel = scope === "source" ? "Quellsystem" : "Zielsystem";
+          await appendActivity("info", `Authentifizierung gestartet (${scopeLabel}): ${system}`);
+
+          try {
+            const result = await runAuthFlowAgent(baseUrl, system, authType, apiToken, username, password);
+
+            const statusLabel = result.authenticated ? "erfolgreich" : "fehlgeschlagen";
+            const summaryParts = [
+              system,
+              result.auth_method ? `Methode: ${result.auth_method}` : null,
+              result.permissions.length > 0 ? `${result.permissions.length} Berechtigungen` : null,
+            ].filter(Boolean);
+
+            const titleParts = [
+              `Authentifizierung ${statusLabel} (${scopeLabel})`,
+              summaryParts.join(" · "),
+            ].filter(Boolean);
+
+            if (!result.authenticated) {
+              const errorMsg = result.error_message || "Authentifizierung fehlgeschlagen";
+              await appendActivity("error", `${titleParts.join(" · ")} - ${errorMsg}`);
+              toast.error(`Authentifizierung fehlgeschlagen (${scopeLabel}): ${errorMsg}`);
+              const errorPayload = scope === "source" 
+                ? { source: result, error: errorMsg }
+                : { target: result, error: errorMsg };
+              throw new AgentExecutionError(errorMsg, errorPayload);
+            }
+
+            await appendActivity("success", titleParts.join(" · "));
+            return result;
+          } catch (error) {
+            if (error instanceof AgentExecutionError) {
+              throw error;
+            }
+
+            const message = error instanceof Error ? error.message : String(error);
+            await appendActivity("error", `Authentifizierung fehlgeschlagen (${scopeLabel}): ${message}`);
+            toast.error(`Authentifizierung fehlgeschlagen (${scopeLabel}): ${message}`);
+            const errorPayload = scope === "source" ? { error: message } : { error: message };
+            throw new AgentExecutionError(message, errorPayload);
+          }
+        };
+
+        // Get auth credentials from connector details
+        const sourceAuthType = project.inConnectorDetail?.includes("token") ? "token" as const : "credentials" as const;
+        const targetAuthType = project.outConnectorDetail?.includes("token") ? "token" as const : "credentials" as const;
+
+        try {
+          reportProgress(25);
+          const sourceAuth = await runAuthForScope(
+            "source",
+            sourceBaseUrl,
+            project.sourceSystem,
+            sourceAuthType,
+          );
+
+          reportProgress(75);
+          const targetAuth = await runAuthForScope(
+            "target",
+            targetBaseUrl,
+            project.targetSystem,
+            targetAuthType,
+          );
+
+          reportProgress(100);
+          return { source: sourceAuth, target: targetAuth };
+        } catch (error) {
+          if (error instanceof AgentExecutionError) {
+            throw error;
+          }
+          const message = error instanceof Error ? error.message : String(error);
+          throw new AgentExecutionError(message, { error: message });
+        }
+      }
 
       if (node.agentType === "system-detection") {
         const sourceBaseUrl = (project.sourceUrl ?? project.inConnectorDetail ?? "").trim();
@@ -850,7 +938,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       try {
         await supabase
           .from("migrations")
-          .update({ workflow_state: serializeWorkflowState(nextState) })
+          .update({ workflow_state: serializeWorkflowState(nextState) as any })
           .eq("id", project.id);
       } catch (error) {
         console.error("Fehler beim Aktualisieren des Workflow-Status für die Systemerkennung:", error);
@@ -918,7 +1006,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
             await supabase
               .from("migrations")
               .update({
-                workflow_state: serializeWorkflowState(nextWorkflowState),
+                workflow_state: serializeWorkflowState(nextWorkflowState) as any,
               })
               .eq("id", project.id);
           } catch (error) {
@@ -994,7 +1082,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         });
       }
 
-      let completedAgentResult: SystemDetectionStepResult | undefined;
+      let completedAgentResult: SystemDetectionStepResult | AuthFlowStepResult | undefined;
       try {
         completedAgentResult = await executeAgentForStep(completedStepNode, {
           onProgress: isSystemDetectionStep
@@ -1031,11 +1119,15 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       }
 
       // Validate system detection result if this is the system-detection step
-      if (completedStepNode.id === "system-detection" && completedAgentResult) {
+      if (completedStepNode.id === "system-detection" && completedAgentResult && "source" in completedAgentResult) {
+        const isSystemDetectionResult = (result: any): result is SystemDetectionResult => {
+          return result && typeof result === "object" && "detected" in result;
+        };
+
         const sourceDetection = completedAgentResult.source;
         const targetDetection = completedAgentResult.target;
 
-        if (!sourceDetection || !sourceDetection.detected) {
+        if (!sourceDetection || !isSystemDetectionResult(sourceDetection) || !sourceDetection.detected) {
           const errorMsg =
             "Systemerkennung fehlgeschlagen: Es konnte kein Quellsystem hinter der URL erkannt werden.";
           await appendActivity("error", errorMsg);
@@ -1073,7 +1165,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           `Quellsystem erfolgreich erkannt: ${sourceDetection.system} (Konfidenz: ${sourceConfidence ?? 0}%)`,
         );
 
-        if (!targetDetection || !targetDetection.detected) {
+        if (!targetDetection || !isSystemDetectionResult(targetDetection) || !targetDetection.detected) {
           const errorMsg =
             "Systemerkennung fehlgeschlagen: Es konnte kein Zielsystem hinter der URL erkannt werden.";
           await appendActivity("error", errorMsg);
@@ -1166,7 +1258,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         .update({
           progress: isCompleted ? 100 : clampedProgress,
           status: isCompleted ? "completed" : "running",
-          workflow_state: serializeWorkflowState(nextWorkflowState)
+          workflow_state: serializeWorkflowState(nextWorkflowState) as any
         })
         .eq("id", project.id);
 
@@ -1367,7 +1459,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       try {
         await supabase
           .from("migrations")
-          .update({ workflow_state: snapshot })
+          .update({ workflow_state: snapshot as any })
           .eq("id", project.id);
       } catch (error) {
         console.error("Fehler beim automatischen Speichern des Agenten-Outputs:", error);

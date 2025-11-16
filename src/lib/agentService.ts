@@ -1,4 +1,4 @@
-import type { SystemDetectionEvidence, SystemDetectionResult } from "@/types/agents";
+import type { SystemDetectionEvidence, SystemDetectionResult, AuthFlowResult } from "@/types/agents";
 
 const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
@@ -399,4 +399,39 @@ export const runSystemDetectionAgent = async (
 
   return parseDetectionResultFromMessage(message, trimmedUrl);
 };
+
+export async function runAuthFlowAgent(
+  baseUrl: string,
+  system: string,
+  authType: "token" | "credentials",
+  apiToken?: string,
+  username?: string,
+  password?: string,
+  options?: AgentExecutionOptions
+): Promise<AuthFlowResult> {
+  const url = new URL("http://localhost:8000/auth-flow");
+  url.searchParams.set("base_url", baseUrl);
+  url.searchParams.set("system", system);
+  url.searchParams.set("auth_type", authType);
+  
+  if (authType === "token" && apiToken) {
+    url.searchParams.set("api_token", apiToken);
+  } else if (authType === "credentials" && username && password) {
+    url.searchParams.set("username", username);
+    url.searchParams.set("password", password);
+  }
+
+  const response = await fetch(url.toString(), {
+    method: "GET",
+    signal: options?.signal,
+  });
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(`Auth flow agent failed: ${response.status} ${errorText}`);
+  }
+
+  const result = (await response.json()) as AuthFlowResult;
+  return result;
+}
 
