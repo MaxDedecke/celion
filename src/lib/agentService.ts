@@ -589,10 +589,9 @@ const parseAuthFlowResultFromMessage = (message: OpenAiMessage | null): AuthFlow
 export async function runAuthFlowAgent(
   baseUrl: string,
   system: string,
-  authType: "token" | "credentials",
-  apiToken?: string,
-  username?: string,
-  password?: string,
+  apiToken: string,
+  email: string,
+  password: string,
   options: AgentExecutionOptions = {},
 ): Promise<AuthFlowResult> {
   if (!baseUrl.trim()) {
@@ -607,16 +606,12 @@ export async function runAuthFlowAgent(
   const assistant = await createAuthFlowAssistant(openAiBaseUrl, headers, model, options.signal);
   const threadId = await createThread(openAiBaseUrl, headers, options.signal);
 
-  const credentialsDescription = authType === "token"
-    ? apiToken
-      ? "Hier hast du ein API-Token (sicher im Tool hinterlegt)."
-      : "Es wurde kein API-Token bereitgestellt."
-    : username && password
-      ? `Hier hast du Benutzername (${username}) und ein Passwort (sicher im Tool hinterlegt).`
-      : "Benutzername oder Passwort fehlen.";
+  const credentialsDescription = apiToken
+    ? `Hier hast du ein API-Token, eine E-Mail (${email}) und ein Passwort (sicher im Tool hinterlegt).`
+    : "Es wurde kein API-Token bereitgestellt.";
 
   const messageContent = [
-    `${credentialsDescription} System: ${system}. Base-URL: ${normalizedBaseUrl}. Authentifizierungstyp: ${authType}.`,
+    `${credentialsDescription} System: ${system}. Base-URL: ${normalizedBaseUrl}. Authentifizierungstyp: token.`,
     "Recherchiere selbstständig, wie die API dieses Systems angesprochen wird (REST, GraphQL, SOAP etc.) und welche Endpunkte oder Queries sich eignen, um einen ersten Datenzugriff zu testen. Nutze dafür ausschließlich die oben beschriebenen Credentials.",
     "Setze selbstständig echte Requests mit passenden Methoden, Headern und Bodies (z. B. GraphQL Queries als JSON) ab und spiegle die Ergebnisse zurück. Dokumentiere den verwendeten Authorization-Header und weise nach, dass die gelieferten Credentials genutzt wurden.",
     "Starte mindestens einen konkreten Datenzugriff. Wenn du Zugriff erhältst, melde Erfolg, die gefundenen Berechtigungen und bestätige dies in einer summary. Wenn nicht, gib exakt zurück, warum es nicht funktioniert hat und welche Schritte fehlgeschlagen sind, inklusive einer summary.",
