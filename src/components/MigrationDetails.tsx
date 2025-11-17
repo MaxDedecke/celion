@@ -1246,6 +1246,9 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
             ? (value) => setStepProgress(clampProgressValue(value))
             : undefined,
         });
+        
+        // Debug: Log the completed agent result
+        console.log(`[DEBUG] Completed agent result for step "${completedStepNode.id}":`, JSON.stringify(completedAgentResult, null, 2));
       } catch (error) {
         if (error instanceof AgentExecutionError) {
           const derivedAgentResult = (() => {
@@ -1387,11 +1390,16 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
 
       const updatedNodes = nodesSnapshot.map((node, idx) => {
         if (idx === stepIndexToComplete) {
-          return {
+          const updatedNode = {
             ...node,
             status: "done" as const,
             agentResult: completedAgentResult ?? node.agentResult,
           };
+          
+          // Debug: Log what will be persisted
+          console.log(`[DEBUG] Updating node "${node.id}" with agentResult:`, JSON.stringify(updatedNode.agentResult, null, 2));
+          
+          return updatedNode;
         }
         return node;
       });
@@ -1410,12 +1418,16 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       setWorkflowBoard(nextWorkflowState);
       cacheWorkflowStateSnapshot(project.id, nextWorkflowState);
 
+      // Debug: Log workflow state before persisting
+      const serializedState = serializeWorkflowState(nextWorkflowState);
+      console.log(`[DEBUG] Persisting workflow state:`, JSON.stringify(serializedState, null, 2));
+      
       const { error } = await supabase
         .from("migrations")
         .update({
           progress: isCompleted ? 100 : clampedProgress,
           status: isCompleted ? "completed" : "running",
-          workflow_state: serializeWorkflowState(nextWorkflowState) as any
+          workflow_state: serializedState as any
         })
         .eq("id", project.id);
 
