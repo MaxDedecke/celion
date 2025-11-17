@@ -60,6 +60,19 @@ This project is built with:
 - shadcn-ui
 - Tailwind CSS
 
+## Lokale Backend-API für Migration-Schritt 2
+
+Um die FastAPI-Bridge für Credential-Checks lokal zu nutzen, installiere die Python-Abhängigkeiten und starte den Server wie folgt:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+uvicorn main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Der Vite-Dev-Server leitet Requests an `/api/*` automatisch an `http://127.0.0.1:8000` weiter. Damit kann Schritt 2 der Migration die Zielsystem-API mit den angegebenen Credentials direkt über `/api/probe` aufrufen.
+
 ## How can I deploy this project?
 
 Simply open [Lovable](https://lovable.dev/projects/5af5744c-6888-447f-8811-5f10e4549e5e) and click on Share -> Publish.
