@@ -91,20 +91,35 @@ const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayPr
 
           {/* Auth Flow specific information */}
           {isAuthFlow && (
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <p className="text-xs text-muted-foreground">Status</p>
-                <p className="text-sm font-medium">
-                  {result.authenticated ? "Authentifiziert" : "Fehlgeschlagen"}
-                </p>
-              </div>
-              {result.auth_method && (
+            <>
+              <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">Methode</p>
-                  <p className="text-sm font-medium">{result.auth_method}</p>
+                  <p className="text-xs text-muted-foreground">Status</p>
+                  <Badge variant={result.authenticated ? "default" : "destructive"} className="text-sm">
+                    {result.authenticated ? "Erfolgreich authentifiziert" : "Authentifizierung fehlgeschlagen"}
+                  </Badge>
+                </div>
+                {result.auth_method && (
+                  <div className="space-y-2">
+                    <p className="text-xs text-muted-foreground">Methode</p>
+                    <p className="text-sm font-medium">{result.auth_method}</p>
+                  </div>
+                )}
+              </div>
+
+              {result.authenticated && result.permissions && result.permissions.length > 0 && (
+                <div className="space-y-2">
+                  <p className="text-xs text-muted-foreground">Berechtigungen ({result.permissions.length})</p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {result.permissions.map((permission, index) => (
+                      <Badge key={index} variant="secondary" className="text-xs">
+                        {permission}
+                      </Badge>
+                    ))}
+                  </div>
                 </div>
               )}
-            </div>
+            </>
           )}
 
           {isAuthFlow && result.error_message && (
@@ -114,15 +129,34 @@ const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayPr
             </div>
           )}
 
-          {isAuthFlow && result.permissions && result.permissions.length > 0 && (
+          {isAuthFlow && result.validation_evidence && Object.keys(result.validation_evidence).length > 0 && (
             <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">Berechtigungen ({result.permissions.length})</p>
-              <div className="flex flex-wrap gap-1.5">
-                {result.permissions.map((permission, index) => (
-                  <Badge key={index} variant="secondary" className="text-xs">
-                    {permission}
-                  </Badge>
-                ))}
+              <div className="flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 text-muted-foreground" />
+                <p className="text-xs font-medium text-muted-foreground">Validierungs-Details</p>
+              </div>
+              <div className="space-y-2">
+                {Object.entries(result.validation_evidence).map(([key, value]) => {
+                  if (!value) return null;
+
+                  let displayValue: string;
+                  if (Array.isArray(value)) {
+                    displayValue = value.join(", ");
+                  } else if (typeof value === "object") {
+                    displayValue = JSON.stringify(value, null, 2);
+                  } else {
+                    displayValue = String(value);
+                  }
+
+                  return (
+                    <div key={key} className="flex flex-col gap-1 p-3 rounded-md bg-muted/40">
+                      <p className="text-xs font-medium text-foreground">{key}</p>
+                      <p className="text-xs text-muted-foreground font-mono break-all">
+                        {displayValue}
+                      </p>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
