@@ -1,13 +1,18 @@
 """Celion FastAPI entry point now providing legacy notices only."""
+# pyright: reportMissingImports=false
 
 from __future__ import annotations
 
 import argparse
 import sys
+from datetime import datetime, timezone
+from typing import Any
 
+import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl
+from starlette.concurrency import run_in_threadpool
 
 
 LEGACY_MESSAGE = "The legacy Python-based agents have been removed in favor of the frontend implementation."
@@ -32,6 +37,34 @@ class LegacyResponse(BaseModel):
     """Response returned when legacy agent endpoints are invoked."""
 
     message: str
+
+
+class ProbeEvidence(BaseModel):
+    """Metadata describing the performed credential probe."""
+
+    request_url: HttpUrl | str
+    method: str
+    used_headers: list[str]
+    timestamp: str
+
+
+class ProbeRequest(BaseModel):
+    """Request payload for forwarding credential probes through the backend."""
+
+    method: str
+    url: HttpUrl
+    headers: dict[str, str]
+    body: Any | None = None
+
+
+class ProbeResponse(BaseModel):
+    """Normalized response returned to the frontend after performing the probe."""
+
+    status: int | None
+    ok: bool
+    body: Any | None
+    error: str | None
+    evidence: ProbeEvidence
 
 
 def _legacy_http_exception() -> HTTPException:
@@ -59,6 +92,68 @@ async def run_auth_flow(
     """Inform callers that the Python auth flow agent has been removed."""
 
     raise _legacy_http_exception()
+
+
+@app.post("/api/probe", response_model=ProbeResponse)
+async def run_credential_probe(payload: ProbeRequest) -> ProbeResponse:
+    """Execute credential probe requests on the server to avoid browser CORS limits."""
+
+    timestamp = datetime.now(timezone.utc).isoformat()
+    used_headers = list(payload.headers.keys())
+
+    try:
+        def _perform_request() -> requests.Response:
+            request_kwargs: dict[str, Any] = {
+                "method": payload.method,
+                "url": str(payload.url),
+                "headers": payload.headers,
+            }
+
+            if payload.body is not None:
+                if isinstance(payload.body, (dict, list)):
+                    request_kwargs["json"] = payload.body
+                else:
+                    request_kwargs["data"] = payload.body
+
+            return requests.request(**request_kwargs)
+
+        response = await run_in_threadpool(_perform_request)
+        content_type = response.headers.get("content-type", "").lower()
+
+        body: Any | None
+        if "application/json" in content_type:
+            try:
+                body = response.json()
+            except Exception:
+                body = response.text[:500]
+        else:
+            body = response.text[:500]
+
+        return ProbeResponse(
+            status=response.status_code,
+            ok=response.ok,
+            body=body,
+            error=None,
+            evidence=ProbeEvidence(
+                request_url=str(payload.url),
+                method=payload.method,
+                used_headers=used_headers,
+                timestamp=timestamp,
+            ),
+        )
+    except Exception as exc:  # pylint: disable=broad-except
+        return ProbeResponse(
+            status=None,
+            ok=False,
+            body=None,
+            error=str(exc),
+            evidence=ProbeEvidence(
+                request_url=str(payload.url),
+                method=payload.method,
+                used_headers=used_headers,
+                timestamp=timestamp,
+            ),
+        )
 
 
 def _cli(url: str) -> int:

@@ -5,6 +5,19 @@ export interface CredentialProbeRequest {
   body?: any | null;
 }
 
+export interface CredentialProbeApiResponse {
+  status: number | null;
+  ok: boolean;
+  body: any | null;
+  error: string | null;
+  evidence?: {
+    request_url?: string;
+    method?: string;
+    used_headers?: string[];
+    timestamp?: string;
+  };
+}
+
 export interface CredentialProbeResult {
   status: number | null;      // HTTP Status oder null bei Netzwerkfehler
   body: any | null;           // API Response (gekürzt)
@@ -22,37 +35,70 @@ export async function credentialProbe(
 ): Promise<CredentialProbeResult> {
 
   const usedHeaders = Object.keys(req.headers || {});
-  const timestamp = new Date().toISOString();
 
   try {
-    const response = await fetch(req.url, {
-      method: req.method,
-      headers: req.headers,
-      body: req.body ? JSON.stringify(req.body) : undefined
+    const response = await fetch("/api/probe", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        method: req.method,
+        url: req.url,
+        headers: req.headers,
+        body: req.body ?? null,
+      }),
     });
 
-    const text = await response.text();
-    let parsed = null;
+    const raw = await response.text();
+    let probeResponse: CredentialProbeApiResponse | null = null;
+    let parseError: string | null = null;
 
-    try {
-      parsed = JSON.parse(text);
-    } catch {
-      parsed = text.slice(0, 500); // Response-Auszug
+    if (raw) {
+      try {
+        probeResponse = JSON.parse(raw) as CredentialProbeApiResponse;
+      } catch (err) {
+        parseError = `Invalid probe response format (status ${response.status}): ${raw}`;
+      }
+    }
+
+    const timestamp =
+      probeResponse?.evidence?.timestamp || new Date().toISOString();
+
+    const status = probeResponse?.status ?? response.status ?? null;
+    const body = probeResponse?.body ?? null;
+
+    let error = probeResponse?.error ?? null;
+
+    if (!probeResponse) {
+      if (!response.ok) {
+        const statusText = response.statusText
+          ? ` ${response.statusText}`
+          : "";
+        error = `Probe endpoint returned status ${response.status}${statusText}`;
+      } else if (parseError) {
+        error = parseError;
+      } else {
+        error = `Probe endpoint returned empty response (status ${response.status})`;
+      }
+    } else if (parseError && !error) {
+      error = parseError;
     }
 
     return {
-      status: response.status,
-      body: parsed,
-      error: null,
+      status,
+      body,
+      error,
       evidence: {
-        request_url: req.url,
-        method: req.method,
-        used_headers: usedHeaders,
-        timestamp
-      }
+        request_url: probeResponse?.evidence?.request_url || req.url,
+        method: probeResponse?.evidence?.method || req.method,
+        used_headers: probeResponse?.evidence?.used_headers || usedHeaders,
+        timestamp,
+      },
     };
 
   } catch (err: any) {
+    const timestamp = new Date().toISOString();
     return {
       status: null,
       body: null,
