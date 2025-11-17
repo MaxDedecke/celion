@@ -1,2 +1,0 @@
-"""Celion agent package."""
-
