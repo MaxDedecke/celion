@@ -63,6 +63,7 @@ class ProbeResponse(BaseModel):
     status: int | None
     ok: bool
     body: Any | None
+    raw_response: str | None
     error: str | None
     evidence: ProbeEvidence
 
@@ -121,6 +122,7 @@ async def run_credential_probe(payload: ProbeRequest) -> ProbeResponse:
         content_type = response.headers.get("content-type", "").lower()
 
         body: Any | None
+        raw_response: str | None
         if "application/json" in content_type:
             try:
                 body = response.json()
@@ -133,6 +135,7 @@ async def run_credential_probe(payload: ProbeRequest) -> ProbeResponse:
             status=response.status_code,
             ok=response.ok,
             body=body,
+            raw_response=response.text[:500],
             error=None,
             evidence=ProbeEvidence(
                 request_url=str(payload.url),
@@ -146,6 +149,7 @@ async def run_credential_probe(payload: ProbeRequest) -> ProbeResponse:
             status=None,
             ok=False,
             body=None,
+            raw_response=None,
             error=str(exc),
             evidence=ProbeEvidence(
                 request_url=str(payload.url),

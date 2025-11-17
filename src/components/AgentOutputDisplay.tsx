@@ -206,6 +206,12 @@ const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayPr
                     </pre>
                   )}
 
+                  {!authResult.probe_result.body && authResult.probe_result.raw_response && (
+                    <pre className="whitespace-pre-wrap break-all text-xs font-mono bg-background/60 rounded-md p-2 border border-muted">
+                      {authResult.probe_result.raw_response}
+                    </pre>
+                  )}
+
                   {authResult.probe_result.evidence && (
                     <div className="space-y-2 text-xs text-muted-foreground">
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">

@@ -390,6 +390,7 @@ const normalizeAuthFlowResult = (input: unknown): AuthFlowResult | null => {
     const probe = candidate.probe_result as Record<string, unknown>;
     const status = typeof probe.status === "number" ? probe.status : null;
     const body = "body" in probe ? (probe.body as unknown) : null;
+    const rawResponse = typeof probe.raw_response === "string" ? probe.raw_response : null;
     const error = typeof probe.error === "string" ? probe.error : null;
     const evidence = probe.evidence && typeof probe.evidence === "object" && !Array.isArray(probe.evidence)
       ? (probe.evidence as { request_url?: string; method?: string; used_headers?: string[]; timestamp?: string })
@@ -398,6 +399,7 @@ const normalizeAuthFlowResult = (input: unknown): AuthFlowResult | null => {
     probeResult = {
       status,
       body,
+      raw_response: rawResponse,
       error,
       evidence: {
         request_url: typeof evidence.request_url === "string" ? evidence.request_url : "",

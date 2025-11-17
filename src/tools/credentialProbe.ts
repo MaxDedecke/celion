@@ -9,6 +9,7 @@ export interface CredentialProbeApiResponse {
   status: number | null;
   ok: boolean;
   body: any | null;
+  raw_response?: string | null;
   error: string | null;
   evidence?: {
     request_url?: string;
@@ -21,6 +22,7 @@ export interface CredentialProbeApiResponse {
 export interface CredentialProbeResult {
   status: number | null;      // HTTP Status oder null bei Netzwerkfehler
   body: any | null;           // API Response (gekürzt)
+  raw_response: string | null; // Ungefilterte Antwort des Zielsystems
   error: string | null;       // Netzwerk- oder Parserfehler
   evidence: {
     request_url: string;
@@ -67,6 +69,7 @@ export async function credentialProbe(
 
     const status = probeResponse?.status ?? response.status ?? null;
     const body = probeResponse?.body ?? null;
+    const rawResponse = probeResponse?.raw_response ?? null;
 
     let error = probeResponse?.error ?? null;
 
@@ -88,6 +91,7 @@ export async function credentialProbe(
     return {
       status,
       body,
+      raw_response: rawResponse,
       error,
       evidence: {
         request_url: probeResponse?.evidence?.request_url || req.url,
@@ -102,12 +106,13 @@ export async function credentialProbe(
     return {
       status: null,
       body: null,
+      raw_response: null,
       error: err?.message || "Unknown network error",
       evidence: {
         request_url: req.url,
         method: req.method,
         used_headers: usedHeaders,
-        timestamp
+        timestamp,
       }
     };
   }
