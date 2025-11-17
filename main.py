@@ -1,19 +1,16 @@
-"""Entry point for running the Celion discovery agent as an API or CLI."""
+"""Celion FastAPI entry point now providing legacy notices only."""
 
 from __future__ import annotations
 
 import argparse
-import json
 import sys
-from typing import Any, Dict
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl
 
-from agents.discovery_agent import DiscoveryResult, detect_system
-from agents.auth_flow_agent import AuthFlowResult, validate_auth
 
+LEGACY_MESSAGE = "The legacy Python-based agents have been removed in favor of the frontend implementation."
 
 app = FastAPI(title="Celion Agent Service", version="1.0.0")
 app.add_middleware(
@@ -26,70 +23,31 @@ app.add_middleware(
 
 
 class DetectionRequest(BaseModel):
-    """Request payload for the system detection agent."""
+    """Request payload kept for backward compatibility with legacy clients."""
 
     url: HttpUrl
 
 
-class DetectionResponse(BaseModel):
-    """Serialized response returned by the system detection agent."""
+class LegacyResponse(BaseModel):
+    """Response returned when legacy agent endpoints are invoked."""
 
-    detected: bool
-    system: str | None
-    api_version: str | None
-    confidence: float | None
-    base_url: str | None
-    detection_evidence: Dict[str, Any]
-    raw_output: str
-
-    @classmethod
-    def from_result(cls, result: DiscoveryResult) -> "DetectionResponse":
-        return cls(
-            detected=result.detected,
-            system=result.system,
-            api_version=result.api_version,
-            confidence=result.confidence,
-            base_url=result.base_url,
-            detection_evidence=result.detection_evidence,
-            raw_output=result.raw_output,
-        )
+    message: str
 
 
-class AuthFlowResponse(BaseModel):
-    """Serialized response returned by the auth flow agent."""
+def _legacy_http_exception() -> HTTPException:
+    """Provide a consistent 410 response when legacy endpoints are used."""
 
-    authenticated: bool
-    auth_method: str | None
-    permissions: list[str]
-    validation_evidence: Dict[str, Any]
-    error_message: str | None
-    raw_output: str
-
-    @classmethod
-    def from_result(cls, result: AuthFlowResult) -> "AuthFlowResponse":
-        return cls(
-            authenticated=result.authenticated,
-            auth_method=result.auth_method,
-            permissions=result.permissions,
-            validation_evidence=result.validation_evidence,
-            error_message=result.error_message,
-            raw_output=result.raw_output,
-        )
+    return HTTPException(status_code=410, detail=LEGACY_MESSAGE)
 
 
-@app.post("/agents/system-detection", response_model=DetectionResponse)
-async def run_system_detection(payload: DetectionRequest) -> DetectionResponse:
-    """Execute the system detection agent for a given URL."""
+@app.post("/agents/system-detection", response_model=LegacyResponse)
+async def run_system_detection(payload: DetectionRequest) -> LegacyResponse:
+    """Inform callers that the Python discovery agent has been removed."""
 
-    try:
-        result = detect_system(str(payload.url))
-    except Exception as exc:  # noqa: BLE001 - we want to surface detailed errors to the client
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-    return DetectionResponse.from_result(result)
+    raise _legacy_http_exception()
 
 
-@app.get("/auth-flow", response_model=AuthFlowResponse)
+@app.get("/auth-flow", response_model=LegacyResponse)
 async def run_auth_flow(
     base_url: str,
     system: str,
@@ -97,54 +55,27 @@ async def run_auth_flow(
     api_token: str | None = None,
     username: str | None = None,
     password: str | None = None,
-) -> AuthFlowResponse:
-    """Execute the auth flow validation agent."""
+) -> LegacyResponse:
+    """Inform callers that the Python auth flow agent has been removed."""
 
-    try:
-        result = validate_auth(
-            base_url=base_url,
-            system=system,
-            auth_type=auth_type,
-            api_token=api_token,
-            username=username,
-            password=password,
-        )
-    except Exception as exc:  # noqa: BLE001 - we want to surface detailed errors to the client
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-
-    return AuthFlowResponse.from_result(result)
+    raise _legacy_http_exception()
 
 
 def _cli(url: str) -> int:
-    """Run the agent in CLI mode and print the response as JSON."""
+    """Provide a clear CLI notice that legacy agents are no longer available."""
 
-    try:
-        result = detect_system(url)
-    except Exception as exc:  # noqa: BLE001 - provide graceful CLI error handling
-        print(f"Fehler bei der Systemerkennung: {exc}", file=sys.stderr)
-        return 1
-
-    print(json.dumps(DetectionResponse.from_result(result).dict(), indent=2, ensure_ascii=False))
-    return 0
+    print(LEGACY_MESSAGE, file=sys.stderr)
+    return 1
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Starte die Celion Systemerkennung")
+    parser = argparse.ArgumentParser(description="Celion legacy agent placeholder")
     parser.add_argument("url", nargs="?", help="Basis-URL des Zielsystems")
     args = parser.parse_args()
 
     if args.url:
         raise SystemExit(_cli(args.url))
 
-    try:
-        user_url = input("🔗 Gib eine System-URL ein: ").strip()
-    except KeyboardInterrupt:  # pragma: no cover - interactive usage
-        print("\nAbgebrochen.")
-        raise SystemExit(1)
-
-    if not user_url:
-        print("Es wurde keine URL angegeben.", file=sys.stderr)
-        raise SystemExit(1)
-
-    raise SystemExit(_cli(user_url))
+    print(LEGACY_MESSAGE, file=sys.stderr)
+    raise SystemExit(1)
 
