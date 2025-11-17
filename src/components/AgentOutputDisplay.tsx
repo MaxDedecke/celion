@@ -1,10 +1,10 @@
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { CheckCircle2, XCircle, AlertCircle } from "lucide-react";
-import { cn } from "@/lib/utils";
-import type { SystemDetectionResult, AuthFlowResult } from "@/types/agents";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { cn } from "@/lib/utils";
+import type { SystemDetectionResult, AuthFlowResult } from "@/types/agents";
+import { AlertCircle, CheckCircle2, Download, XCircle } from "lucide-react";
 
 interface AgentOutputDisplayProps {
   sourceResult?: SystemDetectionResult | AuthFlowResult | null;
@@ -24,6 +24,22 @@ const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayPr
     if (confidence >= 0.8) return "default";
     if (confidence >= 0.5) return "secondary";
     return "destructive";
+  };
+
+  const downloadRawOutput = (rawOutput: string, title: string) => {
+    const fileName = `${title.toLowerCase().replace(/\s+/g, "-")}-raw-output.txt`;
+    const blob = new Blob([rawOutput], { type: "text/plain;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+
+    link.href = url;
+    link.download = fileName;
+    link.style.display = "none";
+
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
   };
 
   const renderSystemDetails = (result: SystemDetectionResult | AuthFlowResult | null | undefined, title: string) => {
@@ -66,27 +82,39 @@ const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayPr
         <CardContent className="space-y-5">
           {/* Raw Output Tooltip */}
           {result.raw_output && (
-            <Popover>
-              <PopoverTrigger asChild>
-                <button
-                  type="button"
-                  className="inline-flex cursor-pointer text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            <div className="flex items-center gap-2">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex cursor-pointer text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  >
+                    Raw Output anzeigen
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent
+                  side="top"
+                  align="start"
+                  className="w-[min(90vw,520px)] max-w-[min(90vw,640px)] p-0"
                 >
-                  Raw Output anzeigen
-                </button>
-              </PopoverTrigger>
-              <PopoverContent
-                side="top"
-                align="start"
-                className="w-[min(90vw,520px)] max-w-[min(90vw,640px)] p-0"
+                  <ScrollArea className="max-h-[60vh]">
+                    <pre className="whitespace-pre-wrap break-all text-left text-xs font-mono px-4 py-3">
+                      {result.raw_output}
+                    </pre>
+                  </ScrollArea>
+                </PopoverContent>
+              </Popover>
+
+              <button
+                type="button"
+                onClick={() => downloadRawOutput(result.raw_output!, title)}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-input bg-transparent text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                aria-label="Raw Output herunterladen"
+                title="Raw Output herunterladen"
               >
-                <ScrollArea className="max-h-[60vh]">
-                  <pre className="whitespace-pre-wrap break-all text-left text-xs font-mono px-4 py-3">
-                    {result.raw_output}
-                  </pre>
-                </ScrollArea>
-              </PopoverContent>
-            </Popover>
+                <Download className="h-4 w-4" />
+              </button>
+            </div>
           )}
 
           {/* Auth Flow specific information */}
