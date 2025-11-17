@@ -35,7 +35,12 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import type { MigrationStatus, NewMigrationInput } from "@/types/migration";
-import { AUTH_DETAIL_TOKEN, CONNECTOR_AUTH_LABEL, CONNECTOR_ENDPOINT_LABEL } from "@/constants/migrations";
+import {
+  AUTH_DETAIL_CREDENTIALS,
+  AUTH_DETAIL_TOKEN,
+  CONNECTOR_AUTH_LABEL,
+  CONNECTOR_ENDPOINT_LABEL,
+} from "@/constants/migrations";
 
 const deriveMigrationStatus = (migration: any): MigrationStatus => {
   const progress = Number(migration?.progress ?? 0);
@@ -266,7 +271,9 @@ const Dashboard = () => {
         sourceAuth,
         targetAuth,
       } = migrationData;
-      const targetAuthDetail = AUTH_DETAIL_TOKEN;
+      const targetAuthDetail = targetAuth.authType === "token" ? AUTH_DETAIL_TOKEN : AUTH_DETAIL_CREDENTIALS;
+      const sourceConnectorAuthType = sourceAuth.authType === "token" ? "api_key" : "basic";
+      const targetConnectorAuthType = targetAuth.authType === "token" ? "api_key" : "basic";
 
       const { data: migration, error: migrationError } = await supabase
         .from('migrations')
@@ -292,19 +299,19 @@ const Dashboard = () => {
       const sourceConnectorPayload = {
         migration_id: migration.id,
         api_url: sourceUrl,
-        auth_type: "api_key",
-        api_key: sourceAuth.apiToken ?? null,
-        username: sourceAuth.email ?? null,
-        password: null,
+        auth_type: sourceConnectorAuthType,
+        api_key: sourceAuth.authType === "token" ? sourceAuth.apiToken ?? null : null,
+        username: sourceAuth.authType === "credentials" ? sourceAuth.username ?? null : null,
+        password: sourceAuth.authType === "credentials" ? sourceAuth.password ?? null : null,
       };
 
       const targetConnectorPayload = {
         migration_id: migration.id,
         api_url: targetUrl,
-        auth_type: "api_key",
-        api_key: targetAuth.apiToken ?? null,
-        username: targetAuth.email ?? null,
-        password: null,
+        auth_type: targetConnectorAuthType,
+        api_key: targetAuth.authType === "token" ? targetAuth.apiToken ?? null : null,
+        username: targetAuth.authType === "credentials" ? targetAuth.username ?? null : null,
+        password: targetAuth.authType === "credentials" ? targetAuth.password ?? null : null,
       };
 
       const { error: connectorError } = await supabase
@@ -426,6 +433,9 @@ const Dashboard = () => {
 
       if (targetConnectorError) throw targetConnectorError;
 
+      const sourceConnectorAuthType = sourceConnectorData?.auth_type === 'basic' ? 'credentials' : 'token';
+      const targetConnectorAuthType = targetConnectorData?.auth_type === 'basic' ? 'credentials' : 'token';
+
       setEditConfigData({
         name: currentMigration.name,
         sourceUrl: sourceConnectorData?.api_url || currentMigration.sourceUrl || "",
@@ -433,12 +443,14 @@ const Dashboard = () => {
         sourceSystem: currentMigration.sourceSystem,
         targetSystem: currentMigration.targetSystem,
         sourceAuth: {
-          apiToken: sourceConnectorData?.api_key || "",
-          email: sourceConnectorData?.username || "",
+          authType: sourceConnectorAuthType,
+          apiToken: sourceConnectorAuthType === 'token' ? sourceConnectorData?.api_key || "" : undefined,
+          username: sourceConnectorAuthType === 'credentials' ? sourceConnectorData?.username || "" : undefined,
         },
         targetAuth: {
-          apiToken: targetConnectorData?.api_key || "",
-          email: targetConnectorData?.username || "",
+          authType: targetConnectorAuthType,
+          apiToken: targetConnectorAuthType === 'token' ? targetConnectorData?.api_key || "" : undefined,
+          username: targetConnectorAuthType === 'credentials' ? targetConnectorData?.username || "" : undefined,
         },
       });
       setShowEditConfigDialog(true);
@@ -462,27 +474,44 @@ const Dashboard = () => {
           source_url: data.sourceUrl,
           target_url: data.targetUrl,
           in_connector_detail: data.sourceUrl,
-          out_connector_detail: AUTH_DETAIL_TOKEN,
+          out_connector_detail: data.targetAuth.authType === "token" ? AUTH_DETAIL_TOKEN : AUTH_DETAIL_CREDENTIALS,
         })
         .eq('id', currentMigration.id);
 
       if (migrationError) throw migrationError;
 
+      const sourceConnectorAuthType = data.sourceAuth.authType === "token" ? "api_key" : "basic";
+      const targetConnectorAuthType = data.targetAuth.authType === "token" ? "api_key" : "basic";
+
       const sourceConnectorUpdates: Record<string, any> = {
         api_url: data.sourceUrl,
-        auth_type: "api_key",
-        api_key: data.sourceAuth.apiToken ?? null,
-        username: data.sourceAuth.email ?? null,
-        password: null,
+        auth_type: sourceConnectorAuthType,
+        api_key: data.sourceAuth.authType === "token" ? (data.sourceAuth.apiToken ?? null) : null,
+        username: data.sourceAuth.authType === "credentials" ? (data.sourceAuth.username ?? null) : null,
       };
 
       const targetConnectorUpdates: Record<string, any> = {
         api_url: data.targetUrl,
-        auth_type: "api_key",
-        api_key: data.targetAuth.apiToken ?? null,
-        username: data.targetAuth.email ?? null,
-        password: null,
+        auth_type: targetConnectorAuthType,
+        api_key: data.targetAuth.authType === "token" ? (data.targetAuth.apiToken ?? null) : null,
+        username: data.targetAuth.authType === "credentials" ? (data.targetAuth.username ?? null) : null,
       };
+
+      if (data.sourceAuth.authType === "credentials") {
+        if (data.sourceAuth.password) {
+          sourceConnectorUpdates.password = data.sourceAuth.password;
+        }
+      } else {
+        sourceConnectorUpdates.password = null;
+      }
+
+      if (data.targetAuth.authType === "credentials") {
+        if (data.targetAuth.password) {
+          targetConnectorUpdates.password = data.targetAuth.password;
+        }
+      } else {
+        targetConnectorUpdates.password = null;
+      }
 
       // Update source connector
       const { error: sourceConnectorError } = await supabase

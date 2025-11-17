@@ -151,11 +151,8 @@ const createAuthFlowAssistant = async (
 ): Promise<OpenAiAssistant> => {
   const instructions = [
     "Du bist der Celion Auth Flow Agent.",
-    "Hier hast du ein API-Token und die zugehörige E-Mail als Username sowie die Base-URL des Systems.",
+    "Hier hast du API Token oder Username & Password, ein System und seine Base-URL.",
     "Recherchiere anhand deines Wissens, wie man die API des Systems anspricht (REST, GraphQL, SOAP oder proprietäre Varianten) und welche Endpunkte oder Queries geeignet sind, um die Credentials zu validieren.",
-    "Nutze die E-Mail als Username zusammen mit dem API-Token (z. B. per Basic Auth) oder leite sinnvolle Header daraus ab, falls der Standard-Bearer-Ansatz nicht funktioniert.",
-    "Wenn ein Request nicht erreichbar ist (z. B. Network Error/Failed to fetch), prüfe zuerst, ob die Base-URL korrekt ist: Entferne Pfadanteile wie /jira/for-you oder /login und nutze stattdessen die Root-Domain als Basis (z. B. https://workspace.atlassian.net).",
-    "Nutze dein Systemwissen, um passende Basis-URLs und Default-Endpunkte herzuleiten (z. B. /rest/api/3/myself für Jira Cloud, /rest/api/2/myself für Data Center, /api/v1/users/me für GitLab). Versuche mehrere sinnvolle Varianten, bevor du aufgibst.",
     "Nutze das Tool call_api_tester, um konkrete Requests abzusetzen. Du kannst GET oder POST, eigene Header sowie einen Request-Body (z. B. GraphQL Query als JSON) setzen.",
     "Führe mehrere Versuche durch, bis klar ist, ob die Authentifizierung gelingt. Ziel ist es, mindestens einmal echte Daten abzurufen (z. B. whoami/me-Endpunkte).",
     "Dokumentiere in validation_evidence exakt, welche Endpunkte mit welchen Methoden, Headern und Bodies getestet wurden sowie welche Antworten zurückkamen.",
@@ -539,8 +536,10 @@ type AuthFlowToolCallArgs = {
 
 type AuthFlowContext = {
   baseUrl: string;
-  apiToken: string;
-  email: string;
+  authType: "token" | "credentials";
+  apiToken?: string;
+  username?: string;
+  password?: string;
 };
 
 const buildTargetUrl = (baseUrl: string, endpoint: string) => {
@@ -573,22 +572,20 @@ const performAuthenticatedRequest = async (
   const url = buildTargetUrl(args.baseUrl, args.endpoint);
   const headers: Record<string, string> = { Accept: "application/json" };
 
-  let hasCustomAuthHeader = false;
   if (args.customHeaders) {
     for (const [key, value] of Object.entries(args.customHeaders)) {
       if (typeof value === "string" && value.trim().length > 0 && key.trim().length > 0) {
         headers[key] = value;
-        if (key.toLowerCase() === "authorization") {
-          hasCustomAuthHeader = true;
-        }
       }
     }
   }
 
   const requestInit: RequestInit = { method: args.method, headers };
 
-  if (!hasCustomAuthHeader) {
-    headers.Authorization = `Basic ${encodeBasicAuth(args.email, args.apiToken)}`;
+  if (args.authType === "token" && args.apiToken) {
+    headers.Authorization = `Bearer ${args.apiToken}`;
+  } else if (args.authType === "credentials" && args.username && args.password) {
+    headers.Authorization = `Basic ${encodeBasicAuth(args.username, args.password)}`;
   }
 
   if (args.body && args.method !== "GET") {
@@ -669,8 +666,10 @@ const executeApiTesterCall = async (
 
   return performAuthenticatedRequest({
     baseUrl: context.baseUrl,
+    authType: context.authType,
     apiToken: context.apiToken,
-    email: context.email,
+    username: context.username,
+    password: context.password,
     endpoint,
     method,
     body,
@@ -799,8 +798,10 @@ const parseAuthFlowResultFromMessage = (message: OpenAiMessage | null): AuthFlow
 export async function runAuthFlowAgent(
   baseUrl: string,
   system: string,
-  apiToken: string,
-  email: string,
+  authType: "token" | "credentials",
+  apiToken?: string,
+  username?: string,
+  password?: string,
   options: AgentExecutionOptions = {},
 ): Promise<AuthFlowResult> {
   if (!baseUrl.trim()) {
@@ -815,16 +816,19 @@ export async function runAuthFlowAgent(
   const assistant = await createAuthFlowAssistant(openAiBaseUrl, headers, model, options.signal);
   const threadId = await createThread(openAiBaseUrl, headers, options.signal);
 
-  const credentialsDescription = apiToken
-    ? `Hier hast du ein API-Token sowie die zugehörige E-Mail (${email}) als Username (sicher im Tool hinterlegt).`
-    : "Es wurde kein API-Token bereitgestellt.";
+  const credentialsDescription = authType === "token"
+    ? apiToken
+      ? "Hier hast du ein API-Token (sicher im Tool hinterlegt)."
+      : "Es wurde kein API-Token bereitgestellt."
+    : username && password
+      ? `Hier hast du Benutzername (${username}) und ein Passwort (sicher im Tool hinterlegt).`
+      : "Benutzername oder Passwort fehlen.";
 
   const messageContent = [
-    `${credentialsDescription} System: ${system}. Base-URL: ${normalizedBaseUrl}.`,
+    `${credentialsDescription} System: ${system}. Base-URL: ${normalizedBaseUrl}. Authentifizierungstyp: ${authType}.`,
     "Recherchiere selbstständig, wie die API dieses Systems angesprochen wird (REST, GraphQL, SOAP etc.) und welche Endpunkte oder Queries sich eignen, um einen ersten Datenzugriff zu testen.",
-    "Wenn Requests nicht erreichbar sind, analysiere die Base-URL (oft darf kein Pfad enthalten sein) und leite mögliche Root-URLs oder alternative API-Basen ab, bevor du den Versuch als gescheitert meldest.",
     "Nutze ausschließlich das call_api_tester Tool, um echte Requests abzusetzen. Du kannst Methoden, Header und Bodies frei wählen (z. B. GraphQL Queries als JSON).",
-    "Starte mindestens einen konkreten Datenzugriff. Wenn du Zugriff erhältst, melde Erfolg und die gefundenen Berechtigungen. Wenn nicht, gib exakt zurück, warum es nicht funktioniert hat, welche Base-URL-Varianten du probiert hast und welche Schritte fehlgeschlagen sind.",
+    "Starte mindestens einen konkreten Datenzugriff. Wenn du Zugriff erhältst, melde Erfolg und die gefundenen Berechtigungen. Wenn nicht, gib exakt zurück, warum es nicht funktioniert hat und welche Schritte fehlgeschlagen sind.",
   ].join(" ");
 
   const messageResponse = await fetch(`${openAiBaseUrl}/threads/${threadId}/messages`, {
@@ -854,7 +858,7 @@ export async function runAuthFlowAgent(
     headers,
     threadId,
     run.id,
-    { baseUrl: normalizedBaseUrl, apiToken, email },
+    { baseUrl: normalizedBaseUrl, authType, apiToken, username, password },
     options.signal,
   );
 

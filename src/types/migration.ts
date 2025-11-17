@@ -1,8 +1,12 @@
+export type MigrationAuthType = "token" | "credentials";
+
 export type MigrationStatus = "not_started" | "running" | "paused" | "completed";
 
 export interface MigrationSystemAuthConfig {
-  apiToken: string;
-  email: string;
+  authType: MigrationAuthType;
+  apiToken?: string;
+  username?: string;
+  password?: string;
 }
 
 export interface NewMigrationInput {

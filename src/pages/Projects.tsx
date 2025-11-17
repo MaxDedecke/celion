@@ -25,7 +25,12 @@ import {
 } from "@/components/ui/alert-dialog";
 import { useMinimumLoader } from "@/hooks/useMinimumLoader";
 import type { NewMigrationInput } from "@/types/migration";
-import { AUTH_DETAIL_TOKEN, CONNECTOR_AUTH_LABEL, CONNECTOR_ENDPOINT_LABEL } from "@/constants/migrations";
+import {
+  AUTH_DETAIL_CREDENTIALS,
+  AUTH_DETAIL_TOKEN,
+  CONNECTOR_AUTH_LABEL,
+  CONNECTOR_ENDPOINT_LABEL,
+} from "@/constants/migrations";
 
 const Projects = () => {
   const navigate = useNavigate();
@@ -242,7 +247,9 @@ const Projects = () => {
         sourceAuth,
         targetAuth,
       } = migrationData;
-      const targetAuthDetail = AUTH_DETAIL_TOKEN;
+      const targetAuthDetail = targetAuth.authType === "token" ? AUTH_DETAIL_TOKEN : AUTH_DETAIL_CREDENTIALS;
+      const sourceConnectorAuthType = sourceAuth.authType === "token" ? "api_key" : "basic";
+      const targetConnectorAuthType = targetAuth.authType === "token" ? "api_key" : "basic";
 
       const { data: migration, error: migrationError } = await supabase
         .from('migrations')
@@ -267,19 +274,19 @@ const Projects = () => {
       const sourceConnectorPayload = {
         migration_id: migration.id,
         api_url: sourceUrl,
-        auth_type: "api_key",
-        api_key: sourceAuth.apiToken ?? null,
-        username: sourceAuth.email ?? null,
-        password: null,
+        auth_type: sourceConnectorAuthType,
+        api_key: sourceAuth.authType === "token" ? sourceAuth.apiToken ?? null : null,
+        username: sourceAuth.authType === "credentials" ? sourceAuth.username ?? null : null,
+        password: sourceAuth.authType === "credentials" ? sourceAuth.password ?? null : null,
       };
 
       const targetConnectorPayload = {
         migration_id: migration.id,
         api_url: targetUrl,
-        auth_type: "api_key",
-        api_key: targetAuth.apiToken ?? null,
-        username: targetAuth.email ?? null,
-        password: null,
+        auth_type: targetConnectorAuthType,
+        api_key: targetAuth.authType === "token" ? targetAuth.apiToken ?? null : null,
+        username: targetAuth.authType === "credentials" ? targetAuth.username ?? null : null,
+        password: targetAuth.authType === "credentials" ? targetAuth.password ?? null : null,
       };
 
       const { error: connectorError } = await supabase

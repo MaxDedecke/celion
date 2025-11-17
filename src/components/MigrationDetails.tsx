@@ -727,8 +727,10 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       if (node.agentType === "auth-flow") {
         type AuthContext = {
           baseUrl: string;
-          apiToken: string;
-          email: string;
+          authType: "token" | "credentials";
+          apiToken?: string;
+          username?: string;
+          password?: string;
         };
 
         const { data: connectorRows, error: connectorsError } = await supabase
@@ -771,24 +773,30 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
             throw new AgentExecutionError(message);
           }
 
+          const normalizedAuthType = (connector.auth_type ?? "").toLowerCase();
+          const authType: "token" | "credentials" =
+            normalizedAuthType === "api_key" || normalizedAuthType === "token"
+              ? "token"
+              : "credentials";
           const apiToken = connector.api_key ?? undefined;
-          const email = connector.username ?? undefined;
+          const username = connector.username ?? undefined;
+          const password = connector.password ?? undefined;
 
-          if (!apiToken) {
+          if (authType === "token" && !apiToken) {
             const message = `Für das ${scopeLabel} wurde kein API-Token hinterlegt.`;
             await appendActivity("error", message);
             toast.error(message);
             throw new AgentExecutionError(message);
           }
 
-          if (!email) {
-            const message = `Für das ${scopeLabel} fehlt die hinterlegte E-Mail-Adresse.`;
+          if (authType === "credentials" && (!username || !password)) {
+            const message = `Für das ${scopeLabel} fehlen Benutzername oder Passwort.`;
             await appendActivity("error", message);
             toast.error(message);
             throw new AgentExecutionError(message);
           }
 
-          return { baseUrl, apiToken, email };
+          return { baseUrl, authType, apiToken, username, password };
         };
 
         const sourceAuthContext = await resolveConnectorAuth("source", sourceConnector, fallbackSourceBaseUrl);
@@ -809,8 +817,10 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
             const result = await runAuthFlowAgent(
               auth.baseUrl,
               system,
+              auth.authType,
               auth.apiToken,
-              auth.email,
+              auth.username,
+              auth.password,
             );
 
             const statusLabel = result.authenticated ? "erfolgreich" : "fehlgeschlagen";
