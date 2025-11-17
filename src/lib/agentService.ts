@@ -1,4 +1,5 @@
 import type { SystemDetectionEvidence, SystemDetectionResult, AuthFlowResult } from "@/types/agents";
+import { credentialProbe } from "@/tools/credentialProbe";
 
 const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
 const DEFAULT_OPENAI_AUTH_MODEL = "gpt-4.1";
@@ -151,14 +152,11 @@ const createAuthFlowAssistant = async (
 ): Promise<OpenAiAssistant> => {
   const instructions = [
     "Du bist der Celion Auth Flow Agent.",
-    "Hier hast du API Token oder Username & Password, ein System und seine Base-URL.",
-    "Recherchiere anhand deines Wissens, wie man die API des Systems anspricht (REST, GraphQL, SOAP oder proprietäre Varianten) und welche Endpunkte oder Queries geeignet sind, um die Credentials zu validieren.",
-    "Setze ausschließlich mit den bereitgestellten Credentials geeignete GET- oder POST-Requests mit eigenen Headern und Bodies (z. B. GraphQL Queries als JSON) ab und werte die Antworten aus. Verwende keine fiktiven oder zufälligen Tokens.",
-    "Führe mehrere Versuche durch, bis klar ist, ob die Authentifizierung gelingt. Ziel ist es, mindestens einmal echte Daten abzurufen (z. B. whoami/me-Endpunkte).",
-    "Dokumentiere in validation_evidence exakt, welche Endpunkte mit welchen Methoden, Headern und Bodies getestet wurden sowie welche Antworten zurückkamen. Notiere auch, welcher Authorization-Header oder welches Auth-Verfahren mit den gelieferten Credentials verwendet wurde.",
-    "Antworte ausschließlich als JSON mit den Feldern authenticated (boolean), auth_method (string), permissions (array von strings), validation_evidence (object), summary (string) und error_message (string oder null).",
-    "Die summary muss in einem Satz klarstellen, ob die hinterlegten Credentials valide sind und ob die Schnittstelle erfolgreich angesprochen werden konnte.",
-    "Wenn der Zugriff fehlschlägt, erkläre präzise warum und was beim Versuch falsch lief (z. B. fehlende Header, falsches Token, unerwartetes Protokoll).",
+    "Du generierst KEINE Header. Du generierst KEINE Tokens. Du generierst KEIN Base64. Du erzeugst nur den Probe-Endpunkt und die HTTP-Methode.",
+    "Recherchiere anhand deines Wissens, welcher authentifizierungspflichtige Endpunkt und welche HTTP-Methode sich am besten eignen, um Zugangsdaten zu validieren.",
+    "Dokumentiere keine Header, keine Bodies und keine Beispiel-Tokens. Liefere nur einen konkreten Endpunkt, die HTTP-Methode und ob der Aufruf Authentifizierung erfordert.",
+    "Antworte ausschließlich als JSON mit den Feldern system, base_url, recommended_probe { method, url, requires_auth } und reasoning. Keine weiteren Felder, keine Platzhalter.",
+    "Erkläre in reasoning kurz, warum der Endpunkt authentifizierte Daten liefert.",
   ].join(" ");
 
   const response = await fetch(`${baseUrl}/assistants`, {
@@ -534,7 +532,7 @@ const parseAuthFlowResultFromMessage = (message: OpenAiMessage | null): AuthFlow
   const textContent = extractAssistantMessageText(message);
   const sanitizedContent = extractJsonPayload(textContent);
 
-  let parsed: Partial<AuthFlowResult> | null = null;
+  let parsed: Record<string, unknown> | null = null;
   const parseCandidates = [sanitizedContent];
   if (sanitizedContent !== textContent) {
     parseCandidates.push(textContent);
@@ -542,8 +540,11 @@ const parseAuthFlowResultFromMessage = (message: OpenAiMessage | null): AuthFlow
 
   for (const candidate of parseCandidates) {
     try {
-      parsed = JSON.parse(candidate);
-      break;
+      const candidateObject = JSON.parse(candidate);
+      if (candidateObject && typeof candidateObject === "object" && !Array.isArray(candidateObject)) {
+        parsed = candidateObject as Record<string, unknown>;
+        break;
+      }
     } catch {
       parsed = null;
     }
@@ -553,37 +554,47 @@ const parseAuthFlowResultFromMessage = (message: OpenAiMessage | null): AuthFlow
     throw new Error(`Die Auth Flow Antwort konnte nicht als JSON interpretiert werden. Antwort: ${textContent}`);
   }
 
-  const permissions = Array.isArray(parsed.permissions)
-    ? parsed.permissions.filter((entry): entry is string => typeof entry === "string" && entry.trim().length > 0)
-    : [];
+  const system = typeof parsed.system === "string" && parsed.system.trim().length > 0 ? parsed.system.trim() : null;
+  const baseUrl = typeof parsed.base_url === "string" && parsed.base_url.trim().length > 0 ? parsed.base_url.trim() : null;
+  const reasoning = typeof parsed.reasoning === "string" && parsed.reasoning.trim().length > 0 ? parsed.reasoning.trim() : null;
 
-  const validationEvidence =
-    parsed.validation_evidence && typeof parsed.validation_evidence === "object" && !Array.isArray(parsed.validation_evidence)
-      ? (parsed.validation_evidence as Record<string, unknown>)
-      : {};
+  let recommendedProbe: AuthFlowResult["recommended_probe"] = null;
+  if (parsed.recommended_probe && typeof parsed.recommended_probe === "object" && !Array.isArray(parsed.recommended_probe)) {
+    const probe = parsed.recommended_probe as Record<string, unknown>;
+    const method = typeof probe.method === "string" && probe.method.trim().length > 0 ? probe.method.trim().toUpperCase() : null;
+    const url = typeof probe.url === "string" && probe.url.trim().length > 0 ? probe.url.trim() : null;
+    const requiresAuth =
+      typeof probe.requires_auth === "boolean" ? probe.requires_auth : probe.requires_auth === undefined ? true : Boolean(probe.requires_auth);
 
-  const normalizedSummary =
-    typeof parsed.summary === "string" && parsed.summary.trim().length > 0
-      ? parsed.summary.trim()
-      : parsed.authenticated
-        ? "Credentials validiert: Schnittstelle ist erreichbar und authentifizierte Antworten wurden empfangen."
-        : "Authentifizierung fehlgeschlagen: Schnittstelle konnte nicht mit den angegebenen Zugangsdaten genutzt werden.";
-
-  const normalizedAuthMethod =
-    typeof parsed.auth_method === "string" && parsed.auth_method.trim().length > 0 ? parsed.auth_method : null;
-
-  const normalizedErrorMessage =
-    typeof parsed.error_message === "string" && parsed.error_message.trim().length > 0 ? parsed.error_message : null;
+    if (method && url) {
+      recommendedProbe = { method, url, requires_auth: requiresAuth };
+    }
+  }
 
   return {
-    authenticated: Boolean(parsed.authenticated),
-    auth_method: normalizedAuthMethod,
-    permissions,
-    validation_evidence: validationEvidence,
-    summary: normalizedSummary,
-    error_message: normalizedErrorMessage,
+    system,
+    base_url: baseUrl,
+    recommended_probe: recommendedProbe,
+    reasoning,
+    probe_result: null,
+    authenticated: null,
+    summary: null,
+    error_message: null,
     raw_output: textContent,
   } satisfies AuthFlowResult;
+};
+
+const resolveProbeUrl = (probeUrl: string, baseUrl?: string | null) => {
+  try {
+    return new URL(probeUrl).toString();
+  } catch {
+    if (!baseUrl) {
+      throw new Error("Für die Credential-Probe fehlt eine Basis-URL.");
+    }
+
+    const normalizedBase = baseUrl.endsWith("/") ? baseUrl : `${baseUrl}/`;
+    return new URL(probeUrl.replace(/^\//, ""), normalizedBase).toString();
+  }
 };
 
 export async function runAuthFlowAgent(
@@ -591,11 +602,19 @@ export async function runAuthFlowAgent(
   system: string,
   apiToken: string,
   email: string,
-  password: string,
+  _password: string,
   options: AgentExecutionOptions = {},
 ): Promise<AuthFlowResult> {
   if (!baseUrl.trim()) {
     throw new Error("Für den Auth Flow Agent wurde keine gültige Base-URL angegeben.");
+  }
+
+  if (!apiToken.trim()) {
+    throw new Error("Für den Auth Flow Agent wurde kein API-Token angegeben.");
+  }
+
+  if (!email.trim()) {
+    throw new Error("Für den Auth Flow Agent wurde keine E-Mail angegeben.");
   }
 
   const normalizedBaseUrl = baseUrl.trim();
@@ -606,15 +625,11 @@ export async function runAuthFlowAgent(
   const assistant = await createAuthFlowAssistant(openAiBaseUrl, headers, model, options.signal);
   const threadId = await createThread(openAiBaseUrl, headers, options.signal);
 
-  const credentialsDescription = apiToken
-    ? `Hier hast du ein API-Token, eine E-Mail (${email}) und ein Passwort (sicher im Tool hinterlegt).`
-    : "Es wurde kein API-Token bereitgestellt.";
-
   const messageContent = [
-    `${credentialsDescription} System: ${system}. Base-URL: ${normalizedBaseUrl}. Authentifizierungstyp: token.`,
-    "Recherchiere selbstständig, wie die API dieses Systems angesprochen wird (REST, GraphQL, SOAP etc.) und welche Endpunkte oder Queries sich eignen, um einen ersten Datenzugriff zu testen. Nutze dafür ausschließlich die oben beschriebenen Credentials.",
-    "Setze selbstständig echte Requests mit passenden Methoden, Headern und Bodies (z. B. GraphQL Queries als JSON) ab und spiegle die Ergebnisse zurück. Dokumentiere den verwendeten Authorization-Header und weise nach, dass die gelieferten Credentials genutzt wurden.",
-    "Starte mindestens einen konkreten Datenzugriff. Wenn du Zugriff erhältst, melde Erfolg, die gefundenen Berechtigungen und bestätige dies in einer summary. Wenn nicht, gib exakt zurück, warum es nicht funktioniert hat und welche Schritte fehlgeschlagen sind, inklusive einer summary.",
+    `System: ${system}. Base-URL: ${normalizedBaseUrl}.`,
+    "Liefere nur Endpunkt und HTTP Methode für Authentifizierung.",
+    "Antworte ausschließlich als JSON mit den Feldern system, base_url, recommended_probe { method, url, requires_auth }, reasoning.",
+    "Keine Header, keine Bodies, keine Tokens, kein Base64, keine Platzhalter.",
   ].join(" ");
 
   const messageResponse = await fetch(`${openAiBaseUrl}/threads/${threadId}/messages`, {
@@ -648,6 +663,53 @@ export async function runAuthFlowAgent(
   );
 
   const message = await fetchLatestAssistantMessage(openAiBaseUrl, headers, threadId, options.signal);
-  return parseAuthFlowResultFromMessage(message);
+  const recommendation = parseAuthFlowResultFromMessage(message);
+
+  if (!recommendation.recommended_probe) {
+    throw new Error("Der Auth Flow Agent lieferte keinen Probe-Endpunkt zurück.");
+  }
+
+  const probeBaseUrl = recommendation.base_url ?? normalizedBaseUrl;
+  const resolvedProbeUrl = resolveProbeUrl(recommendation.recommended_probe.url, probeBaseUrl);
+
+  const credentialPayload = `${email}:${apiToken}`;
+  const basic =
+    typeof btoa === "function"
+      ? btoa(credentialPayload)
+      : typeof Buffer !== "undefined"
+        ? Buffer.from(credentialPayload).toString("base64")
+        : (() => {
+            throw new Error("Base64-Encoding wird nicht unterstützt.");
+          })();
+  const probeHeaders = {
+    Authorization: `Basic ${basic}`,
+    Accept: "application/json",
+  };
+
+  const probeResult = await credentialProbe({
+    url: resolvedProbeUrl,
+    method: recommendation.recommended_probe.method,
+    headers: probeHeaders,
+  });
+
+  const authenticated = probeResult.status !== null && probeResult.status >= 200 && probeResult.status < 300;
+  const summary = authenticated
+    ? `Credential-Probe erfolgreich (Status ${probeResult.status}).`
+    : probeResult.status !== null
+      ? `Credential-Probe fehlgeschlagen (Status ${probeResult.status}).`
+      : `Credential-Probe konnte nicht ausgeführt werden${probeResult.error ? `: ${probeResult.error}` : ""}.`;
+
+  const errorMessage = authenticated
+    ? null
+    : probeResult.error || (probeResult.status ? `Probe antwortete mit Status ${probeResult.status}.` : "Probe konnte nicht ausgeführt werden.");
+
+  return {
+    ...recommendation,
+    recommended_probe: { ...recommendation.recommended_probe, url: resolvedProbeUrl },
+    probe_result: probeResult,
+    authenticated,
+    summary,
+    error_message: errorMessage,
+  } satisfies AuthFlowResult;
 }
 

@@ -359,33 +359,76 @@ const normalizeAuthFlowResult = (input: unknown): AuthFlowResult | null => {
     return null;
   }
 
-  const candidate = input as Partial<AuthFlowResult>;
+  const candidate = input as Partial<AuthFlowResult> & {
+    recommended_probe?: unknown;
+    probe_result?: unknown;
+  };
 
-  if (typeof candidate.authenticated !== "boolean") {
-    return null;
+  let recommendedProbe: AuthFlowResult["recommended_probe"] = null;
+  if (candidate.recommended_probe && typeof candidate.recommended_probe === "object" && !Array.isArray(candidate.recommended_probe)) {
+    const probe = candidate.recommended_probe as Record<string, unknown>;
+    const method = typeof probe.method === "string" && probe.method.trim().length > 0 ? probe.method.trim() : null;
+    const url = typeof probe.url === "string" && probe.url.trim().length > 0 ? probe.url.trim() : null;
+    const requiresAuth =
+      typeof probe.requires_auth === "boolean"
+        ? probe.requires_auth
+        : probe.requires_auth === undefined
+          ? true
+          : Boolean(probe.requires_auth);
+
+    if (method && url) {
+      recommendedProbe = {
+        method: method.toUpperCase(),
+        url,
+        requires_auth: requiresAuth,
+      };
+    }
   }
 
-  const permissions = Array.isArray(candidate.permissions)
-    ? candidate.permissions.filter((permission): permission is string => typeof permission === "string")
-    : [];
+  let probeResult: AuthFlowResult["probe_result"] = null;
+  if (candidate.probe_result && typeof candidate.probe_result === "object" && !Array.isArray(candidate.probe_result)) {
+    const probe = candidate.probe_result as Record<string, unknown>;
+    const status = typeof probe.status === "number" ? probe.status : null;
+    const body = "body" in probe ? (probe.body as unknown) : null;
+    const error = typeof probe.error === "string" ? probe.error : null;
+    const evidence = probe.evidence && typeof probe.evidence === "object" && !Array.isArray(probe.evidence)
+      ? (probe.evidence as { request_url?: string; method?: string; used_headers?: string[]; timestamp?: string })
+      : { request_url: "", method: "", used_headers: [], timestamp: "" };
 
-  const validationEvidence =
-    candidate.validation_evidence && typeof candidate.validation_evidence === "object" && !Array.isArray(candidate.validation_evidence)
-      ? (candidate.validation_evidence as Record<string, unknown>)
-      : {};
+    probeResult = {
+      status,
+      body,
+      error,
+      evidence: {
+        request_url: typeof evidence.request_url === "string" ? evidence.request_url : "",
+        method: typeof evidence.method === "string" ? evidence.method : "",
+        used_headers: Array.isArray(evidence.used_headers)
+          ? evidence.used_headers.filter((header): header is string => typeof header === "string")
+          : [],
+        timestamp: typeof evidence.timestamp === "string" ? evidence.timestamp : "",
+      },
+    };
+  }
 
-  const summary =
-    typeof candidate.summary === "string" && candidate.summary.trim().length > 0
-      ? candidate.summary.trim()
-      : candidate.authenticated
-        ? "Credentials wurden validiert und ein API-Zugriff war möglich."
-        : "Authentifizierung ist fehlgeschlagen.";
+  const probeStatus = probeResult?.status ?? null;
+
+  const authenticated = typeof candidate.authenticated === "boolean"
+    ? candidate.authenticated
+    : probeStatus !== null
+      ? probeStatus >= 200 && probeStatus < 300
+      : null;
+
+  const summary = typeof candidate.summary === "string" && candidate.summary.trim().length > 0
+    ? candidate.summary.trim()
+    : null;
 
   return {
-    authenticated: candidate.authenticated,
-    auth_method: typeof candidate.auth_method === "string" ? candidate.auth_method : null,
-    permissions,
-    validation_evidence: validationEvidence,
+    system: typeof candidate.system === "string" ? candidate.system : null,
+    base_url: typeof candidate.base_url === "string" ? candidate.base_url : null,
+    recommended_probe: recommendedProbe,
+    reasoning: typeof candidate.reasoning === "string" ? candidate.reasoning : null,
+    probe_result: probeResult,
+    authenticated,
     summary,
     error_message: typeof candidate.error_message === "string" ? candidate.error_message : null,
     raw_output: typeof candidate.raw_output === "string" ? candidate.raw_output : "",
@@ -826,8 +869,8 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
             const statusLabel = result.authenticated ? "erfolgreich" : "fehlgeschlagen";
             const summaryParts = [
               system,
-              result.auth_method ? `Methode: ${result.auth_method}` : null,
-              result.permissions.length > 0 ? `${result.permissions.length} Berechtigungen` : null,
+              result.recommended_probe ? `${result.recommended_probe.method} Probe` : null,
+              result.summary || result.reasoning,
             ].filter(Boolean);
 
             const titleParts = [
@@ -836,7 +879,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
             ].filter(Boolean);
 
             if (!result.authenticated) {
-              const errorMsg = result.error_message || "Authentifizierung fehlgeschlagen";
+              const errorMsg = result.error_message || result.summary || result.reasoning || "Authentifizierung fehlgeschlagen";
               await appendActivity("error", `${titleParts.join(" · ")} - ${errorMsg}`);
               toast.error(`Authentifizierung fehlgeschlagen (${scopeLabel}): ${errorMsg}`);
               const errorPayload = scope === "source"

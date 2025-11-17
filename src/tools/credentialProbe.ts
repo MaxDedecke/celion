@@ -1,5 +1,3 @@
-import fetch, { Headers } from "node-fetch";
-
 export interface CredentialProbeRequest {
   url: string;                // vollständige API-URL
   method: string;             // GET, POST etc.
@@ -49,7 +47,7 @@ export async function credentialProbe(
       evidence: {
         request_url: req.url,
         method: req.method,
-        used_headers,
+        used_headers: usedHeaders,
         timestamp
       }
     };
@@ -62,7 +60,7 @@ export async function credentialProbe(
       evidence: {
         request_url: req.url,
         method: req.method,
-        used_headers,
+        used_headers: usedHeaders,
         timestamp
       }
     };

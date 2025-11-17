@@ -21,12 +21,20 @@ export interface SystemDetectionStepResult {
   target: SystemDetectionResult | null;
 }
 
+export interface AuthFlowRecommendation {
+  method: string;
+  url: string;
+  requires_auth: boolean;
+}
+
 export interface AuthFlowResult {
-  authenticated: boolean;
-  auth_method: string | null;
-  permissions: string[];
-  validation_evidence: Record<string, unknown>;
-  summary: string;
+  system: string | null;
+  base_url: string | null;
+  recommended_probe: AuthFlowRecommendation | null;
+  reasoning: string | null;
+  probe_result: import("@/tools/credentialProbe").CredentialProbeResult | null;
+  authenticated: boolean | null;
+  summary: string | null;
   error_message: string | null;
   raw_output: string;
 }

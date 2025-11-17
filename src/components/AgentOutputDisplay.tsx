@@ -57,26 +57,36 @@ const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayPr
     }
 
     // Check if it's an AuthFlowResult
-    const isAuthFlow = "authenticated" in result;
+    const isAuthFlow = Boolean(result && ("recommended_probe" in result || "authenticated" in result));
+
+    const authResult = isAuthFlow ? (result as AuthFlowResult) : null;
+
+    const renderStatusIcon = () => {
+      if (isAuthFlow) {
+        if (authResult?.authenticated === true) {
+          return <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />;
+        }
+
+        if (authResult?.authenticated === false) {
+          return <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />;
+        }
+
+        return <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />;
+      }
+
+      return (result as SystemDetectionResult).detected ? (
+        <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+      ) : (
+        <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
+      );
+    };
 
     return (
       <Card className="h-full">
         <CardHeader>
           <CardTitle className="text-lg flex items-center gap-2">
             {title}
-            {isAuthFlow ? (
-              result.authenticated ? (
-                <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
-              ) : (
-                <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
-              )
-            ) : (
-              (result as SystemDetectionResult).detected ? (
-                <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
-              ) : (
-                <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
-              )
-            )}
+            {renderStatusIcon()}
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-5">
@@ -117,83 +127,115 @@ const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayPr
             </div>
           )}
 
-          {isAuthFlow && result.summary && (
-            <div className="space-y-2 p-3 rounded-md bg-muted/40">
-              <p className="text-xs text-muted-foreground">Zusammenfassung</p>
-              <p className="text-sm text-foreground leading-relaxed">{result.summary}</p>
-            </div>
-          )}
-
           {/* Auth Flow specific information */}
           {isAuthFlow && (
             <>
               <div className="grid gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
                   <p className="text-xs text-muted-foreground">Status</p>
-                  <Badge variant={result.authenticated ? "default" : "destructive"} className="text-sm">
-                    {result.authenticated ? "Erfolgreich authentifiziert" : "Authentifizierung fehlgeschlagen"}
+                  <Badge
+                    variant={
+                      authResult?.authenticated === true
+                        ? "default"
+                        : authResult?.authenticated === false
+                          ? "destructive"
+                          : "secondary"
+                    }
+                    className="text-sm"
+                  >
+                    {authResult?.authenticated === true
+                      ? "Erfolgreich authentifiziert"
+                      : authResult?.authenticated === false
+                        ? "Authentifizierung fehlgeschlagen"
+                        : "Noch kein Ergebnis"}
                   </Badge>
                 </div>
-                {result.auth_method && (
+
+                {authResult?.recommended_probe && (
                   <div className="space-y-2">
-                    <p className="text-xs text-muted-foreground">Methode</p>
-                    <p className="text-sm font-medium">{result.auth_method}</p>
+                    <p className="text-xs text-muted-foreground">Probe</p>
+                    <div className="flex flex-wrap items-center gap-2 text-sm">
+                      <Badge variant="secondary" className="text-xs uppercase tracking-wide">
+                        {authResult.recommended_probe.method}
+                      </Badge>
+                      <span className="font-mono break-all text-xs sm:text-sm">{authResult.recommended_probe.url}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Auth erforderlich: {authResult.recommended_probe.requires_auth ? "Ja" : "Nein"}
+                    </p>
                   </div>
                 )}
               </div>
 
-              {result.authenticated && result.permissions && result.permissions.length > 0 && (
+              {(authResult?.summary || authResult?.reasoning) && (
                 <div className="space-y-2">
-                  <p className="text-xs text-muted-foreground">Berechtigungen ({result.permissions.length})</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {result.permissions.map((permission, index) => (
-                      <Badge key={index} variant="secondary" className="text-xs">
-                        {permission}
+                  <p className="text-xs text-muted-foreground">Zusammenfassung</p>
+                  <p className="text-sm leading-relaxed text-foreground">
+                    {authResult?.summary || authResult?.reasoning}
+                  </p>
+                </div>
+              )}
+
+              {authResult?.probe_result && (
+                <div className="space-y-3 p-3 rounded-md bg-muted/40">
+                  <div className="flex items-center gap-2">
+                    <p className="text-xs text-muted-foreground">Probe-Ergebnis</p>
+                    {typeof authResult.probe_result.status === "number" && (
+                      <Badge
+                        variant={
+                          authResult.probe_result.status >= 200 && authResult.probe_result.status < 300
+                            ? "default"
+                            : "destructive"
+                        }
+                        className="text-xs"
+                      >
+                        Status {authResult.probe_result.status}
                       </Badge>
-                    ))}
+                    )}
                   </div>
+
+                  {authResult.probe_result.error && (
+                    <p className="text-xs text-destructive">{authResult.probe_result.error}</p>
+                  )}
+
+                  {authResult.probe_result.body && (
+                    <pre className="whitespace-pre-wrap break-all text-xs font-mono bg-background/60 rounded-md p-2 border border-muted">
+                      {typeof authResult.probe_result.body === "string"
+                        ? authResult.probe_result.body
+                        : JSON.stringify(authResult.probe_result.body, null, 2)}
+                    </pre>
+                  )}
+
+                  {authResult.probe_result.evidence && (
+                    <div className="space-y-2 text-xs text-muted-foreground">
+                      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
+                        <span className="font-medium text-foreground">Anfrage</span>
+                        {authResult.probe_result.evidence.timestamp && (
+                          <span>{new Date(authResult.probe_result.evidence.timestamp).toLocaleString()}</span>
+                        )}
+                      </div>
+                      <div className="flex flex-col gap-1 font-mono">
+                        {authResult.probe_result.evidence.method && <span>Method: {authResult.probe_result.evidence.method}</span>}
+                        {authResult.probe_result.evidence.request_url && (
+                          <span className="break-all">URL: {authResult.probe_result.evidence.request_url}</span>
+                        )}
+                        {authResult.probe_result.evidence.used_headers &&
+                          authResult.probe_result.evidence.used_headers.length > 0 && (
+                            <span>Headers: {authResult.probe_result.evidence.used_headers.join(", ")}</span>
+                          )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {authResult?.error_message && (
+                <div className="space-y-2 p-3 rounded-md bg-destructive/10 border border-destructive/20">
+                  <p className="text-xs text-muted-foreground">Fehler</p>
+                  <p className="text-sm text-destructive">{authResult.error_message}</p>
                 </div>
               )}
             </>
-          )}
-
-          {isAuthFlow && result.error_message && (
-            <div className="space-y-2 p-3 rounded-md bg-destructive/10 border border-destructive/20">
-              <p className="text-xs text-muted-foreground">Fehler</p>
-              <p className="text-sm text-destructive">{result.error_message}</p>
-            </div>
-          )}
-
-          {isAuthFlow && result.validation_evidence && Object.keys(result.validation_evidence).length > 0 && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <AlertCircle className="h-4 w-4 text-muted-foreground" />
-                <p className="text-xs font-medium text-muted-foreground">Validierungs-Details</p>
-              </div>
-              <div className="space-y-2">
-                {Object.entries(result.validation_evidence).map(([key, value]) => {
-                  if (!value) return null;
-
-                  let displayValue: string;
-                  if (Array.isArray(value)) {
-                    displayValue = value.join(", ");
-                  } else if (typeof value === "object") {
-                    displayValue = JSON.stringify(value, null, 2);
-                  } else {
-                    displayValue = String(value);
-                  }
-
-                  return (
-                    <div key={key} className="flex flex-col gap-1 p-3 rounded-md bg-muted/40">
-                      <p className="text-xs font-medium text-foreground">{key}</p>
-                      <p className="text-xs text-muted-foreground font-mono break-all">
-                        {displayValue}
-                      </p>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
           )}
 
           {/* System Detection specific information */}
