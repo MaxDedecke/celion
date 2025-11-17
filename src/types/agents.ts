@@ -26,6 +26,7 @@ export interface AuthFlowResult {
   auth_method: string | null;
   permissions: string[];
   validation_evidence: Record<string, unknown>;
+  summary: string;
   error_message: string | null;
   raw_output: string;
 }

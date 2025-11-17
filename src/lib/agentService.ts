@@ -153,10 +153,11 @@ const createAuthFlowAssistant = async (
     "Du bist der Celion Auth Flow Agent.",
     "Hier hast du API Token oder Username & Password, ein System und seine Base-URL.",
     "Recherchiere anhand deines Wissens, wie man die API des Systems anspricht (REST, GraphQL, SOAP oder proprietäre Varianten) und welche Endpunkte oder Queries geeignet sind, um die Credentials zu validieren.",
-    "Setze selbstständig geeignete GET- oder POST-Requests mit eigenen Headern und Bodies (z. B. GraphQL Queries als JSON) ab und werte die Antworten aus.",
+    "Setze ausschließlich mit den bereitgestellten Credentials geeignete GET- oder POST-Requests mit eigenen Headern und Bodies (z. B. GraphQL Queries als JSON) ab und werte die Antworten aus. Verwende keine fiktiven oder zufälligen Tokens.",
     "Führe mehrere Versuche durch, bis klar ist, ob die Authentifizierung gelingt. Ziel ist es, mindestens einmal echte Daten abzurufen (z. B. whoami/me-Endpunkte).",
-    "Dokumentiere in validation_evidence exakt, welche Endpunkte mit welchen Methoden, Headern und Bodies getestet wurden sowie welche Antworten zurückkamen.",
-    "Antworte ausschließlich als JSON mit den Feldern authenticated (boolean), auth_method (string), permissions (array von strings), validation_evidence (object) und error_message (string oder null).",
+    "Dokumentiere in validation_evidence exakt, welche Endpunkte mit welchen Methoden, Headern und Bodies getestet wurden sowie welche Antworten zurückkamen. Notiere auch, welcher Authorization-Header oder welches Auth-Verfahren mit den gelieferten Credentials verwendet wurde.",
+    "Antworte ausschließlich als JSON mit den Feldern authenticated (boolean), auth_method (string), permissions (array von strings), validation_evidence (object), summary (string) und error_message (string oder null).",
+    "Die summary muss in einem Satz klarstellen, ob die hinterlegten Credentials valide sind und ob die Schnittstelle erfolgreich angesprochen werden konnte.",
     "Wenn der Zugriff fehlschlägt, erkläre präzise warum und was beim Versuch falsch lief (z. B. fehlende Header, falsches Token, unerwartetes Protokoll).",
   ].join(" ");
 
@@ -561,6 +562,13 @@ const parseAuthFlowResultFromMessage = (message: OpenAiMessage | null): AuthFlow
       ? (parsed.validation_evidence as Record<string, unknown>)
       : {};
 
+  const normalizedSummary =
+    typeof parsed.summary === "string" && parsed.summary.trim().length > 0
+      ? parsed.summary.trim()
+      : parsed.authenticated
+        ? "Credentials validiert: Schnittstelle ist erreichbar und authentifizierte Antworten wurden empfangen."
+        : "Authentifizierung fehlgeschlagen: Schnittstelle konnte nicht mit den angegebenen Zugangsdaten genutzt werden.";
+
   const normalizedAuthMethod =
     typeof parsed.auth_method === "string" && parsed.auth_method.trim().length > 0 ? parsed.auth_method : null;
 
@@ -572,6 +580,7 @@ const parseAuthFlowResultFromMessage = (message: OpenAiMessage | null): AuthFlow
     auth_method: normalizedAuthMethod,
     permissions,
     validation_evidence: validationEvidence,
+    summary: normalizedSummary,
     error_message: normalizedErrorMessage,
     raw_output: textContent,
   } satisfies AuthFlowResult;
@@ -608,9 +617,9 @@ export async function runAuthFlowAgent(
 
   const messageContent = [
     `${credentialsDescription} System: ${system}. Base-URL: ${normalizedBaseUrl}. Authentifizierungstyp: ${authType}.`,
-    "Recherchiere selbstständig, wie die API dieses Systems angesprochen wird (REST, GraphQL, SOAP etc.) und welche Endpunkte oder Queries sich eignen, um einen ersten Datenzugriff zu testen.",
-    "Setze selbstständig echte Requests mit passenden Methoden, Headern und Bodies (z. B. GraphQL Queries als JSON) ab und spiegle die Ergebnisse zurück.",
-    "Starte mindestens einen konkreten Datenzugriff. Wenn du Zugriff erhältst, melde Erfolg und die gefundenen Berechtigungen. Wenn nicht, gib exakt zurück, warum es nicht funktioniert hat und welche Schritte fehlgeschlagen sind.",
+    "Recherchiere selbstständig, wie die API dieses Systems angesprochen wird (REST, GraphQL, SOAP etc.) und welche Endpunkte oder Queries sich eignen, um einen ersten Datenzugriff zu testen. Nutze dafür ausschließlich die oben beschriebenen Credentials.",
+    "Setze selbstständig echte Requests mit passenden Methoden, Headern und Bodies (z. B. GraphQL Queries als JSON) ab und spiegle die Ergebnisse zurück. Dokumentiere den verwendeten Authorization-Header und weise nach, dass die gelieferten Credentials genutzt wurden.",
+    "Starte mindestens einen konkreten Datenzugriff. Wenn du Zugriff erhältst, melde Erfolg, die gefundenen Berechtigungen und bestätige dies in einer summary. Wenn nicht, gib exakt zurück, warum es nicht funktioniert hat und welche Schritte fehlgeschlagen sind, inklusive einer summary.",
   ].join(" ");
 
   const messageResponse = await fetch(`${openAiBaseUrl}/threads/${threadId}/messages`, {

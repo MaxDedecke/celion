@@ -374,11 +374,19 @@ const normalizeAuthFlowResult = (input: unknown): AuthFlowResult | null => {
       ? (candidate.validation_evidence as Record<string, unknown>)
       : {};
 
+  const summary =
+    typeof candidate.summary === "string" && candidate.summary.trim().length > 0
+      ? candidate.summary.trim()
+      : candidate.authenticated
+        ? "Credentials wurden validiert und ein API-Zugriff war möglich."
+        : "Authentifizierung ist fehlgeschlagen.";
+
   return {
     authenticated: candidate.authenticated,
     auth_method: typeof candidate.auth_method === "string" ? candidate.auth_method : null,
     permissions,
     validation_evidence: validationEvidence,
+    summary,
     error_message: typeof candidate.error_message === "string" ? candidate.error_message : null,
     raw_output: typeof candidate.raw_output === "string" ? candidate.raw_output : "",
   };

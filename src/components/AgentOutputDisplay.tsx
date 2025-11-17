@@ -117,6 +117,13 @@ const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayPr
             </div>
           )}
 
+          {isAuthFlow && result.summary && (
+            <div className="space-y-2 p-3 rounded-md bg-muted/40">
+              <p className="text-xs text-muted-foreground">Zusammenfassung</p>
+              <p className="text-sm text-foreground leading-relaxed">{result.summary}</p>
+            </div>
+          )}
+
           {/* Auth Flow specific information */}
           {isAuthFlow && (
             <>
