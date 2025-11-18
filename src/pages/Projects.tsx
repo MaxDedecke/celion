@@ -247,9 +247,9 @@ const Projects = () => {
         sourceAuth,
         targetAuth,
       } = migrationData;
-      const targetAuthDetail = targetAuth.authType === "token" ? AUTH_DETAIL_TOKEN : AUTH_DETAIL_CREDENTIALS;
-      const sourceConnectorAuthType = sourceAuth.authType === "token" ? "api_key" : "basic";
-      const targetConnectorAuthType = targetAuth.authType === "token" ? "api_key" : "basic";
+      const targetAuthDetail = AUTH_DETAIL_TOKEN;
+      const sourceConnectorAuthType = "api_key";
+      const targetConnectorAuthType = "api_key";
 
       const { data: migration, error: migrationError } = await supabase
         .from('migrations')
@@ -275,18 +275,18 @@ const Projects = () => {
         migration_id: migration.id,
         api_url: sourceUrl,
         auth_type: sourceConnectorAuthType,
-        api_key: sourceAuth.authType === "token" ? sourceAuth.apiToken ?? null : null,
-        username: sourceAuth.authType === "credentials" ? sourceAuth.username ?? null : null,
-        password: sourceAuth.authType === "credentials" ? sourceAuth.password ?? null : null,
+        api_key: sourceAuth.apiToken ?? null,
+        username: sourceAuth.email ?? null,
+        password: sourceAuth.password ?? null,
       };
 
       const targetConnectorPayload = {
         migration_id: migration.id,
         api_url: targetUrl,
         auth_type: targetConnectorAuthType,
-        api_key: targetAuth.authType === "token" ? targetAuth.apiToken ?? null : null,
-        username: targetAuth.authType === "credentials" ? targetAuth.username ?? null : null,
-        password: targetAuth.authType === "credentials" ? targetAuth.password ?? null : null,
+        api_key: targetAuth.apiToken ?? null,
+        username: targetAuth.email ?? null,
+        password: targetAuth.password ?? null,
       };
 
       const { error: connectorError } = await supabase

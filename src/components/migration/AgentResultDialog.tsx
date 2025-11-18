@@ -12,6 +12,7 @@ interface AgentResultDialogProps {
   structuredResult: SystemDetectionResult | SystemDetectionStepResult | AuthFlowResult | AuthFlowStepResult | null;
   sourceResult: SystemDetectionResult | AuthFlowResult | null;
   targetResult: SystemDetectionResult | AuthFlowResult | null;
+  rawOutput?: string | null;
 }
 
 const AgentResultDialog = ({
@@ -22,6 +23,7 @@ const AgentResultDialog = ({
   structuredResult,
   sourceResult,
   targetResult,
+  rawOutput,
 }: AgentResultDialogProps) => {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -43,6 +45,28 @@ const AgentResultDialog = ({
             </pre>
           ) : (
             <p className="p-4 text-sm text-muted-foreground">Für diesen Schritt wurde kein Agenten-Output gespeichert.</p>
+          )}
+
+          {rawOutput && (
+            <div className="mt-6">
+              <div className="flex items-center gap-2">
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <button
+                      type="button"
+                      className="inline-flex cursor-pointer text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                    >
+                      Gesamter Raw Output anzeigen
+                    </button>
+                  </PopoverTrigger>
+                  <PopoverContent side="top" align="start" className="w-[min(90vw,720px)] max-w-[min(90vw,820px)] p-0">
+                    <ScrollArea className="max-h-[60vh]">
+                      <pre className="whitespace-pre-wrap break-all text-left text-xs font-mono px-4 py-3">{rawOutput}</pre>
+                    </ScrollArea>
+                  </PopoverContent>
+                </Popover>
+              </div>
+            </div>
           )}
         </ScrollArea>
       </DialogContent>

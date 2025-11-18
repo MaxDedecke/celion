@@ -366,7 +366,7 @@ const normalizeAuthFlowResult = (input: unknown): AuthFlowResult | null => {
 
   let recommendedProbe: AuthFlowResult["recommended_probe"] = null;
   if (candidate.recommended_probe && typeof candidate.recommended_probe === "object" && !Array.isArray(candidate.recommended_probe)) {
-    const probe = candidate.recommended_probe as Record<string, unknown>;
+    const probe = candidate.recommended_probe as unknown as Record<string, unknown>;
     const method = typeof probe.method === "string" && probe.method.trim().length > 0 ? probe.method.trim() : null;
     const url = typeof probe.url === "string" && probe.url.trim().length > 0 ? probe.url.trim() : null;
     const requiresAuth =
@@ -387,7 +387,7 @@ const normalizeAuthFlowResult = (input: unknown): AuthFlowResult | null => {
 
   let probeResult: AuthFlowResult["probe_result"] = null;
   if (candidate.probe_result && typeof candidate.probe_result === "object" && !Array.isArray(candidate.probe_result)) {
-    const probe = candidate.probe_result as Record<string, unknown>;
+    const probe = candidate.probe_result as unknown as Record<string, unknown>;
     const status = typeof probe.status === "number" ? probe.status : null;
     const body = "body" in probe ? (probe.body as unknown) : null;
     const rawResponse = typeof probe.raw_response === "string" ? probe.raw_response : null;
@@ -1895,6 +1895,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const {
     formatted: agentResultDialogFormatted,
     structuredResult: agentResultDialogStructured,
+    rawOutput: agentResultDialogRawOutput,
   } = useMemo(() => {
     if (
       !agentResultDialogNode ||
@@ -2329,6 +2330,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         structuredResult={agentResultDialogStructured}
         sourceResult={agentDialogSourceResult}
         targetResult={agentDialogTargetResult}
+        rawOutput={agentResultDialogRawOutput}
       />
 
       <WorkflowPanelDialog
