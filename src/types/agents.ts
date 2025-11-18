@@ -21,10 +21,23 @@ export interface SystemDetectionStepResult {
   target: SystemDetectionResult | null;
 }
 
+export type ApiRequestFormat = "rest_json" | "graphql" | "soap_xml" | "xml";
+
+export type AuthScheme = "basic" | "bearer" | "none";
+
+export interface GraphqlProbeConfig {
+  query: string;
+  operation_name?: string | null;
+  variables?: Record<string, unknown> | null;
+}
+
 export interface AuthFlowRecommendation {
   method: string;
   url: string;
   requires_auth: boolean;
+  api_format?: ApiRequestFormat;
+  auth_scheme?: AuthScheme;
+  graphql?: GraphqlProbeConfig | null;
 }
 
 export interface AuthFlowResult {

@@ -1,4 +1,11 @@
-import type { SystemDetectionEvidence, SystemDetectionResult, AuthFlowResult } from "@/types/agents";
+import type {
+  SystemDetectionEvidence,
+  SystemDetectionResult,
+  AuthFlowResult,
+  AuthFlowRecommendation,
+  AuthScheme,
+  ApiRequestFormat,
+} from "@/types/agents";
 import { credentialProbe } from "@/tools/credentialProbe";
 
 const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
@@ -154,9 +161,10 @@ const createAuthFlowAssistant = async (
     "Du bist der Celion Auth Flow Agent.",
     "Du generierst KEINE Header. Du generierst KEINE Tokens. Du generierst KEIN Base64. Du erzeugst nur den Probe-Endpunkt und die HTTP-Methode.",
     "Recherchiere anhand deines Wissens, welcher authentifizierungspflichtige Endpunkt und welche HTTP-Methode sich am besten eignen, um Zugangsdaten zu validieren.",
-    "Dokumentiere keine Header, keine Bodies und keine Beispiel-Tokens. Liefere nur einen konkreten Endpunkt, die HTTP-Methode und ob der Aufruf Authentifizierung erfordert.",
-    "Antworte ausschließlich als JSON mit den Feldern system, base_url, recommended_probe { method, url, requires_auth } und reasoning. Keine weiteren Felder, keine Platzhalter.",
-    "Erkläre in reasoning kurz, warum der Endpunkt authentifizierte Daten liefert.",
+    "Dokumentiere keine Header, keine Beispiel-Tokens. Liefere nur einen konkreten Endpunkt, die HTTP-Methode, ob der Aufruf Authentifizierung erfordert, welches API-Format genutzt wird (REST/JSON, GraphQL oder SOAP/XML) und welche Authentifizierung üblich ist (basic|bearer|none).",
+    "Antworte ausschließlich als JSON mit den Feldern system, base_url, recommended_probe { method, url, requires_auth, api_format (rest_json|graphql|soap_xml|xml), auth_scheme (basic|bearer|none)?, graphql { query, operation_name?, variables? } } und reasoning. Keine weiteren Felder, keine Platzhalter.",
+    "Gib für die URL immer die vollständige und kanonische API-Route an (z.B. https://api.monday.com/v2).",
+    "Erkläre in reasoning kurz, warum der Endpunkt authentifizierte Daten liefert und welches Format (REST/GraphQL/SOAP) erforderlich ist.",
   ].join(" ");
 
   const response = await fetch(`${baseUrl}/assistants`, {
@@ -566,8 +574,44 @@ const parseAuthFlowResultFromMessage = (message: OpenAiMessage | null): AuthFlow
     const requiresAuth =
       typeof probe.requires_auth === "boolean" ? probe.requires_auth : probe.requires_auth === undefined ? true : Boolean(probe.requires_auth);
 
+    const rawApiFormat = typeof probe.api_format === "string" ? probe.api_format.trim().toLowerCase() : null;
+    const apiFormat: AuthFlowRecommendation["api_format"] =
+      rawApiFormat === "graphql" || rawApiFormat === "rest_json" || rawApiFormat === "soap_xml" || rawApiFormat === "xml"
+        ? (rawApiFormat as AuthFlowRecommendation["api_format"])
+        : undefined;
+
+    const rawAuthScheme = typeof probe.auth_scheme === "string" ? probe.auth_scheme.trim().toLowerCase() : null;
+    const authScheme: AuthFlowRecommendation["auth_scheme"] =
+      rawAuthScheme === "bearer" || rawAuthScheme === "basic" || rawAuthScheme === "none"
+        ? (rawAuthScheme as AuthFlowRecommendation["auth_scheme"])
+        : undefined;
+
+    let graphqlConfig: AuthFlowRecommendation["graphql"] = null;
+    if (probe.graphql && typeof probe.graphql === "object" && !Array.isArray(probe.graphql)) {
+      const graphql = probe.graphql as Record<string, unknown>;
+      const query = typeof graphql.query === "string" && graphql.query.trim().length > 0 ? graphql.query.trim() : null;
+      const operationName =
+        typeof graphql.operation_name === "string" && graphql.operation_name.trim().length > 0
+          ? graphql.operation_name.trim()
+          : null;
+      const variables = graphql.variables && typeof graphql.variables === "object" && !Array.isArray(graphql.variables)
+        ? (graphql.variables as Record<string, unknown>)
+        : null;
+
+      if (query) {
+        graphqlConfig = { query, operation_name: operationName, variables };
+      }
+    }
+
     if (method && url) {
       recommendedProbe = { method, url, requires_auth: requiresAuth };
+      if (apiFormat) {
+        recommendedProbe.api_format = apiFormat;
+      }
+      if (authScheme) {
+        recommendedProbe.auth_scheme = authScheme;
+      }
+      recommendedProbe.graphql = graphqlConfig;
     }
   }
 
@@ -628,8 +672,8 @@ export async function runAuthFlowAgent(
   const messageContent = [
     `System: ${system}. Base-URL: ${normalizedBaseUrl}.`,
     "Liefere nur Endpunkt und HTTP Methode für Authentifizierung.",
-    "Antworte ausschließlich als JSON mit den Feldern system, base_url, recommended_probe { method, url, requires_auth }, reasoning.",
-    "Keine Header, keine Bodies, keine Tokens, kein Base64, keine Platzhalter.",
+    "Antworte ausschließlich als JSON mit den Feldern system, base_url, recommended_probe { method, url, requires_auth, api_format (rest_json|graphql|soap_xml|xml), auth_scheme (basic|bearer|none)?, graphql { query, operation_name?, variables? } }, reasoning.",
+    "Keine Header, keine Beispiel-Tokens, kein Base64, keine Platzhalter. Falls GraphQL erforderlich ist, gib den passenden GraphQL-Query an. Gib immer die vollständige API-URL zurück (z.B. https://api.monday.com/v2).",
   ].join(" ");
 
   const messageResponse = await fetch(`${openAiBaseUrl}/threads/${threadId}/messages`, {
@@ -672,24 +716,70 @@ export async function runAuthFlowAgent(
   const probeBaseUrl = recommendation.base_url ?? normalizedBaseUrl;
   const resolvedProbeUrl = resolveProbeUrl(recommendation.recommended_probe.url, probeBaseUrl);
 
+  const requestFormat: ApiRequestFormat = recommendation.recommended_probe.api_format ?? "rest_json";
+  const probeHeaders: Record<string, string> = {};
+
+  if (requestFormat === "graphql" || requestFormat === "rest_json") {
+    probeHeaders.Accept = "application/json";
+  } else if (requestFormat === "soap_xml" || requestFormat === "xml") {
+    probeHeaders.Accept = "application/soap+xml, text/xml";
+  } else {
+    probeHeaders.Accept = "*/*";
+  }
+
   const credentialPayload = `${email}:${apiToken}`;
-  const basic =
-    typeof btoa === "function"
-      ? btoa(credentialPayload)
-      : typeof Buffer !== "undefined"
-        ? Buffer.from(credentialPayload).toString("base64")
-        : (() => {
-            throw new Error("Base64-Encoding wird nicht unterstützt.");
-          })();
-  const probeHeaders = {
-    Authorization: `Basic ${basic}`,
-    Accept: "application/json",
-  };
+  const authScheme: AuthScheme =
+    recommendation.recommended_probe.auth_scheme && ["basic", "bearer", "none"].includes(recommendation.recommended_probe.auth_scheme)
+      ? (recommendation.recommended_probe.auth_scheme as AuthScheme)
+      : requestFormat === "graphql"
+        ? "bearer"
+        : email.trim()
+          ? "basic"
+          : "bearer";
+
+  if (recommendation.recommended_probe.requires_auth !== false && authScheme !== "none") {
+    if (authScheme === "bearer") {
+      probeHeaders.Authorization = `Bearer ${apiToken}`;
+    } else if (authScheme === "basic") {
+      const basic =
+        typeof btoa === "function"
+          ? btoa(credentialPayload)
+          : typeof Buffer !== "undefined"
+            ? Buffer.from(credentialPayload).toString("base64")
+            : (() => {
+                throw new Error("Base64-Encoding wird nicht unterstützt.");
+              })();
+      probeHeaders.Authorization = `Basic ${basic}`;
+    }
+  }
+
+  const graphqlPayload = recommendation.recommended_probe.graphql;
+
+  let probeBody: unknown = undefined;
+  if (requestFormat === "graphql") {
+    probeHeaders["Content-Type"] = "application/json";
+    const query = graphqlPayload?.query?.trim() || "{ __typename }";
+    const operationName = graphqlPayload?.operation_name?.trim();
+    const variables = graphqlPayload?.variables ?? null;
+
+    probeBody = {
+      query,
+      ...(operationName ? { operationName } : {}),
+      ...(variables ? { variables } : {}),
+    };
+  } else if (requestFormat === "soap_xml" || requestFormat === "xml") {
+    if (!probeHeaders["Content-Type"]) {
+      probeHeaders["Content-Type"] = "application/soap+xml";
+    }
+  }
 
   const probeResult = await credentialProbe({
     url: resolvedProbeUrl,
     method: recommendation.recommended_probe.method,
     headers: probeHeaders,
+    body: probeBody,
+    request_format: requestFormat,
+    graphql: graphqlPayload ?? null,
   });
 
   const authenticated = probeResult.status !== null && probeResult.status >= 200 && probeResult.status < 300;

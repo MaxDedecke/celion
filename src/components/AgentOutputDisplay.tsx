@@ -163,6 +163,34 @@ const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayPr
                     <p className="text-xs text-muted-foreground">
                       Auth erforderlich: {authResult.recommended_probe.requires_auth ? "Ja" : "Nein"}
                     </p>
+                    {authResult.recommended_probe.api_format && (
+                    <p className="text-xs text-muted-foreground">
+                      API-Format:
+                      {authResult.recommended_probe.api_format === "graphql"
+                        ? " GraphQL"
+                        : authResult.recommended_probe.api_format === "soap_xml" || authResult.recommended_probe.api_format === "xml"
+                          ? " SOAP/XML"
+                          : " REST/JSON"}
+                    </p>
+                  )}
+                  {authResult.recommended_probe.auth_scheme && (
+                    <p className="text-xs text-muted-foreground">
+                      Authentifizierung:
+                      {authResult.recommended_probe.auth_scheme === "bearer"
+                        ? " Bearer"
+                        : authResult.recommended_probe.auth_scheme === "basic"
+                          ? " Basic"
+                          : " Keine"}
+                    </p>
+                  )}
+                  {authResult.recommended_probe.api_format === "graphql" && authResult.recommended_probe.graphql?.query && (
+                    <div className="mt-1 space-y-1">
+                      <p className="text-xs text-muted-foreground">GraphQL Query</p>
+                        <pre className="whitespace-pre-wrap break-words rounded-md bg-muted px-3 py-2 text-xs">
+                          {authResult.recommended_probe.graphql.query}
+                        </pre>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

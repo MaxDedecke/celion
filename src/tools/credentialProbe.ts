@@ -3,6 +3,12 @@ export interface CredentialProbeRequest {
   method: string;             // GET, POST etc.
   headers: Record<string, string>;
   body?: any | null;
+  request_format?: "rest_json" | "graphql";
+  graphql?: {
+    query: string;
+    operation_name?: string | null;
+    variables?: Record<string, unknown> | null;
+  } | null;
 }
 
 export interface CredentialProbeApiResponse {
@@ -49,6 +55,8 @@ export async function credentialProbe(
         url: req.url,
         headers: req.headers,
         body: req.body ?? null,
+        request_format: req.request_format,
+        graphql: req.graphql ?? null,
       }),
     });
 

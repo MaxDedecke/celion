@@ -55,6 +55,8 @@ class ProbeRequest(BaseModel):
     url: HttpUrl
     headers: dict[str, str]
     body: Any | None = None
+    request_format: str | None = None
+    graphql: dict[str, Any] | None = None
 
 
 class ProbeResponse(BaseModel):
@@ -100,21 +102,45 @@ async def run_credential_probe(payload: ProbeRequest) -> ProbeResponse:
     """Execute credential probe requests on the server to avoid browser CORS limits."""
 
     timestamp = datetime.now(timezone.utc).isoformat()
-    used_headers = list(payload.headers.keys())
+    headers = dict(payload.headers)
+    used_headers: list[str] = list(headers.keys())
 
     try:
         def _perform_request() -> requests.Response:
+            nonlocal used_headers
             request_kwargs: dict[str, Any] = {
                 "method": payload.method,
                 "url": str(payload.url),
-                "headers": payload.headers,
+                "headers": headers,
             }
 
-            if payload.body is not None:
-                if isinstance(payload.body, (dict, list)):
-                    request_kwargs["json"] = payload.body
+            request_body = payload.body
+
+            if (payload.request_format or "").lower() == "graphql":
+                graphql_payload = payload.graphql or {}
+                query = graphql_payload.get("query") or (payload.body if isinstance(payload.body, str) else None)
+                request_body = {
+                    "query": query or "{ __typename }",
+                    **(
+                        {"operationName": graphql_payload.get("operation_name")}
+                        if graphql_payload.get("operation_name")
+                        else {}
+                    ),
+                    **(
+                        {"variables": graphql_payload.get("variables")}
+                        if graphql_payload.get("variables") is not None
+                        else {}
+                    ),
+                }
+                headers.setdefault("Content-Type", "application/json")
+
+            if request_body is not None:
+                if isinstance(request_body, (dict, list)):
+                    request_kwargs["json"] = request_body
                 else:
-                    request_kwargs["data"] = payload.body
+                    request_kwargs["data"] = request_body
+
+            used_headers = list(headers.keys())
 
             return requests.request(**request_kwargs)
 

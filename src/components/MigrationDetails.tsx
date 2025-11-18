@@ -10,6 +10,7 @@ import type {
   SystemDetectionStepResult,
   AuthFlowResult,
   AuthFlowStepResult,
+  AuthFlowRecommendation,
 } from "@/types/agents";
 import { runSystemDetectionAgent, runAuthFlowAgent } from "@/lib/agentService";
 import SystemDetectionOverview from "./SystemDetectionOverview";
@@ -369,11 +370,33 @@ const normalizeAuthFlowResult = (input: unknown): AuthFlowResult | null => {
           ? true
           : Boolean(probe.requires_auth);
 
+    const rawApiFormat = typeof probe.api_format === "string" ? probe.api_format.trim().toLowerCase() : null;
+    const apiFormat = rawApiFormat === "graphql" || rawApiFormat === "rest_json" ? rawApiFormat : undefined;
+
+    let graphqlConfig: AuthFlowRecommendation["graphql"] = null;
+    if (probe.graphql && typeof probe.graphql === "object" && !Array.isArray(probe.graphql)) {
+      const graphql = probe.graphql as Record<string, unknown>;
+      const query = typeof graphql.query === "string" && graphql.query.trim().length > 0 ? graphql.query.trim() : null;
+      const operationName =
+        typeof graphql.operation_name === "string" && graphql.operation_name.trim().length > 0
+          ? graphql.operation_name.trim()
+          : null;
+      const variables = graphql.variables && typeof graphql.variables === "object" && !Array.isArray(graphql.variables)
+        ? (graphql.variables as Record<string, unknown>)
+        : null;
+
+      if (query) {
+        graphqlConfig = { query, operation_name: operationName, variables };
+      }
+    }
+
     if (method && url) {
       recommendedProbe = {
         method: method.toUpperCase(),
         url,
         requires_auth: requiresAuth,
+        ...(apiFormat ? { api_format: apiFormat } : {}),
+        graphql: graphqlConfig,
       };
     }
   }
