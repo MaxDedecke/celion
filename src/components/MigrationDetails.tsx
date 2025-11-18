@@ -28,13 +28,6 @@ interface MigrationDetailsProps {
   onRefresh: () => Promise<void>;
 }
 
-const PROGRESS_STAGES: Array<{ label: string; threshold: number }> = [
-  { label: "Planung abgeschlossen", threshold: 10 },
-  { label: "Migration gestartet", threshold: 40 },
-  { label: "Validierung läuft", threshold: 70 },
-  { label: "Go-live vorbereitet", threshold: 100 },
-];
-
 const MIGRATION_STATUS_META: Record<MigrationStatus, MigrationStatusMeta> = {
   not_started: {
     label: "Bereit zum Start",
@@ -516,7 +509,6 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const [isStepRunning, setIsStepRunning] = useState(false);
   const [stepProgress, setStepProgress] = useState(0);
   const [agentResultDialogStepId, setAgentResultDialogStepId] = useState<string | null>(null);
-  const agentDialogRawOutputId = useId();
   const migrationCardRef = useRef<HTMLDivElement | null>(null);
   const [isWideLayout, setIsWideLayout] = useState(false);
   const [migrationCardHeight, setMigrationCardHeight] = useState<number | null>(null);
@@ -550,70 +542,6 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     },
     [project.id, setActivityLog],
   );
-
-  const defaultWorkflowSteps = useMemo(() => {
-    return AGENT_WORKFLOW_STEPS.reduce(
-      (result, step, index) => {
-        result.set(step.id, {
-          title: step.title,
-          description: step.description,
-          color: step.color,
-          agentType: step.agentType,
-          priority: index + 1,
-          agentPrompt: "",
-        });
-        return result;
-      },
-      new Map<
-        string,
-        {
-          title: string;
-          description: string;
-          color: string;
-          agentType: string;
-          priority: number;
-          agentPrompt: string;
-        }
-      >(),
-    );
-  }, []);
-
-  const customWorkflowNodes = useMemo(() => {
-    return workflowBoard.nodes.filter((node) => {
-      const defaultNode = defaultWorkflowSteps.get(node.id);
-
-      if (!defaultNode) {
-        return true;
-      }
-
-      const normalizedTitle = node.title.trim();
-      const normalizedDescription = (node.description ?? "").trim();
-      const normalizedPrompt = (node.agentPrompt ?? "").trim();
-      const defaultTitle = defaultNode.title;
-      const defaultDescription = (defaultNode.description ?? "").trim();
-      const defaultPrompt = (defaultNode.agentPrompt ?? "").trim();
-
-      const hasDifferentTitle = normalizedTitle !== defaultTitle;
-      const hasDifferentDescription = normalizedDescription !== defaultDescription;
-      const hasDifferentColor = node.color !== defaultNode.color;
-      const hasDifferentStatus = node.status !== "pending";
-      const hasDifferentActiveState = node.active !== true;
-      const hasDifferentAgentType = (node.agentType ?? "") !== defaultNode.agentType;
-      const hasDifferentPriority = node.priority !== defaultNode.priority;
-      const hasDifferentPrompt = normalizedPrompt !== defaultPrompt;
-
-      return (
-        hasDifferentTitle ||
-        hasDifferentDescription ||
-        hasDifferentColor ||
-        hasDifferentStatus ||
-        hasDifferentActiveState ||
-        hasDifferentAgentType ||
-        hasDifferentPriority ||
-        hasDifferentPrompt
-      );
-    });
-  }, [defaultWorkflowSteps, workflowBoard.nodes]);
 
   const normalizeWorkflowState = useCallback((state: WorkflowBoardState): WorkflowBoardState => {
     const nodesWithDefaults = state.nodes.map((node, index) => ({
@@ -1703,8 +1631,6 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     return simulateTargetObjects(targetSeed, sourceObjectEstimate.total);
   }, [sourceObjectEstimate, targetSeed, transferInfo]);
 
-  const transferRate = transferInfo.total > 0 ? Math.round((transferInfo.current / transferInfo.total) * 100) : 0;
-  const mappedRate = mappedInfo.total > 0 ? Math.round((mappedInfo.current / mappedInfo.total) * 100) : 0;
   const overallProgress = Math.min(100, Math.max(0, Math.round(Number(project.progress) || 0)));
   const statusMeta = MIGRATION_STATUS_META[status];
   const normalizedStatusForFlow: StatusFlowStep =
@@ -1713,7 +1639,6 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       : status === "not_started"
         ? "not_started"
         : "running";
-  const currentStatusIndex = MIGRATION_STATUS_FLOW.indexOf(normalizedStatusForFlow);
 
   const agentWorkflowProgress = useMemo(() => {
     const nodes = workflowBoard.nodes;
@@ -1906,26 +1831,47 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
 
     const result = agentResultDialogNode.agentResult;
 
-    const normalizeByAgentType = () => {
+    const normalizeByAgentType = (value: unknown) => {
       if (agentResultDialogNode.agentType === "system-detection") {
         return (
-          normalizeSystemDetectionStepResult(result) ?? normalizeSystemDetectionResult(result)
+          normalizeSystemDetectionStepResult(value) ?? normalizeSystemDetectionResult(value)
         );
       }
 
       if (agentResultDialogNode.agentType === "auth-flow") {
-        return normalizeAuthFlowStepResult(result) ?? normalizeAuthFlowResult(result);
+        return normalizeAuthFlowStepResult(value) ?? normalizeAuthFlowResult(value);
       }
 
       return (
-        normalizeSystemDetectionStepResult(result) ??
-        normalizeSystemDetectionResult(result) ??
-        normalizeAuthFlowStepResult(result) ??
-        normalizeAuthFlowResult(result)
+        normalizeSystemDetectionStepResult(value) ??
+        normalizeSystemDetectionResult(value) ??
+        normalizeAuthFlowStepResult(value) ??
+        normalizeAuthFlowResult(value)
       );
     };
 
-    const structuredResult = normalizeByAgentType();
+    const normalizeWithFallbacks = (value: unknown):
+      | SystemDetectionResult
+      | SystemDetectionStepResult
+      | AuthFlowResult
+      | AuthFlowStepResult
+      | null => {
+      const normalized = normalizeByAgentType(value);
+      if (normalized) {
+        return normalized;
+      }
+
+      if (typeof value === "string") {
+        try {
+          const parsed = JSON.parse(value);
+          return normalizeByAgentType(parsed);
+        } catch (error) {
+          return null;
+        }
+      }
+
+      return null;
+    };
     let extractedRawOutput: string | null = null;
 
     const normalizeRawOutput = (value: unknown, depth = 0): string | null => {
@@ -2040,27 +1986,48 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       const trimmed = result.trim();
 
       if (!trimmed) {
-        return { formatted: null, rawOutput: extractedRawOutput };
+        return {
+          formatted: null,
+          rawOutput: extractedRawOutput ?? normalizeRawOutput(result),
+          structuredResult: normalizeWithFallbacks(result),
+        };
       }
 
       try {
         const parsed = JSON.parse(trimmed);
         const sanitized = removeRawOutput(parsed);
+        const normalizedResult =
+          normalizeWithFallbacks(sanitized ?? parsed) ??
+          normalizeWithFallbacks(parsed) ??
+          normalizeWithFallbacks(extractedRawOutput);
         return {
           formatted: hasStructuredContent(sanitized) ? formatValue(sanitized) : null,
           rawOutput: extractedRawOutput,
+          structuredResult: normalizedResult ?? null,
         };
       } catch (error) {
-        return { formatted: trimmed, rawOutput: null };
+        return {
+          formatted: trimmed,
+          rawOutput: extractedRawOutput ?? normalizeRawOutput(result),
+          structuredResult:
+            normalizeWithFallbacks(result) ??
+            normalizeWithFallbacks(extractedRawOutput) ??
+            normalizeByAgentType(result) ??
+            null,
+        };
       }
     }
 
     const sanitized = removeRawOutput(result);
+    const normalizedResult =
+      normalizeWithFallbacks(sanitized ?? result) ??
+      normalizeWithFallbacks(result) ??
+      normalizeWithFallbacks(extractedRawOutput);
 
     return {
       formatted: hasStructuredContent(sanitized) ? formatValue(sanitized) : null,
-      rawOutput: extractedRawOutput,
-      structuredResult: structuredResult,
+      rawOutput: extractedRawOutput ?? normalizeRawOutput(result),
+      structuredResult: normalizedResult ?? null,
     };
   }, [agentResultDialogNode]);
 
@@ -2088,88 +2055,6 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     return null;
   }, [agentResultDialogStructured]);
 
-  const systemDetectionNode = useMemo(
-    () => workflowBoard.nodes.find((node) => node.id === "system-detection"),
-    [workflowBoard.nodes],
-  );
-
-  const { systemDetectionSourceResult, systemDetectionTargetResult } = useMemo(() => {
-    if (!systemDetectionNode || systemDetectionNode.agentResult === undefined || systemDetectionNode.agentResult === null) {
-      return { systemDetectionSourceResult: null as SystemDetectionResult | null, systemDetectionTargetResult: null as SystemDetectionResult | null };
-    }
-
-    const combined = normalizeSystemDetectionStepResult(systemDetectionNode.agentResult);
-    if (combined) {
-      return {
-        systemDetectionSourceResult: combined.source,
-        systemDetectionTargetResult: combined.target,
-      };
-    }
-
-    const single = normalizeSystemDetectionResult(systemDetectionNode.agentResult);
-    return {
-      systemDetectionSourceResult: single,
-      systemDetectionTargetResult: null,
-    };
-  }, [systemDetectionNode]);
-
-  const systemDetectionSourceConfidencePercent = useMemo(
-    () => confidenceToPercent(systemDetectionSourceResult?.confidence ?? null),
-    [systemDetectionSourceResult],
-  );
-
-  const systemDetectionTargetConfidencePercent = useMemo(
-    () => confidenceToPercent(systemDetectionTargetResult?.confidence ?? null),
-    [systemDetectionTargetResult],
-  );
-
-  const systemDetectionSourceStatusSummary = useMemo(() => {
-    const statusCodes = systemDetectionSourceResult?.detection_evidence?.status_codes;
-
-    if (!statusCodes || typeof statusCodes !== "object") {
-      return null;
-    }
-
-    const summaryParts = Object.entries(statusCodes)
-      .filter(([, value]) => typeof value === "number")
-      .map(([key, value]) => `${key}: ${value}`);
-
-    return summaryParts.length > 0 ? summaryParts.join(" · ") : null;
-  }, [systemDetectionSourceResult]);
-
-  const systemDetectionTargetStatusSummary = useMemo(() => {
-    const statusCodes = systemDetectionTargetResult?.detection_evidence?.status_codes;
-
-    if (!statusCodes || typeof statusCodes !== "object") {
-      return null;
-    }
-
-    const summaryParts = Object.entries(statusCodes)
-      .filter(([, value]) => typeof value === "number")
-      .map(([key, value]) => `${key}: ${value}`);
-
-    return summaryParts.length > 0 ? summaryParts.join(" · ") : null;
-  }, [systemDetectionTargetResult]);
-
-  const systemDetectionSourceHeaderSummary = useMemo(() => {
-    const headers = systemDetectionSourceResult?.detection_evidence?.headers;
-
-    if (!Array.isArray(headers) || headers.length === 0) {
-      return null;
-    }
-
-    return headers.slice(0, 3).join(", ");
-  }, [systemDetectionSourceResult]);
-
-  const systemDetectionTargetHeaderSummary = useMemo(() => {
-    const headers = systemDetectionTargetResult?.detection_evidence?.headers;
-
-    if (!Array.isArray(headers) || headers.length === 0) {
-      return null;
-    }
-
-    return headers.slice(0, 3).join(", ");
-  }, [systemDetectionTargetResult]);
 
   const schemaDiscoveryStepState = agentSteps.find((step) => step.id === "schema-discovery");
   const dryRunStepState = agentSteps.find((step) => step.id === "dry-run");
