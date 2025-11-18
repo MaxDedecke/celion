@@ -856,7 +856,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           const scopeLabel = scope === "source" ? "Quellsystem" : "Zielsystem";
           await appendActivity(
             "info",
-            `Authentifizierung gestartet (${scopeLabel}): ${system} @ ${auth.baseUrl}`,
+            `Authentifizierung gestartet (${scopeLabel}): ${system}`,
           );
 
           try {
@@ -869,20 +869,10 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
             );
 
             const statusLabel = result.authenticated ? "erfolgreich" : "fehlgeschlagen";
-            const summaryParts = [
-              system,
-              result.recommended_probe ? `${result.recommended_probe.method} Probe` : null,
-              result.summary || result.reasoning,
-            ].filter(Boolean);
-
-            const titleParts = [
-              `Authentifizierung ${statusLabel} (${scopeLabel})`,
-              summaryParts.join(" · "),
-            ].filter(Boolean);
 
             if (!result.authenticated) {
               const errorMsg = result.error_message || result.summary || result.reasoning || "Authentifizierung fehlgeschlagen";
-              await appendActivity("error", `${titleParts.join(" · ")} - ${errorMsg}`);
+              await appendActivity("error", `Authentifizierung ${statusLabel} (${scopeLabel}): ${system}`);
               toast.error(`Authentifizierung fehlgeschlagen (${scopeLabel}): ${errorMsg}`);
               const errorPayload = scope === "source"
                 ? { source: result, error: errorMsg }
@@ -890,7 +880,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
               throw new AgentExecutionError(errorMsg, errorPayload);
             }
 
-            await appendActivity("success", titleParts.join(" · "));
+            await appendActivity("success", `Authentifizierung ${statusLabel} (${scopeLabel}): ${system}`);
             return result;
           } catch (error) {
             if (error instanceof AgentExecutionError) {
@@ -898,7 +888,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
             }
 
             const message = error instanceof Error ? error.message : String(error);
-            await appendActivity("error", `Authentifizierung fehlgeschlagen (${scopeLabel}): ${message}`);
+            await appendActivity("error", `Authentifizierung fehlgeschlagen (${scopeLabel}): ${system}`);
             toast.error(`Authentifizierung fehlgeschlagen (${scopeLabel}): ${message}`);
             const errorPayload = scope === "source" ? { error: message } : { error: message };
             throw new AgentExecutionError(message, errorPayload);

@@ -1,5 +1,6 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import AgentOutputDisplay from "@/components/AgentOutputDisplay";
 import type { AgentWorkflowStepState } from "./types";
 import type { SystemDetectionResult, SystemDetectionStepResult, AuthFlowResult, AuthFlowStepResult } from "@/types/agents";
