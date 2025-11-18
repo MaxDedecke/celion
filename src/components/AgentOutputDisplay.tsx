@@ -95,11 +95,20 @@ const AgentOutputDisplay = ({ sourceResult, targetResult, schemaResult }: AgentO
               <p className="text-xs font-semibold uppercase text-muted-foreground">Entities ({result.entities.length})</p>
               {result.entities.length > 0 ? (
                 <div className="flex flex-wrap gap-2 pt-1">
-                  {result.entities.map((entity) => (
-                    <Badge key={entity} variant="outline" className="text-xs">
-                      {entity}
-                    </Badge>
-                  ))}
+                  {result.entities.map((entity, index) => {
+                    const entityLabel =
+                      typeof entity === "string"
+                        ? entity
+                        : entity && typeof entity === "object" && "name" in entity
+                          ? String(entity.name)
+                          : JSON.stringify(entity, null, 2);
+
+                    return (
+                      <Badge key={`${index}-${entityLabel}`} variant="outline" className="text-xs whitespace-pre-wrap">
+                        {entityLabel}
+                      </Badge>
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground">Keine Entities erkannt.</p>
