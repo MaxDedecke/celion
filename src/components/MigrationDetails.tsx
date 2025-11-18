@@ -1,59 +1,40 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
 import { AGENT_WORKFLOW_STEPS } from "@/constants/agentWorkflow";
-import WorkflowPanelDialog from "./dialogs/WorkflowPanelDialog";
 import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
-import type { WorkflowBoardState, WorkflowNode } from "@/types/workflow";
-import type { MigrationStatus } from "@/types/migration";
+import { runAuthFlowAgent, runSystemDetectionAgent } from "@/lib/agentService";
 import type {
-  SystemDetectionResult,
-  SystemDetectionStepResult,
+  AuthFlowRecommendation,
   AuthFlowResult,
   AuthFlowStepResult,
-  AuthFlowRecommendation,
+  SystemDetectionResult,
+  SystemDetectionStepResult,
 } from "@/types/agents";
-import { runSystemDetectionAgent, runAuthFlowAgent } from "@/lib/agentService";
+import type { MigrationStatus } from "@/types/migration";
+import type { WorkflowBoardState, WorkflowNode } from "@/types/workflow";
+import WorkflowPanelDialog from "./dialogs/WorkflowPanelDialog";
 import SystemDetectionOverview from "./SystemDetectionOverview";
 import type { Activity } from "./ActivityTimeline";
-import MigrationOverviewCard from "./migration/MigrationOverviewCard";
+import AgentResultDialog from "./migration/AgentResultDialog";
 import MigrationActivityCard from "./migration/MigrationActivityCard";
 import MigrationNotesCard from "./migration/MigrationNotesCard";
-import AgentResultDialog from "./migration/AgentResultDialog";
-import type { AgentWorkflowStepState, MigrationProject, MigrationStatusMeta } from "./migration/types";
+import MigrationOverviewCard from "./migration/MigrationOverviewCard";
+import type { AgentWorkflowStepState, MigrationProject } from "./migration/types";
 import { getWorkflowTheme } from "./migration/workflowThemes";
 import { nodeHasAgentResult } from "./migration/workflowUtils";
-import type { Database } from "@/integrations/supabase/types";
-
-interface MigrationDetailsProps {
-  project: MigrationProject;
-  onRefresh: () => Promise<void>;
-}
-
-const MIGRATION_STATUS_META: Record<MigrationStatus, MigrationStatusMeta> = {
-  not_started: {
-    label: "Bereit zum Start",
-    description: "Alles vorbereitet – du kannst die Migration mit einem Klick starten.",
-    badgeClassName: "bg-muted text-muted-foreground",
-  },
-  running: {
-    label: "Laufend",
-    description: "Die Migration verarbeitet gerade Daten. Du kannst den Fortschritt hier entspannt verfolgen.",
-    badgeClassName: "bg-sky-500/15 text-sky-700 dark:text-sky-300",
-  },
-  paused: {
-    label: "Pausiert",
-    description: "Der Prozess ruht. Starte ihn erneut, sobald alle offenen Fragen geklärt sind.",
-    badgeClassName: "bg-amber-500/15 text-amber-700 dark:text-amber-300",
-  },
-  completed: {
-    label: "Abgeschlossen",
-    description: "Die Migration ist erfolgreich beendet. Nutze die Notizen, um Learnings festzuhalten.",
-    badgeClassName: "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300",
-  },
-};
-
-const MIGRATION_STATUS_FLOW = ["not_started", "running", "completed"] as const;
-type StatusFlowStep = typeof MIGRATION_STATUS_FLOW[number];
+import { toast } from "sonner";
+import { AgentExecutionError } from "./migration/errors";
+import {
+  MIGRATION_STATUS_FLOW,
+  MIGRATION_STATUS_META,
+  WORKFLOW_STATE_CACHE_PREFIX,
+} from "./migration/migrationDetails.constants";
+import type {
+  AuthContext,
+  ConnectorRecord,
+  MigrationDetailsProps,
+  RawActivityRecord,
+  StatusFlowStep,
+} from "./migration/migrationDetails.types";
 
 const parseProgressPair = (value: string) => {
   const [current, total] = value.split("/").map((part) => Number(part) || 0);
@@ -501,26 +482,6 @@ const confidenceToPercent = (confidence: number | null): number | null => {
   return Math.round(value);
 };
 
-type RawActivityRecord = {
-  id?: string;
-  type?: Activity["type"];
-  title?: string;
-  timestamp?: string | Date | null;
-  created_at?: string | Date | null;
-};
-
-type ConnectorRecord = Database["public"]["Tables"]["connectors"]["Row"];
-
-class AgentExecutionError extends Error {
-  agentResult?: unknown;
-
-  constructor(message: string, agentResult?: unknown) {
-    super(message);
-    this.name = "AgentExecutionError";
-    this.agentResult = agentResult;
-  }
-}
-
 const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const [notes, setNotes] = useState(project.notes ?? "");
   const [isSavingNotes, setIsSavingNotes] = useState(false);
@@ -729,13 +690,6 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       };
 
       if (node.agentType === "auth-flow") {
-        type AuthContext = {
-          baseUrl: string;
-          apiToken: string;
-          email: string;
-          password: string;
-        };
-
         const { data: connectorRows, error: connectorsError } = await supabase
           .from("connectors")
           .select("*")

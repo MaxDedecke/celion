@@ -24,6 +24,7 @@ import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
 import { useMinimumLoader } from "@/hooks/useMinimumLoader";
 import type { Activity } from "@/components/ActivityTimeline";
+import type { RawActivityRecord } from "@/components/migration/migrationDetails.types";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -54,14 +55,6 @@ const deriveMigrationStatus = (migration: any): MigrationStatus => {
   }
 
   return "not_started";
-};
-
-type RawActivityRecord = {
-  id?: string;
-  type?: string;
-  title?: string;
-  timestamp?: string | Date | null;
-  created_at?: string | Date | null;
 };
 
 const normalizeActivityRecord = (activity: RawActivityRecord): Activity => {
