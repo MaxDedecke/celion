@@ -5,11 +5,12 @@ import type {
   AuthFlowRecommendation,
   AuthScheme,
   ApiRequestFormat,
-  SchemaDiscoveryResult,
-  SchemaObjectDefinition,
+  ApiSpecAnalysis,
+  CapabilityDiscoveryResult,
+  HttpRequestParams,
+  HttpResponse,
 } from "@/types/agents";
-import { credentialProbe } from "@/tools/credentialProbe";
-import { schemaProbe } from "@/tools/schemaProbe";
+import { httpClient } from "@/tools/httpRequest";
 
 const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
 const DEFAULT_OPENAI_AUTH_MODEL = "gpt-4.1";
@@ -776,13 +777,11 @@ export async function runAuthFlowAgent(
     }
   }
 
-  const probeResult = await credentialProbe({
+  const probeResult = await httpClient({
     url: resolvedProbeUrl,
     method: recommendation.recommended_probe.method,
     headers: probeHeaders,
     body: probeBody,
-    request_format: requestFormat,
-    graphql: graphqlPayload ?? null,
   });
 
   const authenticated = probeResult.status !== null && probeResult.status >= 200 && probeResult.status < 300;
@@ -806,120 +805,230 @@ export async function runAuthFlowAgent(
   } satisfies AuthFlowResult;
 }
 
-const buildSchemaAuthHeaders = (apiToken: string, email?: string, password?: string) => {
-  const headers: Record<string, string> = { Accept: "application/json" };
+const createCapabilityAssistant = async (
+  baseUrl: string,
+  headers: Record<string, string>,
+  model: string,
+  signal?: AbortSignal,
+) => {
+  const response = await fetch(`${baseUrl}/assistants`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      model,
+      name: "Celion Capability Discovery",
+      description: "Analysiert APIs vollständig autonom über httpClient.",
+      tools: [
+        {
+          type: "function",
+          function: {
+            name: "httpClient",
+            description: "Führt GET/POST Requests aus",
+            parameters: {
+              type: "object",
+              properties: {
+                url: { type: "string", description: "Vollständige URL des Requests" },
+                method: { type: "string", description: "HTTP Methode" },
+                headers: {
+                  type: "object",
+                  description: "HTTP Header als Key-Value",
+                  additionalProperties: { type: "string" },
+                },
+                body: {
+                  description: "Request-Body (wird als JSON serialisiert, falls Objekt)",
+                },
+              },
+              required: ["url", "method"],
+            },
+          },
+        },
+      ],
+    }),
+    signal,
+  });
 
-  const normalizedToken = apiToken.trim();
-  const normalizedEmail = (email ?? "").trim();
-  const normalizedPassword = (password ?? "").trim();
-
-  if (normalizedToken && normalizedEmail && normalizedPassword) {
-    const payload = `${normalizedEmail}:${normalizedToken}`;
-    const encoded = typeof btoa === "function"
-      ? btoa(payload)
-      : typeof Buffer !== "undefined"
-        ? Buffer.from(payload).toString("base64")
-        : "";
-    if (encoded) {
-      headers.Authorization = `Basic ${encoded}`;
-    }
-  } else if (normalizedToken) {
-    headers.Authorization = `Bearer ${normalizedToken}`;
+  if (!response.ok) {
+    const message = await response.text().catch(() => response.statusText);
+    throw new Error(`Capability Assistant konnte nicht erstellt werden: ${message}`);
   }
 
-  return headers;
+  return (await response.json()) as OpenAiAssistant;
 };
 
-const extractFieldsFromBody = (body: unknown): { fields: SchemaObjectDefinition["fields"]; sampleCount: number | null } => {
-  if (!body) {
-    return { fields: [], sampleCount: null };
-  }
-
-  if (Array.isArray(body)) {
-    const firstEntry = body.find((entry) => entry && typeof entry === "object" && !Array.isArray(entry));
-    if (!firstEntry || typeof firstEntry !== "object") {
-      return { fields: [], sampleCount: body.length };
-    }
-
-    const fields = Object.entries(firstEntry as Record<string, unknown>).map(([key, value]) => ({
-      name: key,
-      type: value === null || value === undefined ? null : typeof value,
-      sample_value: value,
-    }));
-
-    return { fields, sampleCount: body.length };
-  }
-
-  if (typeof body === "object") {
-    const fields = Object.entries(body as Record<string, unknown>).map(([key, value]) => ({
-      name: key,
-      type: value === null || value === undefined ? null : typeof value,
-      sample_value: value,
-    }));
-
-    return { fields, sampleCount: 1 };
-  }
-
-  return { fields: [], sampleCount: null };
+const buildCapabilityPrompt = (
+  baseUrl: string,
+  system: string,
+  credentials: { apiToken?: string; email?: string; password?: string },
+) => {
+  return [
+    "Finde API-Spec → analysiere → leite Probe-Strategie ab → führe httpClient-Calls aus → liefere Capability-Analyse.",
+    `System: ${system || "Unbekannt"}.`,
+    `Base URL: ${baseUrl}.`,
+    credentials.apiToken ? `API Token: ${credentials.apiToken}.` : "",
+    credentials.email ? `Email: ${credentials.email}.` : "",
+    credentials.password ? `Password: ${credentials.password}.` : "",
+    "Vorgehen:",
+    "- Finde offizielle API-Spezifikation (OpenAPI/Swagger) über klassische Pfade (/openapi.json, /swagger.json, /api-docs, /v1/openapi.json).",
+    "- Falls REST nicht verfügbar: versuche GraphQL-Introspection (/graphql).",
+    "- Probiere alternative Spezifikationspfade abhängig vom Systemtyp (z. B. /rest/api/latest/spec).",
+    "- Analysiere die gefundene Spec und leite Entities, Felder/Schemas, Endpunkte, Pagination, Auth-Modell und Limits ab.",
+    "- Plane Probe-Requests (minimale GETs, Pagination, Feld-Validierung, Counts) und führe ALLE über httpClient aus.",
+    "- Keine statischen oder vordefinierten Endpunkte verwenden; alle Erkenntnisse müssen aus Spec oder Probes stammen.",
+    "- Nutze bereitgestellte Credentials nur falls erforderlich (Bearer/Basic).",
+    "Output ausschließlich als JSON im Format: { api_spec_found, spec_url, entities, endpoints, schemas, authentication, pagination, probe_results, limitations, summary }",
+  ]
+    .filter(Boolean)
+    .join("\n");
 };
 
-export const runSchemaDiscoveryAgent = async (
+const parseCapabilityResult = (content: string): CapabilityDiscoveryResult => {
+  const payload = extractJsonPayload(content);
+
+  let parsed: Partial<ApiSpecAnalysis> | null = null;
+  try {
+    parsed = JSON.parse(payload) as Partial<ApiSpecAnalysis>;
+  } catch {
+    parsed = null;
+  }
+
+  const base: CapabilityDiscoveryResult = {
+    api_spec_found: parsed?.api_spec_found ?? false,
+    spec_url: typeof parsed?.spec_url === "string" ? parsed.spec_url : "",
+    entities: Array.isArray(parsed?.entities) ? (parsed?.entities as string[]) : [],
+    endpoints: Array.isArray(parsed?.endpoints) ? (parsed?.endpoints as string[]) : [],
+    schemas: (parsed?.schemas && typeof parsed.schemas === "object" ? parsed.schemas : {}) as Record<string, unknown>,
+    authentication:
+      (parsed?.authentication && typeof parsed.authentication === "object"
+        ? parsed.authentication
+        : {}) as Record<string, unknown>,
+    pagination:
+      (parsed?.pagination && typeof parsed.pagination === "object"
+        ? parsed.pagination
+        : {}) as Record<string, unknown>,
+    probe_results:
+      (parsed?.probe_results && typeof parsed.probe_results === "object"
+        ? parsed.probe_results
+        : {}) as Record<string, unknown>,
+    limitations: Array.isArray(parsed?.limitations) ? (parsed?.limitations as string[]) : [],
+    summary: typeof parsed?.summary === "string" ? parsed.summary : "",
+    raw_output: content,
+  };
+
+  return base;
+};
+
+const executeHttpRequestTool = async (params: HttpRequestParams): Promise<HttpResponse> => {
+  return httpClient(params);
+};
+
+const processCapabilityRun = async (
+  baseUrl: string,
+  headers: Record<string, string>,
+  threadId: string,
+  runId: string,
+  signal?: AbortSignal,
+): Promise<OpenAiRun> => {
+  let attempts = 0;
+  const maxAttempts = 90;
+
+  while (attempts < maxAttempts) {
+    const response = await fetch(`${baseUrl}/threads/${threadId}/runs/${runId}`, {
+      method: "GET",
+      headers,
+      signal,
+    });
+
+    if (!response.ok) {
+      const message = await response.text().catch(() => response.statusText);
+      throw new Error(`Capability Run Status konnte nicht ermittelt werden: ${message}`);
+    }
+
+    const payload = (await response.json()) as OpenAiRun;
+
+    if (payload.status === "requires_action" && payload.required_action?.submit_tool_outputs) {
+      const outputs: Array<{ tool_call_id: string; output: string }> = [];
+
+      for (const toolCall of payload.required_action.submit_tool_outputs.tool_calls) {
+        if (toolCall.type !== "function" || toolCall.function?.name !== "httpClient") {
+          continue;
+        }
+
+        let args: HttpRequestParams = { url: "", method: "GET" };
+
+        try {
+          args = JSON.parse(toolCall.function?.arguments ?? "{}") as HttpRequestParams;
+        } catch {
+          args = { url: "", method: "GET" } as HttpRequestParams;
+        }
+
+        const result = await executeHttpRequestTool(args);
+        outputs.push({ tool_call_id: toolCall.id, output: JSON.stringify(result) });
+      }
+
+      if (outputs.length > 0) {
+        await submitToolOutputs(baseUrl, headers, threadId, payload.id, outputs, signal);
+      }
+    } else if (payload.status === "completed") {
+      return payload;
+    } else if (["failed", "cancelled", "expired"].includes(payload.status)) {
+      const errorMessage = payload.last_error?.message || `Capability-Run beendet: ${payload.status}`;
+      throw new Error(errorMessage);
+    }
+
+    attempts += 1;
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+  }
+
+  throw new Error("Capability-Run hat nicht rechtzeitig abgeschlossen.");
+};
+
+export const runCapabilityDiscoveryAgent = async (
   baseUrl: string,
   system: string,
   apiToken: string,
   email?: string,
   password?: string,
-): Promise<SchemaDiscoveryResult> => {
+  options: AgentExecutionOptions = {},
+): Promise<CapabilityDiscoveryResult> => {
+  if (!baseUrl.trim()) {
+    throw new Error("Für den Capability Agent wurde keine Basis-URL angegeben.");
+  }
+
   const normalizedBase = baseUrl.replace(/\/$/, "");
-  const headers = buildSchemaAuthHeaders(apiToken, email, password);
+  const { apiKey, baseUrl: openAiBaseUrl, projectId, model } = resolveOpenAiConfig();
+  const headers = buildOpenAiHeaders(apiKey, projectId);
 
-  const candidateEndpoints: Array<{ name: string; path: string }> = [
-    { name: "Projects", path: "/projects" },
-    { name: "Issues", path: "/issues" },
-    { name: "Tasks", path: "/tasks" },
-    { name: "Items", path: "/items" },
-    { name: "Users", path: "/users" },
-  ];
+  const assistant = await createCapabilityAssistant(openAiBaseUrl, headers, model, options.signal);
+  const threadId = await createThread(openAiBaseUrl, headers, options.signal);
 
-  const objects: SchemaObjectDefinition[] = [];
+  const message = buildCapabilityPrompt(normalizedBase, system, { apiToken, email, password });
 
-  for (const candidate of candidateEndpoints) {
-    const url = `${normalizedBase}${candidate.path}`;
-    const probe = await schemaProbe({ url, method: "GET", headers });
+  const messageResponse = await fetch(`${openAiBaseUrl}/threads/${threadId}/messages`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({
+      role: "user",
+      content: [
+        {
+          type: "text",
+          text: message,
+        },
+      ],
+    }),
+    signal: options.signal,
+  });
 
-    const { fields, sampleCount } = extractFieldsFromBody(probe.body);
-
-    objects.push({
-      name: candidate.name,
-      endpoint: url,
-      status: probe.status,
-      success: probe.ok,
-      fields,
-      sample_count: sampleCount,
-      error: probe.error,
-    });
+  if (!messageResponse.ok) {
+    const msg = await messageResponse.text().catch(() => messageResponse.statusText);
+    throw new Error(`Capability Nachricht konnte nicht gesendet werden: ${msg}`);
   }
 
-  const successfulObjects = objects.filter((object) => object.success && object.fields.length > 0);
-  const summaryParts: string[] = [];
+  const run = await createRun(openAiBaseUrl, headers, threadId, assistant.id, options.signal);
+  await processCapabilityRun(openAiBaseUrl, headers, threadId, run.id, options.signal);
 
-  if (successfulObjects.length > 0) {
-    summaryParts.push(
-      `${successfulObjects.length} von ${objects.length} Endpunkten lieferten strukturierte Felder.`,
-    );
-  } else {
-    summaryParts.push("Keine aussagekräftigen Felder gefunden. Bitte Endpunkte oder Credentials prüfen.");
-  }
+  const messageResult = await fetchLatestAssistantMessage(openAiBaseUrl, headers, threadId, options.signal);
+  const content = extractAssistantMessageText(messageResult);
 
-  const rawOutput = JSON.stringify({ system, base_url: normalizedBase, objects }, null, 2);
-
-  return {
-    system,
-    base_url: normalizedBase,
-    objects,
-    summary: summaryParts.join(" "),
-    raw_output: rawOutput,
-    error_message: successfulObjects.length === 0 ? "Schema Discovery konnte keine Felder extrahieren." : null,
-  } satisfies SchemaDiscoveryResult;
+  return parseCapabilityResult(content);
 };
 

@@ -6,7 +6,7 @@ import type {
   AuthFlowResult,
   AuthFlowStepResult,
   AuthFlowRecommendation,
-  SchemaDiscoveryResult,
+  CapabilityDiscoveryResult,
   SystemDetectionResult,
   SystemDetectionStepResult,
 } from "@/types/agents";
@@ -436,66 +436,38 @@ export const normalizeAuthFlowStepResult = (input: unknown): AuthFlowStepResult 
   return { source, target };
 };
 
-export const normalizeSchemaDiscoveryResult = (input: unknown): SchemaDiscoveryResult | null => {
+export const normalizeCapabilityDiscoveryResult = (
+  input: unknown,
+): CapabilityDiscoveryResult | null => {
   if (!input || typeof input !== "object") {
     return null;
   }
 
-  const record = input as Partial<SchemaDiscoveryResult> & { objects?: unknown };
-
-  const objects: SchemaDiscoveryResult["objects"] = Array.isArray(record.objects)
-    ? record.objects
-        .filter((entry) => entry && typeof entry === "object")
-        .map((entry) => {
-          const item = entry as Record<string, unknown>;
-          const fields = Array.isArray(item.fields)
-            ? item.fields
-                .filter((field) => field && typeof field === "object")
-                .map((field) => {
-                  const fieldEntry = field as Record<string, unknown>;
-                  return {
-                    name: typeof fieldEntry.name === "string" ? fieldEntry.name : "",
-                    type:
-                      typeof fieldEntry.type === "string" || fieldEntry.type === null
-                        ? fieldEntry.type
-                        : fieldEntry.type === undefined
-                          ? undefined
-                          : String(fieldEntry.type),
-                    path:
-                      typeof fieldEntry.path === "string" || fieldEntry.path === null
-                        ? fieldEntry.path
-                        : undefined,
-                    sample_value: fieldEntry.sample_value,
-                  };
-                })
-            : [];
-
-          return {
-            name: typeof item.name === "string" ? item.name : "",
-            endpoint: typeof item.endpoint === "string" ? item.endpoint : "",
-            success: Boolean(item.success),
-            status: typeof item.status === "number" ? item.status : null,
-            fields,
-            sample_count:
-              typeof item.sample_count === "number" && Number.isFinite(item.sample_count)
-                ? item.sample_count
-                : null,
-            error: typeof item.error === "string" ? item.error : null,
-          };
-        })
-    : [];
-
-  if (!objects.length) {
-    return null;
-  }
+  const record = input as Partial<CapabilityDiscoveryResult>;
 
   return {
-    system: typeof record.system === "string" ? record.system : null,
-    base_url: typeof record.base_url === "string" ? record.base_url : null,
-    objects,
-    summary: typeof record.summary === "string" ? record.summary : null,
-    raw_output: typeof record.raw_output === "string" ? record.raw_output : "",
-    error_message: typeof record.error_message === "string" ? record.error_message : null,
+    api_spec_found: Boolean(record.api_spec_found),
+    spec_url: typeof record.spec_url === "string" ? record.spec_url : "",
+    entities: Array.isArray(record.entities) ? (record.entities as string[]) : [],
+    endpoints: Array.isArray(record.endpoints) ? (record.endpoints as string[]) : [],
+    schemas: (record.schemas && typeof record.schemas === "object"
+      ? (record.schemas as Record<string, unknown>)
+      : {}),
+    authentication:
+      record.authentication && typeof record.authentication === "object"
+        ? (record.authentication as Record<string, unknown>)
+        : {},
+    pagination:
+      record.pagination && typeof record.pagination === "object"
+        ? (record.pagination as Record<string, unknown>)
+        : {},
+    probe_results:
+      record.probe_results && typeof record.probe_results === "object"
+        ? (record.probe_results as Record<string, unknown>)
+        : {},
+    limitations: Array.isArray(record.limitations) ? (record.limitations as string[]) : [],
+    summary: typeof record.summary === "string" ? record.summary : "",
+    raw_output: typeof record.raw_output === "string" ? record.raw_output : null,
   };
 };
 

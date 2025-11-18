@@ -55,7 +55,13 @@ const colorOptions: Array<{ value: string; label: string }> = [
 const agentTypes = [
   { value: "system-detection", label: "System Detection Agent", phase: "1. Discovery", description: "Erkennt automatisch, welches System (z. B. Jira Cloud, Asana, Azure DevOps) hinter einer angegebenen URL steckt und welche API-Version verfügbar ist." },
   { value: "auth-flow", label: "Auth Flow Agent", phase: "2. Authentication", description: "Leitet anhand des erkannten Systems den passenden Authentifizierungsprozess ein (API Token, OAuth2, Basic Auth etc.) und prüft die Berechtigungen." },
-  { value: "schema-discovery", label: "Schema Discovery Agent", phase: "3. Capability Analysis", description: "Ermittelt alle verfügbaren Datenobjekte und Felder im Quellsystem (z. B. Issues, Projects, Users) durch strukturierte API-Probes." },
+  {
+    value: "schema-discovery",
+    label: "Capability Discovery Agent",
+    phase: "3. Capability Analysis",
+    description:
+      "Findet API-Spezifikationen, analysiert Entities/Endpoints/Auth/Pagination und testet alles über httpClient-Probes.",
+  },
   { value: "model-mapping", label: "Model Mapping Agent", phase: "4. Meta-Model Alignment", description: "Ordnet die erkannten Datenfelder des Quellsystems dem Celion-Meta-Modell zu, um eine standardisierte interne Repräsentation zu erzeugen." },
   { value: "target-schema", label: "Target Schema Agent", phase: "5. Target Preparation", description: "Analysiert das Zielsystem (z. B. Asana) und identifiziert, wie dessen Felder mit dem Celion-Meta-Modell kompatibel sind." },
   { value: "mapping-suggestion", label: "Mapping Suggestion Agent", phase: "6. Auto-Mapping", description: "Erstellt ein initiales Feld-zu-Feld-Mapping (Source → Target) basierend auf Ähnlichkeit, Bezeichnung, Typ und Kontext der Daten." },

@@ -45,7 +45,7 @@ export interface AuthFlowResult {
   base_url: string | null;
   recommended_probe: AuthFlowRecommendation | null;
   reasoning: string | null;
-  probe_result: import("@/tools/credentialProbe").CredentialProbeResult | null;
+  probe_result: HttpResponse | null;
   authenticated: boolean | null;
   summary: string | null;
   error_message: string | null;
@@ -57,29 +57,34 @@ export interface AuthFlowStepResult {
   target: AuthFlowResult | null;
 }
 
-export interface SchemaObjectField {
-  name: string;
-  type?: string | null;
-  path?: string | null;
-  sample_value?: unknown;
+export interface HttpRequestParams {
+  url: string;
+  method: string;
+  headers?: Record<string, string>;
+  body?: unknown;
 }
 
-export interface SchemaObjectDefinition {
-  name: string;
-  endpoint: string;
-  success: boolean;
-  status?: number | null;
-  fields: SchemaObjectField[];
-  sample_count?: number | null;
+export interface HttpResponse {
+  status: number | null;
+  headers: Record<string, string>;
+  body: unknown;
   error?: string | null;
 }
 
-export interface SchemaDiscoveryResult {
-  system: string | null;
-  base_url: string | null;
-  objects: SchemaObjectDefinition[];
-  summary?: string | null;
-  raw_output: string;
-  error_message?: string | null;
+export interface ApiSpecAnalysis {
+  api_spec_found: boolean;
+  spec_url: string;
+  entities: string[];
+  endpoints: string[];
+  schemas: Record<string, unknown>;
+  authentication: Record<string, unknown>;
+  pagination: Record<string, unknown>;
+  probe_results: Record<string, unknown>;
+  limitations: string[];
+  summary: string;
+}
+
+export interface CapabilityDiscoveryResult extends ApiSpecAnalysis {
+  raw_output?: string | null;
 }
 

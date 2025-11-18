@@ -8,7 +8,7 @@ import type {
   SystemDetectionStepResult,
   AuthFlowResult,
   AuthFlowStepResult,
-  SchemaDiscoveryResult,
+  CapabilityDiscoveryResult,
 } from "@/types/agents";
 
 interface AgentResultDialogProps {
@@ -21,7 +21,7 @@ interface AgentResultDialogProps {
     | SystemDetectionStepResult
     | AuthFlowResult
     | AuthFlowStepResult
-    | SchemaDiscoveryResult
+    | CapabilityDiscoveryResult
     | null;
   sourceResult: SystemDetectionResult | AuthFlowResult | null;
   targetResult: SystemDetectionResult | AuthFlowResult | null;
@@ -38,8 +38,12 @@ const AgentResultDialog = ({
   targetResult,
   rawOutput,
 }: AgentResultDialogProps) => {
-  const isSchemaDiscoveryResult = (value: unknown): value is SchemaDiscoveryResult => {
-    return Boolean(value && typeof value === "object" && "objects" in (value as Record<string, unknown>));
+  const isSchemaDiscoveryResult = (value: unknown): value is CapabilityDiscoveryResult => {
+    return Boolean(
+      value &&
+        typeof value === "object" &&
+        ("api_spec_found" in (value as Record<string, unknown>) || "probe_results" in (value as Record<string, unknown>)),
+    );
   };
 
   const schemaResult = structuredResult && isSchemaDiscoveryResult(structuredResult)

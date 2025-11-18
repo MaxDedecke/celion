@@ -74,6 +74,24 @@ SchemaProbeRequest = ProbeRequest
 SchemaProbeResponse = ProbeResponse
 
 
+class HttpClientRequest(BaseModel):
+    """Generic HTTP request payload executed by the backend."""
+
+    url: HttpUrl
+    method: str
+    headers: dict[str, str] | None = None
+    body: Any | None = None
+
+
+class HttpClientResponse(BaseModel):
+    """Normalized HTTP response for the agent httpClient tool."""
+
+    status: int | None
+    headers: dict[str, str]
+    body: Any | None
+    error: str | None = None
+
+
 def _legacy_http_exception() -> HTTPException:
     """Provide a consistent 410 response when legacy endpoints are used."""
 
@@ -195,6 +213,52 @@ async def run_schema_probe(payload: SchemaProbeRequest) -> SchemaProbeResponse:
     """Perform generic schema discovery requests on behalf of the agent."""
 
     return await run_credential_probe(payload)  # type: ignore[arg-type]
+
+
+@app.post("/api/http-client", response_model=HttpClientResponse)
+async def run_http_client(payload: HttpClientRequest) -> HttpClientResponse:
+    """Execute arbitrary HTTP requests on behalf of the agent without browser CORS limits."""
+
+    headers = dict(payload.headers or {})
+
+    try:
+        def _perform_request() -> requests.Response:
+            request_kwargs: dict[str, Any] = {
+                "method": payload.method,
+                "url": str(payload.url),
+                "headers": headers,
+            }
+
+            if payload.body is not None:
+                if isinstance(payload.body, (dict, list)):
+                    request_kwargs["json"] = payload.body
+                else:
+                    request_kwargs["data"] = payload.body
+
+            return requests.request(**request_kwargs)
+
+        response = await run_in_threadpool(_perform_request)
+
+        content_type = response.headers.get("content-type", "").lower()
+        response_headers = {k: v for k, v in response.headers.items()}
+
+        body: Any | None
+        if "application/json" in content_type:
+            try:
+                body = response.json()
+            except Exception:  # pylint: disable=broad-except
+                body = response.text
+        else:
+            body = response.text
+
+        return HttpClientResponse(
+            status=response.status_code,
+            headers=response_headers,
+            body=body,
+            error=None,
+        )
+    except Exception as exc:  # pylint: disable=broad-except
+        return HttpClientResponse(status=None, headers={}, body=None, error=str(exc))
 
 
 def _cli(url: str) -> int:

@@ -1,11 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
 import { AGENT_WORKFLOW_STEPS } from "@/constants/agentWorkflow";
 import { supabaseDatabase } from "@/api/supabaseDatabase";
-import { runAuthFlowAgent, runSchemaDiscoveryAgent, runSystemDetectionAgent } from "@/lib/agentService";
+import { runAuthFlowAgent, runCapabilityDiscoveryAgent, runSystemDetectionAgent } from "@/lib/agentService";
 import type {
   AuthFlowResult,
   AuthFlowStepResult,
-  SchemaDiscoveryResult,
+  CapabilityDiscoveryResult,
   SystemDetectionResult,
   SystemDetectionStepResult,
 } from "@/types/agents";
@@ -43,7 +43,7 @@ import {
   loadCachedWorkflowState,
   normalizeAuthFlowResult,
   normalizeAuthFlowStepResult,
-  normalizeSchemaDiscoveryResult,
+  normalizeCapabilityDiscoveryResult,
   normalizeSystemDetectionResult,
   normalizeSystemDetectionStepResult,
   parseProgressPair,
@@ -246,7 +246,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     async (
       node: WorkflowNode,
       options?: { onProgress?: (value: number) => void },
-    ): Promise<SystemDetectionStepResult | AuthFlowStepResult | SchemaDiscoveryResult | undefined> => {
+    ): Promise<SystemDetectionStepResult | AuthFlowStepResult | CapabilityDiscoveryResult | undefined> => {
       if (!node.agentType || node.active === false) {
         return undefined;
       }
@@ -580,33 +580,33 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         const password = (sourceConnector?.password ?? "").trim();
 
         if (!baseUrl) {
-          const message = "Für das Quellsystem ist keine Basis-URL hinterlegt. Schema Discovery nicht möglich.";
+          const message = "Für das Quellsystem ist keine Basis-URL hinterlegt. Capability Discovery nicht möglich.";
           await appendActivity("error", message);
           toast.error(message);
           throw new AgentExecutionError(message);
         }
 
         if (!apiToken) {
-          const message = "Für das Quellsystem wurde kein API-Token gefunden. Schema Discovery nicht möglich.";
+          const message = "Für das Quellsystem wurde kein API-Token gefunden. Capability Discovery nicht möglich.";
           await appendActivity("error", message);
           toast.error(message);
           throw new AgentExecutionError(message);
         }
 
-        await appendActivity("info", `Schema Discovery gestartet (Quelle): ${project.sourceSystem || baseUrl}`);
+        await appendActivity("info", `Capability Discovery gestartet (Quelle): ${project.sourceSystem || baseUrl}`);
         reportProgress(20);
 
-        const discoveryResult = await runSchemaDiscoveryAgent(baseUrl, project.sourceSystem, apiToken, email, password);
+        const discoveryResult = await runCapabilityDiscoveryAgent(
+          baseUrl,
+          project.sourceSystem,
+          apiToken,
+          email,
+          password,
+        );
         reportProgress(90);
 
-        if (discoveryResult.error_message) {
-          const message = discoveryResult.error_message;
-          await appendActivity("warning", `Schema Discovery teilweise fehlgeschlagen: ${message}`);
-          toast.error(`Schema Discovery mit Warnungen: ${message}`);
-        } else {
-          await appendActivity("success", "Schema Discovery abgeschlossen");
-          toast.success("Schema Discovery abgeschlossen");
-        }
+        await appendActivity("success", "Capability Discovery abgeschlossen");
+        toast.success("Capability Discovery abgeschlossen");
 
         reportProgress(100);
         return discoveryResult;
@@ -1414,7 +1414,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           | SystemDetectionStepResult
           | AuthFlowResult
           | AuthFlowStepResult
-          | SchemaDiscoveryResult
+          | CapabilityDiscoveryResult
           | null,
       };
     }
@@ -1433,7 +1433,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       }
 
       if (agentResultDialogNode.agentType === "schema-discovery") {
-        return normalizeSchemaDiscoveryResult(value);
+        return normalizeCapabilityDiscoveryResult(value);
       }
 
       return (
@@ -1441,7 +1441,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         normalizeSystemDetectionResult(value) ??
         normalizeAuthFlowStepResult(value) ??
         normalizeAuthFlowResult(value) ??
-        normalizeSchemaDiscoveryResult(value)
+        normalizeCapabilityDiscoveryResult(value)
       );
     };
 
@@ -1450,7 +1450,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       | SystemDetectionStepResult
       | AuthFlowResult
       | AuthFlowStepResult
-      | SchemaDiscoveryResult
+      | CapabilityDiscoveryResult
       | null => {
       const normalized = normalizeByAgentType(value);
       if (normalized) {
@@ -1627,14 +1627,18 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     };
   }, [agentResultDialogNode]);
 
-  const isSchemaDiscoveryResult = (value: unknown): value is SchemaDiscoveryResult => {
-    return Boolean(value && typeof value === "object" && "objects" in (value as Record<string, unknown>));
+  const isCapabilityResult = (value: unknown): value is CapabilityDiscoveryResult => {
+    return Boolean(
+      value &&
+        typeof value === "object" &&
+        ("api_spec_found" in (value as Record<string, unknown>) || "probe_results" in (value as Record<string, unknown>)),
+    );
   };
 
   const agentDialogSourceResult = useMemo<
     SystemDetectionResult | AuthFlowResult | null
   >(() => {
-    if (!agentResultDialogStructured || isSchemaDiscoveryResult(agentResultDialogStructured)) {
+    if (!agentResultDialogStructured || isCapabilityResult(agentResultDialogStructured)) {
       return null;
     }
 
@@ -1648,7 +1652,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const agentDialogTargetResult = useMemo<
     SystemDetectionResult | AuthFlowResult | null
   >(() => {
-    if (isSchemaDiscoveryResult(agentResultDialogStructured)) {
+    if (isCapabilityResult(agentResultDialogStructured)) {
       return null;
     }
 

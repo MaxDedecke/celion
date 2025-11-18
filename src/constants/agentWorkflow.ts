@@ -17,8 +17,9 @@ export const AGENT_WORKFLOW_STEPS = [
   },
   {
     id: "schema-discovery",
-    title: "Schema Discovery Agent",
-    description: "Ermittelt alle verfügbaren Datenobjekte und Felder im Quellsystem (z. B. Issues, Projects, Users) durch strukturierte API-Probes.",
+    title: "Capability Discovery Agent",
+    description:
+      "Findet automatisch die API-Spezifikation, analysiert Entities, Endpunkte, Auth, Pagination und Limits über autonome httpClient-Probes.",
     phase: "3. Capability Analysis",
     agentType: "schema-discovery",
     color: "emerald",
