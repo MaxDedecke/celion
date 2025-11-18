@@ -250,14 +250,14 @@ const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayPr
               <div className="space-y-2">
                 <p className="text-xs text-muted-foreground">Konfidenz</p>
                 <div className="flex items-center gap-2">
-                  <p className={cn("text-sm font-medium", getConfidenceColor(result.confidence))}>
-                    {result.confidence !== null
-                      ? `${Math.round(result.confidence * 100)}%`
+                  <p className={cn("text-sm font-medium", getConfidenceColor((result as SystemDetectionResult).confidence))}>
+                    {(result as SystemDetectionResult).confidence !== null
+                      ? `${Math.round(((result as SystemDetectionResult).confidence as number) * 100)}%`
                       : "Nicht verfügbar"}
                   </p>
-                  {result.confidence !== null && (
-                    <Badge variant={getConfidenceBadge(result.confidence)} className="text-xs">
-                      {result.confidence >= 0.8 ? "Hoch" : result.confidence >= 0.5 ? "Mittel" : "Niedrig"}
+                  {(result as SystemDetectionResult).confidence !== null && (
+                    <Badge variant={getConfidenceBadge((result as SystemDetectionResult).confidence)} className="text-xs">
+                      {(result as SystemDetectionResult).confidence! >= 0.8 ? "Hoch" : (result as SystemDetectionResult).confidence! >= 0.5 ? "Mittel" : "Niedrig"}
                     </Badge>
                   )}
                 </div>
@@ -265,15 +265,15 @@ const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayPr
 
               <div className="space-y-2">
                 <p className="text-xs text-muted-foreground">Status</p>
-                <Badge variant={result.detected ? "default" : "destructive"}>
-                  {result.detected ? "Erkannt" : "Nicht erkannt"}
+                <Badge variant={(result as SystemDetectionResult).detected ? "default" : "destructive"}>
+                  {(result as SystemDetectionResult).detected ? "Erkannt" : "Nicht erkannt"}
                 </Badge>
               </div>
 
               <div className="space-y-2">
                 <p className="text-xs text-muted-foreground">System</p>
                 <p className="text-sm font-medium">
-                  {result.system || (
+                  {(result as SystemDetectionResult).system || (
                     <span className="text-muted-foreground italic">Nicht verfügbar</span>
                   )}
                 </p>
@@ -284,7 +284,7 @@ const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayPr
                 <div className="space-y-2">
                   <p className="text-xs text-muted-foreground">API Version</p>
                   <p className="text-sm font-medium">
-                    {result.api_version || (
+                    {(result as SystemDetectionResult).api_version || (
                       <span className="text-muted-foreground italic">Nicht verfügbar</span>
                     )}
                   </p>
@@ -293,7 +293,7 @@ const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayPr
                 <div className="space-y-2">
                   <p className="text-xs text-muted-foreground">Base URL</p>
                   <p className="text-sm font-medium break-all">
-                    {result.base_url || (
+                    {(result as SystemDetectionResult).base_url || (
                       <span className="text-muted-foreground italic">Nicht verfügbar</span>
                     )}
                   </p>
@@ -301,14 +301,14 @@ const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayPr
               </div>
 
               {/* Detection Evidence */}
-              {result.detection_evidence && Object.keys(result.detection_evidence).length > 0 && (
+              {(result as SystemDetectionResult).detection_evidence && Object.keys((result as SystemDetectionResult).detection_evidence).length > 0 && (
                 <div className="space-y-2">
                   <div className="flex items-center gap-2">
                     <AlertCircle className="h-4 w-4 text-muted-foreground" />
                     <p className="text-xs font-medium text-muted-foreground">Erkennungs-Details</p>
                   </div>
                   <div className="space-y-2">
-                    {Object.entries(result.detection_evidence).map(([key, value]) => {
+                    {Object.entries((result as SystemDetectionResult).detection_evidence).map(([key, value]) => {
                       if (key === "raw" || key === "raw_response") return null;
 
                       let displayValue: string;
