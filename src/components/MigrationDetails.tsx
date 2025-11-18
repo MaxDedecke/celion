@@ -52,6 +52,38 @@ import {
   simulateTargetObjects,
 } from "./migration/migrationDetails.helpers";
 
+const collectProbeErrors = (probeResults: Record<string, unknown> | undefined): string[] => {
+  if (!probeResults || typeof probeResults !== "object") {
+    return [];
+  }
+
+  const errors: string[] = [];
+
+  const inspectValue = (value: unknown) => {
+    if (!value || typeof value !== "object") {
+      return;
+    }
+
+    if (Array.isArray(value)) {
+      value.forEach(inspectValue);
+      return;
+    }
+
+    const recordValue = value as Record<string, unknown>;
+    if (typeof recordValue.error === "string" && recordValue.error.trim()) {
+      errors.push(recordValue.error.trim());
+    } else if (typeof recordValue.status === "number" && recordValue.status >= 400) {
+      errors.push(`Probe antwortete mit Status ${recordValue.status}.`);
+    }
+
+    Object.values(recordValue).forEach(inspectValue);
+  };
+
+  Object.values(probeResults).forEach(inspectValue);
+
+  return errors;
+};
+
 const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const [notes, setNotes] = useState(project.notes ?? "");
   const [isSavingNotes, setIsSavingNotes] = useState(false);
@@ -603,6 +635,18 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           email,
           password,
         );
+
+        const probeErrors = collectProbeErrors(discoveryResult?.probe_results);
+        if (probeErrors.length > 0) {
+          const combinedError = probeErrors.join(" | ");
+          const errorMessage = `Capability Discovery fehlgeschlagen: ${probeErrors[0]}`;
+          await appendActivity("error", errorMessage);
+          toast.error(errorMessage);
+          throw new AgentExecutionError(errorMessage, {
+            ...discoveryResult,
+            error: combinedError,
+          });
+        }
         reportProgress(90);
 
         await appendActivity("success", "Capability Discovery abgeschlossen");
