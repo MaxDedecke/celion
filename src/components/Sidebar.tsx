@@ -1,4 +1,4 @@
-import { Plus, Trash2, Pencil, PanelLeftClose, PanelLeft, Plug, ChevronDown, ChevronRight } from "lucide-react";
+import { Plus, Trash2, Pencil, PanelLeftClose, PanelLeft, Plug, ChevronDown, ChevronRight, Copy } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Logo from "./Logo";
 import { cn } from "@/lib/utils";
@@ -15,18 +15,20 @@ interface SidebarProps {
   onNewProjectMigration?: (projectId: string) => void;
   onDeleteMigration?: (id: string) => void;
   onEditMigration?: (id: string) => void;
+  onDuplicateMigration?: (id: string) => void;
 }
 
-const Sidebar = ({ 
-  projects, 
+const Sidebar = ({
+  projects,
   projectMigrations = [],
   standaloneMigrations = [],
-  selectedMigration, 
-  onSelectMigration, 
+  selectedMigration,
+  onSelectMigration,
   onNewMigration,
   onNewProjectMigration,
-  onDeleteMigration, 
-  onEditMigration
+  onDeleteMigration,
+  onEditMigration,
+  onDuplicateMigration,
 }: SidebarProps) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [collapsedSize, setCollapsedSize] = useState<number>();
@@ -206,6 +208,16 @@ const Sidebar = ({
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
+                                onDuplicateMigration?.(migration.id);
+                              }}
+                              className="rounded p-1 transition-colors hover:bg-foreground/5 hover:text-foreground"
+                              aria-label="Migration duplizieren"
+                            >
+                              <Copy className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 onEditMigration?.(migration.id);
                               }}
                               className="rounded p-1 transition-colors hover:bg-foreground/5 hover:text-foreground"
@@ -264,6 +276,16 @@ const Sidebar = ({
                       {migration.name}
                     </button>
                     <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onDuplicateMigration?.(migration.id);
+                        }}
+                        className="rounded p-1 transition-colors hover:bg-foreground/5 hover:text-foreground"
+                        aria-label="Migration duplizieren"
+                      >
+                        <Copy className="h-4 w-4" />
+                      </button>
                       <button
                         onClick={(e) => {
                           e.stopPropagation();

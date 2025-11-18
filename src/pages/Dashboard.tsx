@@ -42,6 +42,7 @@ import {
   CONNECTOR_AUTH_LABEL,
   CONNECTOR_ENDPOINT_LABEL,
 } from "@/constants/migrations";
+import { duplicateMigration } from "@/lib/migrationDuplication";
 
 const deriveMigrationStatus = (migration: any): MigrationStatus => {
   const progress = Number(migration?.progress ?? 0);
@@ -344,6 +345,28 @@ const Dashboard = () => {
     }
   };
 
+  const handleDuplicateMigration = async (migrationId: string) => {
+    try {
+      setTransitioning(true);
+      const existingNames = [...migrations, ...standaloneMigrations].map((migration) => migration.name);
+      const duplicated = await duplicateMigration(migrationId, { existingNames });
+
+      toast.success(`Migration "${duplicated.name}" dupliziert`);
+      await loadAllData();
+
+      if (duplicated.project_id) {
+        navigate(`/projects/${duplicated.project_id}/migration/${duplicated.id}`);
+      } else {
+        navigate(`/migration/${duplicated.id}`);
+      }
+    } catch (error: any) {
+      toast.error(error?.message ?? "Migration konnte nicht dupliziert werden");
+      console.error(error);
+    } finally {
+      setTransitioning(false);
+    }
+  };
+
   const handleEditMigration = (migrationId: string) => {
     const migration = migrations.find((m) => m.id === migrationId);
     if (migration) {
@@ -511,6 +534,7 @@ const Dashboard = () => {
           }}
           onDeleteMigration={handleDeleteMigration}
           onEditMigration={handleEditMigration}
+          onDuplicateMigration={handleDuplicateMigration}
         />
 
         <div className="flex flex-1 flex-col gap-6">

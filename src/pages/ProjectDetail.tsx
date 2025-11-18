@@ -29,7 +29,8 @@ import {
   CONNECTOR_AUTH_LABEL,
   CONNECTOR_ENDPOINT_LABEL,
 } from "@/constants/migrations";
-import { ArrowLeft, ArrowRight, Plus, Trash2, FolderKanban } from "lucide-react";
+import { ArrowLeft, ArrowRight, Plus, Trash2, FolderKanban, Copy } from "lucide-react";
+import { duplicateMigration } from "@/lib/migrationDuplication";
 
 interface SidebarMigration {
   id: string;
@@ -327,6 +328,33 @@ const ProjectDetail = () => {
     }
   };
 
+  const handleDuplicateMigration = async (migrationId: string) => {
+    try {
+      setTransitioning(true);
+      const existingNames = [
+        ...sidebarMigrations.map((migration) => migration.name),
+        ...standaloneMigrations.map((migration) => migration.name),
+        ...projectMigrations.map((migration) => migration.name),
+      ];
+
+      const duplicated = await duplicateMigration(migrationId, { existingNames });
+
+      toast.success(`Migration "${duplicated.name}" dupliziert`);
+      await Promise.all([loadSidebarData(), loadProjectData(projectName)]);
+
+      if (duplicated.project_id) {
+        navigate(`/projects/${duplicated.project_id}/migration/${duplicated.id}`);
+      } else {
+        navigate(`/migration/${duplicated.id}`);
+      }
+    } catch (error) {
+      console.error(error);
+      toast.error(error instanceof Error ? error.message : "Migration konnte nicht dupliziert werden");
+    } finally {
+      setTransitioning(false);
+    }
+  };
+
   const handleEditMigration = (migrationId: string) => {
     const migration = [...sidebarMigrations, ...standaloneMigrations].find((m) => m.id === migrationId);
     if (migration) {
@@ -386,6 +414,7 @@ const ProjectDetail = () => {
             setShowDeleteDialog(true);
           }}
           onEditMigration={handleEditMigration}
+          onDuplicateMigration={handleDuplicateMigration}
         />
 
         <div className="flex flex-1 flex-col gap-6">
@@ -478,17 +507,29 @@ const ProjectDetail = () => {
                         onClick={() => navigate(`/projects/${project.id}/migration/${migration.id}`)}
                       >
                         <CardHeader className="space-y-3 pb-6">
-                          <button
-                            onClick={(event) => {
-                              event.stopPropagation();
-                              setMigrationToDelete(migration.id);
-                              setShowDeleteDialog(true);
-                            }}
-                            className="absolute right-4 top-4 rounded-full bg-background/80 p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
-                            aria-label="Migration löschen"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                          <div className="absolute right-4 top-4 flex items-center gap-2">
+                            <button
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void handleDuplicateMigration(migration.id);
+                              }}
+                              className="rounded-full bg-background/80 p-2 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+                              aria-label="Migration duplizieren"
+                            >
+                              <Copy className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setMigrationToDelete(migration.id);
+                                setShowDeleteDialog(true);
+                              }}
+                              className="rounded-full bg-background/80 p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                              aria-label="Migration löschen"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
                           <div className="flex items-start gap-3 pr-10">
                             <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-foreground/5 text-foreground transition-all duration-300 group-hover:bg-primary/10 group-hover:text-primary">
                               <ArrowRight className="h-5 w-5" />

@@ -110,6 +110,9 @@ export const supabaseDatabase = {
       .delete()
       .eq("id", id),
 
+  insertMigrationActivities: (payloads: TablesInsert<"migration_activities">[]) =>
+    supabase.from("migration_activities").insert(payloads),
+
   insertConnectors: (payload: TablesInsert<"connectors">[]) =>
     supabase.from("connectors").insert(payload),
 
