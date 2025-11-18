@@ -5,8 +5,11 @@ import type {
   AuthFlowRecommendation,
   AuthScheme,
   ApiRequestFormat,
+  SchemaDiscoveryResult,
+  SchemaObjectDefinition,
 } from "@/types/agents";
 import { credentialProbe } from "@/tools/credentialProbe";
+import { schemaProbe } from "@/tools/schemaProbe";
 
 const DEFAULT_OPENAI_MODEL = "gpt-4.1-mini";
 const DEFAULT_OPENAI_AUTH_MODEL = "gpt-4.1";
@@ -802,4 +805,121 @@ export async function runAuthFlowAgent(
     error_message: errorMessage,
   } satisfies AuthFlowResult;
 }
+
+const buildSchemaAuthHeaders = (apiToken: string, email?: string, password?: string) => {
+  const headers: Record<string, string> = { Accept: "application/json" };
+
+  const normalizedToken = apiToken.trim();
+  const normalizedEmail = (email ?? "").trim();
+  const normalizedPassword = (password ?? "").trim();
+
+  if (normalizedToken && normalizedEmail && normalizedPassword) {
+    const payload = `${normalizedEmail}:${normalizedToken}`;
+    const encoded = typeof btoa === "function"
+      ? btoa(payload)
+      : typeof Buffer !== "undefined"
+        ? Buffer.from(payload).toString("base64")
+        : "";
+    if (encoded) {
+      headers.Authorization = `Basic ${encoded}`;
+    }
+  } else if (normalizedToken) {
+    headers.Authorization = `Bearer ${normalizedToken}`;
+  }
+
+  return headers;
+};
+
+const extractFieldsFromBody = (body: unknown): { fields: SchemaObjectDefinition["fields"]; sampleCount: number | null } => {
+  if (!body) {
+    return { fields: [], sampleCount: null };
+  }
+
+  if (Array.isArray(body)) {
+    const firstEntry = body.find((entry) => entry && typeof entry === "object" && !Array.isArray(entry));
+    if (!firstEntry || typeof firstEntry !== "object") {
+      return { fields: [], sampleCount: body.length };
+    }
+
+    const fields = Object.entries(firstEntry as Record<string, unknown>).map(([key, value]) => ({
+      name: key,
+      type: value === null || value === undefined ? null : typeof value,
+      sample_value: value,
+    }));
+
+    return { fields, sampleCount: body.length };
+  }
+
+  if (typeof body === "object") {
+    const fields = Object.entries(body as Record<string, unknown>).map(([key, value]) => ({
+      name: key,
+      type: value === null || value === undefined ? null : typeof value,
+      sample_value: value,
+    }));
+
+    return { fields, sampleCount: 1 };
+  }
+
+  return { fields: [], sampleCount: null };
+};
+
+export const runSchemaDiscoveryAgent = async (
+  baseUrl: string,
+  system: string,
+  apiToken: string,
+  email?: string,
+  password?: string,
+): Promise<SchemaDiscoveryResult> => {
+  const normalizedBase = baseUrl.replace(/\/$/, "");
+  const headers = buildSchemaAuthHeaders(apiToken, email, password);
+
+  const candidateEndpoints: Array<{ name: string; path: string }> = [
+    { name: "Projects", path: "/projects" },
+    { name: "Issues", path: "/issues" },
+    { name: "Tasks", path: "/tasks" },
+    { name: "Items", path: "/items" },
+    { name: "Users", path: "/users" },
+  ];
+
+  const objects: SchemaObjectDefinition[] = [];
+
+  for (const candidate of candidateEndpoints) {
+    const url = `${normalizedBase}${candidate.path}`;
+    const probe = await schemaProbe({ url, method: "GET", headers });
+
+    const { fields, sampleCount } = extractFieldsFromBody(probe.body);
+
+    objects.push({
+      name: candidate.name,
+      endpoint: url,
+      status: probe.status,
+      success: probe.ok,
+      fields,
+      sample_count: sampleCount,
+      error: probe.error,
+    });
+  }
+
+  const successfulObjects = objects.filter((object) => object.success && object.fields.length > 0);
+  const summaryParts: string[] = [];
+
+  if (successfulObjects.length > 0) {
+    summaryParts.push(
+      `${successfulObjects.length} von ${objects.length} Endpunkten lieferten strukturierte Felder.`,
+    );
+  } else {
+    summaryParts.push("Keine aussagekräftigen Felder gefunden. Bitte Endpunkte oder Credentials prüfen.");
+  }
+
+  const rawOutput = JSON.stringify({ system, base_url: normalizedBase, objects }, null, 2);
+
+  return {
+    system,
+    base_url: normalizedBase,
+    objects,
+    summary: summaryParts.join(" "),
+    raw_output: rawOutput,
+    error_message: successfulObjects.length === 0 ? "Schema Discovery konnte keine Felder extrahieren." : null,
+  } satisfies SchemaDiscoveryResult;
+};
 

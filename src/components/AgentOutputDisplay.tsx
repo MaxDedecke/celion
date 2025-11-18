@@ -3,15 +3,16 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
-import type { SystemDetectionResult, AuthFlowResult } from "@/types/agents";
+import type { SystemDetectionResult, AuthFlowResult, SchemaDiscoveryResult } from "@/types/agents";
 import { AlertCircle, CheckCircle2, Download, XCircle } from "lucide-react";
 
 interface AgentOutputDisplayProps {
   sourceResult?: SystemDetectionResult | AuthFlowResult | null;
   targetResult?: SystemDetectionResult | AuthFlowResult | null;
+  schemaResult?: SchemaDiscoveryResult | null;
 }
 
-const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayProps) => {
+const AgentOutputDisplay = ({ sourceResult, targetResult, schemaResult }: AgentOutputDisplayProps) => {
   const getConfidenceColor = (confidence: number | null) => {
     if (confidence === null) return "text-muted-foreground";
     if (confidence >= 0.8) return "text-green-600 dark:text-green-400";
@@ -40,6 +41,119 @@ const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayPr
     link.click();
     link.remove();
     URL.revokeObjectURL(url);
+  };
+
+  const renderSchemaDetails = (result: SchemaDiscoveryResult | null | undefined) => {
+    if (!result) {
+      return (
+        <Card className="h-full">
+          <CardHeader>
+            <CardTitle className="text-lg">Schema Discovery</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="text-sm text-muted-foreground italic">Noch keine Daten verfügbar</p>
+          </CardContent>
+        </Card>
+      );
+    }
+
+    return (
+      <Card className="h-full">
+        <CardHeader>
+          <CardTitle className="text-lg flex items-center gap-2">
+            Schema Discovery
+            {result.error_message ? (
+              <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+            ) : (
+              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
+            )}
+          </CardTitle>
+          {result.summary && <p className="text-sm text-muted-foreground">{result.summary}</p>}
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {result.objects.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Keine Objekte gefunden.</p>
+          ) : (
+            <div className="space-y-3">
+              {result.objects.map((object) => (
+                <div
+                  key={`${object.name}-${object.endpoint}`}
+                  className="rounded-lg border border-border/60 bg-muted/40 p-3"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="flex items-center gap-2">
+                      <Badge variant={object.success ? "secondary" : "destructive"} className="text-xs">
+                        {object.success ? "Erfolgreich" : "Fehlgeschlagen"}
+                      </Badge>
+                      <span className="font-semibold text-sm">{object.name}</span>
+                    </div>
+                    <span className="text-xs font-mono break-all text-muted-foreground">{object.endpoint}</span>
+                  </div>
+                  {object.status !== undefined && object.status !== null && (
+                    <p className="mt-1 text-xs text-muted-foreground">Status: {object.status}</p>
+                  )}
+                  {object.error && (
+                    <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">{object.error}</p>
+                  )}
+                  {object.fields.length > 0 && (
+                    <div className="mt-2 space-y-1">
+                      <p className="text-xs font-medium text-muted-foreground">Felder ({object.fields.length})</p>
+                      <div className="grid gap-2 md:grid-cols-2 lg:grid-cols-3">
+                        {object.fields.map((field, index) => (
+                          <div
+                            key={`${object.name}-${field.name || index}`}
+                            className="rounded-md border border-border/50 bg-background/60 px-2 py-1"
+                          >
+                            <p className="text-sm font-medium">{field.name || "Unbenannt"}</p>
+                            {field.type && (
+                              <p className="text-xs text-muted-foreground">Typ: {field.type}</p>
+                            )}
+                            {field.sample_value !== undefined && field.sample_value !== null && (
+                              <p className="text-xs text-muted-foreground truncate">
+                                Beispiel: {String(field.sample_value)}
+                              </p>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+          {result.raw_output && (
+            <div className="flex items-center gap-2 pt-1">
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button
+                    type="button"
+                    className="inline-flex cursor-pointer text-xs font-medium text-muted-foreground transition-colors hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                  >
+                    Raw Output anzeigen
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent side="top" align="start" className="w-[min(90vw,720px)] max-w-[min(90vw,820px)] p-0">
+                  <ScrollArea className="max-h-[60vh]">
+                    <pre className="whitespace-pre-wrap break-all text-left text-xs font-mono px-4 py-3">{result.raw_output}</pre>
+                  </ScrollArea>
+                </PopoverContent>
+              </Popover>
+
+              <button
+                type="button"
+                onClick={() => downloadRawOutput(result.raw_output!, "Schema Discovery")}
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-input bg-transparent text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                aria-label="Raw Output herunterladen"
+                title="Raw Output herunterladen"
+              >
+                <Download className="h-4 w-4" />
+              </button>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+    );
   };
 
   const renderSystemDetails = (result: SystemDetectionResult | AuthFlowResult | null | undefined, title: string) => {
@@ -369,8 +483,14 @@ const AgentOutputDisplay = ({ sourceResult, targetResult }: AgentOutputDisplayPr
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-      {renderSystemDetails(sourceResult, "Quellsystem")}
-      {renderSystemDetails(targetResult, "Zielsystem")}
+      {schemaResult
+        ? renderSchemaDetails(schemaResult)
+        : (
+          <>
+            {renderSystemDetails(sourceResult, "Quellsystem")}
+            {renderSystemDetails(targetResult, "Zielsystem")}
+          </>
+        )}
     </div>
   );
 };

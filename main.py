@@ -70,6 +70,10 @@ class ProbeResponse(BaseModel):
     evidence: ProbeEvidence
 
 
+SchemaProbeRequest = ProbeRequest
+SchemaProbeResponse = ProbeResponse
+
+
 def _legacy_http_exception() -> HTTPException:
     """Provide a consistent 410 response when legacy endpoints are used."""
 
@@ -184,6 +188,13 @@ async def run_credential_probe(payload: ProbeRequest) -> ProbeResponse:
                 timestamp=timestamp,
             ),
         )
+
+
+@app.post("/api/schema-probe", response_model=SchemaProbeResponse)
+async def run_schema_probe(payload: SchemaProbeRequest) -> SchemaProbeResponse:
+    """Perform generic schema discovery requests on behalf of the agent."""
+
+    return await run_credential_probe(payload)  # type: ignore[arg-type]
 
 
 def _cli(url: str) -> int:

@@ -3,14 +3,26 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import AgentOutputDisplay from "@/components/AgentOutputDisplay";
 import type { AgentWorkflowStepState } from "./types";
-import type { SystemDetectionResult, SystemDetectionStepResult, AuthFlowResult, AuthFlowStepResult } from "@/types/agents";
+import type {
+  SystemDetectionResult,
+  SystemDetectionStepResult,
+  AuthFlowResult,
+  AuthFlowStepResult,
+  SchemaDiscoveryResult,
+} from "@/types/agents";
 
 interface AgentResultDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   step: AgentWorkflowStepState | null;
   formattedResult: string | null;
-  structuredResult: SystemDetectionResult | SystemDetectionStepResult | AuthFlowResult | AuthFlowStepResult | null;
+  structuredResult:
+    | SystemDetectionResult
+    | SystemDetectionStepResult
+    | AuthFlowResult
+    | AuthFlowStepResult
+    | SchemaDiscoveryResult
+    | null;
   sourceResult: SystemDetectionResult | AuthFlowResult | null;
   targetResult: SystemDetectionResult | AuthFlowResult | null;
   rawOutput?: string | null;
@@ -26,6 +38,14 @@ const AgentResultDialog = ({
   targetResult,
   rawOutput,
 }: AgentResultDialogProps) => {
+  const isSchemaDiscoveryResult = (value: unknown): value is SchemaDiscoveryResult => {
+    return Boolean(value && typeof value === "object" && "objects" in (value as Record<string, unknown>));
+  };
+
+  const schemaResult = structuredResult && isSchemaDiscoveryResult(structuredResult)
+    ? structuredResult
+    : null;
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-full max-w-[98vw] sm:max-w-[92rem]">
@@ -39,7 +59,11 @@ const AgentResultDialog = ({
         </DialogHeader>
         <ScrollArea className="max-h-[78vh] px-8 pb-2">
           {structuredResult ? (
-            <AgentOutputDisplay sourceResult={sourceResult} targetResult={targetResult} />
+            <AgentOutputDisplay
+              sourceResult={schemaResult ? null : sourceResult}
+              targetResult={schemaResult ? null : targetResult}
+              schemaResult={schemaResult}
+            />
           ) : formattedResult ? (
             <pre className="whitespace-pre-wrap break-words font-mono text-xs text-foreground p-4 rounded-md border border-border/60 bg-muted/40">
               {formattedResult}

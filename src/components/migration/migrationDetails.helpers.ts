@@ -6,6 +6,7 @@ import type {
   AuthFlowResult,
   AuthFlowStepResult,
   AuthFlowRecommendation,
+  SchemaDiscoveryResult,
   SystemDetectionResult,
   SystemDetectionStepResult,
 } from "@/types/agents";
@@ -433,6 +434,69 @@ export const normalizeAuthFlowStepResult = (input: unknown): AuthFlowStepResult 
   }
 
   return { source, target };
+};
+
+export const normalizeSchemaDiscoveryResult = (input: unknown): SchemaDiscoveryResult | null => {
+  if (!input || typeof input !== "object") {
+    return null;
+  }
+
+  const record = input as Partial<SchemaDiscoveryResult> & { objects?: unknown };
+
+  const objects: SchemaDiscoveryResult["objects"] = Array.isArray(record.objects)
+    ? record.objects
+        .filter((entry) => entry && typeof entry === "object")
+        .map((entry) => {
+          const item = entry as Record<string, unknown>;
+          const fields = Array.isArray(item.fields)
+            ? item.fields
+                .filter((field) => field && typeof field === "object")
+                .map((field) => {
+                  const fieldEntry = field as Record<string, unknown>;
+                  return {
+                    name: typeof fieldEntry.name === "string" ? fieldEntry.name : "",
+                    type:
+                      typeof fieldEntry.type === "string" || fieldEntry.type === null
+                        ? fieldEntry.type
+                        : fieldEntry.type === undefined
+                          ? undefined
+                          : String(fieldEntry.type),
+                    path:
+                      typeof fieldEntry.path === "string" || fieldEntry.path === null
+                        ? fieldEntry.path
+                        : undefined,
+                    sample_value: fieldEntry.sample_value,
+                  };
+                })
+            : [];
+
+          return {
+            name: typeof item.name === "string" ? item.name : "",
+            endpoint: typeof item.endpoint === "string" ? item.endpoint : "",
+            success: Boolean(item.success),
+            status: typeof item.status === "number" ? item.status : null,
+            fields,
+            sample_count:
+              typeof item.sample_count === "number" && Number.isFinite(item.sample_count)
+                ? item.sample_count
+                : null,
+            error: typeof item.error === "string" ? item.error : null,
+          };
+        })
+    : [];
+
+  if (!objects.length) {
+    return null;
+  }
+
+  return {
+    system: typeof record.system === "string" ? record.system : null,
+    base_url: typeof record.base_url === "string" ? record.base_url : null,
+    objects,
+    summary: typeof record.summary === "string" ? record.summary : null,
+    raw_output: typeof record.raw_output === "string" ? record.raw_output : "",
+    error_message: typeof record.error_message === "string" ? record.error_message : null,
+  };
 };
 
 export const isStepStructuredResult = (

@@ -57,3 +57,29 @@ export interface AuthFlowStepResult {
   target: AuthFlowResult | null;
 }
 
+export interface SchemaObjectField {
+  name: string;
+  type?: string | null;
+  path?: string | null;
+  sample_value?: unknown;
+}
+
+export interface SchemaObjectDefinition {
+  name: string;
+  endpoint: string;
+  success: boolean;
+  status?: number | null;
+  fields: SchemaObjectField[];
+  sample_count?: number | null;
+  error?: string | null;
+}
+
+export interface SchemaDiscoveryResult {
+  system: string | null;
+  base_url: string | null;
+  objects: SchemaObjectDefinition[];
+  summary?: string | null;
+  raw_output: string;
+  error_message?: string | null;
+}
+

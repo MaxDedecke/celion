@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
 import { AGENT_WORKFLOW_STEPS } from "@/constants/agentWorkflow";
 import { supabaseDatabase } from "@/api/supabaseDatabase";
-import { runAuthFlowAgent, runSystemDetectionAgent } from "@/lib/agentService";
+import { runAuthFlowAgent, runSchemaDiscoveryAgent, runSystemDetectionAgent } from "@/lib/agentService";
 import type {
   AuthFlowResult,
   AuthFlowStepResult,
+  SchemaDiscoveryResult,
   SystemDetectionResult,
   SystemDetectionStepResult,
 } from "@/types/agents";
@@ -42,6 +43,7 @@ import {
   loadCachedWorkflowState,
   normalizeAuthFlowResult,
   normalizeAuthFlowStepResult,
+  normalizeSchemaDiscoveryResult,
   normalizeSystemDetectionResult,
   normalizeSystemDetectionStepResult,
   parseProgressPair,
@@ -244,7 +246,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     async (
       node: WorkflowNode,
       options?: { onProgress?: (value: number) => void },
-    ): Promise<SystemDetectionStepResult | AuthFlowStepResult | undefined> => {
+    ): Promise<SystemDetectionStepResult | AuthFlowStepResult | SchemaDiscoveryResult | undefined> => {
       if (!node.agentType || node.active === false) {
         return undefined;
       }
@@ -558,6 +560,56 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
 
         toast.success("Systemerkennung für Quelle und Ziel abgeschlossen");
         return { source: sourceDetection, target: targetDetection };
+      }
+
+      if (node.agentType === "schema-discovery") {
+        const { data: connectorRows, error: connectorsError } = await supabaseDatabase.fetchConnectorsByMigration(project.id);
+
+        if (connectorsError) {
+          const message = connectorsError.message || "Konnektordaten konnten nicht geladen werden.";
+          await appendActivity("error", message);
+          toast.error(message);
+          throw new AgentExecutionError(message);
+        }
+
+        const connectors = (connectorRows ?? []) as ConnectorRecord[];
+        const sourceConnector = connectors.find((record) => record.connector_type === "in");
+        const baseUrl = (project.sourceUrl ?? project.inConnectorDetail ?? sourceConnector?.api_url ?? "").trim();
+        const apiToken = (sourceConnector?.api_key ?? "").trim();
+        const email = (sourceConnector?.username ?? "").trim();
+        const password = (sourceConnector?.password ?? "").trim();
+
+        if (!baseUrl) {
+          const message = "Für das Quellsystem ist keine Basis-URL hinterlegt. Schema Discovery nicht möglich.";
+          await appendActivity("error", message);
+          toast.error(message);
+          throw new AgentExecutionError(message);
+        }
+
+        if (!apiToken) {
+          const message = "Für das Quellsystem wurde kein API-Token gefunden. Schema Discovery nicht möglich.";
+          await appendActivity("error", message);
+          toast.error(message);
+          throw new AgentExecutionError(message);
+        }
+
+        await appendActivity("info", `Schema Discovery gestartet (Quelle): ${project.sourceSystem || baseUrl}`);
+        reportProgress(20);
+
+        const discoveryResult = await runSchemaDiscoveryAgent(baseUrl, project.sourceSystem, apiToken, email, password);
+        reportProgress(90);
+
+        if (discoveryResult.error_message) {
+          const message = discoveryResult.error_message;
+          await appendActivity("warning", `Schema Discovery teilweise fehlgeschlagen: ${message}`);
+          toast.error(`Schema Discovery mit Warnungen: ${message}`);
+        } else {
+          await appendActivity("success", "Schema Discovery abgeschlossen");
+          toast.success("Schema Discovery abgeschlossen");
+        }
+
+        reportProgress(100);
+        return discoveryResult;
       }
 
       return undefined;
@@ -1362,6 +1414,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           | SystemDetectionStepResult
           | AuthFlowResult
           | AuthFlowStepResult
+          | SchemaDiscoveryResult
           | null,
       };
     }
@@ -1379,11 +1432,16 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         return normalizeAuthFlowStepResult(value) ?? normalizeAuthFlowResult(value);
       }
 
+      if (agentResultDialogNode.agentType === "schema-discovery") {
+        return normalizeSchemaDiscoveryResult(value);
+      }
+
       return (
         normalizeSystemDetectionStepResult(value) ??
         normalizeSystemDetectionResult(value) ??
         normalizeAuthFlowStepResult(value) ??
-        normalizeAuthFlowResult(value)
+        normalizeAuthFlowResult(value) ??
+        normalizeSchemaDiscoveryResult(value)
       );
     };
 
@@ -1392,6 +1450,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       | SystemDetectionStepResult
       | AuthFlowResult
       | AuthFlowStepResult
+      | SchemaDiscoveryResult
       | null => {
       const normalized = normalizeByAgentType(value);
       if (normalized) {
@@ -1568,10 +1627,14 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     };
   }, [agentResultDialogNode]);
 
+  const isSchemaDiscoveryResult = (value: unknown): value is SchemaDiscoveryResult => {
+    return Boolean(value && typeof value === "object" && "objects" in (value as Record<string, unknown>));
+  };
+
   const agentDialogSourceResult = useMemo<
     SystemDetectionResult | AuthFlowResult | null
   >(() => {
-    if (!agentResultDialogStructured) {
+    if (!agentResultDialogStructured || isSchemaDiscoveryResult(agentResultDialogStructured)) {
       return null;
     }
 
@@ -1585,6 +1648,10 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const agentDialogTargetResult = useMemo<
     SystemDetectionResult | AuthFlowResult | null
   >(() => {
+    if (isSchemaDiscoveryResult(agentResultDialogStructured)) {
+      return null;
+    }
+
     if (isStepStructuredResult(agentResultDialogStructured)) {
       return agentResultDialogStructured.target ?? null;
     }
