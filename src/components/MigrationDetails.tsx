@@ -823,19 +823,36 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           }
         };
 
+        let sourceAuth: AuthFlowResult | null = null;
+        let targetAuth: AuthFlowResult | null = null;
+
         try {
           reportProgress(25);
-          const sourceAuth = await runAuthForScope("source", project.sourceSystem, sourceAuthContext);
+          sourceAuth = await runAuthForScope("source", project.sourceSystem, sourceAuthContext);
 
           reportProgress(75);
-          const targetAuth = await runAuthForScope("target", project.targetSystem, targetAuthContext);
+          targetAuth = await runAuthForScope("target", project.targetSystem, targetAuthContext);
 
           reportProgress(100);
           return { source: sourceAuth, target: targetAuth };
         } catch (error) {
           if (error instanceof AgentExecutionError) {
-            throw error;
+            const combinedPayload: Record<string, unknown> = {
+              ...(sourceAuth ? { source: sourceAuth } : {}),
+              ...(targetAuth ? { target: targetAuth } : {}),
+            };
+
+            if (error.agentResult && typeof error.agentResult === "object" && !Array.isArray(error.agentResult)) {
+              Object.assign(combinedPayload, error.agentResult as Record<string, unknown>);
+            }
+
+            if (!("error" in combinedPayload)) {
+              combinedPayload.error = error.message;
+            }
+
+            throw new AgentExecutionError(error.message, Object.keys(combinedPayload).length > 0 ? combinedPayload : undefined);
           }
+
           const message = error instanceof Error ? error.message : String(error);
           throw new AgentExecutionError(message, { error: message });
         }
