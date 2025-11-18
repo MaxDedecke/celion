@@ -12,7 +12,6 @@ import type {
 import type { MigrationStatus } from "@/types/migration";
 import type { WorkflowBoardState, WorkflowNode } from "@/types/workflow";
 import WorkflowPanelDialog from "./dialogs/WorkflowPanelDialog";
-import SystemDetectionOverview from "./SystemDetectionOverview";
 import type { Activity } from "./ActivityTimeline";
 import AgentResultDialog from "./migration/AgentResultDialog";
 import MigrationActivityCard from "./migration/MigrationActivityCard";
@@ -24,7 +23,6 @@ import { nodeHasAgentResult } from "./migration/workflowUtils";
 import { toast } from "sonner";
 import { AgentExecutionError } from "./migration/errors";
 import {
-  MIGRATION_STATUS_FLOW,
   MIGRATION_STATUS_META,
   WORKFLOW_STATE_CACHE_PREFIX,
 } from "./migration/migrationDetails.constants";
@@ -33,7 +31,6 @@ import type {
   ConnectorRecord,
   MigrationDetailsProps,
   RawActivityRecord,
-  StatusFlowStep,
 } from "./migration/migrationDetails.types";
 
 const parseProgressPair = (value: string) => {
@@ -108,7 +105,6 @@ const deserializeWorkflowState = (payload: unknown): WorkflowBoardState | null =
   }
 };
 
-const WORKFLOW_STATE_CACHE_PREFIX = "celion.workflow-state";
 
 const getWorkflowStateCacheKey = (migrationId?: string | null) => {
   if (!migrationId) {
@@ -1627,12 +1623,6 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
 
   const overallProgress = Math.min(100, Math.max(0, Math.round(Number(project.progress) || 0)));
   const statusMeta = MIGRATION_STATUS_META[status];
-  const normalizedStatusForFlow: StatusFlowStep =
-    status === "completed"
-      ? "completed"
-      : status === "not_started"
-        ? "not_started"
-        : "running";
 
   const agentWorkflowProgress = useMemo(() => {
     const nodes = workflowBoard.nodes;
