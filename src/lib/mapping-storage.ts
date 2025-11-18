@@ -1,5 +1,5 @@
 import type { FieldMapping, MappingType } from "@/types/mapping";
-import { supabase } from "@/integrations/supabase/client";
+import { supabaseDatabase } from "@/api/supabaseDatabase";
 
 export const createMappingId = (): string => {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -79,12 +79,11 @@ export const loadMappingsFromDatabase = async (
   targetObjectType: string
 ): Promise<FieldMapping[]> => {
   try {
-    const { data, error } = await supabase
-      .from("field_mappings")
-      .select("*")
-      .eq("pipeline_id", pipelineId)
-      .eq("source_object_type", sourceObjectType)
-      .eq("target_object_type", targetObjectType);
+    const { data, error } = await supabaseDatabase.fetchFieldMappings(
+      pipelineId,
+      sourceObjectType,
+      targetObjectType
+    );
 
     if (error) {
       console.error("Failed to load mappings from database:", error);
@@ -103,11 +102,7 @@ export const loadAllMappingsForSource = async (
   sourceObjectType: string
 ): Promise<(FieldMapping & { sourceObjectType: string; targetObjectType: string })[]> => {
   try {
-    const { data, error } = await supabase
-      .from("field_mappings")
-      .select("*")
-      .eq("pipeline_id", pipelineId)
-      .eq("source_object_type", sourceObjectType);
+    const { data, error } = await supabaseDatabase.fetchAllMappingsForSource(pipelineId, sourceObjectType);
 
     if (error) {
       console.error("Failed to load all mappings from database:", error);
@@ -134,14 +129,12 @@ export const saveMappingToDatabase = async (
   try {
     const dbMapping = fieldMappingToDbMapping(mapping, pipelineId);
 
-    const { error } = await supabase
-      .from("field_mappings")
-      .upsert({ 
-        id: mapping.id, 
-        ...dbMapping,
-        source_object_type: sourceObjectType,
-        target_object_type: targetObjectType
-      });
+    const { error } = await supabaseDatabase.upsertFieldMapping({
+      id: mapping.id,
+      ...dbMapping,
+      source_object_type: sourceObjectType,
+      target_object_type: targetObjectType
+    });
 
     if (error) {
       console.error("Failed to save mapping to database:", error);
@@ -159,10 +152,7 @@ export const deleteMappingFromDatabase = async (
   mappingId: string
 ): Promise<boolean> => {
   try {
-    const { error } = await supabase
-      .from("field_mappings")
-      .delete()
-      .eq("id", mappingId);
+    const { error } = await supabaseDatabase.deleteFieldMapping(mappingId);
 
     if (error) {
       console.error("Failed to delete mapping from database:", error);
@@ -180,10 +170,7 @@ export const clearAllMappingsForPipeline = async (
   pipelineId: string
 ): Promise<boolean> => {
   try {
-    const { error } = await supabase
-      .from("field_mappings")
-      .delete()
-      .eq("pipeline_id", pipelineId);
+    const { error } = await supabaseDatabase.clearFieldMappingsForPipeline(pipelineId);
 
     if (error) {
       console.error("Failed to clear mappings from database:", error);

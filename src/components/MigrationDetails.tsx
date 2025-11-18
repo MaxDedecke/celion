@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
 import { AGENT_WORKFLOW_STEPS } from "@/constants/agentWorkflow";
-import { supabase } from "@/integrations/supabase/client";
+import { supabaseDatabase } from "@/api/supabaseDatabase";
 import { runAuthFlowAgent, runSystemDetectionAgent } from "@/lib/agentService";
 import type {
   AuthFlowResult,
@@ -72,7 +72,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       const timestampIso = new Date().toISOString();
 
       try {
-        await supabase.from("migration_activities").insert({
+        await supabaseDatabase.insertMigrationActivity({
           migration_id: project.id,
           type,
           title,
@@ -202,14 +202,12 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
               ? "warning"
               : "info";
 
-        const { error: activityError } = await supabase
-          .from("migration_activities")
-          .insert({
-            migration_id: project.id,
-            type: activityType,
-            title: activityTitle,
-            timestamp: timestampIso,
-          });
+        const { error: activityError } = await supabaseDatabase.insertMigrationActivity({
+          migration_id: project.id,
+          type: activityType,
+          title: activityTitle,
+          timestamp: timestampIso,
+        });
 
         if (activityError) throw activityError;
 
@@ -258,10 +256,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       };
 
       if (node.agentType === "auth-flow") {
-        const { data: connectorRows, error: connectorsError } = await supabase
-          .from("connectors")
-          .select("*")
-          .eq("migration_id", project.id);
+        const { data: connectorRows, error: connectorsError } = await supabaseDatabase.fetchConnectorsByMigration(project.id);
 
         if (connectorsError) {
           const message = connectorsError.message || "Konnektordaten konnten nicht geladen werden.";
@@ -618,10 +613,9 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       cacheWorkflowStateSnapshot(project.id, nextState);
 
       try {
-        await supabase
-          .from("migrations")
-          .update({ workflow_state: serializeWorkflowState(nextState) as any })
-          .eq("id", project.id);
+        await supabaseDatabase.updateMigration(project.id, {
+          workflow_state: serializeWorkflowState(nextState) as any,
+        });
       } catch (error) {
         console.error("Fehler beim Aktualisieren des Workflow-Status für die Systemerkennung:", error);
       }
@@ -685,12 +679,9 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         if (nextWorkflowState) {
           cacheWorkflowStateSnapshot(project.id, nextWorkflowState);
           try {
-            await supabase
-              .from("migrations")
-              .update({
-                workflow_state: serializeWorkflowState(nextWorkflowState) as any,
-              })
-              .eq("id", project.id);
+            await supabaseDatabase.updateMigration(project.id, {
+              workflow_state: serializeWorkflowState(nextWorkflowState) as any,
+            });
           } catch (error) {
             console.error("Fehler beim Speichern des Agenten-Outputs:", error);
           }
@@ -734,7 +725,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       if (activeStepIndex === -1) {
         const startedActivity = `Schritt gestartet: ${completedStepNode.title}`;
 
-        await supabase.from("migration_activities").insert({
+        await supabaseDatabase.insertMigrationActivity({
           migration_id: project.id,
           type: "info",
           title: startedActivity,
@@ -896,7 +887,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       const completedActivity = `Schritt abgeschlossen: ${completedStepTitle}`;
 
       // Save completed step activity to database
-      await supabase.from("migration_activities").insert({
+      await supabaseDatabase.insertMigrationActivity({
         migration_id: project.id,
         type: "success",
         title: completedActivity,
@@ -947,14 +938,11 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       const serializedState = serializeWorkflowState(nextWorkflowState);
       console.log(`[DEBUG] Persisting workflow state:`, JSON.stringify(serializedState, null, 2));
       
-      const { error } = await supabase
-        .from("migrations")
-        .update({
-          progress: isCompleted ? 100 : clampedProgress,
-          status: isCompleted ? "completed" : "running",
-          workflow_state: serializedState as any
-        })
-        .eq("id", project.id);
+      const { error } = await supabaseDatabase.updateMigration(project.id, {
+        progress: isCompleted ? 100 : clampedProgress,
+        status: isCompleted ? "completed" : "running",
+        workflow_state: serializedState as any
+      });
 
       if (error) throw error;
 
@@ -963,7 +951,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         const finalActivity = "Alle Schritte abgeschlossen";
         
         // Save final activity to database
-        await supabase.from("migration_activities").insert({
+        await supabaseDatabase.insertMigrationActivity({
           migration_id: project.id,
           type: "success",
           title: finalActivity,
@@ -1086,11 +1074,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
 
     const fetchWorkflowState = async () => {
       try {
-        const { data, error } = await supabase
-          .from("migrations")
-          .select("workflow_state")
-          .eq("id", project.id)
-          .single();
+        const { data, error } = await supabaseDatabase.fetchMigrationById(project.id);
 
         if (error) {
           throw error;
@@ -1151,10 +1135,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       cacheWorkflowStateSnapshot(project.id, snapshot);
 
       try {
-        await supabase
-          .from("migrations")
-          .update({ workflow_state: snapshot as any })
-          .eq("id", project.id);
+        await supabaseDatabase.updateMigration(project.id, { workflow_state: snapshot as any });
       } catch (error) {
         console.error("Fehler beim automatischen Speichern des Agenten-Outputs:", error);
       }
@@ -1647,10 +1628,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
 
     try {
       setIsSavingNotes(true);
-      const { error } = await supabase
-        .from("migrations")
-        .update({ notes })
-        .eq("id", project.id);
+      const { error } = await supabaseDatabase.updateMigration(project.id, { notes });
 
       if (error) throw error;
 

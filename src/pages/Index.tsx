@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import DataFlowLoader from "@/components/DataFlowLoader";
 import { useMinimumLoader } from "@/hooks/useMinimumLoader";
-import { supabase } from "@/integrations/supabase/client";
+import { supabaseDatabase } from "@/api/supabaseDatabase";
 
 const Index = () => {
   const navigate = useNavigate();
@@ -12,7 +12,7 @@ const Index = () => {
   useEffect(() => {
     const run = async () => {
       try {
-        const { data: { session } } = await supabase.auth.getSession();
+        const { data: { session } } = await supabaseDatabase.getSession();
         if (session) {
           navigate("/dashboard");
         } else {

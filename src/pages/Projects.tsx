@@ -12,7 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Folder, FolderOpen, Plus, Trash2, ClipboardList, Users } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { supabaseDatabase } from "@/api/supabaseDatabase";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -60,7 +60,7 @@ const Projects = () => {
   }, []);
 
   const checkAuth = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session } } = await supabaseDatabase.getSession();
     if (!session) {
       navigate("/");
     }
@@ -71,20 +71,14 @@ const Projects = () => {
       setLoading(true);
       
       // Load all projects
-      const { data: projectsData, error: projectsError } = await supabase
-        .from('projects')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const { data: projectsData, error: projectsError } = await supabaseDatabase.fetchProjects();
 
       if (projectsError) throw projectsError;
 
       // Load migrations count for each project
       const projectsWithCounts = await Promise.all(
         (projectsData || []).map(async (project) => {
-          const { count } = await supabase
-            .from('migrations')
-            .select('*', { count: 'exact', head: true })
-            .eq('project_id', project.id);
+          const { count } = await supabaseDatabase.countMigrationsByProject(project.id);
 
           return {
             id: project.id,
@@ -101,11 +95,7 @@ const Projects = () => {
       // Load all migrations with project_id
       const allMigrationsWithProjects: any[] = [];
       for (const project of projectsData || []) {
-        const { data: migrationsData, error: migrationsError } = await supabase
-          .from('migrations')
-          .select('*')
-          .eq('project_id', project.id)
-          .order('created_at', { ascending: false });
+        const { data: migrationsData, error: migrationsError } = await supabaseDatabase.fetchMigrationsByProject(project.id);
 
         if (migrationsError) throw migrationsError;
         
@@ -119,11 +109,7 @@ const Projects = () => {
       setMigrations(allMigrationsWithProjects);
 
       // Load standalone migrations
-      const { data: standaloneData, error: standaloneError } = await supabase
-        .from('migrations')
-        .select('*')
-        .is('project_id', null)
-        .order('created_at', { ascending: false });
+      const { data: standaloneData, error: standaloneError } = await supabaseDatabase.fetchStandaloneMigrations();
 
       if (standaloneError) throw standaloneError;
 
@@ -143,7 +129,7 @@ const Projects = () => {
   const handleLogout = async () => {
     try {
       setTransitioning(true);
-      await supabase.auth.signOut();
+      await supabaseDatabase.signOut();
       navigate("/");
     } catch (error) {
       toast.error("Abmeldung fehlgeschlagen");
@@ -155,16 +141,14 @@ const Projects = () => {
 
   const handleAddProject = async (data: { name: string; description: string }) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await supabaseDatabase.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      const { error } = await supabase
-        .from('projects')
-        .insert({
-          user_id: user.id,
-          name: data.name,
-          description: data.description,
-        });
+      const { error } = await supabaseDatabase.insertProject({
+        user_id: user.id,
+        name: data.name,
+        description: data.description,
+      });
 
       if (error) throw error;
 
@@ -180,13 +164,10 @@ const Projects = () => {
     if (!editingProject) return;
 
     try {
-      const { error } = await supabase
-        .from('projects')
-        .update({
-          name: data.name,
-          description: data.description,
-        })
-        .eq('id', editingProject.id);
+      const { error } = await supabaseDatabase.updateProject(editingProject.id, {
+        name: data.name,
+        description: data.description,
+      });
 
       if (error) throw error;
 
@@ -203,10 +184,7 @@ const Projects = () => {
     if (!projectToDelete) return;
 
     try {
-      const { error } = await supabase
-        .from('projects')
-        .delete()
-        .eq('id', projectToDelete);
+      const { error } = await supabaseDatabase.deleteProject(projectToDelete);
 
       if (error) throw error;
 
@@ -235,7 +213,7 @@ const Projects = () => {
 
   const handleAddMigration = async (migrationData: NewMigrationInput) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await supabaseDatabase.getUser();
       if (!user) throw new Error("Nicht authentifiziert");
 
       const {
@@ -251,23 +229,19 @@ const Projects = () => {
       const sourceConnectorAuthType = "api_key";
       const targetConnectorAuthType = "api_key";
 
-      const { data: migration, error: migrationError } = await supabase
-        .from('migrations')
-        .insert({
-          user_id: user.id,
-          project_id: projectIdForNewMigration,
-          name,
-          source_system: sourceSystem,
-          target_system: targetSystem,
-          source_url: sourceUrl,
-          target_url: targetUrl,
-          in_connector: CONNECTOR_ENDPOINT_LABEL,
-          in_connector_detail: sourceUrl,
-          out_connector: CONNECTOR_AUTH_LABEL,
-          out_connector_detail: targetAuthDetail,
-        })
-        .select()
-        .single();
+      const { data: migration, error: migrationError } = await supabaseDatabase.insertMigration({
+        user_id: user.id,
+        project_id: projectIdForNewMigration,
+        name,
+        source_system: sourceSystem,
+        target_system: targetSystem,
+        source_url: sourceUrl,
+        target_url: targetUrl,
+        in_connector: CONNECTOR_ENDPOINT_LABEL,
+        in_connector_detail: sourceUrl,
+        out_connector: CONNECTOR_AUTH_LABEL,
+        out_connector_detail: targetAuthDetail,
+      });
 
       if (migrationError) throw migrationError;
 
@@ -289,24 +263,20 @@ const Projects = () => {
         password: targetAuth.password ?? null,
       };
 
-      const { error: connectorError } = await supabase
-        .from('connectors')
-        .insert([
-          { ...sourceConnectorPayload, connector_type: 'in' },
-          { ...targetConnectorPayload, connector_type: 'out' },
-        ]);
+      const { error: connectorError } = await supabaseDatabase.insertConnectors([
+        { ...sourceConnectorPayload, connector_type: 'in' },
+        { ...targetConnectorPayload, connector_type: 'out' },
+      ]);
 
       if (connectorError) throw connectorError;
 
       // Create initial activity
-      await supabase
-        .from('migration_activities')
-        .insert({
-          migration_id: migration.id,
-          type: 'info',
-          title: 'Neues Migrationsprojekt erstellt',
-          timestamp: new Date().toISOString(),
-        });
+      await supabaseDatabase.insertMigrationActivity({
+        migration_id: migration.id,
+        type: 'info',
+        title: 'Neues Migrationsprojekt erstellt',
+        timestamp: new Date().toISOString(),
+      });
 
       toast.success(`Migration "${name}" erstellt`);
       setProjectIdForNewMigration(null);
@@ -327,10 +297,7 @@ const Projects = () => {
 
   const handleDeleteMigration = async (migrationId: string) => {
     try {
-      const { error } = await supabase
-        .from('migrations')
-        .delete()
-        .eq('id', migrationId);
+      const { error } = await supabaseDatabase.deleteMigration(migrationId);
 
       if (error) throw error;
 
@@ -352,10 +319,7 @@ const Projects = () => {
 
   const handleUpdateMigration = async (name: string) => {
     try {
-      const { error } = await supabase
-        .from('migrations')
-        .update({ name })
-        .eq('id', editingMigration.id);
+      const { error } = await supabaseDatabase.updateMigration(editingMigration.id, { name });
 
       if (error) throw error;
 

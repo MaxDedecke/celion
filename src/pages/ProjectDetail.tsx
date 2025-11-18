@@ -20,7 +20,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useMinimumLoader } from "@/hooks/useMinimumLoader";
-import { supabase } from "@/integrations/supabase/client";
+import { supabaseDatabase } from "@/api/supabaseDatabase";
 import { toast } from "sonner";
 import type { NewMigrationInput } from "@/types/migration";
 import {
@@ -80,7 +80,7 @@ const ProjectDetail = () => {
   const checkAuth = useCallback(async () => {
     const {
       data: { session },
-    } = await supabase.auth.getSession();
+    } = await supabaseDatabase.getSession();
     if (!session) {
       navigate("/");
     }
@@ -92,10 +92,7 @@ const ProjectDetail = () => {
 
   const loadSidebarData = useCallback(async () => {
     try {
-      const { data: projectsData, error: projectsError } = await supabase
-        .from("projects")
-        .select("*")
-        .order("created_at", { ascending: false });
+      const { data: projectsData, error: projectsError } = await supabaseDatabase.fetchProjects();
 
       if (projectsError) throw projectsError;
 
@@ -110,11 +107,7 @@ const ProjectDetail = () => {
       const projectMigrationEntries: SidebarMigration[] = [];
 
       for (const project of projectsData || []) {
-        const { data: projectMigrationsData, error: projectMigrationsError } = await supabase
-          .from("migrations")
-          .select("id, name, project_id")
-          .eq("project_id", project.id)
-          .order("created_at", { ascending: false });
+        const { data: projectMigrationsData, error: projectMigrationsError } = await supabaseDatabase.fetchMigrationsByProject(project.id);
 
         if (projectMigrationsError) throw projectMigrationsError;
 
@@ -129,11 +122,7 @@ const ProjectDetail = () => {
 
       setSidebarMigrations(projectMigrationEntries);
 
-      const { data: standaloneData, error: standaloneError } = await supabase
-        .from("migrations")
-        .select("id, name")
-        .is("project_id", null)
-        .order("created_at", { ascending: false });
+      const { data: standaloneData, error: standaloneError } = await supabaseDatabase.fetchStandaloneMigrations();
 
       if (standaloneError) throw standaloneError;
 
@@ -153,11 +142,7 @@ const ProjectDetail = () => {
   const loadProjectData = useCallback(
     async (name: string) => {
       try {
-        const { data: projectData, error: projectError } = await supabase
-          .from("projects")
-          .select("*")
-          .eq("name", name)
-          .maybeSingle();
+        const { data: projectData, error: projectError } = await supabaseDatabase.fetchProjectByName(name);
 
         if (projectError) throw projectError;
 
@@ -176,11 +161,7 @@ const ProjectDetail = () => {
         setProject(details);
         setProjectIdForNewMigration(projectData.id);
 
-        const { data: migrationsData, error: migrationsError } = await supabase
-          .from("migrations")
-          .select("*")
-          .eq("project_id", projectData.id)
-          .order("created_at", { ascending: false });
+        const { data: migrationsData, error: migrationsError } = await supabaseDatabase.fetchMigrationsByProject(projectData.id);
 
         if (migrationsError) throw migrationsError;
 
@@ -221,7 +202,7 @@ const ProjectDetail = () => {
   const handleLogout = async () => {
     try {
       setTransitioning(true);
-      await supabase.auth.signOut();
+      await supabaseDatabase.signOut();
       navigate("/");
     } catch (error) {
       console.error(error);
@@ -246,7 +227,7 @@ const ProjectDetail = () => {
     try {
       const {
         data: { user },
-      } = await supabase.auth.getUser();
+      } = await supabaseDatabase.getUser();
       if (!user) throw new Error("Nicht authentifiziert");
 
       const {
@@ -260,23 +241,19 @@ const ProjectDetail = () => {
       } = migrationData;
       const targetAuthDetail = AUTH_DETAIL_TOKEN;
 
-      const { data: migration, error: migrationError } = await supabase
-        .from("migrations")
-        .insert({
-          user_id: user.id,
-          project_id: projectIdForNewMigration,
-          name,
-          source_system: sourceSystem,
-          target_system: targetSystem,
-          source_url: sourceUrl,
-          target_url: targetUrl,
-          in_connector: CONNECTOR_ENDPOINT_LABEL,
-          in_connector_detail: sourceUrl,
-          out_connector: CONNECTOR_AUTH_LABEL,
-          out_connector_detail: targetAuthDetail,
-        })
-        .select()
-        .single();
+      const { data: migration, error: migrationError } = await supabaseDatabase.insertMigration({
+        user_id: user.id,
+        project_id: projectIdForNewMigration,
+        name,
+        source_system: sourceSystem,
+        target_system: targetSystem,
+        source_url: sourceUrl,
+        target_url: targetUrl,
+        in_connector: CONNECTOR_ENDPOINT_LABEL,
+        in_connector_detail: sourceUrl,
+        out_connector: CONNECTOR_AUTH_LABEL,
+        out_connector_detail: targetAuthDetail,
+      });
 
       if (migrationError) throw migrationError;
 
@@ -298,23 +275,19 @@ const ProjectDetail = () => {
         password: targetAuth.password ?? null,
       };
 
-      const { error: connectorError } = await supabase
-        .from("connectors")
-        .insert([
-          { ...sourceConnectorPayload, connector_type: "in" },
-          { ...targetConnectorPayload, connector_type: "out" },
-        ]);
+      const { error: connectorError } = await supabaseDatabase.insertConnectors([
+        { ...sourceConnectorPayload, connector_type: "in" },
+        { ...targetConnectorPayload, connector_type: "out" },
+      ]);
 
       if (connectorError) throw connectorError;
 
-      await supabase
-        .from("migration_activities")
-        .insert({
-          migration_id: migration.id,
-          type: "info",
-          title: "Neues Migrationsprojekt erstellt",
-          timestamp: new Date().toISOString(),
-        });
+      await supabaseDatabase.insertMigrationActivity({
+        migration_id: migration.id,
+        type: "info",
+        title: "Neues Migrationsprojekt erstellt",
+        timestamp: new Date().toISOString(),
+      });
 
       toast.success(`Migration "${name}" erstellt`);
       setShowAddMigrationDialog(false);
@@ -340,10 +313,7 @@ const ProjectDetail = () => {
     if (!migrationToDelete) return;
 
     try {
-      const { error } = await supabase
-        .from("migrations")
-        .delete()
-        .eq("id", migrationToDelete);
+      const { error } = await supabaseDatabase.deleteMigration(migrationToDelete);
 
       if (error) throw error;
 
@@ -369,10 +339,7 @@ const ProjectDetail = () => {
     if (!editingMigration) return;
 
     try {
-      const { error } = await supabase
-        .from("migrations")
-        .update({ name })
-        .eq("id", editingMigration.id);
+      const { error } = await supabaseDatabase.updateMigration(editingMigration.id, { name });
 
       if (error) throw error;
 

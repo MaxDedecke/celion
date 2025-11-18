@@ -21,7 +21,7 @@ import { Button } from "@/components/ui/button";
 import DataFlowLoader from "@/components/DataFlowLoader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { supabase } from "@/integrations/supabase/client";
+import { supabaseDatabase } from "@/api/supabaseDatabase";
 import { useMinimumLoader } from "@/hooks/useMinimumLoader";
 import type { Tables, TablesInsert } from "@/integrations/supabase/types";
 import { toast } from "sonner";
@@ -406,7 +406,7 @@ const DataSources = () => {
     : [formData.source_type, ...SOURCE_TYPE_OPTIONS];
 
   const checkAuth = useCallback(async () => {
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session } } = await supabaseDatabase.getSession();
     if (!session) {
       navigate("/");
     }
@@ -424,10 +424,7 @@ const DataSources = () => {
 
   const loadProjects = useCallback(async (): Promise<void> => {
     try {
-      const { data, error } = await supabase
-        .from("projects")
-        .select("id, name")
-        .order("name", { ascending: true });
+      const { data, error } = await supabaseDatabase.fetchProjectNames();
 
       if (error) throw error;
       setProjects(data ?? []);
@@ -438,20 +435,14 @@ const DataSources = () => {
 
   const loadDataSources = useCallback(async (): Promise<void> => {
     try {
-      const { data, error } = await supabase
-        .from("data_sources")
-        .select("*")
-        .order("created_at", { ascending: false });
+      const { data, error } = await supabaseDatabase.fetchDataSources();
 
       if (error) throw error;
 
       // Load project assignments for each data source
       const sourcesWithProjects = await Promise.all(
         (data ?? []).map(async (source): Promise<DataSourceWithProjects> => {
-          const { data: assignments } = await supabase
-            .from("data_source_projects")
-            .select("project_id")
-            .eq("data_source_id", source.id);
+          const { data: assignments } = await supabaseDatabase.fetchDataSourceAssignments(source.id);
 
           return {
             ...source,
@@ -503,7 +494,7 @@ const DataSources = () => {
 
   const handleSave = async () => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await supabaseDatabase.getUser();
       if (!user) throw new Error("Nicht authentifiziert");
 
       let sourceId: string;
@@ -525,27 +516,20 @@ const DataSources = () => {
       };
 
       if (editingSource) {
-        const { error } = await supabase
-          .from("data_sources")
-          .update({ ...baseData, user_id: editingSource.user_id })
-          .eq("id", editingSource.id);
+        const { error } = await supabaseDatabase.updateDataSource(editingSource.id, {
+          ...baseData,
+          user_id: editingSource.user_id,
+        });
 
         if (error) throw error;
         sourceId = editingSource.id;
 
         // Delete existing project assignments
-        await supabase
-          .from("data_source_projects")
-          .delete()
-          .eq("data_source_id", sourceId);
+        await supabaseDatabase.deleteDataSourceProjectAssignments(sourceId);
         
         toast.success("Datenquelle aktualisiert");
       } else {
-        const { data, error } = await supabase
-          .from("data_sources")
-          .insert(baseData)
-          .select()
-          .single();
+        const { data, error } = await supabaseDatabase.insertDataSource(baseData);
 
         if (error) throw error;
         sourceId = data.id;
@@ -559,9 +543,7 @@ const DataSources = () => {
           project_id: projectId,
         }));
 
-        const { error: assignmentError } = await supabase
-          .from("data_source_projects")
-          .insert(assignments);
+        const { error: assignmentError } = await supabaseDatabase.insertDataSourceProjectAssignments(assignments);
 
         if (assignmentError) throw assignmentError;
       }
@@ -578,10 +560,7 @@ const DataSources = () => {
 
   const handleDelete = async (id: string) => {
     try {
-      const { error } = await supabase
-        .from("data_sources")
-        .delete()
-        .eq("id", id);
+      const { error } = await supabaseDatabase.deleteDataSource(id);
 
       if (error) throw error;
       toast.success("Datenquelle gelöscht");

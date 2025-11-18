@@ -21,7 +21,7 @@ import {
   Settings
 } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { supabaseDatabase } from "@/api/supabaseDatabase";
 import { useMinimumLoader } from "@/hooks/useMinimumLoader";
 import type { Activity } from "@/components/ActivityTimeline";
 import type { RawActivityRecord } from "@/components/migration/migrationDetails.types";
@@ -115,7 +115,7 @@ const Dashboard = () => {
   }, [migrationId]);
 
   const checkAuth = async () => {
-    const { data: { session } } = await supabase.auth.getSession();
+    const { data: { session } } = await supabaseDatabase.getSession();
     if (!session) {
       navigate("/");
     }
@@ -126,10 +126,7 @@ const Dashboard = () => {
       setLoading(true);
       
       // Load all projects
-      const { data: projectsData, error: projectsError } = await supabase
-        .from('projects')
-        .select('*')
-        .order('created_at', { ascending: false });
+      const { data: projectsData, error: projectsError } = await supabaseDatabase.fetchProjects();
 
       if (projectsError) throw projectsError;
       setAllProjects(projectsData || []);
@@ -137,11 +134,7 @@ const Dashboard = () => {
       // Load all migrations with project_id
       const allMigrationsWithProjects: any[] = [];
       for (const project of projectsData || []) {
-        const { data: migrationsData, error: migrationsError } = await supabase
-          .from('migrations')
-          .select('*')
-          .eq('project_id', project.id)
-          .order('created_at', { ascending: false });
+        const { data: migrationsData, error: migrationsError } = await supabaseDatabase.fetchMigrationsByProject(project.id);
 
         if (migrationsError) throw migrationsError;
         const migrationsWithDetails = await loadMigrationDetails(migrationsData || [], project.id);
@@ -150,11 +143,7 @@ const Dashboard = () => {
       setMigrations(allMigrationsWithProjects);
 
       // Load standalone migrations
-      const { data: standaloneData, error: standaloneError } = await supabase
-        .from('migrations')
-        .select('*')
-        .is('project_id', null)
-        .order('created_at', { ascending: false });
+      const { data: standaloneData, error: standaloneError } = await supabaseDatabase.fetchStandaloneMigrations();
 
       if (standaloneError) throw standaloneError;
 
@@ -171,11 +160,7 @@ const Dashboard = () => {
   const loadMigrationDetails = async (migrationsData: any[], projectId: string | null) => {
     return await Promise.all(
       migrationsData.map(async (migration) => {
-        const { data: activitiesData } = await supabase
-          .from('migration_activities')
-          .select('*')
-          .eq('migration_id', migration.id)
-          .order('created_at', { ascending: false });
+        const { data: activitiesData } = await supabaseDatabase.fetchMigrationActivities(migration.id);
 
         const activities = (activitiesData || []).map(normalizeActivityRecord);
         const workflowState = migration.workflow_state;
@@ -210,11 +195,7 @@ const Dashboard = () => {
     
     try {
       // Load only the selected migration
-      const { data: migrationData, error: migrationError } = await supabase
-        .from('migrations')
-        .select('*')
-        .eq('id', selectedMigration)
-        .single();
+      const { data: migrationData, error: migrationError } = await supabaseDatabase.fetchMigrationById(selectedMigration);
 
       if (migrationError) throw migrationError;
 
@@ -239,7 +220,7 @@ const Dashboard = () => {
   const handleLogout = async () => {
     try {
       setTransitioning(true);
-      await supabase.auth.signOut();
+      await supabaseDatabase.signOut();
       toast.success("Erfolgreich abgemeldet");
       navigate("/");
     } catch (error) {
@@ -252,7 +233,7 @@ const Dashboard = () => {
 
   const handleAddMigration = async (migrationData: NewMigrationInput) => {
     try {
-      const { data: { user } } = await supabase.auth.getUser();
+      const { data: { user } } = await supabaseDatabase.getUser();
       if (!user) throw new Error("Nicht authentifiziert");
 
       const {
@@ -266,24 +247,20 @@ const Dashboard = () => {
       } = migrationData;
       const targetAuthDetail = AUTH_DETAIL_TOKEN;
 
-      const { data: migration, error: migrationError } = await supabase
-        .from('migrations')
-        .insert({
-          user_id: user.id,
-          project_id: projectIdForNewMigration,
-          name,
-          source_system: sourceSystem,
-          target_system: targetSystem,
-          source_url: sourceUrl,
-          target_url: targetUrl,
-          in_connector: CONNECTOR_ENDPOINT_LABEL,
-          in_connector_detail: sourceUrl,
-          out_connector: CONNECTOR_AUTH_LABEL,
-          out_connector_detail: targetAuthDetail,
-          status: "not_started",
-        })
-        .select()
-        .single();
+      const { data: migration, error: migrationError } = await supabaseDatabase.insertMigration({
+        user_id: user.id,
+        project_id: projectIdForNewMigration,
+        name,
+        source_system: sourceSystem,
+        target_system: targetSystem,
+        source_url: sourceUrl,
+        target_url: targetUrl,
+        in_connector: CONNECTOR_ENDPOINT_LABEL,
+        in_connector_detail: sourceUrl,
+        out_connector: CONNECTOR_AUTH_LABEL,
+        out_connector_detail: targetAuthDetail,
+        status: "not_started",
+      });
 
       if (migrationError) throw migrationError;
 
@@ -305,24 +282,20 @@ const Dashboard = () => {
         password: targetAuth.password ?? null,
       };
 
-      const { error: connectorError } = await supabase
-        .from('connectors')
-        .insert([
-          { ...sourceConnectorPayload, connector_type: 'in' },
-          { ...targetConnectorPayload, connector_type: 'out' },
-        ]);
+      const { error: connectorError } = await supabaseDatabase.insertConnectors([
+        { ...sourceConnectorPayload, connector_type: 'in' },
+        { ...targetConnectorPayload, connector_type: 'out' },
+      ]);
 
       if (connectorError) throw connectorError;
 
       // Create initial activity
-        await supabase
-          .from('migration_activities')
-          .insert({
-            migration_id: migration.id,
-            type: 'info',
-            title: 'Neues Migrationsprojekt erstellt',
-            timestamp: new Date().toISOString(),
-          });
+        await supabaseDatabase.insertMigrationActivity({
+          migration_id: migration.id,
+          type: 'info',
+          title: 'Neues Migrationsprojekt erstellt',
+          timestamp: new Date().toISOString(),
+        });
 
       toast.success(`Migration "${name}" erstellt`);
       setProjectIdForNewMigration(null);
@@ -352,10 +325,7 @@ const Dashboard = () => {
     try {
       const migrationToDeleteData = migrations.find((m) => m.id === migrationToDelete);
       
-      const { error } = await supabase
-        .from('migrations')
-        .delete()
-        .eq('id', migrationToDelete);
+      const { error } = await supabaseDatabase.deleteMigration(migrationToDelete);
 
       if (error) throw error;
 
@@ -384,10 +354,7 @@ const Dashboard = () => {
 
   const handleUpdateMigration = async (name: string) => {
     try {
-      const { error } = await supabase
-        .from('migrations')
-        .update({ name })
-        .eq('id', editingMigration.id);
+      const { error } = await supabaseDatabase.updateMigration(editingMigration.id, { name });
 
       if (error) throw error;
 
@@ -406,21 +373,17 @@ const Dashboard = () => {
 
     try {
       // Load connector data for both source and target
-      const { data: sourceConnectorData, error: sourceConnectorError } = await supabase
-        .from('connectors')
-        .select('*')
-        .eq('migration_id', currentMigration.id)
-        .eq('connector_type', 'in')
-        .maybeSingle();
+      const { data: sourceConnectorData, error: sourceConnectorError } = await supabaseDatabase.fetchConnectorByType(
+        currentMigration.id,
+        'in'
+      );
 
       if (sourceConnectorError) throw sourceConnectorError;
 
-      const { data: targetConnectorData, error: targetConnectorError } = await supabase
-        .from('connectors')
-        .select('*')
-        .eq('migration_id', currentMigration.id)
-        .eq('connector_type', 'out')
-        .maybeSingle();
+      const { data: targetConnectorData, error: targetConnectorError } = await supabaseDatabase.fetchConnectorByType(
+        currentMigration.id,
+        'out'
+      );
 
       if (targetConnectorError) throw targetConnectorError;
 
@@ -455,18 +418,15 @@ const Dashboard = () => {
 
     try {
       // Update migration
-      const { error: migrationError } = await supabase
-        .from('migrations')
-        .update({
-          name: data.name,
-          source_system: data.sourceSystem,
-          target_system: data.targetSystem,
-          source_url: data.sourceUrl,
-          target_url: data.targetUrl,
-          in_connector_detail: data.sourceUrl,
-          out_connector_detail: AUTH_DETAIL_TOKEN,
-        })
-        .eq('id', currentMigration.id);
+      const { error: migrationError } = await supabaseDatabase.updateMigration(currentMigration.id, {
+        name: data.name,
+        source_system: data.sourceSystem,
+        target_system: data.targetSystem,
+        source_url: data.sourceUrl,
+        target_url: data.targetUrl,
+        in_connector_detail: data.sourceUrl,
+        out_connector_detail: AUTH_DETAIL_TOKEN,
+      });
 
       if (migrationError) throw migrationError;
 
@@ -487,20 +447,20 @@ const Dashboard = () => {
       };
 
       // Update source connector
-      const { error: sourceConnectorError } = await supabase
-        .from('connectors')
-        .update(sourceConnectorUpdates)
-        .eq('migration_id', currentMigration.id)
-        .eq('connector_type', 'in');
+      const { error: sourceConnectorError } = await supabaseDatabase.updateConnectorByType(
+        currentMigration.id,
+        'in',
+        sourceConnectorUpdates
+      );
 
       if (sourceConnectorError) throw sourceConnectorError;
 
       // Update target connector
-      const { error: targetConnectorError } = await supabase
-        .from('connectors')
-        .update(targetConnectorUpdates)
-        .eq('migration_id', currentMigration.id)
-        .eq('connector_type', 'out');
+      const { error: targetConnectorError } = await supabaseDatabase.updateConnectorByType(
+        currentMigration.id,
+        'out',
+        targetConnectorUpdates
+      );
 
       if (targetConnectorError) throw targetConnectorError;
 
