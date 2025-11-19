@@ -3,6 +3,10 @@ export interface SystemDetectionEvidence {
   status_codes?: Record<string, number>;
   raw_response?: string;
   raw?: unknown;
+  request_url?: string;
+  method?: string;
+  used_headers?: string[];
+  timestamp?: string;
   [key: string]: unknown;
 }
 
@@ -69,6 +73,8 @@ export interface HttpResponse {
   headers: Record<string, string>;
   body: unknown;
   error?: string | null;
+  raw_response?: string;
+  evidence?: SystemDetectionEvidence;
 }
 
 export interface ApiSpecAnalysis {

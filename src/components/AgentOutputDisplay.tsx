@@ -96,12 +96,17 @@ const AgentOutputDisplay = ({ sourceResult, targetResult, schemaResult }: AgentO
               {result.entities.length > 0 ? (
                 <div className="flex flex-wrap gap-2 pt-1">
                   {result.entities.map((entity, index) => {
-                    const entityLabel =
-                      typeof entity === "string"
-                        ? entity
-                        : entity && typeof entity === "object" && "name" in entity
-                          ? String(entity.name)
-                          : JSON.stringify(entity, null, 2);
+                    let entityLabel = "Unknown";
+                    if (typeof entity === "string") {
+                      entityLabel = entity;
+                    } else if (entity && typeof entity === "object") {
+                      const entityObj = entity as Record<string, unknown>;
+                      if ("name" in entityObj && typeof entityObj.name === "string") {
+                        entityLabel = entityObj.name;
+                      } else {
+                        entityLabel = JSON.stringify(entity, null, 2);
+                      }
+                    }
 
                     return (
                       <Badge key={`${index}-${entityLabel}`} variant="outline" className="text-xs whitespace-pre-wrap">
@@ -407,16 +412,19 @@ const AgentOutputDisplay = ({ sourceResult, targetResult, schemaResult }: AgentO
                     <div className="space-y-2 text-xs text-muted-foreground">
                       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-1">
                         <span className="font-medium text-foreground">Anfrage</span>
-                        {authResult.probe_result.evidence.timestamp && (
+                        {authResult.probe_result.evidence.timestamp && typeof authResult.probe_result.evidence.timestamp === "string" && (
                           <span>{new Date(authResult.probe_result.evidence.timestamp).toLocaleString()}</span>
                         )}
                       </div>
                       <div className="flex flex-col gap-1 font-mono">
-                        {authResult.probe_result.evidence.method && <span>Method: {authResult.probe_result.evidence.method}</span>}
-                        {authResult.probe_result.evidence.request_url && (
+                        {authResult.probe_result.evidence.method && typeof authResult.probe_result.evidence.method === "string" && (
+                          <span>Method: {authResult.probe_result.evidence.method}</span>
+                        )}
+                        {authResult.probe_result.evidence.request_url && typeof authResult.probe_result.evidence.request_url === "string" && (
                           <span className="break-all">URL: {authResult.probe_result.evidence.request_url}</span>
                         )}
                         {authResult.probe_result.evidence.used_headers &&
+                          Array.isArray(authResult.probe_result.evidence.used_headers) &&
                           authResult.probe_result.evidence.used_headers.length > 0 && (
                             <span>Headers: {authResult.probe_result.evidence.used_headers.join(", ")}</span>
                           )}

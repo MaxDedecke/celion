@@ -163,7 +163,7 @@ const Dashboard = () => {
       migrationsData.map(async (migration) => {
         const { data: activitiesData } = await supabaseDatabase.fetchMigrationActivities(migration.id);
 
-        const activities = (activitiesData || []).map(normalizeActivityRecord);
+        const activities = (activitiesData || []).map((a) => normalizeActivityRecord(a as RawActivityRecord));
         const workflowState = migration.workflow_state;
 
         return {

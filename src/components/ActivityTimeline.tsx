@@ -1,4 +1,7 @@
 import { Check, X, Edit, Plus, Download, Settings as SettingsIcon, Play } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { AGENT_WORKFLOW_STEPS } from "@/constants/agentWorkflow";
+import { getWorkflowTheme } from "@/components/migration/workflowThemes";
 
 export interface Activity {
   id: string;
@@ -32,18 +35,46 @@ const ActivityTimeline = ({ activities }: ActivityTimelineProps) => {
   const getColorClass = (type: string) => {
     switch (type) {
       case "success":
-        return "text-success";
+        return "text-emerald-600 dark:text-emerald-400 bg-emerald-500/10";
       case "error":
-        return "text-destructive";
+        return "text-rose-600 dark:text-rose-400 bg-rose-500/10";
       case "info":
-        return "text-info";
+        return "text-sky-600 dark:text-sky-400 bg-sky-500/10";
       case "warning":
-        return "text-warning";
+        return "text-amber-600 dark:text-amber-400 bg-amber-500/10";
       case "system":
-        return "text-primary";
+        return "text-violet-600 dark:text-violet-400 bg-violet-500/10";
       default:
-        return "text-muted-foreground";
+        return "text-muted-foreground bg-muted/50";
     }
+  };
+
+  const extractStepFromTitle = (title: string): { stepInfo: typeof AGENT_WORKFLOW_STEPS[number] | null; cleanTitle: string } => {
+    const stepKeywords = [
+      { key: "system-detection", patterns: ["System Detection", "Systeme erkannt", "System erkannt"] },
+      { key: "auth-flow", patterns: ["Authentifizierung", "Auth Flow", "Authenticated"] },
+      { key: "schema-discovery", patterns: ["Capability Discovery", "Schema Discovery", "API-Spezifikation"] },
+      { key: "model-mapping", patterns: ["Model Mapping", "Meta-Modell"] },
+      { key: "target-schema", patterns: ["Target Schema", "Zielsystem analysiert"] },
+      { key: "mapping-suggestion", patterns: ["Mapping Suggestion", "Feld-Mapping"] },
+      { key: "consistency-validation", patterns: ["Consistency", "Validation", "Validierung"] },
+      { key: "dry-run", patterns: ["Dry-Run", "Simulation"] },
+      { key: "data-transfer", patterns: ["Data Transfer", "Migration", "Datenmigration"] },
+      { key: "verification", patterns: ["Verification", "Verifikation"] },
+      { key: "audit", patterns: ["Audit", "Logging"] },
+      { key: "feedback", patterns: ["Feedback", "Learning", "Optimization"] },
+    ];
+
+    for (const stepKeyword of stepKeywords) {
+      for (const pattern of stepKeyword.patterns) {
+        if (title.includes(pattern)) {
+          const stepInfo = AGENT_WORKFLOW_STEPS.find(s => s.id === stepKeyword.key);
+          return { stepInfo: stepInfo || null, cleanTitle: title };
+        }
+      }
+    }
+
+    return { stepInfo: null, cleanTitle: title };
   };
 
   const formatTimestamp = (value: string) => {
@@ -60,18 +91,36 @@ const ActivityTimeline = ({ activities }: ActivityTimelineProps) => {
   };
 
   return (
-    <div className="space-y-4">
-      {activities.map((activity) => (
-        <div key={activity.id} className="flex items-start gap-3">
-          <div className={`mt-1 ${getColorClass(activity.type)}`}>
-            {getIcon(activity.type)}
+    <div className="space-y-3">
+      {activities.map((activity) => {
+        const { stepInfo, cleanTitle } = extractStepFromTitle(activity.title);
+        const theme = stepInfo ? getWorkflowTheme(stepInfo.color) : null;
+
+        return (
+          <div 
+            key={activity.id} 
+            className="group relative flex items-start gap-3 rounded-lg border border-border/50 bg-card/50 p-3 transition-all hover:border-border hover:bg-card hover:shadow-sm"
+          >
+            <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${getColorClass(activity.type)}`}>
+              {getIcon(activity.type)}
+            </div>
+            <div className="flex min-w-0 flex-1 flex-col gap-2">
+              <div className="flex flex-wrap items-start gap-2">
+                {stepInfo && (
+                  <Badge 
+                    variant="outline" 
+                    className={`${theme?.accentBadge} shrink-0 border-0 text-xs`}
+                  >
+                    {stepInfo.phase}
+                  </Badge>
+                )}
+                <p className="flex-1 text-sm font-medium text-foreground">{cleanTitle}</p>
+              </div>
+              <p className="text-xs text-muted-foreground">{formatTimestamp(activity.timestamp)}</p>
+            </div>
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm text-foreground">{activity.title}</p>
-            <p className="text-xs text-muted-foreground mt-1">{formatTimestamp(activity.timestamp)}</p>
-          </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 };
