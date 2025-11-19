@@ -99,24 +99,24 @@ const ActivityTimeline = ({ activities }: ActivityTimelineProps) => {
         return (
           <div 
             key={activity.id} 
-            className="group relative flex items-start gap-3 rounded-lg border border-border/50 bg-card/50 p-3 transition-all hover:border-border hover:bg-card hover:shadow-sm"
+            className="group relative flex flex-col gap-2 rounded-lg border border-border/50 bg-card/50 p-3 transition-all hover:border-border hover:bg-card hover:shadow-sm"
           >
-            <div className={`mt-0.5 flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${getColorClass(activity.type)}`}>
-              {getIcon(activity.type)}
-            </div>
-            <div className="flex min-w-0 flex-1 flex-col gap-2">
-              <div className="flex flex-wrap items-start gap-2">
-                {stepInfo && (
-                  <Badge 
-                    variant="outline" 
-                    className={`${theme?.accentBadge} shrink-0 border-0 text-xs`}
-                  >
-                    {stepInfo.phase}
-                  </Badge>
-                )}
-                <p className="flex-1 text-sm font-medium text-foreground">{cleanTitle}</p>
+            {stepInfo && (
+              <Badge 
+                variant="outline" 
+                className={`${theme?.accentBadge} w-fit shrink-0 border-0 text-xs`}
+              >
+                {stepInfo.phase}
+              </Badge>
+            )}
+            <div className="flex items-start gap-3">
+              <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full ${getColorClass(activity.type)}`}>
+                {getIcon(activity.type)}
               </div>
-              <p className="text-xs text-muted-foreground">{formatTimestamp(activity.timestamp)}</p>
+              <div className="flex min-w-0 flex-1 flex-col gap-1">
+                <p className="text-sm font-medium text-foreground">{cleanTitle}</p>
+                <p className="text-xs text-muted-foreground">{formatTimestamp(activity.timestamp)}</p>
+              </div>
             </div>
           </div>
         );
