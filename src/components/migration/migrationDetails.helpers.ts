@@ -368,6 +368,7 @@ export const normalizeAuthFlowResult = (input: unknown): AuthFlowResult | null =
 
     probeResult = {
       status,
+      headers: {},
       body,
       raw_response: rawResponse,
       error,

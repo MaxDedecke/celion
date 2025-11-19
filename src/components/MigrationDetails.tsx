@@ -851,7 +851,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         });
       }
 
-      let completedAgentResult: SystemDetectionStepResult | AuthFlowStepResult | undefined;
+      let completedAgentResult: SystemDetectionStepResult | AuthFlowStepResult | CapabilityDiscoveryResult | undefined;
       try {
         completedAgentResult = await executeAgentForStep(completedStepNode, {
           onProgress: isSystemDetectionStep

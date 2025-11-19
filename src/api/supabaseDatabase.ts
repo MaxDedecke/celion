@@ -184,16 +184,6 @@ export const supabaseDatabase = {
     assignments: TablesInsert<"data_source_projects">[],
   ) => supabase.from("data_source_projects").insert(assignments),
 
-  fetchSchemaMapping: (migrationId: string) =>
-    supabase
-      .from("schema_mappings")
-      .select("*")
-      .eq("migration_id", migrationId)
-      .maybeSingle(),
-
-  upsertSchemaMapping: (payload: TablesInsert<"schema_mappings"> | TablesUpdate<"schema_mappings">) =>
-    supabase.from("schema_mappings").upsert(payload),
-
   fetchFieldMappings: (pipelineId: string, sourceObjectType: string, targetObjectType: string) =>
     supabase
       .from("field_mappings")
@@ -209,8 +199,10 @@ export const supabaseDatabase = {
       .eq("pipeline_id", pipelineId)
       .eq("source_object_type", sourceObjectType),
 
-  upsertFieldMapping: (payload: TablesInsert<"field_mappings"> | TablesUpdate<"field_mappings">) =>
-    supabase.from("field_mappings").upsert(payload),
+  upsertFieldMapping: (payload: TablesInsert<"field_mappings"> | TablesUpdate<"field_mappings">) => {
+    const payloadArray = Array.isArray(payload) ? payload : [payload];
+    return supabase.from("field_mappings").upsert(payloadArray);
+  },
 
   deleteFieldMapping: (mappingId: string) =>
     supabase
