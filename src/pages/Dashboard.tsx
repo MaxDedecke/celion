@@ -367,11 +367,50 @@ const Dashboard = () => {
     }
   };
 
-  const handleEditMigration = (migrationId: string) => {
-    const migration = migrations.find((m) => m.id === migrationId);
-    if (migration) {
+  const handleEditMigration = async (migrationId: string) => {
+    const migration = [...migrations, ...standaloneMigrations].find((m) => m.id === migrationId);
+    if (!migration) return;
+
+    try {
+      // Load connector data for both source and target
+      const { data: sourceConnectorData, error: sourceConnectorError } = await supabaseDatabase.fetchConnectorByType(
+        migrationId,
+        'in'
+      );
+
+      if (sourceConnectorError) throw sourceConnectorError;
+
+      const { data: targetConnectorData, error: targetConnectorError } = await supabaseDatabase.fetchConnectorByType(
+        migrationId,
+        'out'
+      );
+
+      if (targetConnectorError) throw targetConnectorError;
+
       setEditingMigration(migration);
-      setShowEditDialog(true);
+      setEditConfigData({
+        name: migration.name,
+        sourceUrl: sourceConnectorData?.api_url || migration.sourceUrl || "",
+        targetUrl: targetConnectorData?.api_url || migration.targetUrl || "",
+        sourceSystem: migration.sourceSystem,
+        targetSystem: migration.targetSystem,
+        sourceAuth: {
+          authType: "token",
+          apiToken: sourceConnectorData?.api_key || "",
+          email: sourceConnectorData?.username || "",
+          password: sourceConnectorData?.password || "",
+        },
+        targetAuth: {
+          authType: "token",
+          apiToken: targetConnectorData?.api_key || "",
+          email: targetConnectorData?.username || "",
+          password: targetConnectorData?.password || "",
+        },
+      });
+      setShowEditConfigDialog(true);
+    } catch (error: any) {
+      toast.error("Fehler beim Laden der Konfigurationsdaten");
+      console.error(error);
     }
   };
 
@@ -437,11 +476,12 @@ const Dashboard = () => {
   };
 
   const handleUpdateMigrationConfig = async (data: NewMigrationInput) => {
-    if (!currentMigration) return;
+    const migrationToUpdate = editingMigration || currentMigration;
+    if (!migrationToUpdate) return;
 
     try {
       // Update migration
-      const { error: migrationError } = await supabaseDatabase.updateMigration(currentMigration.id, {
+      const { error: migrationError } = await supabaseDatabase.updateMigration(migrationToUpdate.id, {
         name: data.name,
         source_system: data.sourceSystem,
         target_system: data.targetSystem,
@@ -471,7 +511,7 @@ const Dashboard = () => {
 
       // Update source connector
       const { error: sourceConnectorError } = await supabaseDatabase.updateConnectorByType(
-        currentMigration.id,
+        migrationToUpdate.id,
         'in',
         sourceConnectorUpdates
       );
@@ -480,7 +520,7 @@ const Dashboard = () => {
 
       // Update target connector
       const { error: targetConnectorError } = await supabaseDatabase.updateConnectorByType(
-        currentMigration.id,
+        migrationToUpdate.id,
         'out',
         targetConnectorUpdates
       );
@@ -489,6 +529,7 @@ const Dashboard = () => {
 
       toast.success("Konfiguration erfolgreich aktualisiert");
       setShowEditConfigDialog(false);
+      setEditingMigration(null);
       await loadAllData();
     } catch (error: any) {
       toast.error("Fehler beim Aktualisieren der Konfiguration");
