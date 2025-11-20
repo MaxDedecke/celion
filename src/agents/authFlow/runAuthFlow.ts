@@ -1,6 +1,6 @@
 // src/agents/authFlow/runAuthFlow.ts
 
-import { resolveOpenAiConfig, buildOpenAiHeaders } from "../openai/openAIClient";
+import { resolveOpenAiConfig, buildOpenAiHeaders } from "../openai/openaiClient";
 import { createAuthFlowAssistant } from "./assistant";
 import { buildAuthFlowPrompt } from "./prompt";
 import { createThread, postUserMessage } from "../openai/thread";

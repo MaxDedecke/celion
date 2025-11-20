@@ -1,6 +1,6 @@
 // src/agents/systemDetection/runSystemDetection.ts
 
-import { resolveOpenAiConfig, buildOpenAiHeaders } from "../openai/openAIClient";
+import { resolveOpenAiConfig, buildOpenAiHeaders } from "../openai/openaiClient";
 import { createSystemDetectionAssistant } from "./assistant";
 import { buildSystemDetectionPrompt } from "./prompt";
 import { createThread, postUserMessage } from "../openai/thread";

@@ -1,6 +1,6 @@
 // src/agents/capabilityDiscovery/runCapabilityDiscovery.ts
 
-import { resolveOpenAiConfig, buildOpenAiHeaders } from "../openai/openAIClient";
+import { resolveOpenAiConfig, buildOpenAiHeaders } from "../openai/openaiClient";
 import { createCapabilityDiscoveryAssistant } from "./assistant";
 import { buildCapabilityDiscoveryPrompt } from "./prompt";
 import { createThread, postUserMessage } from "../openai/thread";
