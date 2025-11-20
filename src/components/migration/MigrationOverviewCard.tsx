@@ -3,7 +3,6 @@ import {
   ArrowRight,
   CheckCircle2,
   Loader2,
-  MessageSquare,
   Pencil,
   Play,
   Sparkles,
@@ -43,8 +42,6 @@ interface MigrationOverviewCardProps {
   onUpdateStatus: (status: MigrationStatus) => void | Promise<void>;
   onOpenWorkflowPanel: () => void;
   onOpenAgentOutput: (stepId: string) => void;
-  onOpenNotes: () => void;
-  hasNotes: boolean;
 }
 
 const MigrationOverviewCard = forwardRef<HTMLDivElement, MigrationOverviewCardProps>(
@@ -70,25 +67,13 @@ const MigrationOverviewCard = forwardRef<HTMLDivElement, MigrationOverviewCardPr
       onUpdateStatus,
       onOpenWorkflowPanel,
       onOpenAgentOutput,
-      onOpenNotes,
-      hasNotes,
     },
     ref,
   ) => {
     return (
       <Card ref={ref} className="border-border bg-card">
         <CardHeader className="pb-3">
-          <div className="flex items-center justify-between">
-            <CardTitle className="text-base">Migration</CardTitle>
-            <Button
-              size="icon"
-              variant="ghost"
-              className="h-8 w-8"
-              onClick={onOpenNotes}
-            >
-              <MessageSquare className={cn("h-4 w-4", hasNotes && "text-primary")} />
-            </Button>
-          </div>
+          <CardTitle className="text-base">Migration</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 md:grid-cols-2">
