@@ -18,7 +18,9 @@ import {
   BarChart3,
   Rocket,
   ArrowRight,
-  Settings
+  Settings,
+  MessageSquare,
+  Loader2
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabaseDatabase } from "@/api/supabaseDatabase";
@@ -35,6 +37,8 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Textarea } from "@/components/ui/textarea";
 import type { MigrationStatus, NewMigrationInput } from "@/types/migration";
 import {
   AUTH_DETAIL_CREDENTIALS,
@@ -43,6 +47,7 @@ import {
   CONNECTOR_ENDPOINT_LABEL,
 } from "@/constants/migrations";
 import { duplicateMigration } from "@/lib/migrationDuplication";
+import { cn } from "@/lib/utils";
 
 const deriveMigrationStatus = (migration: any): MigrationStatus => {
   const progress = Number(migration?.progress ?? 0);
@@ -98,6 +103,9 @@ const Dashboard = () => {
   const [editConfigData, setEditConfigData] = useState<NewMigrationInput | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [migrationToDelete, setMigrationToDelete] = useState<string | null>(null);
+  const [isNotesPopoverOpen, setIsNotesPopoverOpen] = useState(false);
+  const [migrationNotes, setMigrationNotes] = useState("");
+  const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [projectIdForNewMigration, setProjectIdForNewMigration] = useState<string | null>(null);
   const [transitioning, setTransitioning] = useState(false);
   const loaderVisible = useMinimumLoader(loading || transitioning, 1000);
@@ -215,6 +223,26 @@ const Dashboard = () => {
       }
     } catch (error: any) {
       console.error("Fehler beim Aktualisieren der Migration:", error);
+    }
+  };
+
+  const handleSaveNotes = async () => {
+    if (!currentMigration) return;
+
+    try {
+      setIsSavingNotes(true);
+      const { error } = await supabaseDatabase.updateMigration(currentMigration.id, { notes: migrationNotes });
+
+      if (error) throw error;
+
+      toast.success("Anmerkungen gespeichert");
+      await refreshCurrentMigration();
+      setIsNotesPopoverOpen(false);
+    } catch (error) {
+      console.error("Fehler beim Speichern der Anmerkungen:", error);
+      toast.error("Anmerkungen konnten nicht gespeichert werden");
+    } finally {
+      setIsSavingNotes(false);
     }
   };
 
@@ -541,6 +569,13 @@ const Dashboard = () => {
     ? [...migrations, ...standaloneMigrations].find((m) => m.id === selectedMigration)
     : null;
 
+  // Load notes when current migration changes
+  useEffect(() => {
+    if (currentMigration) {
+      setMigrationNotes(currentMigration.notes || "");
+    }
+  }, [currentMigration]);
+
   if (loaderVisible) {
     return (
       <div className="app-shell flex min-h-screen items-center justify-center p-6">
@@ -600,6 +635,40 @@ const Dashboard = () => {
                   >
                     <Settings className="h-4 w-4" />
                   </Button>
+                  <Popover open={isNotesPopoverOpen} onOpenChange={setIsNotesPopoverOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-8 w-8"
+                      >
+                        <MessageSquare className={cn("h-4 w-4", migrationNotes && migrationNotes.trim().length > 0 && "text-primary")} />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-[500px]" align="end">
+                      <div className="space-y-3">
+                        <div>
+                          <h4 className="font-medium text-sm mb-2">Anmerkungen</h4>
+                          <Textarea
+                            value={migrationNotes}
+                            onChange={(e) => setMigrationNotes(e.target.value)}
+                            placeholder="Beschreibe hier dein Prompt: Ziel der Migration, relevante Randbedingungen und gewünschte Unterstützung."
+                            rows={6}
+                            className="min-h-[120px]"
+                          />
+                        </div>
+                        <Button 
+                          onClick={handleSaveNotes} 
+                          disabled={migrationNotes === (currentMigration?.notes || "") || isSavingNotes} 
+                          size="sm" 
+                          className="w-full"
+                        >
+                          {isSavingNotes && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
+                          Speichern
+                        </Button>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
                 </div>
               </div>
             ) : (

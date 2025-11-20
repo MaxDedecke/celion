@@ -20,10 +20,6 @@ import type { AgentWorkflowStepState, MigrationProject } from "./migration/types
 import { getWorkflowTheme } from "./migration/workflowThemes";
 import { nodeHasAgentResult } from "./migration/workflowUtils";
 import { toast } from "sonner";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Textarea } from "@/components/ui/textarea";
-import { Button } from "@/components/ui/button";
-import { Loader2 } from "lucide-react";
 import { AgentExecutionError } from "./migration/errors";
 import {
   MIGRATION_STATUS_META,
@@ -101,7 +97,6 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const migrationCardRef = useRef<HTMLDivElement | null>(null);
   const [isWideLayout, setIsWideLayout] = useState(false);
   const [migrationCardHeight, setMigrationCardHeight] = useState<number | null>(null);
-  const [isNotesPopoverOpen, setIsNotesPopoverOpen] = useState(false);
   const [workflowBoard, setWorkflowBoard] = useState<WorkflowBoardState>(() => createDefaultWorkflowBoard());
   const agentResultPersistenceSignatureRef = useRef<string | null>(null);
 
@@ -1810,63 +1805,29 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     <div className="flex h-full flex-col overflow-hidden">
       <div className="flex flex-1 flex-col gap-4 overflow-auto p-6">
         <div className="grid gap-4 xl:grid-cols-[1.5fr,1fr]">
-          <Popover open={isNotesPopoverOpen} onOpenChange={setIsNotesPopoverOpen}>
-            <PopoverTrigger asChild>
-              <div>
-                <MigrationOverviewCard
-                  ref={migrationCardRef}
-                  project={project}
-                  status={status}
-                  overallProgress={overallProgress}
-                  statusMeta={statusMeta}
-                  isUpdatingStatus={isUpdatingStatus}
-                  isStepRunning={isStepRunning}
-                  stepProgress={stepProgress}
-                  activeStepProgressPercent={activeStepProgressPercent}
-                  activeColorTheme={activeColorTheme}
-                  completedCount={completedCount}
-                  agentSteps={agentSteps}
-                  activeStep={activeStep}
-                  workflowNodeMap={workflowNodeMap}
-                  workflowBoard={workflowBoard}
-                  sourceObjectsDisplay={sourceObjectsDisplay}
-                  targetObjectsDisplay={targetObjectsDisplay}
-                  onNextWorkflowStep={handleNextWorkflowStep}
-                  onUpdateStatus={handleUpdateStatus}
-                  onOpenWorkflowPanel={() => handleOpenWorkflowPanel()}
-                  onOpenAgentOutput={(stepId) => setAgentResultDialogStepId(stepId)}
-                  onOpenNotes={() => setIsNotesPopoverOpen(true)}
-                  hasNotes={!!notes && notes.trim().length > 0}
-                />
-              </div>
-            </PopoverTrigger>
-            <PopoverContent className="w-[500px]" align="end">
-              <div className="space-y-3">
-                <div>
-                  <h4 className="font-medium text-sm mb-2">Anmerkungen</h4>
-                  <Textarea
-                    value={notes}
-                    onChange={(e) => setNotes(e.target.value)}
-                    placeholder="Beschreibe hier dein Prompt: Ziel der Migration, relevante Randbedingungen und gewünschte Unterstützung."
-                    rows={6}
-                    className="min-h-[120px]"
-                  />
-                </div>
-                <Button 
-                  onClick={async () => {
-                    await handleSaveNotes();
-                    setIsNotesPopoverOpen(false);
-                  }} 
-                  disabled={!isNotesDirty || isSavingNotes} 
-                  size="sm" 
-                  className="w-full"
-                >
-                  {isSavingNotes && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                  Speichern
-                </Button>
-              </div>
-            </PopoverContent>
-          </Popover>
+          <MigrationOverviewCard
+            ref={migrationCardRef}
+            project={project}
+            status={status}
+            overallProgress={overallProgress}
+            statusMeta={statusMeta}
+            isUpdatingStatus={isUpdatingStatus}
+            isStepRunning={isStepRunning}
+            stepProgress={stepProgress}
+            activeStepProgressPercent={activeStepProgressPercent}
+            activeColorTheme={activeColorTheme}
+            completedCount={completedCount}
+            agentSteps={agentSteps}
+            activeStep={activeStep}
+            workflowNodeMap={workflowNodeMap}
+            workflowBoard={workflowBoard}
+            sourceObjectsDisplay={sourceObjectsDisplay}
+            targetObjectsDisplay={targetObjectsDisplay}
+            onNextWorkflowStep={handleNextWorkflowStep}
+            onUpdateStatus={handleUpdateStatus}
+            onOpenWorkflowPanel={() => handleOpenWorkflowPanel()}
+            onOpenAgentOutput={(stepId) => setAgentResultDialogStepId(stepId)}
+          />
 
           <MigrationActivityCard
             activities={activityLog}
