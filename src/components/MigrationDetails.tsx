@@ -361,40 +361,72 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           );
 
           try {
-            const result = await runAuthFlowAgent(
-              auth.baseUrl,
+            // ✅ neues API: runAuthFlowAgent bekommt genau EIN Objekt
+            const result = await runAuthFlowAgent({
               system,
-              auth.apiToken,
-              auth.email,
-              auth.password,
-            );
+              baseUrl: auth.baseUrl,
+              apiToken: auth.apiToken,
+              email: auth.email,
+              password: auth.password,
+
+              preferredAuthType: "auto",
+
+              // erlaubt Header-Gen AUTOMATISCH
+              apiKeyHeaderName: "Authorization",
+              apiKeyQueryName: undefined,
+            });
 
             const statusLabel = result.authenticated ? "erfolgreich" : "fehlgeschlagen";
 
             if (!result.authenticated) {
-              const errorMsg = result.error_message || result.summary || result.reasoning || "Authentifizierung fehlgeschlagen";
-              await appendActivity("error", `Authentifizierung ${statusLabel} (${scopeLabel}): ${system}`);
+              // ✅ flexibel, egal ob das Resultat "error", "error_message", "summary" oder "reasoning" benutzt
+              const raw = result as any;
+              const errorMsg =
+                raw.error ||
+                raw.error_message ||
+                raw.summary ||
+                raw.reasoning ||
+                "Authentifizierung fehlgeschlagen";
+
+              await appendActivity(
+                "error",
+                `Authentifizierung ${statusLabel} (${scopeLabel}): ${system}`,
+              );
               toast.error(`Authentifizierung fehlgeschlagen (${scopeLabel}): ${errorMsg}`);
-              const errorPayload = scope === "source"
-                ? { source: result, error: errorMsg }
-                : { target: result, error: errorMsg };
+
+              const errorPayload =
+                scope === "source"
+                  ? { source: result, error: errorMsg }
+                  : { target: result, error: errorMsg };
+
               throw new AgentExecutionError(errorMsg, errorPayload);
             }
 
-            await appendActivity("success", `Authentifizierung ${statusLabel} (${scopeLabel}): ${system}`);
+            await appendActivity(
+              "success",
+              `Authentifizierung ${statusLabel} (${scopeLabel}): ${system}`,
+            );
             return result;
+
           } catch (error) {
             if (error instanceof AgentExecutionError) {
               throw error;
             }
 
             const message = error instanceof Error ? error.message : String(error);
-            await appendActivity("error", `Authentifizierung fehlgeschlagen (${scopeLabel}): ${system}`);
+            await appendActivity(
+              "error",
+              `Authentifizierung fehlgeschlagen (${scopeLabel}): ${system}`,
+            );
             toast.error(`Authentifizierung fehlgeschlagen (${scopeLabel}): ${message}`);
-            const errorPayload = scope === "source" ? { error: message } : { error: message };
+
+            const errorPayload =
+              scope === "source" ? { error: message } : { error: message };
+
             throw new AgentExecutionError(message, errorPayload);
           }
         };
+
 
         let sourceAuth: AuthFlowResult | null = null;
         let targetAuth: AuthFlowResult | null = null;
@@ -857,7 +889,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
             ? (value) => setStepProgress(clampProgressValue(value))
             : undefined,
         });
-        
+
         // Debug: Log the completed agent result
         console.log(`[DEBUG] Completed agent result for step "${completedStepNode.id}":`, JSON.stringify(completedAgentResult, null, 2));
       } catch (error) {
@@ -1006,10 +1038,10 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
             status: "done" as const,
             agentResult: completedAgentResult ?? node.agentResult,
           };
-          
+
           // Debug: Log what will be persisted
           console.log(`[DEBUG] Updating node "${node.id}" with agentResult:`, JSON.stringify(updatedNode.agentResult, null, 2));
-          
+
           return updatedNode;
         }
         return node;
@@ -1032,7 +1064,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       // Debug: Log workflow state before persisting
       const serializedState = serializeWorkflowState(nextWorkflowState);
       console.log(`[DEBUG] Persisting workflow state:`, JSON.stringify(serializedState, null, 2));
-      
+
       const { error } = await supabaseDatabase.updateMigration(project.id, {
         progress: isCompleted ? 100 : clampedProgress,
         status: isCompleted ? "completed" : "running",
@@ -1044,7 +1076,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       // Check if all steps are completed
       if (isCompleted) {
         const finalActivity = "Alle Schritte abgeschlossen";
-        
+
         // Save final activity to database
         await supabaseDatabase.insertMigrationActivity({
           migration_id: project.id,
@@ -1052,7 +1084,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           title: finalActivity,
           timestamp: new Date().toISOString()
         });
-        
+
         setActivityLog((previous) => [
           {
             id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -1064,7 +1096,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         ]);
         toast.success(finalActivity);
       }
-      
+
       if (isCompleted) {
         setStatus("completed");
       } else {
@@ -1673,8 +1705,8 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const isCapabilityResult = (value: unknown): value is CapabilityDiscoveryResult => {
     return Boolean(
       value &&
-        typeof value === "object" &&
-        ("api_spec_found" in (value as Record<string, unknown>) || "probe_results" in (value as Record<string, unknown>)),
+      typeof value === "object" &&
+      ("api_spec_found" in (value as Record<string, unknown>) || "probe_results" in (value as Record<string, unknown>)),
     );
   };
 

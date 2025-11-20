@@ -44,17 +44,25 @@ export interface AuthFlowRecommendation {
   graphql?: GraphqlProbeConfig | null;
 }
 
-export interface AuthFlowResult {
+export type AuthFlowResult = {
   system: string | null;
   base_url: string | null;
-  recommended_probe: AuthFlowRecommendation | null;
-  reasoning: string | null;
-  probe_result: HttpResponse | null;
-  authenticated: boolean | null;
-  summary: string | null;
-  error_message: string | null;
-  raw_output: string;
-}
+  authenticated: boolean;
+  auth_method: string | null;
+
+  // neue Felder
+  auth_headers?: Record<string, string>;
+  recommended_probe?: any;
+  explanation?: string;
+  raw_output?: any;
+
+  // alte Felder für Kompatibilität (werden vom LLM gesetzt oder bleiben leer)
+  reasoning?: string | null;
+  probe_result?: any | null;
+  summary?: string | null;
+  error_message?: string | null;
+};
+
 
 export interface AuthFlowStepResult {
   source: AuthFlowResult | null;

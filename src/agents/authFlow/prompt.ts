@@ -1,12 +1,114 @@
 // src/agents/authFlow/prompt.ts
 
-export const buildAuthFlowPrompt = (system: string, baseUrl: string) => {
-  return [
-    `System: ${system}. Base-URL: ${baseUrl}.`,
-    "Liefere nur Endpunkt und HTTP Methode für Authentifizierung.",
-    "Antworte ausschließlich als JSON mit den Feldern system, base_url, recommended_probe { method, url, requires_auth, api_format (rest_json|graphql|soap_xml|xml), auth_scheme (basic|bearer|none)?, graphql { query, operation_name?, variables? } }, reasoning.",
-    "Keine Header, keine Beispiel-Tokens, kein Base64, keine Platzhalter.",
-    "Falls GraphQL erforderlich ist, gib den passenden GraphQL-Query an.",
-    "Gib immer die vollständige API-URL zurück (z.B. https://api.monday.com/v2).",
-  ].join(" ");
+import { RunAuthFlowParams } from "./runAuthFlow";
+import type { AuthHeaders } from "./types";
+
+export type BuildAuthFlowPromptParams = { 
+  system: string;
+  baseUrl: string;
+  apiVersion?: string | null;
+
+  // Der Agent soll authType kennen – kannst du später dynamisch machen
+  authType?: "api_token" | "basic" | "oauth2" | "bearer_token" | string;
+
+  // 🔥 Jetzt flache Felder für MigrationDetails:
+  apiToken?: string;
+  email?: string;
+  password?: string;
+  clientId?: string;
+  clientSecret?: string;
+
+  // 🔥 UND weiterhin das verschachtelte Objekt (wird später automatisch befüllt)
+  credentials?: {
+    apiToken?: string;
+    username?: string;
+    password?: string;
+    clientId?: string;
+    clientSecret?: string;
+  };
+};
+
+
+export const buildAuthFlowPrompt = (params: BuildAuthFlowPromptParams) => {
+  const { system, baseUrl, apiVersion, authType } = params;
+  
+  const credentials = params.credentials ?? {
+  apiToken: params.apiToken,
+  username: params.email,
+  password: params.password,
+  clientId: params.clientId,
+  clientSecret: params.clientSecret,
+};
+
+  // WICHTIG: Wir zwingen den Agenten zu einer festen JSON-Struktur
+  // und sagen explizit, dass ER alle benötigten Header bestimmen muss.
+  return `
+Du bist der Celion Auth Flow Agent.
+
+Kontext:
+- Zielsystem: "${system}"
+- API Base-URL: "${baseUrl}"
+- Erkannte API-Version (falls bekannt): "${apiVersion ?? "unbekannt"}"
+- Authentifizierungstyp: "${authType}"
+
+Der Benutzer stellt dir gültige Credentials bereit (du darfst sie NICHT verändern, nur beschreiben):
+${JSON.stringify(credentials, null, 2)}
+
+Aufgabe:
+1. Bestimme die korrekte Art, diese Credentials für die API zu verwenden.
+2. Leite alle erforderlichen HTTP-Header ab, die für einen authentifizierten Request notwendig sind.
+   - Beispiel Jira Cloud: "Authorization: Basic base64(email:api_token)", "Accept: application/json"
+   - Beispiel Monday GraphQL: "Authorization: Bearer <token>", "Content-Type: application/json"
+   - Beispiel Notion: "Authorization: Bearer <token>", "Notion-Version: 2022-06-28", "Content-Type: application/json"
+3. Baue eine empfohlene Probe-Request-Konfiguration, mit der die Credentials geprüft werden können:
+   - Wähle einen Endpunkt, der typischerweise ein "me"/"current user"/"whoami" oder ähnliches zurückgibt.
+   - Gib HTTP-Methode, URL, Header und ggf. Body/GraphQL-Payload an.
+4. Beurteile, ob die Credentials prinzipiell korrekt verwendet werden (theoretisch),
+   und erwarte, dass das System bei korrekten Werten einen 2xx-Status zurückliefern würde.
+
+WICHTIG:
+- Du kennst die offiziellen API-Spezifikationen dieser gängigen Systeme
+  (Jira Cloud, Monday.com, Notion, Asana, Azure DevOps, Trello, ClickUp etc.)
+  und verwendest die jeweils aktuelle, empfohlene Authentifizierung.
+- Wenn ein Header wie "Notion-Version" oder spezielle "Content-Type"-Werte zwingend erforderlich ist,
+  MUSST du ihn in den auth_headers und im recommended_probe.headers mit angeben.
+- Wenn der Authentifizierungstyp "bearer" oder "api_token" ist, gehört das Token in der Regel in den Authorization-Header.
+
+Antwortformat:
+Gib AUSSCHLIESSLICH ein JSON-Objekt mit folgendem Schema zurück:
+
+{
+  "system": string | null,
+  "base_url": string | null,
+  "authenticated": boolean,
+  "auth_method": string | null,
+  "auth_headers": {
+    "<Header-Name>": "<Header-Wert>",
+    "Authorization": "...",
+    "Notion-Version": "... (falls Notion)",
+    "Content-Type": "... (falls nötig)",
+    "Accept": "... (falls sinnvoll)"
+  },
+  "recommended_probe": {
+    "method": "GET" | "POST" | "HEAD" | ...,
+    "url": "https://....",
+    "headers": {
+      "<Header-Name>": "<Header-Wert>"
+    },
+    "request_format": "rest_json" | "graphql" | "form" | "xml" | null,
+    "graphql": {
+      "query": string,
+      "operation_name": string | null,
+      "variables": {}
+    } | null
+  },
+  "explanation": string,
+  "raw_output": any
+}
+
+Hinweise:
+- "authenticated" ist deine fachliche Einschätzung, ob die Konfiguration der Credentials und Header korrekt ist.
+- Du KANNST die tatsächlichen Credentials nicht testen, das übernimmt später der Probe Runner.
+- Du MUSST aber so antworten, dass die Config direkt an /api/probe gesendet werden kann.
+`.trim();
 };
