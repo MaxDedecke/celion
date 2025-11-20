@@ -7,6 +7,8 @@ export const createCapabilityDiscoveryAssistant = async (
   headers: Record<string, string>,
   model: string,
 ): Promise<OpenAiAssistant> => {
+
+  // EXAKT wie im alten agentService.ts
   const response = await fetch(`${baseUrl}/assistants`, {
     method: "POST",
     headers,
@@ -19,14 +21,18 @@ export const createCapabilityDiscoveryAssistant = async (
           type: "function",
           function: {
             name: "httpClient",
-            description: "Führt GET/POST/PUT/DELETE Requests aus",
+            description: "Führt GET/POST Requests aus",
             parameters: {
               type: "object",
               properties: {
                 url: { type: "string", description: "Vollständige URL des Requests" },
-                method: { type: "string", description: "HTTP Methode (GET/POST/...)" },
-                headers: { type: "object", description: "HTTP Header als Key-Value Map" },
-                body: { description: "Request-Body" },
+                method: { type: "string", description: "HTTP Methode" },
+                headers: {
+                  type: "object",
+                  description: "HTTP Header als Key-Value Map",
+                  additionalProperties: { type: "string" },
+                },
+                body: { description: "Request Body (JSON oder Text)" },
               },
               required: ["url", "method"],
             },

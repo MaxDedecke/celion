@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
 import { AGENT_WORKFLOW_STEPS } from "@/constants/agentWorkflow";
 import { supabaseDatabase } from "@/api/supabaseDatabase";
-import { runAuthFlowAgent, runCapabilityDiscoveryAgent, runSystemDetectionAgent } from "@/agents/newAgentService";
+import { runAuthFlowAgent, runCapabilityDiscoveryAgent, runSystemDetectionAgent } from "@/agents/agentService";
 import type {
   AuthFlowResult,
   AuthFlowStepResult,
