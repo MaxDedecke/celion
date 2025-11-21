@@ -43,11 +43,39 @@ export type RunAuthFlowParams = {
   apiKeyQueryName?: string;
 };
 
+/**
+ * Ersetzt Platzhalter in einem String durch echte Credentials.
+ * Beispiel: "Basic base64(<email>:<apiToken>)" -> "Basic base64(user@example.com:abc123)"
+ */
+const replacePlaceholders = (
+  value: string,
+  credentials: { email?: string; apiToken?: string; password?: string; clientId?: string; clientSecret?: string }
+): string => {
+  let result = value;
+  if (credentials.email) result = result.replace(/<email>/g, credentials.email);
+  if (credentials.apiToken) result = result.replace(/<apiToken>/g, credentials.apiToken);
+  if (credentials.password) result = result.replace(/<password>/g, credentials.password);
+  if (credentials.clientId) result = result.replace(/<clientId>/g, credentials.clientId);
+  if (credentials.clientSecret) result = result.replace(/<clientSecret>/g, credentials.clientSecret);
+  
+  // Jetzt Base64-Encoding durchführen, falls nötig
+  // Beispiel: "Basic base64(user@example.com:abc123)" -> "Basic dXNlckBleGFtcGxlLmNvbTphYmMxMjM="
+  const base64Match = result.match(/base64\(([^)]+)\)/);
+  if (base64Match) {
+    const toEncode = base64Match[1];
+    const encoded = btoa(toEncode);
+    result = result.replace(`base64(${toEncode})`, encoded);
+  }
+  
+  return result;
+};
+
 const processAuthRun = async (
   baseUrl: string,
   headers: Record<string, string>,
   threadId: string,
   runId: string,
+  credentials: { email?: string; apiToken?: string; password?: string; clientId?: string; clientSecret?: string }
 ): Promise<OpenAiRun> => {
   let attempts = 0;
 
@@ -69,6 +97,15 @@ const processAuthRun = async (
 
         try {
           args = JSON.parse(call.function?.arguments ?? "{}") as HttpRequestParams;
+          
+          // Platzhalter in Headers durch echte Credentials ersetzen
+          if (args.headers) {
+            const replacedHeaders: Record<string, string> = {};
+            for (const [key, value] of Object.entries(args.headers)) {
+              replacedHeaders[key] = replacePlaceholders(value, credentials);
+            }
+            args.headers = replacedHeaders;
+          }
         } catch {
           // Ignoriere Parsing-Fehler und nutze Default-Args
         }
@@ -115,18 +152,20 @@ export const runAuthFlow = async (params: RunAuthFlowParams): Promise<AuthFlowRe
   );
 
   const run = await createRun(baseUrl, headers, thread, assistant.id);
-  await processAuthRun(baseUrl, headers, thread, run.id);
+  
+  // Credentials für Platzhalter-Ersetzung bereitstellen
+  const credentials = {
+    email: params.email,
+    apiToken: params.apiToken,
+    password: params.password,
+    clientId: undefined, // TODO: clientId und clientSecret aus params hinzufügen wenn nötig
+    clientSecret: undefined,
+  };
+  
+  await processAuthRun(baseUrl, headers, thread, run.id, credentials);
 
   const msg = await fetchLatestAssistantMessage(baseUrl, headers, thread);
   const result = parseAuthFlowResponse(extractMessageText(msg));
 
-  /*     await supabase
-    .from("migration_connectors")
-    .update({
-        auth_headers: result.auth_headers,
-    })
-    .eq("id", connectorId);
-
- */
   return result;
 };
