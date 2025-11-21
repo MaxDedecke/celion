@@ -51,22 +51,25 @@ Kontext:
 - Erkannte API-Version (falls bekannt): "${apiVersion ?? "unbekannt"}"
 - Authentifizierungstyp: "${authType}"
 
-Der Benutzer stellt dir gültige Credentials bereit (du darfst sie NICHT verändern, nur beschreiben):
-${JSON.stringify(credentials, null, 2)}
+Der Benutzer hat folgende Credential-Platzhalter bereitgestellt:
+- <email> für die E-Mail-Adresse
+- <apiToken> für das API-Token
+- <password> für das Passwort
+- <clientId> für die Client-ID
+- <clientSecret> für das Client-Secret
 
-WICHTIG – BEHANDLE CREDENTIALS ALS OPAKE STRINGS:
-- Du darfst apiToken, email, password, clientId, clientSecret NIEMALS verändern.
-- KEIN toLowerCase / toUpperCase, KEIN Trimmen, KEIN Ersetzen von Zeichen.
-- KEIN erneutes oder doppeltes Encoden / Decoden.
-- Du darfst sie nur 1:1 in neue Strings einsetzen (z.B. "${'{'}email{'}'}:${'{'}apiToken{'}'}").
+WICHTIG – VERWENDE NUR PLATZHALTER:
+- Du darfst NIEMALS die echten Credentials sehen oder verwenden.
+- Verwende ausschließlich die Platzhalter <email>, <apiToken>, <password>, <clientId>, <clientSecret>.
+- Das Backend wird diese Platzhalter durch die echten Werte ersetzen.
+- Beispiel: "Authorization: Basic base64(<email>:<apiToken>)" – NICHT die echten Werte einsetzen!
 
 Aufgabe:
 1. Bestimme die korrekte Art, diese Credentials für die API zu verwenden.
-2. Leite alle erforderlichen HTTP-Header ab und KODIERE die Credentials korrekt:
+2. Leite alle erforderlichen HTTP-Header ab unter Verwendung der PLATZHALTER:
    - Beispiel Jira Cloud (BASIC AUTH, KRITISCH):
-     * Erzeuge den Klartext-String EXACT: "<email>:<api_token>" – ohne zusätzliche Zeichen, ohne Umbrüche, ohne Leerzeichen.
-     * Base64-kodiere GENAU diesen String einmal.
-     * Setze den Header: "Authorization: Basic <base64(email:api_token)>".
+     * Gib zurück: "Authorization: Basic base64(<email>:<apiToken>)"
+     * Das Backend wird <email> und <apiToken> durch echte Werte ersetzen und dann base64-kodieren.
      * Verwende zusätzlich: "Accept: application/json".
      * Verwende zusätzlich: "User-Agent: Celion-Migration-Agent/1.0".
    - Beispiel Monday GraphQL: "Authorization: <apiToken>", "Content-Type: application/json"
@@ -77,8 +80,9 @@ Aufgabe:
    - Bei GraphQL: gib query und variables an
 4. Führe SOFORT einen echten Request mit dem httpClient-Tool aus:
    - Rufe httpClient mit ALLEN drei Parametern auf: url, method, UND headers
-   - Die headers MÜSSEN die vollständig kodierten Authorization-Header enthalten
-   - Beispiel Tool-Call für Jira: httpClient(url="https://...", method="GET", headers={"Authorization": "Basic <base64-string>", "Accept": "application/json", "User-Agent": "Celion-Migration-Agent/1.0"})
+   - Die headers MÜSSEN die Platzhalter enthalten, NICHT die echten Credentials
+   - Beispiel Tool-Call für Jira: httpClient(url="https://...", method="GET", headers={"Authorization": "Basic base64(<email>:<apiToken>)", "Accept": "application/json", "User-Agent": "Celion-Migration-Agent/1.0"})
+   - Das Backend wird die Platzhalter durch echte Werte ersetzen und das Encoding durchführen
    - Das Tool gibt dir Status, Body und Fehler zurück
    - Setze "authenticated" auf true, wenn Status 200-299 ist, sonst false
 
@@ -92,11 +96,9 @@ WICHTIG:
   (Jira Cloud, Monday.com, Notion, Asana, Azure DevOps, Trello, ClickUp etc.)
   und verwendest die jeweils aktuelle, empfohlene Authentifizierung.
 - KRITISCH FÜR JIRA CLOUD: 
-  * Du MUSST die Credentials als "email:apiToken" base64-kodieren
-  * Der Authorization-Header MUSS "Basic <base64-kodierter-string>" sein
-  * Beispiel: Wenn email="user@example.com" und apiToken="abc123", dann:
-    Authorization: Basic dXNlckBleGFtcGxlLmNvbTphYmMxMjM=
-  * Vergiss NICHT das Wort "Basic" vor dem base64-String!
+  * Du MUSST die Platzhalter verwenden: "Authorization: Basic base64(<email>:<apiToken>)"
+  * Das Backend ersetzt <email> und <apiToken> durch echte Werte und macht das Base64-Encoding
+  * Vergiss NICHT das Wort "Basic" vor "base64(...)"!
 - Wenn ein Header wie "Notion-Version" oder spezielle "Content-Type"-Werte zwingend erforderlich ist,
   MUSST du ihn in den auth_headers und im recommended_probe.headers mit angeben.
 - Wenn der Authentifizierungstyp "bearer" oder "api_token" ist, gehört das Token in der Regel in den Authorization-Header.
