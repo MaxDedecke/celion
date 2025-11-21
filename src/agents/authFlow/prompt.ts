@@ -54,11 +54,21 @@ Kontext:
 Der Benutzer stellt dir gültige Credentials bereit (du darfst sie NICHT verändern, nur beschreiben):
 ${JSON.stringify(credentials, null, 2)}
 
+WICHTIG – BEHANDLE CREDENTIALS ALS OPAKE STRINGS:
+- Du darfst apiToken, email, password, clientId, clientSecret NIEMALS verändern.
+- KEIN toLowerCase / toUpperCase, KEIN Trimmen, KEIN Ersetzen von Zeichen.
+- KEIN erneutes oder doppeltes Encoden / Decoden.
+- Du darfst sie nur 1:1 in neue Strings einsetzen (z.B. "${'{'}email{'}'}:${'{'}apiToken{'}'}").
+
 Aufgabe:
 1. Bestimme die korrekte Art, diese Credentials für die API zu verwenden.
 2. Leite alle erforderlichen HTTP-Header ab und KODIERE die Credentials korrekt:
-   - Beispiel Jira Cloud: "Authorization: Basic <base64(email:apiToken)>", "Accept: application/json"
-     WICHTIG: Für Jira MUSST du email und apiToken mit base64 kodieren!
+   - Beispiel Jira Cloud (BASIC AUTH, KRITISCH):
+     * Erzeuge den Klartext-String EXACT: "<email>:<api_token>" – ohne zusätzliche Zeichen, ohne Umbrüche, ohne Leerzeichen.
+     * Base64-kodiere GENAU diesen String einmal.
+     * Setze den Header: "Authorization: Basic <base64(email:api_token)>".
+     * Verwende zusätzlich: "Accept: application/json".
+     * Verwende zusätzlich: "User-Agent: Celion-Migration-Agent/1.0".
    - Beispiel Monday GraphQL: "Authorization: <apiToken>", "Content-Type: application/json"
    - Beispiel Notion: "Authorization: Bearer <apiToken>", "Notion-Version: 2022-06-28", "Content-Type: application/json"
 3. Baue eine empfohlene Probe-Request-Konfiguration mit den KODIERTEN Headers:
@@ -68,7 +78,7 @@ Aufgabe:
 4. Führe SOFORT einen echten Request mit dem httpClient-Tool aus:
    - Rufe httpClient mit ALLEN drei Parametern auf: url, method, UND headers
    - Die headers MÜSSEN die vollständig kodierten Authorization-Header enthalten
-   - Beispiel Tool-Call für Jira: httpClient(url="https://...", method="GET", headers={"Authorization": "Basic <base64-string>", "Accept": "application/json"})
+   - Beispiel Tool-Call für Jira: httpClient(url="https://...", method="GET", headers={"Authorization": "Basic <base64-string>", "Accept": "application/json", "User-Agent": "Celion-Migration-Agent/1.0"})
    - Das Tool gibt dir Status, Body und Fehler zurück
    - Setze "authenticated" auf true, wenn Status 200-299 ist, sonst false
 
