@@ -64,7 +64,7 @@ export const runAuthFlow = async (params: RunAuthFlowParams): Promise<AuthFlowRe
     const toolOutputs = [];
 
     for (const toolCall of toolCalls) {
-      if (toolCall.function.name === "httpRequest") {
+      if (toolCall.function.name === "httpClient") {
         const args = JSON.parse(toolCall.function.arguments);
         const response = await httpRequestTool(args);
         toolOutputs.push({

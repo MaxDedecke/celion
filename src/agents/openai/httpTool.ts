@@ -1,4 +1,4 @@
 // src/agents/openai/httpTool.ts
-import { credentialProbe } from "@/tools/credentialProbe";
+import { httpClient } from "@/tools/httpRequest";
 
-export const httpRequestTool = credentialProbe;
+export const httpRequestTool = httpClient;
