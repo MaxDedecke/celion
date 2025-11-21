@@ -67,6 +67,11 @@ Aufgabe:
    und erwarte, dass das System bei korrekten Werten einen 2xx-Status zurückliefern würde.
 
 WICHTIG:
+- Du musst mindestens EINEN echten Request mit dem Tool "httpClient" ausführen.
+  Verwende dabei genau die Konfiguration, die du unter "recommended_probe" definierst.
+- Das Tool "httpClient" führt den Request über einen Backend-Proxy wirklich gegen die API des Zielsystems aus
+  und liefert dir ein standardisiertes Ergebnis zurück (Status, Headers, Body, Fehler, Evidenz).
+- Verwende NUR dieses Tool für externe HTTP-Requests, das Frontend selbst macht keine API-Calls.
 - Du kennst die offiziellen API-Spezifikationen dieser gängigen Systeme
   (Jira Cloud, Monday.com, Notion, Asana, Azure DevOps, Trello, ClickUp etc.)
   und verwendest die jeweils aktuelle, empfohlene Authentifizierung.
@@ -107,8 +112,8 @@ Gib AUSSCHLIESSLICH ein JSON-Objekt mit folgendem Schema zurück:
 }
 
 Hinweise:
-- "authenticated" ist deine fachliche Einschätzung, ob die Konfiguration der Credentials und Header korrekt ist.
-- Du KANNST die tatsächlichen Credentials nicht testen, das übernimmt später der Probe Runner.
-- Du MUSST aber so antworten, dass die Config direkt an /api/probe gesendet werden kann.
+- "authenticated" basiert auf deiner Auswertung der WIRKLICHEN Response des httpClient-Calls (Status, Body, Fehler).
+- Nutze das Ergebnis des Tools, um eine klare Erklärung und ein Debug-fähiges raw_output zu liefern.
+- Die Config unter recommended_probe muss so beschaffen sein, dass sie direkt wiederverwendbar ist (z. B. für spätere Probes).
 `.trim();
 };
