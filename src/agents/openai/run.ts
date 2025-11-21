@@ -30,7 +30,7 @@ export const waitForRun = async (
     const r = await fetch(`${baseUrl}/threads/${threadId}/runs/${runId}`, { headers });
     const json = (await r.json()) as OpenAiRun;
 
-    if (json.status === "completed") return json;
+    if (json.status === "completed" || json.status === "requires_action") return json;
     if (["failed", "cancelled", "expired"].includes(json.status)) {
       throw new Error(json.last_error?.message || `Run failed: ${json.status}`);
     }
@@ -39,4 +39,22 @@ export const waitForRun = async (
     attempts++;
   }
   throw new Error("Run timed out");
+};
+
+export const submitToolOutputs = async (
+  baseUrl: string,
+  headers: Record<string, string>,
+  threadId: string,
+  runId: string,
+  toolOutputs: Array<{ tool_call_id: string; output: string }>,
+): Promise<OpenAiRun> => {
+  const r = await fetch(`${baseUrl}/threads/${threadId}/runs/${runId}/submit_tool_outputs`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ tool_outputs: toolOutputs }),
+  });
+
+  const json = await r.json();
+  if (!json.id) throw new Error("Tool output submission failed");
+  return json as OpenAiRun;
 };

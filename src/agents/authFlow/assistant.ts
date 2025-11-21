@@ -1,6 +1,7 @@
 // src/agents/authFlow/assistant.ts
 
 import type { OpenAiAssistant } from "../openai/types";
+import { httpRequestTool } from "../openai/httpTool";
 
 export const createAuthFlowAssistant = async (
   baseUrl: string,
@@ -10,17 +11,50 @@ export const createAuthFlowAssistant = async (
 
   const instructions = [
     "Du bist der Celion Auth Flow Agent.",
-    "Du generierst KEINE Header. Du generierst KEINE Tokens. Du generierst KEIN Base64.",
-    "Du erzeugst nur den Probe-Endpunkt und die HTTP-Methode.",
-    "Recherchiere anhand deines Wissens, welcher authentifizierungspflichtige Endpunkt und welche HTTP-Methode sich am besten eignen, um Zugangsdaten zu validieren.",
-    "Dokumentiere keine Header, keine Beispiel-Tokens.",
-    "Liefere nur einen konkreten Endpunkt, die HTTP-Methode, ob der Aufruf Authentifizierung erfordert, welches API-Format genutzt wird (REST/JSON, GraphQL oder SOAP/XML) und welche Authentifizierung üblich ist (basic|bearer|none).",
-    "Antworte ausschließlich als JSON mit den Feldern system, base_url, recommended_probe { method, url, requires_auth, api_format (rest_json|graphql|soap_xml|xml), auth_scheme (basic|bearer|none)?, graphql { query, operation_name?, variables? } } und reasoning.",
-    "Keine Header, keine Beispiel-Tokens, kein Base64, keine Platzhalter.",
-    "Falls GraphQL erforderlich ist, gib den passenden GraphQL-Query an.",
-    "Gib immer die vollständige und kanonische API-Route an (z.B. https://api.monday.com/v2).",
-    "Erkläre in reasoning kurz, warum der Endpunkt authentifizierte Daten liefert und welches Format (REST/GraphQL/SOAP) erforderlich ist.",
+    "Deine Aufgabe ist es, API-Credentials zu validieren, indem du einen echten Request an die API machst.",
+    "1. Analysiere das Zielsystem und bestimme die korrekte Authentifizierungsmethode.",
+    "2. Generiere alle notwendigen HTTP-Header (Authorization, Content-Type, spezielle Header wie Notion-Version, etc.).",
+    "3. Wähle einen geeigneten Endpunkt (z.B. /me, /user, /whoami) zur Validierung.",
+    "4. Führe den Request mit dem httpRequest-Tool aus.",
+    "5. Analysiere die Antwort: Bei Status 200-299 ist die Authentifizierung erfolgreich, bei 401/403 fehlgeschlagen.",
+    "Antworte ausschließlich als JSON mit den Feldern: system, base_url, authenticated (boolean basierend auf Response), auth_method, auth_headers, recommended_probe, explanation, raw_output.",
+    "Für Jira Cloud: Basic Auth mit base64(email:api_token).",
+    "Für Monday.com: Bearer Token im Authorization-Header, GraphQL an https://api.monday.com/v2.",
+    "Für Notion: Bearer Token, Notion-Version: 2022-06-28 Header erforderlich.",
   ].join(" ");
+
+  const tools = [
+    {
+      type: "function" as const,
+      function: {
+        name: "httpRequest",
+        description: "Führt einen HTTP-Request aus, um API-Credentials zu validieren.",
+        parameters: {
+          type: "object",
+          properties: {
+            url: {
+              type: "string",
+              description: "Die vollständige URL für den Request",
+            },
+            method: {
+              type: "string",
+              enum: ["GET", "POST", "PUT", "DELETE", "PATCH", "HEAD"],
+              description: "Die HTTP-Methode",
+            },
+            headers: {
+              type: "object",
+              description: "HTTP-Header als Key-Value-Paare",
+            },
+            body: {
+              type: "object",
+              description: "Request Body (optional, für POST/PUT)",
+            },
+          },
+          required: ["url", "method"],
+        },
+      },
+    },
+  ];
 
   const response = await fetch(`${baseUrl}/assistants`, {
     method: "POST",
@@ -30,6 +64,7 @@ export const createAuthFlowAssistant = async (
       name: "Celion Auth Flow",
       description: "Validiert API-Credentials für Celion Migrationen.",
       instructions,
+      tools,
     }),
   });
 

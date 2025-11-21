@@ -2,8 +2,9 @@
 
 import { resolveOpenAiConfig, buildOpenAiHeaders } from "../openai/openaiClient";
 import { createThread, postUserMessage } from "../openai/thread";
-import { createRun, waitForRun } from "../openai/run";
+import { createRun, waitForRun, submitToolOutputs } from "../openai/run";
 import { fetchLatestAssistantMessage, extractMessageText } from "../openai/message";
+import { httpRequestTool } from "../openai/httpTool";
 
 import { createAuthFlowAssistant } from "./assistant";
 import { buildAuthFlowPrompt, type BuildAuthFlowPromptParams } from "./prompt";
@@ -54,8 +55,30 @@ export const runAuthFlow = async (params: RunAuthFlowParams): Promise<AuthFlowRe
     buildAuthFlowPrompt(params),
   );
 
-  const run = await createRun(baseUrl, headers, thread, assistant.id);
-  await waitForRun(baseUrl, headers, thread, run.id);
+  let run = await createRun(baseUrl, headers, thread, assistant.id);
+  run = await waitForRun(baseUrl, headers, thread, run.id);
+
+  // Handle tool calls if required
+  if (run.status === "requires_action" && run.required_action?.type === "submit_tool_outputs") {
+    const toolCalls = run.required_action.submit_tool_outputs.tool_calls;
+    const toolOutputs = [];
+
+    for (const toolCall of toolCalls) {
+      if (toolCall.function.name === "httpRequest") {
+        const args = JSON.parse(toolCall.function.arguments);
+        const response = await httpRequestTool(args);
+        toolOutputs.push({
+          tool_call_id: toolCall.id,
+          output: JSON.stringify(response),
+        });
+      }
+    }
+
+    if (toolOutputs.length > 0) {
+      await submitToolOutputs(baseUrl, headers, thread, run.id, toolOutputs);
+      run = await waitForRun(baseUrl, headers, thread, run.id);
+    }
+  }
 
   const msg = await fetchLatestAssistantMessage(baseUrl, headers, thread);
   const result = parseAuthFlowResponse(extractMessageText(msg));

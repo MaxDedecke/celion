@@ -402,6 +402,7 @@ export const normalizeAuthFlowResult = (input: unknown): AuthFlowResult | null =
     reasoning: typeof candidate.reasoning === "string" ? candidate.reasoning : null,
     probe_result: probeResult,
     authenticated,
+    auth_method: typeof candidate.auth_method === "string" ? candidate.auth_method : null,
     summary,
     error_message: typeof candidate.error_message === "string" ? candidate.error_message : null,
     raw_output: typeof candidate.raw_output === "string" ? candidate.raw_output : "",
