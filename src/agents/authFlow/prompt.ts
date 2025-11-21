@@ -66,7 +66,9 @@ Aufgabe:
    - Gib HTTP-Methode, URL, und die VOLLSTÄNDIG KODIERTEN Header an
    - Bei GraphQL: gib query und variables an
 4. Führe SOFORT einen echten Request mit dem httpClient-Tool aus:
-   - Verwende EXAKT die Headers und URL, die du unter recommended_probe definierst
+   - Rufe httpClient mit ALLEN drei Parametern auf: url, method, UND headers
+   - Die headers MÜSSEN die vollständig kodierten Authorization-Header enthalten
+   - Beispiel Tool-Call für Jira: httpClient(url="https://...", method="GET", headers={"Authorization": "Basic <base64-string>", "Accept": "application/json"})
    - Das Tool gibt dir Status, Body und Fehler zurück
    - Setze "authenticated" auf true, wenn Status 200-299 ist, sonst false
 
