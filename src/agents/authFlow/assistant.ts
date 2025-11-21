@@ -28,7 +28,7 @@ export const createAuthFlowAssistant = async (
       type: "function" as const,
       function: {
         name: "httpRequest",
-        description: "Führt einen HTTP-Request aus, um API-Credentials zu validieren.",
+        description: "Führt einen HTTP-Request aus, um API-Credentials zu validieren. Nutzt den Backend-Proxy um CORS zu umgehen.",
         parameters: {
           type: "object",
           properties: {
@@ -43,14 +43,28 @@ export const createAuthFlowAssistant = async (
             },
             headers: {
               type: "object",
-              description: "HTTP-Header als Key-Value-Paare",
+              description: "HTTP-Header als Key-Value-Paare (z.B. Authorization, Content-Type, etc.)",
             },
             body: {
               type: "object",
               description: "Request Body (optional, für POST/PUT)",
             },
+            request_format: {
+              type: "string",
+              enum: ["rest_json", "graphql", "soap_xml", "xml"],
+              description: "Das Format des Requests (optional)",
+            },
+            graphql: {
+              type: "object",
+              description: "GraphQL-spezifische Parameter (optional)",
+              properties: {
+                query: { type: "string" },
+                operation_name: { type: "string" },
+                variables: { type: "object" },
+              },
+            },
           },
-          required: ["url", "method"],
+          required: ["url", "method", "headers"],
         },
       },
     },
