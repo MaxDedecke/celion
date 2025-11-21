@@ -45,14 +45,14 @@ export const createAuthFlowAssistant = async (
             headers: {
               type: "object",
               description:
-                "HTTP-Header als Key-Value-Paare (z.B. Authorization, Content-Type, etc.)",
+                "HTTP-Header als Key-Value-Paare (z.B. Authorization, Content-Type, etc.). MUSS immer angegeben werden, auch wenn leer.",
             },
             body: {
               type: "object",
               description: "Request Body (optional, für POST/PUT)",
             },
           },
-          required: ["url", "method"],
+          required: ["url", "method", "headers"],
         },
       },
     },
