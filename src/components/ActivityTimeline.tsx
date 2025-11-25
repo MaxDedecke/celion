@@ -50,6 +50,23 @@ const ActivityTimeline = ({ activities }: ActivityTimelineProps) => {
   };
 
   const extractStepFromTitle = (title: string): { stepInfo: typeof AGENT_WORKFLOW_STEPS[number] | null; cleanTitle: string } => {
+    // System-Aktivitäten, die kein Badge bekommen sollen
+    const systemActivityPatterns = [
+      "neue migration",
+      "migration dupliziert",
+      "migration erstellt",
+      "projekt erstellt",
+      "migration gelöscht",
+      "projekt gelöscht"
+    ];
+
+    const titleLower = title.toLowerCase();
+    for (const pattern of systemActivityPatterns) {
+      if (titleLower.includes(pattern)) {
+        return { stepInfo: null, cleanTitle: title };
+      }
+    }
+
     const stepKeywords = [
       { key: "system-detection", patterns: ["System Detection", "Systeme erkannt", "System erkannt"] },
       { key: "auth-flow", patterns: ["Authentifizierung", "Auth Flow", "Authenticated"] },
