@@ -1,0 +1,44 @@
+import { useEffect, useRef } from "react";
+import ChatMessage, { ChatMessage as ChatMessageType } from "./ChatMessage";
+import { cn } from "@/lib/utils";
+
+interface ChatMessageListProps {
+  messages: ChatMessageType[];
+  isAgentRunning: boolean;
+}
+
+const TypingIndicator = () => (
+  <div className="flex w-fit animate-fade-in gap-3 rounded-2xl border border-accent/30 bg-accent/10 p-3">
+    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/20">
+      <div className="flex gap-1">
+        <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent/70" style={{ animationDelay: "0ms" }} />
+        <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent/70" style={{ animationDelay: "150ms" }} />
+        <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent/70" style={{ animationDelay: "300ms" }} />
+      </div>
+    </div>
+    <div className="flex items-center">
+      <p className="text-sm text-muted-foreground">Agent arbeitet...</p>
+    </div>
+  </div>
+);
+
+const ChatMessageList = ({ messages, isAgentRunning }: ChatMessageListProps) => {
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+  }, [messages, isAgentRunning]);
+
+  return (
+    <div ref={scrollRef} className="flex h-full flex-col gap-3 overflow-y-auto pr-3">
+      {messages.map((message) => (
+        <ChatMessage key={message.id} message={message} />
+      ))}
+      {isAgentRunning && <TypingIndicator />}
+    </div>
+  );
+};
+
+export default ChatMessageList;
