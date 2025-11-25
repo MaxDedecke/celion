@@ -1806,7 +1806,29 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   };
 
   const handleSendChatMessage = useCallback(
-    (message: string) => {
+    async (message: string) => {
+      // Benutzernachricht zum Activity-Log hinzufügen
+      const userActivity: Activity = {
+        id: `user-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+        type: "info",
+        title: `[user] ${message}`,
+        timestamp: new Date().toISOString(),
+      };
+      
+      setActivityLog((prev) => [userActivity, ...prev]);
+      
+      // Auch in Datenbank speichern
+      try {
+        await supabaseDatabase.insertMigrationActivity({
+          migration_id: project.id,
+          type: "info",
+          title: `[user] ${message}`,
+          timestamp: new Date().toISOString()
+        });
+      } catch (error) {
+        console.error("Fehler beim Speichern der Benutzernachricht:", error);
+      }
+      
       const trimmed = message.trim().toLowerCase();
       
       if (
@@ -1820,7 +1842,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         toast.info("Verwende 'Fortsetzen' um den nächsten Schritt zu starten");
       }
     },
-    [handleNextWorkflowStep]
+    [handleNextWorkflowStep, project.id]
   );
 
 

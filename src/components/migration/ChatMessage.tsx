@@ -68,7 +68,9 @@ const ChatMessage = ({ message, onOpenAgentOutput }: ChatMessageProps) => {
   return (
     <div
       className={cn(
-        "flex w-full animate-fade-in gap-3 rounded-2xl border p-3 transition-all",
+        "flex w-full gap-3 rounded-2xl border p-3 transition-all duration-300",
+        "hover:scale-[1.01] hover:shadow-sm",
+        "animate-message-appear",
         getBubbleStyles(),
         message.role === "system" && "max-w-[85%]",
         message.role !== "system" && "max-w-[90%]",
@@ -76,7 +78,7 @@ const ChatMessage = ({ message, onOpenAgentOutput }: ChatMessageProps) => {
     >
       <div
         className={cn(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full animate-icon-pop",
           message.role === "agent" && "bg-accent/20",
           message.role === "user" && "bg-primary/20",
           message.role === "system" && "bg-muted",
@@ -98,7 +100,7 @@ const ChatMessage = ({ message, onOpenAgentOutput }: ChatMessageProps) => {
           {message.actionButton && onOpenAgentOutput && (
             <span
               onClick={() => onOpenAgentOutput(message.actionButton!.stepId)}
-              className="inline-flex items-center ml-1 text-primary hover:text-primary/80 cursor-pointer transition-colors"
+              className="inline-flex items-center ml-1 text-primary hover:text-primary/80 hover:scale-110 cursor-pointer transition-all duration-200"
               title="Agenten Output öffnen"
             >
               <SquareArrowOutUpRight className="h-4 w-4" />
