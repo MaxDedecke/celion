@@ -6,7 +6,6 @@ import {
   Pencil,
   Play,
   Sparkles,
-  SquareArrowOutUpRight,
   Workflow,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -41,7 +40,6 @@ interface MigrationOverviewCardProps {
   onNextWorkflowStep: () => void | Promise<void>;
   onUpdateStatus: (status: MigrationStatus) => void | Promise<void>;
   onOpenWorkflowPanel: () => void;
-  onOpenAgentOutput: (stepId: string) => void;
 }
 
 const MigrationOverviewCard = forwardRef<HTMLDivElement, MigrationOverviewCardProps>(
@@ -66,7 +64,6 @@ const MigrationOverviewCard = forwardRef<HTMLDivElement, MigrationOverviewCardPr
       onNextWorkflowStep,
       onUpdateStatus,
       onOpenWorkflowPanel,
-      onOpenAgentOutput,
     },
     ref,
   ) => {
@@ -204,9 +201,6 @@ const MigrationOverviewCard = forwardRef<HTMLDivElement, MigrationOverviewCardPr
                   const isCompleted = step.status === "completed";
                   const isActive = step.status === "active";
                   const isPending = step.status === "upcoming";
-                  const associatedNode = workflowNodeMap[step.id];
-                  const hasAgentResult = nodeHasAgentResult(associatedNode);
-                  const canOpenAgentOutput = hasAgentResult;
 
                   return (
                     <div
@@ -239,19 +233,6 @@ const MigrationOverviewCard = forwardRef<HTMLDivElement, MigrationOverviewCardPr
                         ) : (
                           <div className="h-3.5 w-3.5 rounded-full border border-border/60" />
                         )}
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className="h-7 w-7"
-                          onClick={() => canOpenAgentOutput && onOpenAgentOutput(step.id)}
-                          disabled={!canOpenAgentOutput}
-                          aria-label="Agenten-Output anzeigen"
-                          title={canOpenAgentOutput ? "Agenten-Output anzeigen" : "Kein Agenten-Output verfügbar"}
-                        >
-                          <SquareArrowOutUpRight
-                            className={cn("h-3.5 w-3.5", canOpenAgentOutput ? "text-foreground" : "text-muted-foreground")}
-                          />
-                        </Button>
                       </div>
                     </div>
                   );

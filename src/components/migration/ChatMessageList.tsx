@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 interface ChatMessageListProps {
   messages: ChatMessageType[];
   isAgentRunning: boolean;
+  onOpenAgentOutput?: (stepId: string) => void;
 }
 
 const TypingIndicator = () => (
@@ -22,7 +23,7 @@ const TypingIndicator = () => (
   </div>
 );
 
-const ChatMessageList = ({ messages, isAgentRunning }: ChatMessageListProps) => {
+const ChatMessageList = ({ messages, isAgentRunning, onOpenAgentOutput }: ChatMessageListProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -34,7 +35,7 @@ const ChatMessageList = ({ messages, isAgentRunning }: ChatMessageListProps) => 
   return (
     <div ref={scrollRef} className="flex h-full flex-col gap-3 overflow-y-auto pr-3">
       {messages.map((message) => (
-        <ChatMessage key={message.id} message={message} />
+        <ChatMessage key={message.id} message={message} onOpenAgentOutput={onOpenAgentOutput} />
       ))}
       {isAgentRunning && <TypingIndicator />}
     </div>

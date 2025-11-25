@@ -1010,7 +1010,26 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         timestamp: new Date().toISOString()
       });
 
+      // Add activity with button to open agent output
+      const viewResultActivity = `📊 Ergebnis verfügbar: ${completedStepTitle}`;
+      await supabaseDatabase.insertMigrationActivity({
+        migration_id: project.id,
+        type: "info",
+        title: viewResultActivity,
+        timestamp: new Date().toISOString()
+      });
+
       setActivityLog((previous) => [
+        {
+          id: `result-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          type: "info",
+          title: viewResultActivity,
+          timestamp: new Date().toISOString(),
+          metadata: {
+            stepId: completedStepNode.id,
+            actionButton: true,
+          },
+        },
         {
           id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           type: "success",
@@ -1865,7 +1884,6 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
             onNextWorkflowStep={handleNextWorkflowStep}
             onUpdateStatus={handleUpdateStatus}
             onOpenWorkflowPanel={() => handleOpenWorkflowPanel()}
-            onOpenAgentOutput={(stepId) => setAgentResultDialogStepId(stepId)}
           />
 
           <MigrationChatCard
@@ -1881,6 +1899,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
             onSendMessage={handleSendChatMessage}
             onContinue={handleNextWorkflowStep}
             onOpenWorkflowPanel={() => handleOpenWorkflowPanel()}
+            onOpenAgentOutput={(stepId) => setAgentResultDialogStepId(stepId)}
           />
         </div>
       </div>
