@@ -93,18 +93,18 @@ const ChatMessage = ({ message, onOpenAgentOutput }: ChatMessageProps) => {
           )}
           <span className="text-[10px] text-muted-foreground">{formatTimestamp(message.timestamp)}</span>
         </div>
-        <p className="text-sm leading-relaxed">{message.content}</p>
-        {message.actionButton && onOpenAgentOutput && (
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => onOpenAgentOutput(message.actionButton!.stepId)}
-            className="mt-2"
-          >
-            <SquareArrowOutUpRight className="mr-2 h-3.5 w-3.5" />
-            {message.actionButton.label}
-          </Button>
-        )}
+        <p className="text-sm leading-relaxed">
+          {message.content}
+          {message.actionButton && onOpenAgentOutput && (
+            <span
+              onClick={() => onOpenAgentOutput(message.actionButton!.stepId)}
+              className="inline-flex items-center ml-1 text-primary hover:text-primary/80 cursor-pointer transition-colors"
+              title="Agenten Output öffnen"
+            >
+              <SquareArrowOutUpRight className="h-4 w-4" />
+            </span>
+          )}
+        </p>
       </div>
     </div>
   );

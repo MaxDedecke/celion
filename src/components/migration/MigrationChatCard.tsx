@@ -70,7 +70,7 @@ const activityToChatMessage = (activity: Activity): ChatMessage => {
   const extractedStepId = stepIdMatch ? stepIdMatch[1] : null;
 
   // Check if this is a result-available message
-  const isResultMessage = activity.title.includes("📊 Ergebnis verfügbar");
+  const isResultMessage = activity.title.includes("Hier gehts zum Agenten Output");
 
   const actionButton = isResultMessage && extractedStepId
     ? {
