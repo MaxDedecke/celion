@@ -1,4 +1,4 @@
-import { useMemo } from "react";
+import { useMemo, useRef, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -99,9 +99,17 @@ const MigrationChatCard = ({
   onOpenWorkflowPanel,
   onOpenAgentOutput
 }: MigrationChatCardProps) => {
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  
   const chatMessages = useMemo(() => {
     return activities.map(activityToChatMessage).reverse();
   }, [activities]);
+
+  useEffect(() => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    }
+  }, [chatMessages, isStepRunning]);
   return <Card style={{
     height: "calc(100vh - 180px)"
   }} className="flex flex-col overflow-hidden bg-[#0f1729]/0 border-[#1d293b]/0">
@@ -160,9 +168,11 @@ const MigrationChatCard = ({
           </div>}
       </CardHeader>
 
-      <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
-        <div className="min-h-0 flex-1 overflow-hidden">
-          <ChatMessageList messages={chatMessages} isAgentRunning={isStepRunning} onOpenAgentOutput={onOpenAgentOutput} />
+      <CardContent className="flex min-h-0 flex-1 flex-col p-4">
+        <div className="relative min-h-0 flex-1">
+          <div ref={scrollContainerRef} className="absolute inset-0 overflow-y-auto">
+            <ChatMessageList messages={chatMessages} isAgentRunning={isStepRunning} onOpenAgentOutput={onOpenAgentOutput} />
+          </div>
         </div>
 
         <div className="mt-4 space-y-2 border-t border-border/50 pt-4">
