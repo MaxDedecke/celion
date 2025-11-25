@@ -2,8 +2,6 @@ import { forwardRef } from "react";
 import {
   ArrowRight,
   CheckCircle2,
-  Loader2,
-  Pencil,
   Play,
   Sparkles,
   Workflow,
@@ -11,14 +9,12 @@ import {
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import CircularProgress from "@/components/CircularProgress";
 import { cn } from "@/lib/utils";
 import type { MigrationStatus } from "@/types/migration";
 import type { WorkflowBoardState, WorkflowNode } from "@/types/workflow";
 import type { AgentWorkflowStepState, MigrationProject, MigrationStatusMeta } from "./types";
 import type { WorkflowTheme } from "./workflowThemes";
-import { nodeHasAgentResult } from "./workflowUtils";
 
 interface MigrationOverviewCardProps {
   project: MigrationProject;
@@ -89,21 +85,6 @@ const MigrationOverviewCard = forwardRef<HTMLDivElement, MigrationOverviewCardPr
                 {statusMeta.label}
               </Badge>
               <div className="flex flex-1 gap-2">
-                {(status === "not_started" || status === "running") && overallProgress < 100 && (
-                  <Button size="sm" onClick={onNextWorkflowStep} disabled={isUpdatingStatus || isStepRunning}>
-                    {isStepRunning ? (
-                      <>
-                        <Loader2 className="mr-1 h-3 w-3 animate-spin" />
-                        Läuft...
-                      </>
-                    ) : (
-                      <>
-                        <Play className="mr-1 h-3 w-3" />
-                        {status === "not_started" ? "Starten" : "Fortsetzen"}
-                      </>
-                    )}
-                  </Button>
-                )}
                 {overallProgress >= 100 && status !== "completed" && (
                   <Button size="sm" variant="outline" onClick={() => onUpdateStatus("completed")} disabled={isUpdatingStatus}>
                     <CheckCircle2 className="mr-1 h-3 w-3" />
@@ -177,68 +158,6 @@ const MigrationOverviewCard = forwardRef<HTMLDivElement, MigrationOverviewCardPr
                 </div>
               </div>
             </div>
-          </div>
-
-          <div className="mt-3 rounded-lg border border-border/60 bg-background/80 p-3">
-            <div className="mb-2 flex items-center justify-between gap-2">
-              <div className="flex items-center gap-2">
-                <Workflow className="h-3.5 w-3.5 text-muted-foreground" />
-                <span className="text-xs font-semibold text-muted-foreground">Workflow</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <Badge variant="outline" className="text-[11px]">
-                  {workflowBoard.nodes.filter((node) => node.status === "done" || node.status === "in-progress").length}/
-                  {workflowBoard.nodes.length}
-                </Badge>
-                <Button size="sm" variant="ghost" onClick={onOpenWorkflowPanel} className="h-7 px-2">
-                  <Pencil className="h-3 w-3" />
-                </Button>
-              </div>
-            </div>
-            <ScrollArea className="h-[280px]">
-              <div className="space-y-1.5 pr-3">
-                {agentSteps.map((step) => {
-                  const isCompleted = step.status === "completed";
-                  const isActive = step.status === "active";
-                  const isPending = step.status === "upcoming";
-
-                  return (
-                    <div
-                      key={step.id}
-                      className={cn(
-                        "flex items-center gap-2 rounded-md border p-2 transition-all",
-                        isCompleted && "border-emerald-500/50 bg-emerald-500/10",
-                        isActive && "border-amber-500/50 bg-amber-500/10 shadow-sm",
-                        isPending && "border-border/60 bg-background/60",
-                      )}
-                    >
-                      <div
-                        className={cn(
-                          "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border text-[10px] font-semibold",
-                          isCompleted && "border-emerald-500/50 bg-emerald-500/20 text-emerald-700 dark:text-emerald-300",
-                          isActive && "border-amber-500/50 bg-amber-500/20 text-amber-700 dark:text-amber-300",
-                          isPending && "border-border/60 bg-background/80 text-muted-foreground",
-                        )}
-                      >
-                        {step.index + 1}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-xs font-medium">{step.title}</p>
-                      </div>
-                      <div className="flex shrink-0 items-center gap-1.5">
-                        {isCompleted ? (
-                          <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-300" />
-                        ) : isActive ? (
-                          <Sparkles className="h-3.5 w-3.5 text-amber-600 dark:text-amber-300" />
-                        ) : (
-                          <div className="h-3.5 w-3.5 rounded-full border border-border/60" />
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </ScrollArea>
           </div>
         </CardContent>
       </Card>

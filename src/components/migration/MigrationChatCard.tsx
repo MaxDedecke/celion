@@ -21,6 +21,7 @@ interface MigrationChatCardProps {
   completedCount: number;
   totalSteps: number;
   overallProgress: number;
+  status: "not_started" | "running" | "paused" | "completed";
   onSendMessage: (message: string) => void;
   onContinue: () => void;
   onOpenWorkflowPanel: () => void;
@@ -100,6 +101,7 @@ const MigrationChatCard = ({
   completedCount,
   totalSteps,
   overallProgress,
+  status,
   onSendMessage,
   onContinue,
   onOpenWorkflowPanel,
@@ -182,24 +184,26 @@ const MigrationChatCard = ({
                 : "Nächsten Schritt starten oder Befehl eingeben..."
             }
           />
-          <Button
-            onClick={onContinue}
-            disabled={isStepRunning}
-            className="w-full"
-            size="sm"
-          >
-            {isStepRunning ? (
-              <>
-                <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                Läuft...
-              </>
-            ) : (
-              <>
-                <Play className="mr-2 h-3.5 w-3.5" />
-                Fortsetzen
-              </>
-            )}
-          </Button>
+          {(status === "not_started" || status === "running") && overallProgress < 100 && (
+            <Button
+              onClick={onContinue}
+              disabled={isStepRunning}
+              className="w-full"
+              size="sm"
+            >
+              {isStepRunning ? (
+                <>
+                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
+                  Läuft...
+                </>
+              ) : (
+                <>
+                  <Play className="mr-2 h-3.5 w-3.5" />
+                  {status === "not_started" ? "Starten" : "Fortsetzen"}
+                </>
+              )}
+            </Button>
+          )}
         </div>
       </CardContent>
     </Card>
