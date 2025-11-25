@@ -14,10 +14,20 @@ export const useMessageQueue = <T extends { id: string }>(
   const queueRef = useRef<string[]>([]);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const previousIdsRef = useRef<Set<string>>(new Set());
+  const isInitializedRef = useRef(false);
 
   useEffect(() => {
     const currentIds = new Set(allMessages.map(m => m.id));
     
+    // Beim ersten Render alle existierenden Nachrichten sofort sichtbar machen
+    if (!isInitializedRef.current && allMessages.length > 0) {
+      setVisibleIds(currentIds);
+      previousIdsRef.current = currentIds;
+      isInitializedRef.current = true;
+      return;
+    }
+    
+    // Nur neue Nachrichten nach Initialisierung queuen
     const newIds = allMessages
       .filter(m => !previousIdsRef.current.has(m.id) && !visibleIds.has(m.id))
       .map(m => m.id);
