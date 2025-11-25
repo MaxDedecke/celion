@@ -1,7 +1,7 @@
 export const AGENT_WORKFLOW_STEPS = [
   {
     id: "system-detection",
-    title: "System Detection Agent",
+    title: "System Detection",
     description: "Erkennt automatisch, welches System (z. B. Jira Cloud, Asana, Azure DevOps) hinter einer angegebenen URL steckt und welche API-Version verfügbar ist.",
     phase: "System Detection",
     agentType: "system-detection",
@@ -9,7 +9,7 @@ export const AGENT_WORKFLOW_STEPS = [
   },
   {
     id: "auth-flow",
-    title: "Auth Flow Agent",
+    title: "Authentication",
     description: "Leitet anhand des erkannten Systems den passenden Authentifizierungsprozess ein (API Token, OAuth2, Basic Auth etc.) und prüft die Berechtigungen.",
     phase: "Authentication",
     agentType: "auth-flow",
@@ -17,7 +17,7 @@ export const AGENT_WORKFLOW_STEPS = [
   },
   {
     id: "schema-discovery",
-    title: "Capability Discovery Agent",
+    title: "Source Discovery",
     description: "Findet automatisch die API-Spezifikation, analysiert Entities, Endpunkte, Auth, Pagination und Limits über autonome httpClient-Probes.",
     phase: "Source Discovery",
     agentType: "schema-discovery",
@@ -25,7 +25,7 @@ export const AGENT_WORKFLOW_STEPS = [
   },
   {
     id: "target-schema",
-    title: "Target Discovery Agent",
+    title: "Target Discovery",
     description: "Analysiert das Zielsystem und identifiziert, wie dessen Felder und Strukturen aufgebaut sind.",
     phase: "Target Discovery",
     agentType: "target-schema",
@@ -33,7 +33,7 @@ export const AGENT_WORKFLOW_STEPS = [
   },
   {
     id: "model-mapping",
-    title: "Model Mapping Agent",
+    title: "Model Mapping",
     description: "Ordnet die erkannten Datenfelder des Quellsystems dem Celion-Meta-Modell zu, um eine standardisierte interne Repräsentation zu erzeugen.",
     phase: "Model Mapping",
     agentType: "model-mapping",
@@ -41,7 +41,7 @@ export const AGENT_WORKFLOW_STEPS = [
   },
   {
     id: "mapping-suggestion",
-    title: "Mapping Suggestion Agent",
+    title: "Mapping Suggestions",
     description: "Erstellt ein initiales Feld-zu-Feld-Mapping (Source → Target) basierend auf Ähnlichkeit, Bezeichnung, Typ und Kontext der Daten.",
     phase: "Mapping Suggestions",
     agentType: "mapping-suggestion",
@@ -49,7 +49,7 @@ export const AGENT_WORKFLOW_STEPS = [
   },
   {
     id: "quality-enhancement",
-    title: "Quality Enhancement Agent",
+    title: "Quality Enhancement",
     description: "Überprüft das vorgeschlagene Mapping auf Typinkonsistenzen, Pflichtfelder, mögliche Datenverluste und optimiert die Datenqualität.",
     phase: "Quality Enhancement",
     agentType: "quality-enhancement",
@@ -57,7 +57,7 @@ export const AGENT_WORKFLOW_STEPS = [
   },
   {
     id: "data-transfer",
-    title: "Data Transfer Agent",
+    title: "Data Transfer",
     description: "Führt die eigentliche Datenmigration aus, orchestriert Requests, Batch-Verarbeitung und Error-Recovery.",
     phase: "Data Transfer",
     agentType: "data-transfer",
@@ -65,7 +65,7 @@ export const AGENT_WORKFLOW_STEPS = [
   },
   {
     id: "verification",
-    title: "Verification Agent",
+    title: "Verification",
     description: "Prüft, ob alle Objekte korrekt und vollständig im Zielsystem angekommen sind, und erstellt einen Abweichungsreport.",
     phase: "Verification",
     agentType: "verification",
@@ -73,7 +73,7 @@ export const AGENT_WORKFLOW_STEPS = [
   },
   {
     id: "report",
-    title: "Report Agent",
+    title: "Report",
     description: "Dokumentiert jede Aktion, API-Request und Datenveränderung revisionssicher für Nachvollziehbarkeit und erstellt einen finalen Report.",
     phase: "Report",
     agentType: "report",
