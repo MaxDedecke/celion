@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import ChatMessage, { ChatMessage as ChatMessageType } from "./ChatMessage";
 import { cn } from "@/lib/utils";
+import { useMessageQueue } from "@/hooks/useMessageQueue";
 
 interface ChatMessageListProps {
   messages: ChatMessageType[];
@@ -25,16 +26,20 @@ const TypingIndicator = () => (
 
 const ChatMessageList = ({ messages, isAgentRunning, onOpenAgentOutput }: ChatMessageListProps) => {
   const scrollRef = useRef<HTMLDivElement>(null);
+  
+  const { visibleMessages, hasQueuedMessages } = useMessageQueue(messages, {
+    delayMs: 1000,
+  });
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages, isAgentRunning]);
+  }, [visibleMessages, isAgentRunning]);
 
   return (
     <div ref={scrollRef} className="flex h-full flex-col gap-3 overflow-y-auto pr-3">
-      {messages.map((message, index) => (
+      {visibleMessages.map((message, index) => (
         <div
           key={message.id}
           style={{
@@ -44,7 +49,7 @@ const ChatMessageList = ({ messages, isAgentRunning, onOpenAgentOutput }: ChatMe
           <ChatMessage message={message} onOpenAgentOutput={onOpenAgentOutput} />
         </div>
       ))}
-      {isAgentRunning && <TypingIndicator />}
+      {(isAgentRunning || hasQueuedMessages) && <TypingIndicator />}
     </div>
   );
 };
