@@ -68,8 +68,8 @@ const ChatMessage = ({ message, onOpenAgentOutput }: ChatMessageProps) => {
   return (
     <div
       className={cn(
-        "flex w-full gap-3 rounded-2xl border p-3 transition-all duration-300",
-        "hover:scale-[1.01] hover:shadow-sm",
+        "flex w-full gap-3 rounded-2xl p-3 transition-all duration-300",
+        "hover:scale-[1.01]",
         "animate-message-appear",
         getBubbleStyles(),
         message.role === "system" && "max-w-[85%]",
