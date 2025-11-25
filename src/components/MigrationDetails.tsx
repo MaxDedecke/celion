@@ -1880,6 +1880,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
             overallProgress={overallProgress}
             onSendMessage={handleSendChatMessage}
             onContinue={handleNextWorkflowStep}
+            onOpenWorkflowPanel={() => handleOpenWorkflowPanel()}
           />
         </div>
       </div>

@@ -23,6 +23,7 @@ interface MigrationChatCardProps {
   overallProgress: number;
   onSendMessage: (message: string) => void;
   onContinue: () => void;
+  onOpenWorkflowPanel: () => void;
 }
 
 const extractStepFromTitle = (title: string) => {
@@ -82,6 +83,7 @@ const MigrationChatCard = ({
   overallProgress,
   onSendMessage,
   onContinue,
+  onOpenWorkflowPanel,
 }: MigrationChatCardProps) => {
   const chatMessages = useMemo(() => {
     return activities.map(activityToChatMessage).reverse();
@@ -107,7 +109,15 @@ const MigrationChatCard = ({
             <Badge variant="secondary" className="text-xs">
               {completedCount}/{totalSteps}
             </Badge>
-            <Workflow className="h-3.5 w-3.5 text-muted-foreground" />
+            <Button
+              size="icon"
+              variant="ghost"
+              onClick={onOpenWorkflowPanel}
+              className="h-7 w-7"
+              title="Workflow bearbeiten"
+            >
+              <Workflow className="h-3.5 w-3.5" />
+            </Button>
           </div>
         </div>
         
