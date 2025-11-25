@@ -11,6 +11,7 @@ export const useMessageQueue = <T extends { id: string }>(
   const { delayMs = 1000 } = options;
   
   const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
+  const [queueLength, setQueueLength] = useState(0);
   const queueRef = useRef<string[]>([]);
   const intervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const previousIdsRef = useRef<Set<string>>(new Set());
@@ -34,6 +35,7 @@ export const useMessageQueue = <T extends { id: string }>(
     
     if (newIds.length > 0) {
       queueRef.current.push(...newIds);
+      setQueueLength(queueRef.current.length);
     }
     
     previousIdsRef.current = currentIds;
@@ -44,17 +46,20 @@ export const useMessageQueue = <T extends { id: string }>(
       const firstId = queueRef.current.shift();
       if (firstId) {
         setVisibleIds(prev => new Set([...prev, firstId]));
+        setQueueLength(queueRef.current.length);
       }
       
       intervalRef.current = setInterval(() => {
         const nextId = queueRef.current.shift();
         if (nextId) {
           setVisibleIds(prev => new Set([...prev, nextId]));
+          setQueueLength(queueRef.current.length);
         }
         
         if (queueRef.current.length === 0 && intervalRef.current) {
           clearInterval(intervalRef.current);
           intervalRef.current = null;
+          setQueueLength(0);
         }
       }, delayMs);
     }
@@ -65,10 +70,10 @@ export const useMessageQueue = <T extends { id: string }>(
         intervalRef.current = null;
       }
     };
-  }, [visibleIds, delayMs]);
+  }, [queueLength, delayMs]);
 
   const visibleMessages = allMessages.filter(m => visibleIds.has(m.id));
-  const hasQueuedMessages = queueRef.current.length > 0;
+  const hasQueuedMessages = queueLength > 0;
 
   return { visibleMessages, hasQueuedMessages };
 };
