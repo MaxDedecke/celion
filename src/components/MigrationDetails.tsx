@@ -15,7 +15,6 @@ import WorkflowPanelDialog from "./dialogs/WorkflowPanelDialog";
 import type { Activity } from "./ActivityTimeline";
 import AgentResultDialog from "./migration/AgentResultDialog";
 import MigrationChatCard from "./migration/MigrationChatCard";
-import MigrationOverviewCard from "./migration/MigrationOverviewCard";
 import type { AgentWorkflowStepState, MigrationProject } from "./migration/types";
 import { getWorkflowTheme } from "./migration/workflowThemes";
 import { nodeHasAgentResult } from "./migration/workflowUtils";
@@ -94,9 +93,6 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const [isStepRunning, setIsStepRunning] = useState(false);
   const [stepProgress, setStepProgress] = useState(0);
   const [agentResultDialogStepId, setAgentResultDialogStepId] = useState<string | null>(null);
-  const migrationCardRef = useRef<HTMLDivElement | null>(null);
-  const [isWideLayout, setIsWideLayout] = useState(false);
-  const [migrationCardHeight, setMigrationCardHeight] = useState<number | null>(null);
   const [workflowBoard, setWorkflowBoard] = useState<WorkflowBoardState>(() => createDefaultWorkflowBoard());
   const agentResultPersistenceSignatureRef = useRef<string | null>(null);
 
@@ -1810,95 +1806,28 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     [handleNextWorkflowStep]
   );
 
-  useEffect(() => {
-    if (typeof window === "undefined") {
-      return;
-    }
-
-    const mediaQuery = window.matchMedia("(min-width: 1280px)");
-    const handleMediaChange = (event: MediaQueryListEvent) => {
-      setIsWideLayout(event.matches);
-    };
-
-    setIsWideLayout(mediaQuery.matches);
-
-    if (typeof mediaQuery.addEventListener === "function") {
-      mediaQuery.addEventListener("change", handleMediaChange);
-      return () => mediaQuery.removeEventListener("change", handleMediaChange);
-    }
-
-    mediaQuery.addListener(handleMediaChange);
-    return () => mediaQuery.removeListener(handleMediaChange);
-  }, []);
-
-  useEffect(() => {
-    if (!isWideLayout || !migrationCardRef.current) {
-      setMigrationCardHeight(null);
-      return;
-    }
-
-    const element = migrationCardRef.current;
-
-    const updateHeight = () => {
-      if (!element) return;
-      const nextHeight = element.getBoundingClientRect().height;
-      setMigrationCardHeight(nextHeight);
-    };
-
-    updateHeight();
-
-    const resizeObserver = new ResizeObserver(updateHeight);
-    resizeObserver.observe(element);
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, [isWideLayout]);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
       <div className="flex flex-1 flex-col gap-4 overflow-auto p-6">
-        <div className="grid gap-4 xl:grid-cols-[1.5fr,1fr]">
-          <MigrationOverviewCard
-            ref={migrationCardRef}
-            project={project}
-            status={status}
-            overallProgress={overallProgress}
-            statusMeta={statusMeta}
-            isUpdatingStatus={isUpdatingStatus}
-            isStepRunning={isStepRunning}
-            stepProgress={stepProgress}
-            activeStepProgressPercent={activeStepProgressPercent}
-            activeColorTheme={activeColorTheme}
-            completedCount={completedCount}
-            agentSteps={agentSteps}
-            activeStep={activeStep}
-            workflowNodeMap={workflowNodeMap}
-            workflowBoard={workflowBoard}
-            sourceObjectsDisplay={sourceObjectsDisplay}
-            targetObjectsDisplay={targetObjectsDisplay}
-            onNextWorkflowStep={handleNextWorkflowStep}
-            onUpdateStatus={handleUpdateStatus}
-            onOpenWorkflowPanel={() => handleOpenWorkflowPanel()}
-          />
-
-          <MigrationChatCard
-            activities={activityLog}
-            matchHeight={migrationCardHeight}
-            isWideLayout={isWideLayout}
-            isStepRunning={isStepRunning}
-            stepProgress={stepProgress}
-            activeStep={activeStep}
-            completedCount={completedCount}
-            totalSteps={agentSteps.length}
-            overallProgress={overallProgress}
-            status={status}
-            onSendMessage={handleSendChatMessage}
-            onContinue={handleNextWorkflowStep}
-            onOpenWorkflowPanel={() => handleOpenWorkflowPanel()}
-            onOpenAgentOutput={(stepId) => setAgentResultDialogStepId(stepId)}
-          />
-        </div>
+        <MigrationChatCard
+          activities={activityLog}
+          isStepRunning={isStepRunning}
+          stepProgress={stepProgress}
+          activeStep={activeStep}
+          completedCount={completedCount}
+          totalSteps={agentSteps.length}
+          overallProgress={overallProgress}
+          status={status}
+          sourceSystem={project.sourceSystem}
+          targetSystem={project.targetSystem}
+          sourceObjectsDisplay={sourceObjectsDisplay}
+          targetObjectsDisplay={targetObjectsDisplay}
+          onSendMessage={handleSendChatMessage}
+          onContinue={handleNextWorkflowStep}
+          onOpenWorkflowPanel={() => handleOpenWorkflowPanel()}
+          onOpenAgentOutput={(stepId) => setAgentResultDialogStepId(stepId)}
+        />
       </div>
 
       <AgentResultDialog
