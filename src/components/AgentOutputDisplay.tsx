@@ -242,7 +242,7 @@ const AgentOutputDisplay = ({ sourceResult, targetResult, schemaResult }: AgentO
         return <AlertCircle className="h-5 w-5 text-yellow-600 dark:text-yellow-400" />;
       }
 
-      return (result as SystemDetectionResult).detected ? (
+      return (result as SystemDetectionResult).systemMatchesUrl ? (
         <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
       ) : (
         <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" />
@@ -259,7 +259,7 @@ const AgentOutputDisplay = ({ sourceResult, targetResult, schemaResult }: AgentO
         </CardHeader>
         <CardContent className="space-y-5">
           {/* Raw Output Tooltip */}
-          {result.raw_output && (
+          {(isAuthFlow ? (result as AuthFlowResult).raw_output : (result as SystemDetectionResult).rawOutput) && (
             <div className="flex items-center gap-2">
               <Popover>
                 <PopoverTrigger asChild>
@@ -277,7 +277,7 @@ const AgentOutputDisplay = ({ sourceResult, targetResult, schemaResult }: AgentO
                 >
                   <ScrollArea className="max-h-[60vh]">
                     <pre className="whitespace-pre-wrap break-all text-left text-xs font-mono px-4 py-3">
-                      {result.raw_output}
+                      {isAuthFlow ? (result as AuthFlowResult).raw_output : (result as SystemDetectionResult).rawOutput}
                     </pre>
                   </ScrollArea>
                 </PopoverContent>
@@ -285,7 +285,7 @@ const AgentOutputDisplay = ({ sourceResult, targetResult, schemaResult }: AgentO
 
               <button
                 type="button"
-                onClick={() => downloadRawOutput(result.raw_output!, title)}
+                onClick={() => downloadRawOutput((isAuthFlow ? (result as AuthFlowResult).raw_output : (result as SystemDetectionResult).rawOutput) || "", title)}
                 className="inline-flex h-8 w-8 items-center justify-center rounded-md border border-input bg-transparent text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                 aria-label="Raw Output herunterladen"
                 title="Raw Output herunterladen"
