@@ -1729,13 +1729,13 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
 
 
   const schemaDiscoveryStepState = agentSteps.find((step) => step.id === "schema-discovery");
-  const dryRunStepState = agentSteps.find((step) => step.id === "dry-run");
+  const qualityEnhancementStepState = agentSteps.find((step) => step.id === "quality-enhancement");
   const verificationStepState = agentSteps.find((step) => step.id === "verification");
 
   const sourceTotalsVisible = schemaDiscoveryStepState
     ? overallProgress >= schemaDiscoveryStepState.endThreshold
     : false;
-  const targetTotalsVisible = dryRunStepState ? overallProgress >= dryRunStepState.endThreshold : false;
+  const targetTotalsVisible = qualityEnhancementStepState ? overallProgress >= qualityEnhancementStepState.endThreshold : false;
   const finalCountsVisible = verificationStepState
     ? overallProgress >= verificationStepState.endThreshold
     : false;
