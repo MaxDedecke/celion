@@ -50,6 +50,9 @@ const extractStepFromTitle = (title: string) => {
 };
 
 const activityToChatMessage = (activity: Activity): ChatMessage => {
+  // Check if this is a user message
+  const isUserMessage = activity.title.startsWith("[user]");
+  
   const stepInfo = extractStepFromTitle(activity.title);
   
   const isSystemActivity = 
@@ -79,16 +82,19 @@ const activityToChatMessage = (activity: Activity): ChatMessage => {
       }
     : undefined;
 
-  // Remove stepId encoding from display title
-  const displayTitle = activity.title.replace(/\s*\[step:[^\]]+\]/, '');
+  // Remove stepId encoding and [user] prefix from display title
+  let displayTitle = activity.title.replace(/\s*\[step:[^\]]+\]/, '');
+  if (isUserMessage) {
+    displayTitle = displayTitle.replace("[user] ", "");
+  }
 
   return {
     id: activity.id,
-    role: isSystemActivity ? "system" : "agent",
+    role: isUserMessage ? "user" : (isSystemActivity ? "system" : "agent"),
     content: displayTitle,
     timestamp: activity.timestamp,
     status: mapActivityTypeToStatus(activity.type),
-    stepInfo: !isSystemActivity ? stepInfo || undefined : undefined,
+    stepInfo: !isSystemActivity && !isUserMessage ? stepInfo || undefined : undefined,
     actionButton,
   };
 };

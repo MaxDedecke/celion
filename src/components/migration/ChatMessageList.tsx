@@ -34,8 +34,15 @@ const ChatMessageList = ({ messages, isAgentRunning, onOpenAgentOutput }: ChatMe
 
   return (
     <div ref={scrollRef} className="flex h-full flex-col gap-3 overflow-y-auto pr-3">
-      {messages.map((message) => (
-        <ChatMessage key={message.id} message={message} onOpenAgentOutput={onOpenAgentOutput} />
+      {messages.map((message, index) => (
+        <div
+          key={message.id}
+          style={{
+            animationDelay: `${index * 50}ms`,
+          }}
+        >
+          <ChatMessage message={message} onOpenAgentOutput={onOpenAgentOutput} />
+        </div>
       ))}
       {isAgentRunning && <TypingIndicator />}
     </div>
