@@ -96,6 +96,30 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
   const [workflowBoard, setWorkflowBoard] = useState<WorkflowBoardState>(() => createDefaultWorkflowBoard());
   const agentResultPersistenceSignatureRef = useRef<string | null>(null);
 
+  const createViewResultActivity = useCallback(
+    async (stepNode: WorkflowNode, isError: boolean = false) => {
+      const viewResultActivity = `Hier gehts zum Agenten Output [step:${stepNode.id}]`;
+      
+      await supabaseDatabase.insertMigrationActivity({
+        migration_id: project.id,
+        type: isError ? "warning" : "info",
+        title: viewResultActivity,
+        timestamp: new Date().toISOString()
+      });
+      
+      setActivityLog((previous) => [
+        {
+          id: `result-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          type: isError ? "warning" : "info",
+          title: viewResultActivity,
+          timestamp: new Date().toISOString(),
+        },
+        ...previous,
+      ]);
+    },
+    [project.id]
+  );
+
   const appendActivity = useCallback(
     async (type: Activity["type"], title: string) => {
       const timestampIso = new Date().toISOString();
@@ -900,6 +924,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           })();
 
           await revertActiveNodeToPending(derivedAgentResult);
+          await createViewResultActivity(completedStepNode, true);
           setAgentResultDialogStepId(completedStepNode.id);
           return;
         }
@@ -923,6 +948,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           await revertActiveNodeToPending(
             completedAgentResult ? { ...completedAgentResult, error: errorMsg } : { error: errorMsg },
           );
+          await createViewResultActivity(completedStepNode, true);
           setAgentResultDialogStepId(completedStepNode.id);
           setIsUpdatingStatus(false);
           return;
@@ -942,6 +968,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           await revertActiveNodeToPending(
             completedAgentResult ? { ...completedAgentResult, error: errorMsg } : { error: errorMsg },
           );
+          await createViewResultActivity(completedStepNode, true);
           setAgentResultDialogStepId(completedStepNode.id);
           setIsUpdatingStatus(false);
           return;
@@ -961,6 +988,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           await revertActiveNodeToPending(
             completedAgentResult ? { ...completedAgentResult, error: errorMsg } : { error: errorMsg },
           );
+          await createViewResultActivity(completedStepNode, true);
           setAgentResultDialogStepId(completedStepNode.id);
           setIsUpdatingStatus(false);
           return;
@@ -980,6 +1008,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           await revertActiveNodeToPending(
             completedAgentResult ? { ...completedAgentResult, error: errorMsg } : { error: errorMsg },
           );
+          await createViewResultActivity(completedStepNode, true);
           setAgentResultDialogStepId(completedStepNode.id);
           setIsUpdatingStatus(false);
           return;
@@ -1006,22 +1035,10 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         timestamp: new Date().toISOString()
       });
 
-      // Add activity with button to open agent output - encode stepId in title
-      const viewResultActivity = `📊 Ergebnis verfügbar: ${completedStepTitle} [step:${completedStepNode.id}]`;
-      await supabaseDatabase.insertMigrationActivity({
-        migration_id: project.id,
-        type: "info",
-        title: viewResultActivity,
-        timestamp: new Date().toISOString()
-      });
+      // Add activity with inline icon to open agent output
+      await createViewResultActivity(completedStepNode, false);
 
       setActivityLog((previous) => [
-        {
-          id: `result-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          type: "info",
-          title: viewResultActivity,
-          timestamp: new Date().toISOString(),
-        },
         {
           id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
           type: "success",
