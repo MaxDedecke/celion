@@ -1,4 +1,4 @@
-import { Bot, User, Settings, SquareArrowOutUpRight } from "lucide-react";
+import { Bot, User, Settings, SquareArrowOutUpRight, CheckCircle2, XCircle, Clock, Info, AlertTriangle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -35,7 +35,44 @@ const ChatMessage = ({ message, onOpenAgentOutput }: ChatMessageProps) => {
     return Settings;
   };
 
+  const getStatusIcon = () => {
+    // Bei Agenten-Nachrichten: Status-spezifisches Icon
+    if (message.role === "agent") {
+      switch (message.status) {
+        case "success": return CheckCircle2;
+        case "error": return XCircle;
+        case "pending": return Clock;
+        default: return Bot; // info = normales Bot-Icon
+      }
+    }
+    if (message.role === "user") return User;
+    return Settings;
+  };
+
   const Icon = getIcon();
+  const StatusIcon = getStatusIcon();
+
+  const getIconBackgroundColor = () => {
+    if (message.role === "agent") {
+      switch (message.status) {
+        case "success": return "bg-emerald-500/20";
+        case "error": return "bg-red-500/20";
+        case "pending": return "bg-amber-500/20";
+        default: return "bg-accent/20";
+      }
+    }
+    if (message.role === "user") return "bg-primary/20";
+    return "bg-muted";
+  };
+
+  const getTextColor = () => {
+    switch (message.status) {
+      case "success": return "text-emerald-700 dark:text-emerald-300";
+      case "error": return "text-red-700 dark:text-red-300";
+      case "pending": return "text-amber-700 dark:text-amber-300";
+      default: return "text-foreground";
+    }
+  };
 
   const getStatusColor = () => {
     if (message.status === "success") return "text-emerald-600 dark:text-emerald-400";
@@ -79,12 +116,10 @@ const ChatMessage = ({ message, onOpenAgentOutput }: ChatMessageProps) => {
       <div
         className={cn(
           "flex h-8 w-8 shrink-0 items-center justify-center rounded-full animate-icon-pop",
-          message.role === "agent" && "bg-accent/20",
-          message.role === "user" && "bg-primary/20",
-          message.role === "system" && "bg-muted",
+          getIconBackgroundColor()
         )}
       >
-        <Icon className={cn("h-4 w-4", getStatusColor())} />
+        <StatusIcon className={cn("h-4 w-4", getStatusColor())} />
       </div>
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex items-center gap-2">
@@ -95,7 +130,7 @@ const ChatMessage = ({ message, onOpenAgentOutput }: ChatMessageProps) => {
           )}
           <span className="text-[10px] text-muted-foreground">{formatTimestamp(message.timestamp)}</span>
         </div>
-        <p className="text-sm leading-relaxed">
+        <p className={cn("text-sm leading-relaxed", getTextColor())}>
           {message.content}
           {message.actionButton && onOpenAgentOutput && (
             <span
