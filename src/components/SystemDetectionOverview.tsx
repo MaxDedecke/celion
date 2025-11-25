@@ -20,7 +20,7 @@ const SystemDetectionOverview = ({
   fallbackBaseUrl,
   className,
 }: SystemDetectionOverviewProps) => {
-  const baseUrl = result.base_url || fallbackBaseUrl || "Keine Basis-URL hinterlegt";
+  const baseUrl = result.recommendedBaseUrl || fallbackBaseUrl || "Keine Basis-URL hinterlegt";
 
   return (
     <div className={cn("rounded-lg border border-border/60 bg-background/80 p-3", className)}>
@@ -34,15 +34,15 @@ const SystemDetectionOverview = ({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Badge
-            variant={result.detected ? "secondary" : "outline"}
+            variant={result.systemMatchesUrl ? "secondary" : "outline"}
             className={cn(
               "text-xs",
-              result.detected
+              result.systemMatchesUrl
                 ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-300"
                 : "text-muted-foreground",
             )}
           >
-            {result.detected ? "Erkannt" : "Unklar"}
+            {result.systemMatchesUrl ? "URL passt" : "Unklar"}
           </Badge>
           {confidencePercent !== null && (
             <Badge variant="outline" className="text-xs">
@@ -53,10 +53,10 @@ const SystemDetectionOverview = ({
       </div>
       <div className="mt-3 space-y-1 text-xs text-muted-foreground">
         <p>
-          System: <span className="font-medium text-foreground">{result.system ?? "Keine Angabe"}</span>
+          API-Typ: <span className="font-medium text-foreground">{result.apiTypeDetected ?? "Keine Angabe"}</span>
         </p>
         <p>
-          API-Version: <span className="font-medium text-foreground">{result.api_version ?? "Keine Angabe"}</span>
+          Subtyp: <span className="font-medium text-foreground">{result.apiSubtype ?? "Keine Angabe"}</span>
         </p>
         {headerSummary && (
           <p>

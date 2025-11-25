@@ -7,6 +7,7 @@ import type {
   AuthFlowStepResult,
   AuthFlowRecommendation,
   CapabilityDiscoveryResult,
+  SystemDetectionEvidence,
   SystemDetectionResult,
   SystemDetectionStepResult,
 } from "@/types/agents";
@@ -179,32 +180,68 @@ export const normalizeSystemDetectionResult = (input: unknown): SystemDetectionR
     return null;
   }
 
-  const candidate = input as Partial<SystemDetectionResult>;
-  if (typeof candidate.detected !== "boolean") {
+  const candidate = input as Partial<SystemDetectionResult> & {
+    detected?: boolean;
+    system?: string | null;
+    api_version?: string | null;
+    confidence?: number | string | null;
+    base_url?: string | null;
+    detection_evidence?: SystemDetectionEvidence;
+    raw_output?: string;
+  };
+
+  const systemMatchesUrl =
+    typeof candidate.systemMatchesUrl === "boolean"
+      ? candidate.systemMatchesUrl
+      : typeof candidate.detected === "boolean"
+        ? candidate.detected
+        : null;
+
+  if (systemMatchesUrl === null) {
     return null;
   }
 
-  const evidence =
-    candidate.detection_evidence && typeof candidate.detection_evidence === "object"
-      ? (candidate.detection_evidence as SystemDetectionResult["detection_evidence"])
-      : {};
+  const evidence = (() => {
+    if (candidate.detectionEvidence && typeof candidate.detectionEvidence === "object") {
+      return candidate.detectionEvidence as SystemDetectionEvidence;
+    }
+    if (candidate.detection_evidence && typeof candidate.detection_evidence === "object") {
+      return candidate.detection_evidence as SystemDetectionEvidence;
+    }
+    return {};
+  })();
 
-  let confidence: number | null = null;
-  if (typeof candidate.confidence === "number" && Number.isFinite(candidate.confidence)) {
-    confidence = candidate.confidence;
+  const pickString = (value: unknown): string | null => {
+    if (typeof value === "string" && value.trim().length > 0) return value.trim();
+    return null;
+  };
+
+  const apiSubtype = pickString(candidate.apiSubtype) ?? pickString(candidate.system) ?? null;
+  const apiTypeDetected = pickString(candidate.apiTypeDetected) ?? pickString(candidate.api_version) ?? null;
+  const recommendedBaseUrl =
+    pickString(candidate.recommendedBaseUrl) ?? pickString(candidate.base_url) ?? null;
+
+  let confidenceScore: number | null = null;
+  if (typeof candidate.confidenceScore === "number" && Number.isFinite(candidate.confidenceScore)) {
+    confidenceScore = candidate.confidenceScore;
+  } else if (typeof candidate.confidenceScore === "string") {
+    const parsed = Number.parseFloat(candidate.confidenceScore);
+    confidenceScore = Number.isFinite(parsed) ? parsed : null;
+  } else if (typeof candidate.confidence === "number" && Number.isFinite(candidate.confidence)) {
+    confidenceScore = candidate.confidence;
   } else if (typeof candidate.confidence === "string") {
     const parsed = Number.parseFloat(candidate.confidence);
-    confidence = Number.isFinite(parsed) ? parsed : null;
+    confidenceScore = Number.isFinite(parsed) ? parsed : null;
   }
 
   return {
-    detected: candidate.detected,
-    system: candidate.system ?? null,
-    api_version: candidate.api_version ?? null,
-    confidence,
-    base_url: candidate.base_url ?? null,
-    detection_evidence: evidence,
-    raw_output: candidate.raw_output ?? "",
+    systemMatchesUrl,
+    apiTypeDetected,
+    apiSubtype,
+    recommendedBaseUrl,
+    confidenceScore,
+    detectionEvidence: evidence,
+    rawOutput: candidate.rawOutput ?? candidate.raw_output ?? "",
   };
 };
 
@@ -241,7 +278,7 @@ export const detectionMatchesExpectedSystem = (
   detection: SystemDetectionResult | null,
   expectedSystem?: string | null,
 ): boolean => {
-  if (!detection || !detection.detected) {
+  if (!detection || !detection.systemMatchesUrl) {
     return false;
   }
 
@@ -249,11 +286,11 @@ export const detectionMatchesExpectedSystem = (
     return true;
   }
 
-  if (!detection.system) {
+  if (!detection.apiSubtype) {
     return false;
   }
 
-  const normalizedDetected = detection.system.toLowerCase().trim();
+  const normalizedDetected = detection.apiSubtype.toLowerCase().trim();
   const normalizedExpected = expectedSystem.toLowerCase().trim();
 
   if (!normalizedDetected) {

@@ -476,46 +476,35 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           await appendActivity("info", `Systemerkennung gestartet (${scopeLabel}): ${expectedSystem || baseUrl}`);
 
           try {
-            const detection = await runSystemDetectionAgent(baseUrl, expectedSystem || undefined);
+            const rawDetection = await runSystemDetectionAgent(baseUrl, expectedSystem || undefined);
+            const detection = normalizeSystemDetectionResult(rawDetection);
 
-            const hasApiVersion = (() => {
-              if (typeof detection.api_version === "string") {
-                return detection.api_version.trim().length > 0;
-              }
+            if (!detection) {
+              const errorMessage = "Ungültige Systemerkennungs-Antwort erhalten.";
+              throw new AgentExecutionError(errorMessage, {
+                [`${scope}RawDetection`]: rawDetection,
+              });
+            }
 
-              if (typeof detection.api_version === "number") {
-                return Number.isFinite(detection.api_version);
-              }
-
-              return false;
-            })();
-
-            const normalizedConfidence = confidenceToPercent(detection.confidence);
+            const hasApiSubtype = typeof detection.apiSubtype === "string" && detection.apiSubtype.trim().length > 0;
+            const normalizedConfidence = confidenceToPercent(detection.confidenceScore);
             const summaryParts = [
-              detection.system ?? "Unbekanntes System",
-              hasApiVersion && detection.api_version ? `API ${detection.api_version}` : null,
+              hasApiSubtype ? detection.apiSubtype : detection.apiTypeDetected ?? "Unbekannter Typ",
+              detection.recommendedBaseUrl,
               normalizedConfidence !== null ? `Confidence ${normalizedConfidence}%` : null,
             ].filter(Boolean);
 
-            const statusLabel = detection.detected ? "erfolgreich" : "unvollständig";
+            const statusLabel = detection.systemMatchesUrl ? "erfolgreich" : "unvollständig";
             const titleParts = [
               `Systemerkennung ${statusLabel} (${scopeLabel})`,
               summaryParts.join(" · ") || baseUrl,
             ].filter(Boolean);
 
-            if (!hasApiVersion) {
-              const failureTitle = [
-                `Systemerkennung unvollständig (${scopeLabel})`,
-                summaryParts.join(" · ") || baseUrl,
-                "Keine API-Version ermittelt",
-              ]
-                .filter(Boolean)
-                .join(" · ");
-
+            if (!detection.systemMatchesUrl) {
               const failureMessage =
-                `Die Systemerkennung (${scopeLabel}) konnte keine API-Version ermitteln. Bitte Eingaben prüfen und erneut versuchen.`;
-              await appendActivity("warning", failureTitle);
-              toast.error(`Systemerkennung unvollständig (${scopeLabel}): Keine API-Version ermittelt.`);
+                `Die Systemerkennung (${scopeLabel}) konnte keine sichere Übereinstimmung der URL mit dem erwarteten System herstellen.`;
+              await appendActivity("warning", titleParts.join(" · ") || failureMessage);
+              toast.error(`Systemerkennung unvollständig (${scopeLabel}): URL passt nicht sicher.`);
               const errorPayload =
                 scope === "source"
                   ? { source: detection, error: failureMessage }
@@ -523,7 +512,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
               throw new AgentExecutionError(failureMessage, errorPayload);
             }
 
-            await appendActivity(detection.detected ? "success" : "warning", titleParts.join(" · "));
+            await appendActivity("success", titleParts.join(" · "));
 
             if (typeof completionProgress === "number") {
               reportProgress(completionProgress);
@@ -924,13 +913,13 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       // Validate system detection result if this is the system-detection step
       if (completedStepNode.id === "system-detection" && completedAgentResult && "source" in completedAgentResult) {
         const isSystemDetectionResult = (result: any): result is SystemDetectionResult => {
-          return result && typeof result === "object" && "detected" in result;
+          return result && typeof result === "object" && "systemMatchesUrl" in result;
         };
 
         const sourceDetection = completedAgentResult.source;
         const targetDetection = completedAgentResult.target;
 
-        if (!sourceDetection || !isSystemDetectionResult(sourceDetection) || !sourceDetection.detected) {
+        if (!sourceDetection || !isSystemDetectionResult(sourceDetection) || !sourceDetection.systemMatchesUrl) {
           const errorMsg =
             "Systemerkennung fehlgeschlagen: Es konnte kein Quellsystem hinter der URL erkannt werden.";
           await appendActivity("error", errorMsg);
@@ -944,14 +933,14 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         }
 
         const expectedSourceSystem = project.sourceSystem?.toLowerCase().trim();
-        const detectedSourceSystem = sourceDetection.system?.toLowerCase().trim();
+        const detectedSourceSystem = sourceDetection.apiSubtype?.toLowerCase().trim();
 
         if (
           !detectedSourceSystem ||
           !expectedSourceSystem ||
           !detectedSourceSystem.includes(expectedSourceSystem.split(" ")[0])
         ) {
-          const errorMsg = `Systemerkennung fehlgeschlagen: Erkanntes System "${sourceDetection.system}" stimmt nicht mit dem erwarteten Quellsystem "${project.sourceSystem}" überein.`;
+          const errorMsg = `Systemerkennung fehlgeschlagen: Erkannter Subtyp "${sourceDetection.apiSubtype}" stimmt nicht mit dem erwarteten Quellsystem "${project.sourceSystem}" überein.`;
           await appendActivity("error", errorMsg);
           toast.error(errorMsg);
           await revertActiveNodeToPending(
@@ -962,13 +951,13 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           return;
         }
 
-        const sourceConfidence = confidenceToPercent(sourceDetection.confidence);
+        const sourceConfidence = confidenceToPercent(sourceDetection.confidenceScore);
         await appendActivity(
           "success",
-          `Quellsystem erfolgreich erkannt: ${sourceDetection.system} (Konfidenz: ${sourceConfidence ?? 0}%)`,
+          `Quellsystem erfolgreich erkannt: ${sourceDetection.apiSubtype ?? sourceDetection.apiTypeDetected} (Konfidenz: ${sourceConfidence ?? 0}%)`,
         );
 
-        if (!targetDetection || !isSystemDetectionResult(targetDetection) || !targetDetection.detected) {
+        if (!targetDetection || !isSystemDetectionResult(targetDetection) || !targetDetection.systemMatchesUrl) {
           const errorMsg =
             "Systemerkennung fehlgeschlagen: Es konnte kein Zielsystem hinter der URL erkannt werden.";
           await appendActivity("error", errorMsg);
@@ -982,14 +971,14 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         }
 
         const expectedTargetSystem = project.targetSystem?.toLowerCase().trim();
-        const detectedTargetSystem = targetDetection.system?.toLowerCase().trim();
+        const detectedTargetSystem = targetDetection.apiSubtype?.toLowerCase().trim();
 
         if (
           !detectedTargetSystem ||
           !expectedTargetSystem ||
           !detectedTargetSystem.includes(expectedTargetSystem.split(" ")[0])
         ) {
-          const errorMsg = `Systemerkennung fehlgeschlagen: Erkanntes System "${targetDetection.system}" stimmt nicht mit dem erwarteten Zielsystem "${project.targetSystem}" überein.`;
+          const errorMsg = `Systemerkennung fehlgeschlagen: Erkannter Subtyp "${targetDetection.apiSubtype}" stimmt nicht mit dem erwarteten Zielsystem "${project.targetSystem}" überein.`;
           await appendActivity("error", errorMsg);
           toast.error(errorMsg);
           await revertActiveNodeToPending(
@@ -1000,10 +989,10 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           return;
         }
 
-        const targetConfidence = confidenceToPercent(targetDetection.confidence);
+        const targetConfidence = confidenceToPercent(targetDetection.confidenceScore);
         await appendActivity(
           "success",
-          `Zielsystem erfolgreich erkannt: ${targetDetection.system} (Konfidenz: ${targetConfidence ?? 0}%)`,
+          `Zielsystem erfolgreich erkannt: ${targetDetection.apiSubtype ?? targetDetection.apiTypeDetected} (Konfidenz: ${targetConfidence ?? 0}%)`,
         );
 
         setStepProgress(100);

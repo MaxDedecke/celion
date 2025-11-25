@@ -92,6 +92,25 @@ class HttpClientResponse(BaseModel):
     error: str | None = None
 
 
+class CurlHeadProbeRequest(BaseModel):
+    """Request payload for executing a curl-style HEAD probe via the backend."""
+
+    url: HttpUrl
+    headers: dict[str, str] | None = None
+    follow_redirects: bool = True
+
+
+class CurlHeadProbeResponse(BaseModel):
+    """Normalized response for curl_head_probe to expose headers and redirects."""
+
+    status: int | None
+    headers: dict[str, str]
+    redirects: list[dict[str, Any]]
+    final_url: str | None
+    raw_response: str | None
+    error: str | None = None
+
+
 def _legacy_http_exception() -> HTTPException:
     """Provide a consistent 410 response when legacy endpoints are used."""
 
@@ -259,6 +278,57 @@ async def run_http_client(payload: HttpClientRequest) -> HttpClientResponse:
         )
     except Exception as exc:  # pylint: disable=broad-except
         return HttpClientResponse(status=None, headers={}, body=None, error=str(exc))
+
+
+@app.post("/api/curl-head-probe", response_model=CurlHeadProbeResponse)
+async def run_curl_head_probe(payload: CurlHeadProbeRequest) -> CurlHeadProbeResponse:
+    """Perform a curl -I style HEAD probe via the backend and return redirects/headers."""
+
+    headers = dict(payload.headers or {})
+
+    try:
+        def _perform_request() -> requests.Response:
+            request_kwargs: dict[str, Any] = {
+                "method": "HEAD",
+                "url": str(payload.url),
+                "headers": headers,
+                "allow_redirects": payload.follow_redirects,
+            }
+
+            return requests.request(**request_kwargs)
+
+        response = await run_in_threadpool(_perform_request)
+
+        redirects: list[dict[str, Any]] = []
+        for hop in response.history:
+            redirects.append(
+                {
+                    "status": hop.status_code,
+                    "location": hop.headers.get("location"),
+                    "url": hop.headers.get("location") or hop.url,
+                }
+            )
+
+        response_headers = {k: v for k, v in response.headers.items()}
+        body_preview = response.text[:500] if response.text else ""
+
+        return CurlHeadProbeResponse(
+            status=response.status_code,
+            headers=response_headers,
+            redirects=redirects,
+            final_url=response.url,
+            raw_response=body_preview,
+            error=None,
+        )
+    except Exception as exc:  # pylint: disable=broad-except
+        return CurlHeadProbeResponse(
+            status=None,
+            headers={},
+            redirects=[],
+            final_url=None,
+            raw_response=None,
+            error=str(exc),
+        )
 
 
 def _cli(url: str) -> int:

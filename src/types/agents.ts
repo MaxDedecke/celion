@@ -7,17 +7,18 @@ export interface SystemDetectionEvidence {
   method?: string;
   used_headers?: string[];
   timestamp?: string;
+  redirects?: Array<{ status?: number; location?: string | null; url?: string | null }>;
   [key: string]: unknown;
 }
 
 export interface SystemDetectionResult {
-  detected: boolean;
-  system: string | null;
-  api_version: string | null;
-  confidence: number | null;
-  base_url: string | null;
-  detection_evidence: SystemDetectionEvidence;
-  raw_output: string;
+  systemMatchesUrl: boolean;
+  apiTypeDetected: string | null;
+  apiSubtype: string | null;
+  recommendedBaseUrl: string | null;
+  confidenceScore: number | null;
+  detectionEvidence?: SystemDetectionEvidence;
+  rawOutput?: string;
 }
 
 export interface SystemDetectionStepResult {
@@ -83,6 +84,21 @@ export interface HttpResponse {
   error?: string | null;
   raw_response?: string;
   evidence?: SystemDetectionEvidence;
+}
+
+export interface CurlHeadProbeParams {
+  url: string;
+  headers?: Record<string, string>;
+  follow_redirects?: boolean;
+}
+
+export interface CurlHeadProbeResponse {
+  status: number | null;
+  headers: Record<string, string>;
+  redirects: Array<{ status?: number; location?: string | null; url?: string | null }>;
+  final_url: string | null;
+  raw_response: string | null;
+  error?: string | null;
 }
 
 export interface ApiSpecAnalysis {
