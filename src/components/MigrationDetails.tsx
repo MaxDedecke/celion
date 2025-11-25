@@ -14,7 +14,7 @@ import type { WorkflowBoardState, WorkflowNode } from "@/types/workflow";
 import WorkflowPanelDialog from "./dialogs/WorkflowPanelDialog";
 import type { Activity } from "./ActivityTimeline";
 import AgentResultDialog from "./migration/AgentResultDialog";
-import MigrationActivityCard from "./migration/MigrationActivityCard";
+import MigrationChatCard from "./migration/MigrationChatCard";
 import MigrationOverviewCard from "./migration/MigrationOverviewCard";
 import type { AgentWorkflowStepState, MigrationProject } from "./migration/types";
 import { getWorkflowTheme } from "./migration/workflowThemes";
@@ -1777,6 +1777,24 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     }
   };
 
+  const handleSendChatMessage = useCallback(
+    (message: string) => {
+      const trimmed = message.trim().toLowerCase();
+      
+      if (
+        trimmed.includes("start") ||
+        trimmed.includes("weiter") ||
+        trimmed.includes("nächst") ||
+        trimmed.includes("fortsetzen")
+      ) {
+        handleNextWorkflowStep();
+      } else {
+        toast.info("Verwende 'Fortsetzen' um den nächsten Schritt zu starten");
+      }
+    },
+    [handleNextWorkflowStep]
+  );
+
   useEffect(() => {
     if (typeof window === "undefined") {
       return;
@@ -1850,10 +1868,18 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
             onOpenAgentOutput={(stepId) => setAgentResultDialogStepId(stepId)}
           />
 
-          <MigrationActivityCard
+          <MigrationChatCard
             activities={activityLog}
             matchHeight={migrationCardHeight}
             isWideLayout={isWideLayout}
+            isStepRunning={isStepRunning}
+            stepProgress={stepProgress}
+            activeStep={activeStep}
+            completedCount={completedCount}
+            totalSteps={agentSteps.length}
+            overallProgress={overallProgress}
+            onSendMessage={handleSendChatMessage}
+            onContinue={handleNextWorkflowStep}
           />
         </div>
       </div>
