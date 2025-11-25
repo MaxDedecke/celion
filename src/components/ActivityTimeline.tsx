@@ -8,10 +8,6 @@ export interface Activity {
   type: "success" | "error" | "info" | "warning" | "system";
   title: string;
   timestamp: string;
-  metadata?: {
-    stepId?: string;
-    actionButton?: boolean;
-  };
 }
 
 interface ActivityTimelineProps {

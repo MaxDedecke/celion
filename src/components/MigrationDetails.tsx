@@ -1010,8 +1010,8 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
         timestamp: new Date().toISOString()
       });
 
-      // Add activity with button to open agent output
-      const viewResultActivity = `📊 Ergebnis verfügbar: ${completedStepTitle}`;
+      // Add activity with button to open agent output - encode stepId in title
+      const viewResultActivity = `📊 Ergebnis verfügbar: ${completedStepTitle} [step:${completedStepNode.id}]`;
       await supabaseDatabase.insertMigrationActivity({
         migration_id: project.id,
         type: "info",
@@ -1025,10 +1025,6 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           type: "info",
           title: viewResultActivity,
           timestamp: new Date().toISOString(),
-          metadata: {
-            stepId: completedStepNode.id,
-            actionButton: true,
-          },
         },
         {
           id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,

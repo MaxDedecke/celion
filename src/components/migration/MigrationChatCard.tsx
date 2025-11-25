@@ -62,17 +62,27 @@ const activityToChatMessage = (activity: Activity): ChatMessage => {
     return "info";
   };
 
-  const actionButton = activity.metadata?.actionButton && activity.metadata?.stepId
+  // Extract stepId from title format: "... [step:stepId]"
+  const stepIdMatch = activity.title.match(/\[step:([^\]]+)\]/);
+  const extractedStepId = stepIdMatch ? stepIdMatch[1] : null;
+
+  // Check if this is a result-available message
+  const isResultMessage = activity.title.includes("📊 Ergebnis verfügbar");
+
+  const actionButton = isResultMessage && extractedStepId
     ? {
         label: "Ergebnis anzeigen",
-        stepId: activity.metadata.stepId,
+        stepId: extractedStepId,
       }
     : undefined;
+
+  // Remove stepId encoding from display title
+  const displayTitle = activity.title.replace(/\s*\[step:[^\]]+\]/, '');
 
   return {
     id: activity.id,
     role: isSystemActivity ? "system" : "agent",
-    content: activity.title,
+    content: displayTitle,
     timestamp: activity.timestamp,
     status: mapActivityTypeToStatus(activity.type),
     stepInfo: !isSystemActivity ? stepInfo || undefined : undefined,
