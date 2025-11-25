@@ -1892,6 +1892,7 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
             completedCount={completedCount}
             totalSteps={agentSteps.length}
             overallProgress={overallProgress}
+            status={status}
             onSendMessage={handleSendChatMessage}
             onContinue={handleNextWorkflowStep}
             onOpenWorkflowPanel={() => handleOpenWorkflowPanel()}
