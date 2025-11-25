@@ -24,6 +24,7 @@ interface MigrationChatCardProps {
   onSendMessage: (message: string) => void;
   onContinue: () => void;
   onOpenWorkflowPanel: () => void;
+  onOpenAgentOutput: (stepId: string) => void;
 }
 
 const extractStepFromTitle = (title: string) => {
@@ -61,6 +62,13 @@ const activityToChatMessage = (activity: Activity): ChatMessage => {
     return "info";
   };
 
+  const actionButton = activity.metadata?.actionButton && activity.metadata?.stepId
+    ? {
+        label: "Ergebnis anzeigen",
+        stepId: activity.metadata.stepId,
+      }
+    : undefined;
+
   return {
     id: activity.id,
     role: isSystemActivity ? "system" : "agent",
@@ -68,6 +76,7 @@ const activityToChatMessage = (activity: Activity): ChatMessage => {
     timestamp: activity.timestamp,
     status: mapActivityTypeToStatus(activity.type),
     stepInfo: !isSystemActivity ? stepInfo || undefined : undefined,
+    actionButton,
   };
 };
 
@@ -84,6 +93,7 @@ const MigrationChatCard = ({
   onSendMessage,
   onContinue,
   onOpenWorkflowPanel,
+  onOpenAgentOutput,
 }: MigrationChatCardProps) => {
   const chatMessages = useMemo(() => {
     return activities.map(activityToChatMessage).reverse();
@@ -145,7 +155,11 @@ const MigrationChatCard = ({
 
       <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
         <div className="min-h-0 flex-1 overflow-hidden">
-          <ChatMessageList messages={chatMessages} isAgentRunning={isStepRunning} />
+          <ChatMessageList 
+            messages={chatMessages} 
+            isAgentRunning={isStepRunning}
+            onOpenAgentOutput={onOpenAgentOutput}
+          />
         </div>
 
         <div className="mt-4 space-y-2 border-t border-border/50 pt-4">

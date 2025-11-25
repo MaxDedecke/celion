@@ -1,5 +1,6 @@
-import { Bot, User, Settings } from "lucide-react";
+import { Bot, User, Settings, SquareArrowOutUpRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { AGENT_WORKFLOW_STEPS } from "@/constants/agentWorkflow";
 
@@ -16,13 +17,18 @@ export interface ChatMessage {
     title: string;
     phase: string;
   };
+  actionButton?: {
+    label: string;
+    stepId: string;
+  };
 }
 
 interface ChatMessageProps {
   message: ChatMessage;
+  onOpenAgentOutput?: (stepId: string) => void;
 }
 
-const ChatMessage = ({ message }: ChatMessageProps) => {
+const ChatMessage = ({ message, onOpenAgentOutput }: ChatMessageProps) => {
   const getIcon = () => {
     if (message.role === "agent") return Bot;
     if (message.role === "user") return User;
@@ -88,6 +94,17 @@ const ChatMessage = ({ message }: ChatMessageProps) => {
           <span className="text-[10px] text-muted-foreground">{formatTimestamp(message.timestamp)}</span>
         </div>
         <p className="text-sm leading-relaxed">{message.content}</p>
+        {message.actionButton && onOpenAgentOutput && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onOpenAgentOutput(message.actionButton!.stepId)}
+            className="mt-2"
+          >
+            <SquareArrowOutUpRight className="mr-2 h-3.5 w-3.5" />
+            {message.actionButton.label}
+          </Button>
+        )}
       </div>
     </div>
   );
