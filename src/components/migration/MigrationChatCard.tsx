@@ -2,7 +2,7 @@ import { useMemo } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Play, Sparkles } from "lucide-react";
+import { Loader2, Play, Sparkles, Workflow } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Activity } from "@/components/ActivityTimeline";
 import type { AgentWorkflowStepState } from "./types";
@@ -107,6 +107,7 @@ const MigrationChatCard = ({
             <Badge variant="secondary" className="text-xs">
               {completedCount}/{totalSteps}
             </Badge>
+            <Workflow className="h-3.5 w-3.5 text-muted-foreground" />
           </div>
         </div>
         
