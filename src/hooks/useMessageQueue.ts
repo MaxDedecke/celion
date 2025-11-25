@@ -62,9 +62,10 @@ export const useMessageQueue = <T extends { id: string }>(
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+        intervalRef.current = null;
       }
     };
-  }, [allMessages, delayMs]);
+  }, [visibleIds, delayMs]);
 
   const visibleMessages = allMessages.filter(m => visibleIds.has(m.id));
   const hasQueuedMessages = queueRef.current.length > 0;
