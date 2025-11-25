@@ -13,8 +13,6 @@ import { AGENT_WORKFLOW_STEPS } from "@/constants/agentWorkflow";
 
 interface MigrationChatCardProps {
   activities: Activity[];
-  matchHeight: number | null;
-  isWideLayout: boolean;
   isStepRunning: boolean;
   stepProgress: number;
   activeStep: AgentWorkflowStepState | null;
@@ -22,6 +20,10 @@ interface MigrationChatCardProps {
   totalSteps: number;
   overallProgress: number;
   status: "not_started" | "running" | "paused" | "completed";
+  sourceSystem: string;
+  targetSystem: string;
+  sourceObjectsDisplay: string;
+  targetObjectsDisplay: string;
   onSendMessage: (message: string) => void;
   onContinue: () => void;
   onOpenWorkflowPanel: () => void;
@@ -93,8 +95,6 @@ const activityToChatMessage = (activity: Activity): ChatMessage => {
 
 const MigrationChatCard = ({
   activities,
-  matchHeight,
-  isWideLayout,
   isStepRunning,
   stepProgress,
   activeStep,
@@ -102,6 +102,10 @@ const MigrationChatCard = ({
   totalSteps,
   overallProgress,
   status,
+  sourceSystem,
+  targetSystem,
+  sourceObjectsDisplay,
+  targetObjectsDisplay,
   onSendMessage,
   onContinue,
   onOpenWorkflowPanel,
@@ -112,13 +116,30 @@ const MigrationChatCard = ({
   }, [activities]);
 
   return (
-    <Card
-      className="flex flex-col overflow-hidden border-border bg-card"
-      style={{ height: isWideLayout && matchHeight ? `${matchHeight}px` : "600px" }}
-    >
-      <CardHeader className="shrink-0 border-b border-border/50 pb-3">
+    <Card className="flex flex-col overflow-hidden border-border bg-card" style={{ height: "calc(100vh - 180px)" }}>
+      <CardHeader className="shrink-0 border-b border-border/50 pb-3 space-y-3">
+        {/* Zeile 1: Migration Info */}
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-2 text-sm font-medium">
+            <span className="text-muted-foreground">{sourceSystem}</span>
+            <span className="text-muted-foreground">→</span>
+            <span className="text-muted-foreground">{targetSystem}</span>
+          </div>
+          
+          <div className="flex items-center gap-3">
+            <Badge variant="secondary" className="text-xs font-semibold">
+              {Math.round(overallProgress)}%
+            </Badge>
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <span>Quelle: {sourceObjectsDisplay}</span>
+              <span>|</span>
+              <span>Ziel: {targetObjectsDisplay}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Zeile 2: Aktueller Schritt */}
         <div className="flex items-center justify-between gap-3">
-          <CardTitle className="text-base">Chat</CardTitle>
           <div className="flex items-center gap-2">
             {activeStep && (
               <>
@@ -131,20 +152,20 @@ const MigrationChatCard = ({
             <Badge variant="secondary" className="text-xs">
               {completedCount}/{totalSteps}
             </Badge>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={onOpenWorkflowPanel}
-              className="h-7 w-7"
-              title="Workflow bearbeiten"
-            >
-              <Workflow className="h-3.5 w-3.5" />
-            </Button>
           </div>
+          <Button
+            size="icon"
+            variant="ghost"
+            onClick={onOpenWorkflowPanel}
+            className="h-7 w-7"
+            title="Workflow bearbeiten"
+          >
+            <Workflow className="h-3.5 w-3.5" />
+          </Button>
         </div>
         
         {(isStepRunning || activeStep) && (
-          <div className="mt-2">
+          <div>
             <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
               <span>
                 Schritt {completedCount + (isStepRunning ? 1 : 0)} / {totalSteps}
