@@ -10,7 +10,6 @@ import ChatMessageList from "./ChatMessageList";
 import ChatInput from "./ChatInput";
 import type { ChatMessage } from "./ChatMessage";
 import { AGENT_WORKFLOW_STEPS } from "@/constants/agentWorkflow";
-
 interface MigrationChatCardProps {
   activities: Activity[];
   isStepRunning: boolean;
@@ -29,38 +28,26 @@ interface MigrationChatCardProps {
   onOpenWorkflowPanel: () => void;
   onOpenAgentOutput: (stepId: string) => void;
 }
-
 const extractStepFromTitle = (title: string) => {
   const titleLower = title.toLowerCase();
-  
-  const step = AGENT_WORKFLOW_STEPS.find((s) => {
+  const step = AGENT_WORKFLOW_STEPS.find(s => {
     const phaseLower = s.phase.toLowerCase();
     const titleStepLower = s.title.toLowerCase();
     return titleLower.includes(phaseLower) || titleLower.includes(titleStepLower);
   });
-
   if (step) {
     return {
       title: step.title,
-      phase: step.phase,
+      phase: step.phase
     };
   }
-
   return null;
 };
-
 const activityToChatMessage = (activity: Activity): ChatMessage => {
   // Check if this is a user message
   const isUserMessage = activity.title.startsWith("[user]");
-  
   const stepInfo = extractStepFromTitle(activity.title);
-  
-  const isSystemActivity = 
-    activity.title.toLowerCase().includes("migration") ||
-    activity.title.toLowerCase().includes("erstellt") ||
-    activity.title.toLowerCase().includes("dupliziert") ||
-    activity.title.toLowerCase().includes("status");
-
+  const isSystemActivity = activity.title.toLowerCase().includes("migration") || activity.title.toLowerCase().includes("erstellt") || activity.title.toLowerCase().includes("dupliziert") || activity.title.toLowerCase().includes("status");
   const mapActivityTypeToStatus = (type: Activity["type"]): ChatMessage["status"] => {
     if (type === "success" || type === "error" || type === "info") {
       return type;
@@ -74,31 +61,26 @@ const activityToChatMessage = (activity: Activity): ChatMessage => {
 
   // Check if this is a result-available message
   const isResultMessage = activity.title.includes("Hier gehts zum Agenten Output");
-
-  const actionButton = isResultMessage && extractedStepId
-    ? {
-        label: "Ergebnis anzeigen",
-        stepId: extractedStepId,
-      }
-    : undefined;
+  const actionButton = isResultMessage && extractedStepId ? {
+    label: "Ergebnis anzeigen",
+    stepId: extractedStepId
+  } : undefined;
 
   // Remove stepId encoding and [user] prefix from display title
   let displayTitle = activity.title.replace(/\s*\[step:[^\]]+\]/, '');
   if (isUserMessage) {
     displayTitle = displayTitle.replace("[user] ", "");
   }
-
   return {
     id: activity.id,
-    role: isUserMessage ? "user" : (isSystemActivity ? "system" : "agent"),
+    role: isUserMessage ? "user" : isSystemActivity ? "system" : "agent",
     content: displayTitle,
     timestamp: activity.timestamp,
     status: mapActivityTypeToStatus(activity.type),
     stepInfo: !isSystemActivity && !isUserMessage ? stepInfo || undefined : undefined,
-    actionButton,
+    actionButton
   };
 };
-
 const MigrationChatCard = ({
   activities,
   isStepRunning,
@@ -115,14 +97,14 @@ const MigrationChatCard = ({
   onSendMessage,
   onContinue,
   onOpenWorkflowPanel,
-  onOpenAgentOutput,
+  onOpenAgentOutput
 }: MigrationChatCardProps) => {
   const chatMessages = useMemo(() => {
     return activities.map(activityToChatMessage).reverse();
   }, [activities]);
-
-  return (
-    <Card className="flex flex-col overflow-hidden border-border bg-card" style={{ height: "calc(100vh - 180px)" }}>
+  return <Card style={{
+    height: "calc(100vh - 180px)"
+  }} className="flex flex-col overflow-hidden bg-[#0f1729]/0 border-[#1d293b]/0">
       <CardHeader className="shrink-0 border-b border-border/50 pb-3 space-y-3">
         {/* Zeile 1: Migration Info */}
         <div className="flex items-center justify-between gap-4">
@@ -147,31 +129,22 @@ const MigrationChatCard = ({
         {/* Zeile 2: Aktueller Schritt */}
         <div className="flex items-center justify-between gap-3">
           <div className="flex items-center gap-2">
-            {activeStep && (
-              <>
+            {activeStep && <>
                 <Sparkles className={cn("h-4 w-4 text-primary", isStepRunning && "animate-pulse")} />
                 <Badge variant="outline" className="text-xs">
                   {activeStep.title}
                 </Badge>
-              </>
-            )}
+              </>}
             <Badge variant="secondary" className="text-xs">
               {completedCount}/{totalSteps}
             </Badge>
           </div>
-          <Button
-            size="icon"
-            variant="ghost"
-            onClick={onOpenWorkflowPanel}
-            className="h-7 w-7"
-            title="Workflow bearbeiten"
-          >
+          <Button size="icon" variant="ghost" onClick={onOpenWorkflowPanel} className="h-7 w-7" title="Workflow bearbeiten">
             <Workflow className="h-3.5 w-3.5" />
           </Button>
         </div>
         
-        {(isStepRunning || activeStep) && (
-          <div>
+        {(isStepRunning || activeStep) && <div>
             <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
               <span>
                 Schritt {completedCount + (isStepRunning ? 1 : 0)} / {totalSteps}
@@ -180,61 +153,31 @@ const MigrationChatCard = ({
               <span className="font-semibold">{Math.round(stepProgress)}%</span>
             </div>
             <div className="h-1.5 w-full rounded-full bg-muted">
-              <div
-                className={cn(
-                  "h-full rounded-full bg-primary transition-all",
-                  isStepRunning ? "duration-100" : "duration-700",
-                )}
-                style={{ width: `${stepProgress}%` }}
-              />
+              <div className={cn("h-full rounded-full bg-primary transition-all", isStepRunning ? "duration-100" : "duration-700")} style={{
+            width: `${stepProgress}%`
+          }} />
             </div>
-          </div>
-        )}
+          </div>}
       </CardHeader>
 
       <CardContent className="flex min-h-0 flex-1 flex-col overflow-hidden p-4">
         <div className="min-h-0 flex-1 overflow-hidden">
-          <ChatMessageList 
-            messages={chatMessages} 
-            isAgentRunning={isStepRunning}
-            onOpenAgentOutput={onOpenAgentOutput}
-          />
+          <ChatMessageList messages={chatMessages} isAgentRunning={isStepRunning} onOpenAgentOutput={onOpenAgentOutput} />
         </div>
 
         <div className="mt-4 space-y-2 border-t border-border/50 pt-4">
-          <ChatInput
-            disabled={isStepRunning}
-            onSend={onSendMessage}
-            placeholder={
-              isStepRunning
-                ? "Agent arbeitet..."
-                : "Nächsten Schritt starten oder Befehl eingeben..."
-            }
-          />
-          {(status === "not_started" || status === "running") && overallProgress < 100 && (
-            <Button
-              onClick={onContinue}
-              disabled={isStepRunning}
-              className="w-full"
-              size="sm"
-            >
-              {isStepRunning ? (
-                <>
+          <ChatInput disabled={isStepRunning} onSend={onSendMessage} placeholder={isStepRunning ? "Agent arbeitet..." : "Nächsten Schritt starten oder Befehl eingeben..."} />
+          {(status === "not_started" || status === "running") && overallProgress < 100 && <Button onClick={onContinue} disabled={isStepRunning} className="w-full" size="sm">
+              {isStepRunning ? <>
                   <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
                   Läuft...
-                </>
-              ) : (
-                <>
+                </> : <>
                   <Play className="mr-2 h-3.5 w-3.5" />
                   {status === "not_started" ? "Starten" : "Fortsetzen"}
-                </>
-              )}
-            </Button>
-          )}
+                </>}
+            </Button>}
         </div>
       </CardContent>
-    </Card>
-  );
+    </Card>;
 };
-
 export default MigrationChatCard;
