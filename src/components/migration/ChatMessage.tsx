@@ -46,12 +46,12 @@ const ChatMessage = ({ message, onOpenAgentOutput }: ChatMessageProps) => {
 
   const getBubbleStyles = () => {
     if (message.role === "user") {
-      return "bg-primary/10 border-primary/20 ml-auto";
+      return "bg-transparent border-primary/20 ml-auto";
     }
     if (message.role === "agent") {
-      return "bg-accent/10 border-accent/30";
+      return "bg-transparent border-accent/30";
     }
-    return "bg-muted/50 border-border mx-auto";
+    return "bg-transparent border-border mx-auto";
   };
 
   const formatTimestamp = (timestamp: string) => {
