@@ -1,0 +1,31 @@
+{
+  "system": "Jira Cloud",
+  "apiType": "REST",
+  "baseUrlPattern": "*.atlassian.net",
+  "auth": {
+    "type": "basic",
+    "headerTemplate": "Authorization: Basic <BASE64(email:apiToken)>",
+    "requiresEmail": true,
+    "requiresApiToken": true,
+    "probeEndpoint": "/rest/api/3/myself",
+    "successStatus": 200
+  },
+  "discovery": {
+    "endpoints": {
+      "projects": "/rest/api/3/project",
+      "issues": "/rest/api/3/search",
+      "users": "/rest/api/3/users/search",
+      "workflows": "/rest/api/3/workflow"
+    },
+    "pagination": {
+      "type": "startAt_maxResults",
+      "paramStart": "startAt",
+      "paramLimit": "maxResults",
+      "defaultLimit": 50
+    }
+  },
+  "headers": {
+    "accept": "application/json",
+    "contentType": "application/json"
+  }
+}

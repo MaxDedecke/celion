@@ -1,0 +1,25 @@
+{
+  "system": "Monday.com",
+  "apiType": "GRAPHQL",
+  "baseUrlPattern": "*.monday.com",
+  "auth": {
+    "type": "bearer",
+    "headerTemplate": "Authorization: <TOKEN>",
+    "requiresToken": true,
+    "probeEndpoint": "/v2",
+    "probeMethod": "POST",
+    "probeBody": "{\"query\": \"{ me { id } }\"}",
+    "successStatus": 200
+  },
+  "discovery": {
+    "graphqlQueryObjects": [
+      "{ boards { id name } }",
+      "{ items (limit: 50) { id name column_values { id text } } }"
+    ],
+    "objectTypes": ["boards", "items", "users"]
+  },
+  "headers": {
+    "contentType": "application/json",
+    "accept": "application/json"
+  }
+}

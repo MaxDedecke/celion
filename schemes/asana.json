@@ -1,0 +1,29 @@
+{
+  "system": "Asana",
+  "apiType": "REST",
+  "baseUrlPattern": "*.asana.com",
+  "auth": {
+    "type": "bearer",
+    "headerTemplate": "Authorization: Bearer <TOKEN>",
+    "requiresToken": true,
+    "probeEndpoint": "/api/1.0/users/me",
+    "successStatus": 200
+  },
+  "discovery": {
+    "endpoints": {
+      "projects": "/api/1.0/projects",
+      "tasks": "/api/1.0/tasks",
+      "users": "/api/1.0/users"
+    },
+    "pagination": {
+      "type": "offset",
+      "paramStart": "offset",
+      "paramLimit": "limit",
+      "defaultLimit": 50
+    }
+  },
+  "headers": {
+    "contentType": "application/json",
+    "accept": "application/json"
+  }
+}
