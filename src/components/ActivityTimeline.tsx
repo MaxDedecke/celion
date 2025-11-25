@@ -70,16 +70,14 @@ const ActivityTimeline = ({ activities }: ActivityTimelineProps) => {
     const stepKeywords = [
       { key: "system-detection", patterns: ["System Detection", "Systeme erkannt", "System erkannt"] },
       { key: "auth-flow", patterns: ["Authentifizierung", "Auth Flow", "Authenticated"] },
-      { key: "schema-discovery", patterns: ["Capability Discovery", "Schema Discovery", "API-Spezifikation"] },
+      { key: "schema-discovery", patterns: ["Capability Discovery", "Schema Discovery", "Source Discovery", "API-Spezifikation"] },
+      { key: "target-schema", patterns: ["Target Schema", "Target Discovery", "Zielsystem analysiert"] },
       { key: "model-mapping", patterns: ["Model Mapping", "Meta-Modell"] },
-      { key: "target-schema", patterns: ["Target Schema", "Zielsystem analysiert"] },
-      { key: "mapping-suggestion", patterns: ["Mapping Suggestion", "Feld-Mapping"] },
-      { key: "consistency-validation", patterns: ["Consistency", "Validation", "Validierung"] },
-      { key: "dry-run", patterns: ["Dry-Run", "Simulation"] },
+      { key: "mapping-suggestion", patterns: ["Mapping Suggestion", "Mapping Suggestions", "Feld-Mapping"] },
+      { key: "quality-enhancement", patterns: ["Quality Enhancement", "Consistency", "Validation", "Validierung"] },
       { key: "data-transfer", patterns: ["Data Transfer", "Migration", "Datenmigration"] },
       { key: "verification", patterns: ["Verification", "Verifikation"] },
-      { key: "audit", patterns: ["Audit", "Logging"] },
-      { key: "feedback", patterns: ["Feedback", "Learning", "Optimization"] },
+      { key: "report", patterns: ["Report", "Audit", "Logging"] },
     ];
 
     for (const stepKeyword of stepKeywords) {
