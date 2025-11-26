@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useId } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useId, forwardRef, useImperativeHandle } from "react";
 import { AGENT_WORKFLOW_STEPS } from "@/constants/agentWorkflow";
 import { supabaseDatabase } from "@/api/supabaseDatabase";
 import { runAuthFlowAgent, runCapabilityDiscoveryAgent, runSystemDetectionAgent } from "@/agents/agentService";
@@ -82,7 +82,11 @@ const collectProbeErrors = (probeResults: Record<string, unknown> | undefined): 
   return errors;
 };
 
-const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
+export interface MigrationDetailsRef {
+  openWorkflowPanel: () => void;
+}
+
+const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(({ project, onRefresh }, ref) => {
   const [notes, setNotes] = useState(project.notes ?? "");
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
@@ -189,6 +193,10 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
     setWorkflowPanelSelection(nodeId ?? null);
     setIsWorkflowPanelOpen(true);
   }, []);
+
+  useImperativeHandle(ref, () => ({
+    openWorkflowPanel: () => handleOpenWorkflowPanel()
+  }), [handleOpenWorkflowPanel]);
 
   const handleDeleteWorkflowNode = useCallback(
     (nodeId: string) => {
@@ -1864,7 +1872,6 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
           targetObjectsDisplay={targetObjectsDisplay}
           onSendMessage={handleSendChatMessage}
           onContinue={handleNextWorkflowStep}
-          onOpenWorkflowPanel={() => handleOpenWorkflowPanel()}
           onOpenAgentOutput={(stepId) => setAgentResultDialogStepId(stepId)}
         />
       </div>
@@ -1889,6 +1896,8 @@ const MigrationDetails = ({ project, onRefresh }: MigrationDetailsProps) => {
       />
     </div>
   );
-};
+});
+
+MigrationDetails.displayName = "MigrationDetails";
 
 export default MigrationDetails;

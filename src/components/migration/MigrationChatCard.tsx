@@ -25,7 +25,6 @@ interface MigrationChatCardProps {
   targetObjectsDisplay: string;
   onSendMessage: (message: string) => void;
   onContinue: () => void;
-  onOpenWorkflowPanel: () => void;
   onOpenAgentOutput: (stepId: string) => void;
 }
 const extractStepFromTitle = (title: string) => {
@@ -96,7 +95,6 @@ const MigrationChatCard = ({
   targetObjectsDisplay,
   onSendMessage,
   onContinue,
-  onOpenWorkflowPanel,
   onOpenAgentOutput
 }: MigrationChatCardProps) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -131,14 +129,8 @@ const MigrationChatCard = ({
     height: "calc(100vh - 180px)"
   }} className="flex flex-col overflow-hidden bg-[#0f1729]/0 border-[#1d293b]/0">
       <CardHeader className="shrink-0 pb-3 space-y-3">
-        {/* Zeile 1: Migration Info */}
+        {/* Header Info */}
         <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2 text-sm font-medium">
-            <span className="text-muted-foreground">{sourceSystem}</span>
-            <span className="text-muted-foreground">→</span>
-            <span className="text-muted-foreground">{targetSystem}</span>
-          </div>
-          
           <div className="flex items-center gap-3">
             <Badge variant="secondary" className="text-xs font-semibold">
               {Math.round(overallProgress)}%
@@ -151,22 +143,17 @@ const MigrationChatCard = ({
           </div>
         </div>
 
-        {/* Zeile 2: Aktueller Schritt */}
-        <div className="flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2">
-            {activeStep && <>
-                <Sparkles className={cn("h-4 w-4 text-primary", isStepRunning && "animate-pulse")} />
-                <Badge variant="outline" className="text-xs">
-                  {activeStep.title}
-                </Badge>
-              </>}
-            <Badge variant="secondary" className="text-xs">
-              {completedCount}/{totalSteps}
-            </Badge>
-          </div>
-          <Button size="icon" variant="ghost" onClick={onOpenWorkflowPanel} className="h-7 w-7" title="Workflow bearbeiten">
-            <Workflow className="h-3.5 w-3.5" />
-          </Button>
+        {/* Aktueller Schritt */}
+        <div className="flex items-center gap-2">
+          {activeStep && <>
+              <Sparkles className={cn("h-4 w-4 text-primary", isStepRunning && "animate-pulse")} />
+              <Badge variant="outline" className="text-xs">
+                {activeStep.title}
+              </Badge>
+            </>}
+          <Badge variant="secondary" className="text-xs">
+            {completedCount}/{totalSteps}
+          </Badge>
         </div>
         
         {(isStepRunning || activeStep) && <div>
