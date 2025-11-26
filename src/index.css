@@ -97,6 +97,10 @@ All colors MUST be HSL.
 }
 
 @layer base {
+  html, body {
+    @apply h-screen overflow-hidden;
+  }
+
   * {
     @apply border-border;
   }
@@ -109,7 +113,8 @@ All colors MUST be HSL.
 @layer components {
   .app-shell {
     position: relative;
-    min-height: 100vh;
+    height: 100vh;
+    max-height: 100vh;
     background-color: hsl(var(--background));
     color: hsl(var(--foreground));
     overflow: hidden;
