@@ -98,7 +98,7 @@ const Sidebar = ({
         "app-surface transition-all duration-300",
         isCollapsed
           ? "flex items-center justify-center self-start p-2"
-          : "flex h-full min-h-0 w-80 flex-col overflow-hidden p-6"
+          : "flex h-full min-h-0 w-80 flex-col overflow-hidden p-4"
       )}
     >
       {isCollapsed ? (
@@ -112,7 +112,7 @@ const Sidebar = ({
         </Button>
       ) : (
         <>
-          <div className="mb-8 flex w-full items-center justify-between gap-2">
+          <div className="mb-6 flex w-full items-center justify-between gap-2">
             <Logo
               onClick={() => navigate("/dashboard")}
               className="cursor-pointer transition-all"
@@ -141,7 +141,7 @@ const Sidebar = ({
             <div className="space-y-2">
               <div className="flex items-center justify-between px-2">
               <h3 
-                className="text-xs font-semibold text-muted-foreground uppercase cursor-pointer hover:text-foreground transition-colors"
+                className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider cursor-pointer hover:text-foreground transition-colors"
                 onClick={() => navigate("/projects")}
               >
                 Projekte
@@ -152,13 +152,13 @@ const Sidebar = ({
               const hasProjectMigrations = projectMigs.length > 0;
               return (
                 <div key={project.id} className="space-y-1">
-                  <div className="flex w-full items-center justify-between rounded-xl px-2 py-2 text-sm transition-colors">
+                  <div className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-sm transition-colors">
                     <div className="flex flex-1 items-center gap-2">
                       {hasProjectMigrations && (
                         <button
                           type="button"
                           onClick={() => toggleProject(project.id)}
-                          className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
+                          className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-foreground/3 hover:text-foreground"
                           aria-label={expandedProjects.has(project.id) ? "Projekt einklappen" : "Projekt ausklappen"}
                           aria-expanded={expandedProjects.has(project.id)}
                         >
@@ -172,14 +172,14 @@ const Sidebar = ({
                       <button
                         type="button"
                         onClick={() => navigate(`/project/${encodeURIComponent(project.name)}`)}
-                        className="flex-1 text-left font-medium text-muted-foreground transition-colors hover:text-foreground"
+                        className="flex-1 text-left font-normal text-muted-foreground transition-colors hover:text-foreground"
                       >
                         {project.name}
                       </button>
                     </div>
                     <button
                       onClick={() => onNewProjectMigration?.(project.id)}
-                      className="rounded p-1 transition-colors hover:bg-foreground/5"
+                      className="rounded p-1 transition-colors hover:bg-foreground/3"
                       aria-label="Neue Migration"
                     >
                       <Plus className="h-4 w-4" />
@@ -194,8 +194,8 @@ const Sidebar = ({
                           className={cn(
                             "group flex items-center justify-between w-full rounded-xl px-4 py-2 text-sm transition-colors",
                             selectedMigration === migration.id
-                              ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                              : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+                              ? "border-l-2 border-primary bg-primary/5 text-foreground font-medium"
+                              : "text-muted-foreground/80 hover:bg-foreground/3 hover:text-foreground",
                           )}
                         >
                           <button
@@ -204,13 +204,13 @@ const Sidebar = ({
                           >
                             {migration.name}
                           </button>
-                          <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                          <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-70">
                             <button
                               onClick={(e) => {
                                 e.stopPropagation();
                                 onDuplicateMigration?.(migration.id);
                               }}
-                              className="rounded p-1 transition-colors hover:bg-foreground/5 hover:text-foreground"
+                              className="rounded p-1 transition-colors hover:bg-foreground/3 hover:text-foreground"
                               aria-label="Migration duplizieren"
                             >
                               <Copy className="h-4 w-4" />
@@ -220,7 +220,7 @@ const Sidebar = ({
                                 e.stopPropagation();
                                 onEditMigration?.(migration.id);
                               }}
-                              className="rounded p-1 transition-colors hover:bg-foreground/5 hover:text-foreground"
+                              className="rounded p-1 transition-colors hover:bg-foreground/3 hover:text-foreground"
                               aria-label="Migration bearbeiten"
                             >
                               <Pencil className="h-4 w-4" />
@@ -245,9 +245,9 @@ const Sidebar = ({
           })}
           </div>
 
-          <div className="space-y-2 border-t border-border/60 pt-4">
+          <div className="space-y-2 border-t border-border/30 pt-4">
             <div className="flex items-center justify-between px-2">
-              <h3 className="text-xs font-semibold text-muted-foreground uppercase">Migrationen</h3>
+              <h3 className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Migrationen</h3>
               <Button
                 onClick={onNewMigration}
                 variant="ghost"
@@ -265,8 +265,8 @@ const Sidebar = ({
                     className={cn(
                       "group flex items-center justify-between w-full rounded-xl px-4 py-2 text-sm transition-colors",
                       selectedMigration === migration.id
-                        ? "bg-sidebar-accent text-sidebar-accent-foreground"
-                        : "text-muted-foreground hover:bg-foreground/5 hover:text-foreground",
+                        ? "border-l-2 border-primary bg-primary/5 text-foreground font-medium"
+                        : "text-muted-foreground/80 hover:bg-foreground/3 hover:text-foreground",
                     )}
                   >
                     <button
@@ -275,13 +275,13 @@ const Sidebar = ({
                     >
                       {migration.name}
                     </button>
-                    <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+                    <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-70">
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           onDuplicateMigration?.(migration.id);
                         }}
-                        className="rounded p-1 transition-colors hover:bg-foreground/5 hover:text-foreground"
+                        className="rounded p-1 transition-colors hover:bg-foreground/3 hover:text-foreground"
                         aria-label="Migration duplizieren"
                       >
                         <Copy className="h-4 w-4" />
@@ -291,7 +291,7 @@ const Sidebar = ({
                           e.stopPropagation();
                           onEditMigration?.(migration.id);
                         }}
-                        className="rounded p-1 transition-colors hover:bg-foreground/5 hover:text-foreground"
+                        className="rounded p-1 transition-colors hover:bg-foreground/3 hover:text-foreground"
                         aria-label="Migration bearbeiten"
                       >
                         <Pencil className="h-4 w-4" />

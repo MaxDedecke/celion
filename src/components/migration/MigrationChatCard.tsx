@@ -1,8 +1,8 @@
-import { useMemo, useRef, useEffect } from "react";
+import { useMemo, useRef, useEffect, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Loader2, Play, Sparkles, Workflow } from "lucide-react";
+import { Loader2, Play, Sparkles, Workflow, ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Activity } from "@/components/ActivityTimeline";
 import type { AgentWorkflowStepState } from "./types";
@@ -100,22 +100,33 @@ const MigrationChatCard = ({
   onOpenAgentOutput
 }: MigrationChatCardProps) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [isNearBottom, setIsNearBottom] = useState(true);
   
   const chatMessages = useMemo(() => {
     return activities.map(activityToChatMessage).reverse();
   }, [activities]);
 
-  useEffect(() => {
+  const handleScroll = () => {
     if (scrollContainerRef.current) {
       const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
-      const isNearBottom = scrollHeight - scrollTop - clientHeight < 100;
-      
-      // Nur scrollen wenn User am Ende ist
-      if (isNearBottom) {
-        scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
-      }
+      setIsNearBottom(scrollHeight - scrollTop - clientHeight < 100);
     }
-  }, [chatMessages, isStepRunning]);
+  };
+
+  const scrollToBottom = () => {
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTo({
+        top: scrollContainerRef.current.scrollHeight,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  useEffect(() => {
+    if (scrollContainerRef.current && isNearBottom) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    }
+  }, [chatMessages, isStepRunning, isNearBottom]);
   return <Card style={{
     height: "calc(100vh - 180px)"
   }} className="flex flex-col overflow-hidden bg-[#0f1729]/0 border-[#1d293b]/0">
@@ -176,9 +187,20 @@ const MigrationChatCard = ({
 
       <CardContent className="flex min-h-0 flex-1 flex-col p-4">
         <div className="relative min-h-0 flex-1">
-          <div ref={scrollContainerRef} className="absolute inset-0 overflow-y-auto">
+          <div ref={scrollContainerRef} onScroll={handleScroll} className="absolute inset-0 overflow-y-auto">
             <ChatMessageList messages={chatMessages} isAgentRunning={isStepRunning} onOpenAgentOutput={onOpenAgentOutput} />
           </div>
+          
+          {!isNearBottom && (
+            <Button
+              onClick={scrollToBottom}
+              size="icon"
+              variant="secondary"
+              className="absolute bottom-24 right-4 z-10 h-8 w-8 rounded-full shadow-md animate-fade-in hover:scale-105 transition-transform"
+            >
+              <ChevronDown className="h-4 w-4" />
+            </Button>
+          )}
         </div>
 
         <div className="mt-4 space-y-2 border-t border-border/50 pt-4">
