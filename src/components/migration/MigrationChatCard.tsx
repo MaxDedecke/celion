@@ -187,7 +187,7 @@ const MigrationChatCard = ({
 
       <CardContent className="flex min-h-0 flex-1 flex-col p-4">
         <div className="relative min-h-0 flex-1">
-          <div ref={scrollContainerRef} onScroll={handleScroll} className="absolute inset-0 overflow-y-auto">
+          <div ref={scrollContainerRef} onScroll={handleScroll} className="absolute inset-0 overflow-y-auto chat-scrollbar">
             <ChatMessageList 
               messages={chatMessages} 
               isAgentRunning={isStepRunning} 
