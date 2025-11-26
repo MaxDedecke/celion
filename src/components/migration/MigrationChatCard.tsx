@@ -130,7 +130,7 @@ const MigrationChatCard = ({
   return <Card style={{
     height: "calc(100vh - 180px)"
   }} className="flex flex-col overflow-hidden bg-[#0f1729]/0 border-[#1d293b]/0">
-      <CardHeader className="shrink-0 border-b border-border/50 pb-3 space-y-3">
+      <CardHeader className="shrink-0 pb-3 space-y-3">
         {/* Zeile 1: Migration Info */}
         <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-2 text-sm font-medium">
@@ -188,7 +188,14 @@ const MigrationChatCard = ({
       <CardContent className="flex min-h-0 flex-1 flex-col p-4">
         <div className="relative min-h-0 flex-1">
           <div ref={scrollContainerRef} onScroll={handleScroll} className="absolute inset-0 overflow-y-auto">
-            <ChatMessageList messages={chatMessages} isAgentRunning={isStepRunning} onOpenAgentOutput={onOpenAgentOutput} />
+            <ChatMessageList 
+              messages={chatMessages} 
+              isAgentRunning={isStepRunning} 
+              onOpenAgentOutput={onOpenAgentOutput}
+              showContinueButton={(status === "not_started" || status === "running") && overallProgress < 100 && !isStepRunning}
+              onContinue={onContinue}
+              continueButtonText={status === "not_started" ? "Starten" : "Fortsetzen"}
+            />
           </div>
           
           {!isNearBottom && (
@@ -203,17 +210,8 @@ const MigrationChatCard = ({
           )}
         </div>
 
-        <div className="mt-4 space-y-2 border-t border-border/50 pt-4">
+        <div className="mt-4 pt-4">
           <ChatInput disabled={isStepRunning} onSend={onSendMessage} placeholder={isStepRunning ? "Agent arbeitet..." : "Nächsten Schritt starten oder Befehl eingeben..."} />
-          {(status === "not_started" || status === "running") && overallProgress < 100 && <Button onClick={onContinue} disabled={isStepRunning} className="w-full" size="sm">
-              {isStepRunning ? <>
-                  <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" />
-                  Läuft...
-                </> : <>
-                  <Play className="mr-2 h-3.5 w-3.5" />
-                  {status === "not_started" ? "Starten" : "Fortsetzen"}
-                </>}
-            </Button>}
         </div>
       </CardContent>
     </Card>;
