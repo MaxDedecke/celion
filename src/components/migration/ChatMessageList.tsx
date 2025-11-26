@@ -10,16 +10,20 @@ interface ChatMessageListProps {
 }
 
 const TypingIndicator = () => (
-  <div className="flex w-fit animate-fade-in gap-3 rounded-2xl border border-accent/30 bg-accent/10 p-3">
-    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent/20">
-      <div className="flex gap-1">
-        <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent/70" style={{ animationDelay: "0ms" }} />
-        <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent/70" style={{ animationDelay: "150ms" }} />
-        <div className="h-1.5 w-1.5 animate-pulse rounded-full bg-accent/70" style={{ animationDelay: "300ms" }} />
-      </div>
-    </div>
-    <div className="flex items-center">
-      <p className="text-sm text-muted-foreground">Agent arbeitet...</p>
+  <div className="flex w-fit animate-fade-in items-center gap-2 py-2 pl-3">
+    <div className="flex gap-1.5">
+      <div 
+        className="h-2 w-2 rounded-full bg-muted-foreground/40 animate-bounce" 
+        style={{ animationDelay: "0ms", animationDuration: "1s" }} 
+      />
+      <div 
+        className="h-2 w-2 rounded-full bg-muted-foreground/40 animate-bounce" 
+        style={{ animationDelay: "150ms", animationDuration: "1s" }} 
+      />
+      <div 
+        className="h-2 w-2 rounded-full bg-muted-foreground/40 animate-bounce" 
+        style={{ animationDelay: "300ms", animationDuration: "1s" }} 
+      />
     </div>
   </div>
 );
