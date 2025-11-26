@@ -2,6 +2,7 @@
   "system": "Monday.com",
   "apiType": "GRAPHQL",
   "baseUrlPattern": "*.monday.com",
+  "apiBaseUrl": "https://api.monday.com",
   "auth": {
     "type": "bearer",
     "headerTemplate": "Authorization: <TOKEN>",
