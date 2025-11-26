@@ -578,14 +578,14 @@ const Dashboard = () => {
 
   if (loaderVisible) {
     return (
-      <div className="app-shell flex min-h-screen items-center justify-center p-6">
+      <div className="app-shell flex h-screen items-center justify-center p-6 overflow-hidden">
         <DataFlowLoader size="lg" />
       </div>
     );
   }
 
   return (
-    <div className="app-shell flex min-h-screen flex-col p-6">
+    <div className="app-shell flex h-screen flex-col p-6 overflow-hidden">
       <div className="flex flex-1 gap-6">
         <Sidebar
           projects={allProjects}
