@@ -619,14 +619,21 @@ const Dashboard = () => {
             className="app-surface flex items-center justify-between rounded-3xl px-6 py-5"
           >
             {currentMigration ? (
-              <div className="flex flex-wrap items-center gap-4">
-                <div className="inline-flex items-center gap-2 rounded-full bg-foreground/5 px-4 py-1 text-sm text-muted-foreground">
-                  Migration
-                </div>
-                <div className="flex items-center gap-3">
+              <>
+                <div className="flex items-center gap-4">
+                  <div className="inline-flex items-center gap-2 rounded-full bg-foreground/5 px-4 py-1 text-sm text-muted-foreground">
+                    Migration
+                  </div>
                   <div className="text-base font-semibold text-foreground">
                     {currentMigration.name}
                   </div>
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <span>{currentMigration.sourceSystem}</span>
+                    <span>→</span>
+                    <span>{currentMigration.targetSystem}</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3">
                   <Button
                     variant="ghost"
                     size="icon"
@@ -669,25 +676,38 @@ const Dashboard = () => {
                       </div>
                     </PopoverContent>
                   </Popover>
+                  <UserMenu
+                    onAccountClick={() => {
+                      setActiveDialogTab("account");
+                      setShowAccountDialog(true);
+                    }}
+                    onSettingsClick={() => {
+                      setActiveDialogTab("settings");
+                      setShowAccountDialog(true);
+                    }}
+                    onLogout={handleLogout}
+                  />
                 </div>
-              </div>
+              </>
             ) : (
-              <div>
-                <h1 className="text-xl font-semibold text-foreground">Dashboard</h1>
-                <p className="text-sm text-muted-foreground">Eine kompakte Übersicht deiner Migrationen.</p>
-              </div>
+              <>
+                <div>
+                  <h1 className="text-xl font-semibold text-foreground">Dashboard</h1>
+                  <p className="text-sm text-muted-foreground">Eine kompakte Übersicht deiner Migrationen.</p>
+                </div>
+                <UserMenu
+                  onAccountClick={() => {
+                    setActiveDialogTab("account");
+                    setShowAccountDialog(true);
+                  }}
+                  onSettingsClick={() => {
+                    setActiveDialogTab("settings");
+                    setShowAccountDialog(true);
+                  }}
+                  onLogout={handleLogout}
+                />
+              </>
             )}
-            <UserMenu
-              onAccountClick={() => {
-                setActiveDialogTab("account");
-                setShowAccountDialog(true);
-              }}
-              onSettingsClick={() => {
-                setActiveDialogTab("settings");
-                setShowAccountDialog(true);
-              }}
-              onLogout={handleLogout}
-            />
           </header>
 
           <div className="flex-1 overflow-hidden">
