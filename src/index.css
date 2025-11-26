@@ -17,8 +17,8 @@ All colors MUST be HSL.
     --popover: 0 0% 100%;
     --popover-foreground: 222 47% 11%;
 
-    --primary: 221 83% 53%;
-    --primary-foreground: 210 40% 98%;
+    --primary: 210 59% 78%;
+    --primary-foreground: 222 47% 11%;
 
     --secondary: 210 40% 96%;
     --secondary-foreground: 222 47% 11%;
@@ -26,30 +26,34 @@ All colors MUST be HSL.
     --muted: 210 40% 96%;
     --muted-foreground: 215 16% 47%;
 
-    --accent: 221 83% 53%;
-    --accent-foreground: 210 40% 98%;
+    --accent: 259 49% 81%;
+    --accent-foreground: 222 47% 11%;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 210 40% 98%;
 
     --border: 214 32% 91%;
     --input: 214 32% 91%;
-    --ring: 221 83% 53%;
+    --ring: 210 59% 78%;
 
     --radius: 0.75rem;
 
     --sidebar-background: 0 0% 100%;
     --sidebar-foreground: 222 47% 11%;
-    --sidebar-primary: 221 83% 53%;
-    --sidebar-primary-foreground: 210 40% 98%;
+    --sidebar-primary: 210 59% 78%;
+    --sidebar-primary-foreground: 222 47% 11%;
     --sidebar-accent: 210 40% 96%;
     --sidebar-accent-foreground: 222 47% 11%;
     --sidebar-border: 214 32% 91%;
-    --sidebar-ring: 221 83% 53%;
+    --sidebar-ring: 210 59% 78%;
 
     --success: 142 71% 45%;
     --warning: 38 92% 50%;
     --info: 199 89% 48%;
+
+    /* Gradient variables for Lovable-style branding */
+    --gradient-primary: linear-gradient(135deg, hsl(210 59% 78%), hsl(259 49% 81%));
+    --gradient-primary-subtle: linear-gradient(135deg, hsl(210 59% 78% / 0.15), hsl(259 49% 81% / 0.15));
   }
 
   .dark {
@@ -62,7 +66,7 @@ All colors MUST be HSL.
     --popover: 222 47% 11%;
     --popover-foreground: 210 40% 98%;
 
-    --primary: 217 91% 60%;
+    --primary: 210 65% 82%;
     --primary-foreground: 222 47% 11%;
 
     --secondary: 217 33% 17%;
@@ -71,7 +75,7 @@ All colors MUST be HSL.
     --muted: 223 47% 11%;
     --muted-foreground: 215 20% 65%;
 
-    --accent: 217 91% 60%;
+    --accent: 259 55% 85%;
     --accent-foreground: 222 47% 11%;
 
     --destructive: 0 62% 30%;
@@ -79,20 +83,24 @@ All colors MUST be HSL.
 
     --border: 217 33% 17%;
     --input: 217 33% 17%;
-    --ring: 217 91% 60%;
+    --ring: 210 65% 82%;
 
     --sidebar-background: 222 47% 11%;
     --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 217 91% 60%;
+    --sidebar-primary: 210 65% 82%;
     --sidebar-primary-foreground: 222 47% 11%;
     --sidebar-accent: 217 33% 17%;
     --sidebar-accent-foreground: 210 40% 98%;
     --sidebar-border: 217 33% 17%;
-    --sidebar-ring: 217 91% 60%;
+    --sidebar-ring: 210 65% 82%;
 
     --success: 142 71% 45%;
     --warning: 38 92% 50%;
     --info: 199 89% 48%;
+
+    /* Gradient variables for Lovable-style branding */
+    --gradient-primary: linear-gradient(135deg, hsl(210 65% 82%), hsl(259 55% 85%));
+    --gradient-primary-subtle: linear-gradient(135deg, hsl(210 65% 82% / 0.15), hsl(259 55% 85% / 0.15));
   }
 }
 
