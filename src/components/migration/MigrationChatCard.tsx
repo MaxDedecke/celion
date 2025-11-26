@@ -128,48 +128,54 @@ const MigrationChatCard = ({
   return <Card style={{
     height: "calc(100vh - 180px)"
   }} className="flex flex-col overflow-hidden bg-[#0f1729]/0 border-[#1d293b]/0">
-      <CardHeader className="shrink-0 pb-3 space-y-3">
-        {/* Header Info */}
-        <div className="flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Badge variant="secondary" className="text-xs font-semibold">
-              {Math.round(overallProgress)}%
-            </Badge>
-            <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <span>Quelle: {sourceObjectsDisplay}</span>
-              <span>|</span>
-              <span>Ziel: {targetObjectsDisplay}</span>
-            </div>
+      <CardHeader className="shrink-0 pb-2">
+        <div className="flex items-center gap-4 flex-wrap">
+          {/* Progress Badge */}
+          <Badge variant="secondary" className="text-xs font-semibold">
+            {Math.round(overallProgress)}%
+          </Badge>
+          
+          {/* Source/Target Info */}
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span>Quelle: {sourceObjectsDisplay}</span>
+            <span>|</span>
+            <span>Ziel: {targetObjectsDisplay}</span>
           </div>
-        </div>
-
-        {/* Aktueller Schritt */}
-        <div className="flex items-center gap-2">
-          {activeStep && <>
+          
+          {/* Active Step */}
+          {activeStep && (
+            <>
               <Sparkles className={cn("h-4 w-4 text-primary", isStepRunning && "animate-pulse")} />
               <Badge variant="outline" className="text-xs">
                 {activeStep.title}
               </Badge>
-            </>}
+            </>
+          )}
+          
+          {/* Step Counter */}
           <Badge variant="secondary" className="text-xs">
             {completedCount}/{totalSteps}
           </Badge>
-        </div>
-        
-        {(isStepRunning || activeStep) && <div>
-            <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-              <span>
+          
+          {/* Step Progress Info & Bar */}
+          {(isStepRunning || activeStep) && (
+            <div className="flex items-center gap-3 flex-1 min-w-[200px]">
+              <span className="text-xs text-muted-foreground whitespace-nowrap">
                 Schritt {completedCount + (isStepRunning ? 1 : 0)} / {totalSteps}
                 {isStepRunning && " · Wird ausgeführt..."}
               </span>
-              <span className="font-semibold">{Math.round(stepProgress)}%</span>
+              <div className="flex-1 h-1.5 rounded-full bg-muted">
+                <div 
+                  className={cn("h-full rounded-full bg-primary transition-all", isStepRunning ? "duration-100" : "duration-700")} 
+                  style={{ width: `${stepProgress}%` }} 
+                />
+              </div>
+              <span className="text-xs font-semibold text-muted-foreground">
+                {Math.round(stepProgress)}%
+              </span>
             </div>
-            <div className="h-1.5 w-full rounded-full bg-muted">
-              <div className={cn("h-full rounded-full bg-primary transition-all", isStepRunning ? "duration-100" : "duration-700")} style={{
-            width: `${stepProgress}%`
-          }} />
-            </div>
-          </div>}
+          )}
+        </div>
       </CardHeader>
 
       <CardContent className="flex min-h-0 flex-1 flex-col p-4">
