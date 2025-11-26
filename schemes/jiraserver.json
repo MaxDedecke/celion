@@ -1,0 +1,31 @@
+{
+  "system": "Jira Server",
+  "apiType": "REST",
+  "baseUrlPattern": "*/jira",
+  "auth": {
+    "type": "basic",
+    "headerTemplate": "Authorization: Basic <BASE64(username:password)>",
+    "requiresEmail": false,
+    "requiresApiToken": false,
+    "probeEndpoint": "/rest/api/2/myself",
+    "successStatus": 200
+  },
+  "discovery": {
+    "endpoints": {
+      "projects": "/rest/api/2/project",
+      "issues": "/rest/api/2/search",
+      "users": "/rest/api/2/user/search",
+      "workflows": "/rest/api/2/workflow"
+    },
+    "pagination": {
+      "type": "startAt_maxResults",
+      "paramStart": "startAt",
+      "paramLimit": "maxResults",
+      "defaultLimit": 50
+    }
+  },
+  "headers": {
+    "accept": "application/json",
+    "contentType": "application/json"
+  }
+}

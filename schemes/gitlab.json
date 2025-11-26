@@ -1,0 +1,32 @@
+{
+  "system": "GitLab",
+  "apiType": "REST",
+  "baseUrlPattern": "gitlab.com/*",
+  "auth": {
+    "type": "bearer_token",
+    "headerTemplate": "Authorization: Bearer <TOKEN>",
+    "requiresApiToken": true,
+    "requiresEmail": false,
+    "probeEndpoint": "/api/v4/user",
+    "successStatus": 200
+  },
+  "discovery": {
+    "endpoints": {
+      "projects": "/api/v4/projects",
+      "issues": "/api/v4/issues",
+      "users": "/api/v4/users",
+      "groups": "/api/v4/groups",
+      "mergeRequests": "/api/v4/merge_requests"
+    },
+    "pagination": {
+      "type": "page_per_page",
+      "paramPage": "page",
+      "paramLimit": "per_page",
+      "defaultLimit": 100
+    }
+  },
+  "headers": {
+    "accept": "application/json",
+    "contentType": "application/json"
+  }
+}

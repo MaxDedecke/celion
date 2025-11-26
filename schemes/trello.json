@@ -1,0 +1,28 @@
+{
+  "system": "Trello",
+  "apiType": "REST",
+  "baseUrlPattern": "api.trello.com",
+  "auth": {
+    "type": "api_key_token_query",
+    "headerTemplate": null,
+    "requiresApiToken": true,
+    "requiresEmail": false,
+    "probeEndpoint": "/1/members/me",
+    "successStatus": 200
+  },
+  "discovery": {
+    "endpoints": {
+      "boards": "/1/members/me/boards",
+      "cards": "/1/boards/{board_id}/cards",
+      "lists": "/1/boards/{board_id}/lists",
+      "actions": "/1/boards/{board_id}/actions"
+    },
+    "pagination": {
+      "type": "none"
+    }
+  },
+  "headers": {
+    "accept": "application/json",
+    "contentType": "application/json"
+  }
+}

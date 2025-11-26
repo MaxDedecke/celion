@@ -1,0 +1,32 @@
+{
+  "system": "YouTrack",
+  "apiType": "REST",
+  "baseUrlPattern": "*/youtrack",
+  "auth": {
+    "type": "bearer_token",
+    "headerTemplate": "Authorization: Bearer <TOKEN>",
+    "requiresApiToken": true,
+    "requiresEmail": false,
+    "probeEndpoint": "/api/users/me",
+    "successStatus": 200
+  },
+  "discovery": {
+    "endpoints": {
+      "issues": "/api/issues",
+      "projects": "/api/projects",
+      "users": "/api/users",
+      "workItems": "/api/workItems",
+      "customFields": "/api/customFields"
+    },
+    "pagination": {
+      "type": "skip_top",
+      "paramOffset": "$skip",
+      "paramLimit": "$top",
+      "defaultLimit": 100
+    }
+  },
+  "headers": {
+    "accept": "application/json",
+    "contentType": "application/json"
+  }
+}

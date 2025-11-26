@@ -1,0 +1,32 @@
+{
+  "system": "Redmine",
+  "apiType": "REST",
+  "baseUrlPattern": "*/redmine",
+  "auth": {
+    "type": "api_key_query",
+    "headerTemplate": null,
+    "requiresApiToken": true,
+    "requiresEmail": false,
+    "probeEndpoint": "/users/current.json",
+    "successStatus": 200
+  },
+  "discovery": {
+    "endpoints": {
+      "projects": "/projects.json",
+      "issues": "/issues.json",
+      "users": "/users.json",
+      "trackers": "/trackers.json",
+      "timeEntries": "/time_entries.json"
+    },
+    "pagination": {
+      "type": "offset_limit",
+      "paramOffset": "offset",
+      "paramLimit": "limit",
+      "defaultLimit": 100
+    }
+  },
+  "headers": {
+    "accept": "application/json",
+    "contentType": "application/json"
+  }
+}
