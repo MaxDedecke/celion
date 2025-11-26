@@ -2,11 +2,16 @@ import { useEffect } from "react";
 import ChatMessage, { ChatMessage as ChatMessageType } from "./ChatMessage";
 import { cn } from "@/lib/utils";
 import { useMessageQueue } from "@/hooks/useMessageQueue";
+import { Button } from "@/components/ui/button";
+import { Play } from "lucide-react";
 
 interface ChatMessageListProps {
   messages: ChatMessageType[];
   isAgentRunning: boolean;
   onOpenAgentOutput?: (stepId: string) => void;
+  showContinueButton?: boolean;
+  onContinue?: () => void;
+  continueButtonText?: string;
 }
 
 const TypingIndicator = () => (
@@ -28,7 +33,14 @@ const TypingIndicator = () => (
   </div>
 );
 
-const ChatMessageList = ({ messages, isAgentRunning, onOpenAgentOutput }: ChatMessageListProps) => {
+const ChatMessageList = ({ 
+  messages, 
+  isAgentRunning, 
+  onOpenAgentOutput, 
+  showContinueButton = false,
+  onContinue,
+  continueButtonText = "Fortsetzen"
+}: ChatMessageListProps) => {
   const { visibleMessages, hasQueuedMessages } = useMessageQueue(messages, {
     delayMs: 1000,
   });
@@ -46,6 +58,19 @@ const ChatMessageList = ({ messages, isAgentRunning, onOpenAgentOutput }: ChatMe
         </div>
       ))}
       {(isAgentRunning || hasQueuedMessages) && <TypingIndicator />}
+      
+      {showContinueButton && !isAgentRunning && !hasQueuedMessages && (
+        <div className="flex justify-center animate-fade-in pt-2">
+          <Button 
+            onClick={onContinue} 
+            className="gap-2"
+            size="lg"
+          >
+            <Play className="h-4 w-4" />
+            {continueButtonText}
+          </Button>
+        </div>
+      )}
     </div>
   );
 };
