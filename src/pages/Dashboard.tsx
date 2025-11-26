@@ -586,8 +586,8 @@ const Dashboard = () => {
   }
 
   return (
-    <div className="app-shell flex h-screen flex-col p-6 overflow-hidden">
-      <div className="flex flex-1 gap-6">
+    <div className="app-shell flex h-screen flex-col px-6 pt-6 pb-6 overflow-hidden">
+      <div className="flex flex-1 gap-6 min-h-0">
         <Sidebar
           projects={allProjects}
           projectMigrations={migrations}
