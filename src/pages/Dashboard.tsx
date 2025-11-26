@@ -1,11 +1,11 @@
-﻿import { useState, useEffect } from "react";
+﻿import { useState, useEffect, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Sidebar from "@/components/Sidebar";
 import UserMenu from "@/components/UserMenu";
 import AccountDialog from "@/components/dialogs/AccountDialog";
 import AddMigrationDialog from "@/components/dialogs/AddMigrationDialog";
 import EditMigrationDialog from "@/components/dialogs/EditMigrationDialog";
-import MigrationDetails from "@/components/MigrationDetails";
+import MigrationDetails, { type MigrationDetailsRef } from "@/components/MigrationDetails";
 import DataFlowLoader from "@/components/DataFlowLoader";
 import { Button } from "@/components/ui/button";
 import {
@@ -109,6 +109,7 @@ const Dashboard = () => {
   const [projectIdForNewMigration, setProjectIdForNewMigration] = useState<string | null>(null);
   const [transitioning, setTransitioning] = useState(false);
   const loaderVisible = useMinimumLoader(loading || transitioning, 1000);
+  const migrationDetailsRef = useRef<MigrationDetailsRef>(null);
 
   // Check auth and load project data
   useEffect(() => {
@@ -637,6 +638,15 @@ const Dashboard = () => {
                   <Button
                     variant="ghost"
                     size="icon"
+                    onClick={() => migrationDetailsRef.current?.openWorkflowPanel()}
+                    className="h-8 w-8"
+                    title="Workflow bearbeiten"
+                  >
+                    <Workflow className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     onClick={handleOpenEditConfig}
                     className="h-8 w-8"
                   >
@@ -714,6 +724,7 @@ const Dashboard = () => {
             {currentMigration ? (
               <div className="app-surface h-full overflow-hidden rounded-3xl">
                 <MigrationDetails
+                  ref={migrationDetailsRef}
                   project={currentMigration}
                   onRefresh={refreshCurrentMigration}
                 />
