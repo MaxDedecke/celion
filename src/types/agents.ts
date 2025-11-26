@@ -46,12 +46,23 @@ export interface AuthFlowRecommendation {
 }
 
 export type AuthFlowResult = {
-  system: string | null;
-  base_url: string | null;
-  authenticated: boolean;
-  auth_method: string | null;
+  // Neues deterministisches Ergebnisformat
+  valid?: boolean;
+  authType?: string | null;
+  apiType?: string | null;
+  normalizedHeaders?: Record<string, string>;
+  probe?: {
+    method: string;
+    endpoint: string;
+    status: number | null;
+  };
+  schemeUsed?: string | null;
 
-  // neue Felder
+  // Bestehende Felder für Abwärtskompatibilität im UI
+  system?: string | null;
+  base_url?: string | null;
+  authenticated?: boolean;
+  auth_method?: string | null;
   auth_headers?: Record<string, string>;
   recommended_probe?: any;
   explanation?: string;

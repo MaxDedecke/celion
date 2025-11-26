@@ -12,27 +12,51 @@ export type AuthProbeConfig = {
     operation_name?: string | null;
     variables?: Record<string, any> | null;
   } | null;
+  body?: unknown;
 };
 
 export type AuthFlowResult = {
-  system: string | null;
-  base_url: string | null;
+  // Neues deterministisches Ergebnis
+  valid: boolean;
+  authType: string | null;
+  apiType: string | null;
+  normalizedHeaders: AuthHeaders;
+  probe: {
+    method: string;
+    endpoint: string;
+    status: number | null;
+  };
+  schemeUsed: string | null;
 
-  // Ob die Credentials für dieses System erfolgreich validiert wurden
-  authenticated: boolean;
+  // Abwärtskompatible Felder
+  system?: string | null;
+  base_url?: string | null;
+  authenticated?: boolean;
+  auth_method?: string | null;
+  auth_headers?: AuthHeaders;
+  recommended_probe?: AuthProbeConfig | null;
+  explanation?: string;
+  raw_output?: any;
+  reasoning?: string | null;
+  probe_result?: any | null;
+  summary?: string | null;
+  error_message?: string | null;
+};
 
-  // z.B. "bearer", "basic", "api_token_in_header"
-  auth_method: string | null;
-
-  // alle vom Agent berechneten Header (inkl. Notion-Version etc.)
-  auth_headers: AuthHeaders;
-
-  // für UI/Logs
-  explanation: string;
-
-  // Probe-Config, die direkt an /api/probe gesendet werden kann
-  recommended_probe: AuthProbeConfig;
-
-  // Debug / Nachvollziehbarkeit
-  raw_output: any;
+export type AuthSchemeDefinition = {
+  system: string;
+  apiType: string;
+  baseUrlPattern?: string;
+  auth: {
+    type: string;
+    headerTemplate: string;
+    requiresToken?: boolean;
+    requiresEmail?: boolean;
+    requiresApiToken?: boolean;
+    probeEndpoint: string;
+    probeMethod?: string;
+    probeBody?: unknown;
+    successStatus: number;
+  };
+  headers?: Record<string, string>;
 };

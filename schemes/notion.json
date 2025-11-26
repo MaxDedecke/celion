@@ -1,0 +1,33 @@
+{
+  "system": "Notion",
+  "apiType": "REST",
+  "baseUrlPattern": "api.notion.com",
+  "auth": {
+    "type": "bearer_token",
+    "headerTemplate": "Authorization: Bearer <TOKEN>",
+    "requiresApiToken": true,
+    "requiresEmail": false,
+    "probeEndpoint": "/v1/users/me",
+    "successStatus": 200
+  },
+  "discovery": {
+    "endpoints": {
+      "databasesList": "/v1/databases",
+      "databaseQuery": "/v1/databases/{database_id}/query",
+      "pages": "/v1/pages",
+      "blocks": "/v1/blocks/{block_id}/children",
+      "users": "/v1/users"
+    },
+    "pagination": {
+      "type": "cursor",
+      "paramCursor": "start_cursor",
+      "paramLimit": "page_size",
+      "defaultLimit": 100
+    }
+  },
+  "headers": {
+    "accept": "application/json",
+    "contentType": "application/json",
+    "notionVersionHeader": "Notion-Version: 2022-06-28"
+  }
+}

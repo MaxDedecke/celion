@@ -392,6 +392,22 @@ export const normalizeAuthFlowResult = (input: unknown): AuthFlowResult | null =
     }
   }
 
+  // Fallback: baue Probe aus deterministischem Ergebnis, falls vorhanden
+  if (!recommendedProbe && candidate.probe && typeof candidate.probe === "object") {
+    const probe = candidate.probe as { method?: string; endpoint?: string; };
+    const method = typeof probe.method === "string" && probe.method.trim().length > 0 ? probe.method.trim().toUpperCase() : null;
+    const endpoint = typeof probe.endpoint === "string" && probe.endpoint.trim().length > 0 ? probe.endpoint.trim() : null;
+    if (method && endpoint && typeof candidate.base_url === "string") {
+      recommendedProbe = {
+        method,
+        url: `${candidate.base_url.replace(/\/$/, "")}${endpoint.startsWith("/") ? endpoint : `/${endpoint}`}`,
+        requires_auth: true,
+        api_format: candidate.apiType?.toLowerCase() === "graphql" ? "graphql" : undefined,
+        graphql: null,
+      };
+    }
+  }
+
   let probeResult: AuthFlowResult["probe_result"] = null;
   if (candidate.probe_result && typeof candidate.probe_result === "object" && !Array.isArray(candidate.probe_result)) {
     const probe = candidate.probe_result as unknown as Record<string, unknown>;
@@ -424,9 +440,11 @@ export const normalizeAuthFlowResult = (input: unknown): AuthFlowResult | null =
 
   const authenticated = typeof candidate.authenticated === "boolean"
     ? candidate.authenticated
-    : probeStatus !== null
-      ? probeStatus >= 200 && probeStatus < 300
-      : null;
+    : typeof candidate.valid === "boolean"
+      ? candidate.valid
+      : probeStatus !== null
+        ? probeStatus >= 200 && probeStatus < 300
+        : null;
 
   const summary = typeof candidate.summary === "string" && candidate.summary.trim().length > 0
     ? candidate.summary.trim()
@@ -439,10 +457,11 @@ export const normalizeAuthFlowResult = (input: unknown): AuthFlowResult | null =
     reasoning: typeof candidate.reasoning === "string" ? candidate.reasoning : null,
     probe_result: probeResult,
     authenticated,
-    auth_method: typeof candidate.auth_method === "string" ? candidate.auth_method : null,
+    auth_method: typeof candidate.auth_method === "string" ? candidate.auth_method : (typeof candidate.authType === "string" ? candidate.authType : null),
+    auth_headers: candidate.auth_headers || candidate.normalizedHeaders || undefined,
     summary,
     error_message: typeof candidate.error_message === "string" ? candidate.error_message : null,
-    raw_output: typeof candidate.raw_output === "string" ? candidate.raw_output : "",
+    raw_output: typeof candidate.raw_output === "string" ? candidate.raw_output : candidate.raw_output || "",
   };
 };
 

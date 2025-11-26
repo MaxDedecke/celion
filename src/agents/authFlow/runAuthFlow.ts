@@ -1,171 +1,162 @@
 // src/agents/authFlow/runAuthFlow.ts
 
-import { resolveOpenAiConfig, buildOpenAiHeaders } from "../openai/openaiClient";
-import { createThread, postUserMessage } from "../openai/thread";
-import { createRun } from "../openai/run";
-import { fetchLatestAssistantMessage, extractMessageText } from "../openai/message";
-import { httpRequestTool } from "../openai/httpTool";
-import type { OpenAiRun } from "../openai/types";
+import { httpRequestTool as http_request } from "../openai/httpTool";
 import type { HttpRequestParams } from "@/types/agents";
-
-import { createAuthFlowAssistant } from "./assistant";
-import { buildAuthFlowPrompt, type BuildAuthFlowPromptParams } from "./prompt";
-import { parseAuthFlowResponse } from "./parser";
-import type { AuthFlowResult } from "./types";
-import { supabase } from "@/integrations/supabase/client";
+import { readSchemeFile } from "@/tools/readSchemeFile";
+import type { AuthFlowResult, AuthSchemeDefinition, AuthHeaders } from "./types";
 
 export type RunAuthFlowParams = {
-  system: string;              // "Jira Cloud", "Asana", "Azure DevOps", Monday
-  baseUrl: string;             // Pflicht
-  apiToken?: string;           // optional
-  email?: string;              // optional
-  password?: string;           // optional
-  authType?: string;
-  /**
-   * NEW: Agent soll Header automatisch erzeugen können.
-   * Beispiel:
-   * { "Authorization": "Basic abc123", "Accept": "application/json" }
-   */
-  preferredAuthType?: "basic" | "bearer" | "apiKey" | "oauth2" | "auto";
-
-  /**
-   * NEW: optionaler API Key Name, falls Systeme sowas brauchen
-   * Beispiele:
-   *   - X-API-Key
-   *   - Authorization
-   *   - Private-Token
-   */
-  apiKeyHeaderName?: string;
-
-  /**
-   * NEW: Systeme nutzen manchmal Query-Keys statt Header
-   */
-  apiKeyQueryName?: string;
+  system: string; // z.B. "Jira Cloud", "Asana", "Monday.com"
+  baseUrl: string;
+  apiToken?: string;
+  email?: string;
+  password?: string;
 };
 
-/**
- * Ersetzt Platzhalter in einem String durch echte Credentials.
- * Beispiel: "Basic base64(<email>:<apiToken>)" -> "Basic base64(user@example.com:abc123)"
- */
-const replacePlaceholders = (
-  value: string,
-  credentials: { email?: string; apiToken?: string; password?: string; clientId?: string; clientSecret?: string }
-): string => {
-  let result = value;
-  if (credentials.email) result = result.replace(/<email>/g, credentials.email);
-  if (credentials.apiToken) result = result.replace(/<apiToken>/g, credentials.apiToken);
-  if (credentials.password) result = result.replace(/<password>/g, credentials.password);
-  if (credentials.clientId) result = result.replace(/<clientId>/g, credentials.clientId);
-  if (credentials.clientSecret) result = result.replace(/<clientSecret>/g, credentials.clientSecret);
-  
-  // Jetzt Base64-Encoding durchführen, falls nötig
-  // Beispiel: "Basic base64(user@example.com:abc123)" -> "Basic dXNlckBleGFtcGxlLmNvbTphYmMxMjM="
-  const base64Match = result.match(/base64\(([^)]+)\)/);
-  if (base64Match) {
-    const toEncode = base64Match[1];
-    const encoded = btoa(toEncode);
-    result = result.replace(`base64(${toEncode})`, encoded);
+const normalizeSystemName = (systemName: string): string =>
+  systemName
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .trim();
+
+const resolveSchemePath = (normalizedSystem: string) => `/schemes/${normalizedSystem}.json`;
+
+const normalizeHeaderKey = (key: string): string => {
+  if (!key) return key;
+  const lower = key.toLowerCase();
+  if (lower === "contenttype" || lower === "content-type") return "Content-Type";
+  if (lower === "accept") return "Accept";
+  return key
+    .replace(/_/g, "-")
+    .replace(/([a-z])([A-Z])/g, "$1-$2")
+    .replace(/(^|-)([a-z])/g, (_match, sep, char) => `${sep}${char.toUpperCase()}`);
+};
+
+const substituteCredentialToken = (token: string, credentials: Record<string, string | undefined>): string => {
+  const normalized = token.toLowerCase();
+  switch (normalized) {
+    case "token":
+      return credentials.apiToken || credentials.password || "";
+    case "apitoken":
+      return credentials.apiToken || "";
+    case "email":
+      return credentials.email || "";
+    case "password":
+      return credentials.password || "";
+    default:
+      return credentials[token] || "";
   }
-  
-  return result;
 };
 
-const processAuthRun = async (
-  baseUrl: string,
-  headers: Record<string, string>,
-  threadId: string,
-  runId: string,
-  credentials: { email?: string; apiToken?: string; password?: string; clientId?: string; clientSecret?: string }
-): Promise<OpenAiRun> => {
-  let attempts = 0;
+const replaceBasicPlaceholders = (value: string, credentials: Record<string, string | undefined>) =>
+  value.replace(/<([A-Za-z0-9_]+)>/g, (_match, token) => substituteCredentialToken(token, credentials));
 
-  while (attempts < 120) {
-    const res = await fetch(`${baseUrl}/threads/${threadId}/runs/${runId}`, {
-      method: "GET",
-      headers,
-    });
+const buildAuthHeader = (scheme: AuthSchemeDefinition, credentials: Record<string, string | undefined>): AuthHeaders => {
+  const template = scheme.auth.headerTemplate;
+  const [rawKey, ...valueParts] = template.split(":");
+  const headerKey = normalizeHeaderKey(rawKey.trim());
+  const rawValue = valueParts.join(":").trim();
 
-    const payload = (await res.json()) as OpenAiRun;
+  const valueWithBase64 = rawValue.replace(/<BASE64\(([^)]+)\)>/gi, (_match, inner) => {
+    const replacedInner = inner.replace(/([A-Za-z0-9_]+)/g, token => substituteCredentialToken(token, credentials));
+    return btoa(replacedInner);
+  });
 
-    if (payload.status === "requires_action" && payload.required_action?.submit_tool_outputs) {
-      const toolOutputs: Array<{ tool_call_id: string; output: string }> = [];
+  const headerValue = replaceBasicPlaceholders(valueWithBase64, credentials);
 
-      for (const call of payload.required_action.submit_tool_outputs.tool_calls) {
-        if (call.type !== "function" || call.function?.name !== "httpClient") continue;
+  return { [headerKey]: headerValue };
+};
 
-        let args: HttpRequestParams = { url: "", method: "GET" };
+const mergeHeaders = (scheme: AuthSchemeDefinition, authHeader: AuthHeaders): AuthHeaders => {
+  const normalized: AuthHeaders = {};
 
-        try {
-          args = JSON.parse(call.function?.arguments ?? "{}") as HttpRequestParams;
-          
-          // Platzhalter in Headers durch echte Credentials ersetzen
-          if (args.headers) {
-            const replacedHeaders: Record<string, string> = {};
-            for (const [key, value] of Object.entries(args.headers)) {
-              replacedHeaders[key] = replacePlaceholders(value, credentials);
-            }
-            args.headers = replacedHeaders;
-          }
-        } catch {
-          // Ignoriere Parsing-Fehler und nutze Default-Args
-        }
-
-        const output = await httpRequestTool(args);
-        toolOutputs.push({
-          tool_call_id: call.id,
-          output: JSON.stringify(output),
-        });
-      }
-
-      if (toolOutputs.length > 0) {
-        await fetch(`${baseUrl}/threads/${threadId}/runs/${runId}/submit_tool_outputs`, {
-          method: "POST",
-          headers,
-          body: JSON.stringify({ tool_outputs: toolOutputs }),
-        });
-      }
-    } else if (payload.status === "completed") {
-      return payload;
-    } else if (["failed", "cancelled", "expired"].includes(payload.status)) {
-      throw new Error(payload.last_error?.message || `Auth Flow Run failed: ${payload.status}`);
+  const addHeaderRecord = (record?: Record<string, string>) => {
+    if (!record) return;
+    for (const [key, value] of Object.entries(record)) {
+      normalized[normalizeHeaderKey(key)] = value;
     }
+  };
 
-    attempts++;
-    await new Promise(r => setTimeout(r, 1000));
-  }
+  addHeaderRecord(scheme.headers);
+  addHeaderRecord(authHeader);
 
-  throw new Error("Auth Flow Run timeout");
+  return normalized;
+};
+
+const buildProbeRequest = (
+  scheme: AuthSchemeDefinition,
+  baseUrl: string,
+  headers: AuthHeaders,
+): HttpRequestParams & { body?: unknown } => {
+  const method = (scheme.auth.probeMethod || "GET").toUpperCase();
+  const endpoint = scheme.auth.probeEndpoint.startsWith("/")
+    ? scheme.auth.probeEndpoint
+    : `/${scheme.auth.probeEndpoint}`;
+  const url = `${baseUrl.replace(/\/$/, "")}${endpoint}`;
+
+  return {
+    method,
+    url,
+    headers,
+    ...(scheme.auth.probeBody !== undefined ? { body: scheme.auth.probeBody } : { body: null }),
+  };
 };
 
 export const runAuthFlow = async (params: RunAuthFlowParams): Promise<AuthFlowResult> => {
-  const { apiKey, baseUrl, projectId } = resolveOpenAiConfig();
-  const headers = buildOpenAiHeaders(apiKey, projectId);
+  const normalizedSystem = normalizeSystemName(params.system);
+  const schemePath = resolveSchemePath(normalizedSystem);
+  const scheme = await readSchemeFile<AuthSchemeDefinition>({ path: schemePath });
 
-  const assistant = await createAuthFlowAssistant(baseUrl, headers, "gpt-4.1");
-  const thread = await createThread(baseUrl, headers);
-
-  await postUserMessage(
-    baseUrl,
-    headers,
-    thread,
-    buildAuthFlowPrompt(params),
-  );
-
-  const run = await createRun(baseUrl, headers, thread, assistant.id);
-  
-  // Credentials für Platzhalter-Ersetzung bereitstellen
   const credentials = {
     email: params.email,
     apiToken: params.apiToken,
     password: params.password,
-    clientId: undefined, // TODO: clientId und clientSecret aus params hinzufügen wenn nötig
-    clientSecret: undefined,
   };
-  
-  await processAuthRun(baseUrl, headers, thread, run.id, credentials);
 
-  const msg = await fetchLatestAssistantMessage(baseUrl, headers, thread);
-  const result = parseAuthFlowResponse(extractMessageText(msg));
+  const authHeader = buildAuthHeader(scheme, credentials);
+  const normalizedHeaders = mergeHeaders(scheme, authHeader);
+  const request = buildProbeRequest(scheme, params.baseUrl, normalizedHeaders);
 
-  return result;
+  const response = await http_request({
+    method: request.method,
+    url: request.url,
+    headers: request.headers,
+    body: request.body ?? null,
+  });
+
+  const valid = response.status === scheme.auth.successStatus;
+
+  return {
+    valid,
+    authType: scheme.auth.type || null,
+    apiType: scheme.apiType || null,
+    normalizedHeaders,
+    probe: {
+      method: scheme.auth.probeMethod || "GET",
+      endpoint: scheme.auth.probeEndpoint,
+      status: response.status,
+    },
+    schemeUsed: normalizedSystem,
+
+    // Abwärtskompatibilität für bestehende UI-Pfade
+    system: scheme.system || params.system || null,
+    base_url: params.baseUrl,
+    authenticated: valid,
+    auth_method: scheme.auth.type || null,
+    auth_headers: normalizedHeaders,
+    recommended_probe: {
+      method: request.method,
+      url: request.url,
+      headers: request.headers,
+      requires_auth: true,
+      api_format: scheme.apiType?.toLowerCase() === "graphql" ? "graphql" : "rest_json",
+      graphql: null,
+      body: request.body ?? null,
+    },
+    explanation: valid
+      ? "Authentifizierung erfolgreich gemäß Schema-Definition."
+      : "Authentifizierung fehlgeschlagen gemäß Schema-Definition.",
+    raw_output: response,
+    probe_result: response,
+  };
 };

@@ -1,0 +1,33 @@
+{
+  "system": "Azure DevOps",
+  "apiType": "REST",
+  "baseUrlPattern": "dev.azure.com/*",
+  "auth": {
+    "type": "basic",
+    "headerTemplate": "Authorization: Basic <BASE64(:personalAccessToken)>",
+    "requiresApiToken": true,
+    "requiresEmail": false,
+    "probeEndpoint": "/_apis/projects?api-version=7.1-preview.1",
+    "successStatus": 200
+  },
+  "discovery": {
+    "endpoints": {
+      "projects": "/_apis/projects?api-version=7.1-preview.1",
+      "workItems": "/_apis/wit/workitems?ids={ids}&api-version=7.1-preview.1",
+      "workItemTypes": "/_apis/wit/workitemtypes?api-version=7.1-preview.1",
+      "repos": "/_apis/git/repositories?api-version=7.1-preview.1",
+      "pipelines": "/_apis/pipelines?api-version=7.1-preview.1",
+      "users": "/_apis/graph/users?api-version=7.1-preview.1"
+    },
+    "pagination": {
+      "type": "continuationToken",
+      "headerContinuation": "x-ms-continuationtoken",
+      "paramLimit": "$top",
+      "defaultLimit": 100
+    }
+  },
+  "headers": {
+    "accept": "application/json",
+    "contentType": "application/json"
+  }
+}

@@ -1,0 +1,35 @@
+{
+  "system": "Targetprocess",
+  "apiType": "REST",
+  "baseUrlPattern": "*.tpondemand.com",
+  "auth": {
+    "type": "basic",
+    "headerTemplate": "Authorization: Basic <BASE64(username:password)>",
+    "requiresEmail": false,
+    "requiresApiToken": false,
+    "probeEndpoint": "/api/v1/Projects",
+    "successStatus": 200
+  },
+  "discovery": {
+    "endpoints": {
+      "projects": "/api/v1/Projects",
+      "users": "/api/v1/Users",
+      "tasks": "/api/v1/Tasks",
+      "userStories": "/api/v1/UserStories",
+      "bugs": "/api/v1/Bugs",
+      "features": "/api/v1/Features",
+      "epics": "/api/v1/Epics",
+      "assignments": "/api/v1/Assignments"
+    },
+    "pagination": {
+      "type": "page_size_offset",
+      "paramOffset": "skip",
+      "paramLimit": "take",
+      "defaultLimit": 50
+    }
+  },
+  "headers": {
+    "accept": "application/json",
+    "contentType": "application/json"
+  }
+}
