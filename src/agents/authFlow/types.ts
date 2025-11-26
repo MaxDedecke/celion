@@ -6,7 +6,8 @@ export type AuthProbeConfig = {
   method: string;
   url: string;
   headers: AuthHeaders;
-  request_format?: "rest_json" | "graphql" | "form" | "xml" | null;
+  requires_auth: boolean;
+  api_format: "rest_json" | "graphql" | "form" | "xml";
   graphql?: {
     query: string;
     operation_name?: string | null;
@@ -47,6 +48,7 @@ export type AuthSchemeDefinition = {
   system: string;
   apiType: string;
   baseUrlPattern?: string;
+  apiBaseUrl?: string;
   auth: {
     type: string;
     headerTemplate: string;

@@ -396,12 +396,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
               apiToken: auth.apiToken,
               email: auth.email,
               password: auth.password,
-
-              preferredAuthType: "auto",
-
-              // erlaubt Header-Gen AUTOMATISCH
-              apiKeyHeaderName: "Authorization",
-              apiKeyQueryName: undefined,
             });
 
             const statusLabel = result.authenticated ? "erfolgreich" : "fehlgeschlagen";

@@ -83,6 +83,22 @@ const mergeHeaders = (scheme: AuthSchemeDefinition, authHeader: AuthHeaders): Au
   return normalized;
 };
 
+const resolveApiBaseUrl = (scheme: AuthSchemeDefinition, userProvidedUrl: string): string => {
+  // 1. Wenn apiBaseUrl explizit definiert ist → verwende diese
+  if (scheme.apiBaseUrl) {
+    return scheme.apiBaseUrl;
+  }
+
+  // 2. Sonst: Extrahiere Domain aus User URL und nutze diese
+  try {
+    const url = new URL(userProvidedUrl);
+    return `${url.protocol}//${url.host}`;
+  } catch {
+    // Fallback wenn URL parsing fehlschlägt
+    return userProvidedUrl.replace(/\/$/, "");
+  }
+};
+
 const buildProbeRequest = (
   scheme: AuthSchemeDefinition,
   baseUrl: string,
@@ -115,7 +131,10 @@ export const runAuthFlow = async (params: RunAuthFlowParams): Promise<AuthFlowRe
 
   const authHeader = buildAuthHeader(scheme, credentials);
   const normalizedHeaders = mergeHeaders(scheme, authHeader);
-  const request = buildProbeRequest(scheme, params.baseUrl, normalizedHeaders);
+  
+  // Verwende resolveApiBaseUrl statt direkt params.baseUrl
+  const resolvedBaseUrl = resolveApiBaseUrl(scheme, params.baseUrl);
+  const request = buildProbeRequest(scheme, resolvedBaseUrl, normalizedHeaders);
 
   const response = await http_request({
     method: request.method,

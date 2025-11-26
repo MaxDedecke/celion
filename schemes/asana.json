@@ -2,6 +2,7 @@
   "system": "Asana",
   "apiType": "REST",
   "baseUrlPattern": "*.asana.com",
+  "apiBaseUrl": "https://app.asana.com",
   "auth": {
     "type": "bearer",
     "headerTemplate": "Authorization: Bearer <TOKEN>",

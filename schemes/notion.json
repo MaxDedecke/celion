@@ -1,7 +1,8 @@
 {
   "system": "Notion",
   "apiType": "REST",
-  "baseUrlPattern": "api.notion.com",
+  "baseUrlPattern": "*.notion.so",
+  "apiBaseUrl": "https://api.notion.com",
   "auth": {
     "type": "bearer_token",
     "headerTemplate": "Authorization: Bearer <TOKEN>",
@@ -26,8 +27,8 @@
     }
   },
   "headers": {
-    "accept": "application/json",
-    "contentType": "application/json",
-    "notionVersionHeader": "Notion-Version: 2022-06-28"
+    "Accept": "application/json",
+    "Content-Type": "application/json",
+    "Notion-Version": "2022-06-28"
   }
 }
