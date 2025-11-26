@@ -111,6 +111,26 @@ All colors MUST be HSL.
 
   * {
     @apply border-border;
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--accent) / 0.5) transparent;
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--accent) / 0.5);
+    border-radius: 4px;
+    transition: background-color 0.2s;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--accent) / 0.7);
   }
 
   body {
@@ -283,59 +303,3 @@ All colors MUST be HSL.
 }
 
 /* Chat Animationen */
-@keyframes message-appear {
-  0% {
-    opacity: 0;
-    transform: translateY(12px);
-  }
-  100% {
-    opacity: 1;
-    transform: translateY(0);
-  }
-}
-
-@keyframes icon-pop {
-  0% {
-    transform: scale(0);
-    opacity: 0;
-  }
-  50% {
-    transform: scale(1.2);
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
-}
-
-.animate-message-appear {
-  animation: message-appear 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-}
-
-.animate-icon-pop {
-  animation: icon-pop 0.3s cubic-bezier(0.34, 1.56, 0.64, 1) 0.1s both;
-}
-
-/* Custom Chat Scrollbar */
-.chat-scrollbar {
-  scrollbar-width: thin;
-  scrollbar-color: hsl(var(--accent) / 0.5) transparent;
-}
-
-.chat-scrollbar::-webkit-scrollbar {
-  width: 8px;
-}
-
-.chat-scrollbar::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-.chat-scrollbar::-webkit-scrollbar-thumb {
-  background-color: hsl(var(--accent) / 0.5);
-  border-radius: 4px;
-  transition: background-color 0.2s;
-}
-
-.chat-scrollbar::-webkit-scrollbar-thumb:hover {
-  background-color: hsl(var(--accent) / 0.7);
-}
