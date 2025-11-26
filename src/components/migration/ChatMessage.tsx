@@ -32,37 +32,15 @@ const ChatMessage = ({ message, onOpenAgentOutput }: ChatMessageProps) => {
   const getIcon = () => {
     if (message.role === "agent") return Bot;
     if (message.role === "user") return User;
-    return Settings;
-  };
-
-  const getStatusIcon = () => {
-    // Bei Agenten-Nachrichten: Status-spezifisches Icon
-    if (message.role === "agent") {
-      switch (message.status) {
-        case "success": return CheckCircle2;
-        case "error": return XCircle;
-        case "pending": return Clock;
-        default: return Bot; // info = normales Bot-Icon
-      }
-    }
-    if (message.role === "user") return User;
-    return Settings;
+    return null; // System-Nachrichten haben kein Icon
   };
 
   const Icon = getIcon();
-  const StatusIcon = getStatusIcon();
 
   const getIconBackgroundColor = () => {
-    if (message.role === "agent") {
-      switch (message.status) {
-        case "success": return "bg-emerald-500/20";
-        case "error": return "bg-red-500/20";
-        case "pending": return "bg-amber-500/20";
-        default: return "bg-accent/20";
-      }
-    }
+    if (message.role === "agent") return "bg-accent/20";
     if (message.role === "user") return "bg-primary/20";
-    return "bg-muted";
+    return ""; // System-Nachrichten haben keinen Hintergrund
   };
 
   const getTextColor = () => {
@@ -74,12 +52,6 @@ const ChatMessage = ({ message, onOpenAgentOutput }: ChatMessageProps) => {
     }
   };
 
-  const getStatusColor = () => {
-    if (message.status === "success") return "text-emerald-600 dark:text-emerald-400";
-    if (message.status === "error") return "text-red-600 dark:text-red-400";
-    if (message.status === "pending") return "text-amber-600 dark:text-amber-400";
-    return "text-muted-foreground";
-  };
 
   const getBubbleStyles = () => {
     if (message.role === "user") {
@@ -105,22 +77,24 @@ const ChatMessage = ({ message, onOpenAgentOutput }: ChatMessageProps) => {
   return (
     <div
       className={cn(
-        "flex w-full gap-3 rounded-2xl p-3 transition-all duration-300",
-        "hover:scale-[1.01]",
-        "animate-message-appear",
+        "flex w-full gap-3 rounded-2xl p-2 transition-all duration-300",
         getBubbleStyles(),
         message.role === "system" && "max-w-[85%]",
         message.role !== "system" && "max-w-[90%]",
       )}
     >
-      <div
-        className={cn(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-full animate-icon-pop",
-          getIconBackgroundColor()
-        )}
-      >
-        <StatusIcon className={cn("h-4 w-4", getStatusColor())} />
-      </div>
+      {Icon ? (
+        <div
+          className={cn(
+            "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
+            getIconBackgroundColor()
+          )}
+        >
+          <Icon className="h-4 w-4" />
+        </div>
+      ) : (
+        <div className="h-8 w-8 shrink-0" />
+      )}
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex items-center gap-2">
           {message.stepInfo && (

@@ -46,7 +46,7 @@ const ChatMessageList = ({
   });
 
   return (
-    <div className="flex flex-col gap-3 pb-4 pr-3">
+    <div className="flex flex-col gap-2 pb-4 pr-3">
       {visibleMessages.map((message, index) => (
         <div
           key={message.id}
