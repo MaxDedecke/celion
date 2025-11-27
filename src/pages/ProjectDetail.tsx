@@ -383,7 +383,7 @@ const ProjectDetail = () => {
 
   if (loaderVisible) {
     return (
-      <div className="app-shell flex min-h-screen items-center justify-center p-6">
+      <div className="app-shell flex h-screen items-center justify-center p-6 overflow-hidden">
         <DataFlowLoader size="lg" />
       </div>
     );
@@ -394,8 +394,8 @@ const ProjectDetail = () => {
   }
 
   return (
-    <div className="app-shell flex min-h-screen flex-col p-6">
-      <div className="flex flex-1 gap-6">
+    <div className="app-shell flex h-screen flex-col px-6 pt-6 pb-6 overflow-hidden">
+      <div className="flex flex-1 gap-6 min-h-0">
         <Sidebar
           projects={projects}
           projectMigrations={sidebarMigrations}
