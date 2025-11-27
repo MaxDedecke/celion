@@ -35,23 +35,26 @@ export const useMessageQueue = <T extends { id: string; role?: string }>(
   useEffect(() => {
     const currentIds = new Set(allMessages.map(m => m.id));
     
-    // Beim ersten Render alle existierenden Nachrichten sofort sichtbar machen
-    // und als "completed" markieren (keine Animation für historische Nachrichten)
-    if (!isInitializedRef.current && allMessages.length > 0) {
+    // Neue Nachrichten erkennen (nur gegen previousIdsRef prüfen, nicht visibleIds - vermeidet Race Condition)
+    const newIds = allMessages.filter(m => !previousIdsRef.current.has(m.id));
+    
+    // Bulk-Load Erkennung: Mehr als 3 neue Nachrichten = historische Daten, sofort anzeigen
+    const isBulkLoad = newIds.length > 3;
+    
+    if (!isInitializedRef.current || isBulkLoad) {
+      // Alle Nachrichten sofort sichtbar und als completed markieren
       setVisibleIds(currentIds);
-      setCompletedAnimations(currentIds); // Alle historischen als completed markieren
+      setCompletedAnimations(currentIds);
       previousIdsRef.current = currentIds;
       isInitializedRef.current = true;
+      // Queue leeren falls etwas drin war
+      queueRef.current = [];
       return;
     }
     
-    // Nur neue Nachrichten nach Initialisierung queuen
-    const newMessages = allMessages.filter(
-      m => !previousIdsRef.current.has(m.id) && !visibleIds.has(m.id)
-    );
-    
-    if (newMessages.length > 0) {
-      newMessages.forEach(m => {
+    // Ab hier: Nur einzelne neue Nachrichten während der Session animieren
+    if (newIds.length > 0) {
+      newIds.forEach(m => {
         // Non-agent messages sofort anzeigen und als completed markieren
         if (m.role !== "agent") {
           setVisibleIds(prev => new Set([...prev, m.id]));
@@ -73,7 +76,7 @@ export const useMessageQueue = <T extends { id: string; role?: string }>(
     }
     
     previousIdsRef.current = currentIds;
-  }, [allMessages, visibleIds, animatingId]);
+  }, [allMessages, animatingId]);
 
   // Sicherheits-Timeout: Falls Animation nicht innerhalb von 10 Sekunden abgeschlossen wird
   useEffect(() => {
