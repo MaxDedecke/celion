@@ -27,7 +27,11 @@ All colors MUST be HSL.
     --muted-foreground: 215 16% 47%;
 
     --accent: 210 40% 96.0784%;
-    --accent-foreground: 210 40% 98%;
+    --accent-foreground: 222 47% 11%;
+    
+    /* Hover colors - dark on light background for contrast */
+    --hover: 222 47% 11%;
+    --hover-muted: 222 47% 11% / 0.08;
 
     --destructive: 0 84% 60%;
     --destructive-foreground: 210 40% 98%;
@@ -76,7 +80,11 @@ All colors MUST be HSL.
     --muted-foreground: 215 20% 65%;
 
     --accent: 217 91% 60%;
-    --accent-foreground: 222 47% 11%;
+    --accent-foreground: 210 40% 98%;
+    
+    /* Hover colors - light on dark background for contrast */
+    --hover: 210 40% 98%;
+    --hover-muted: 210 40% 98% / 0.08;
 
     --destructive: 0 62% 30%;
     --destructive-foreground: 210 40% 98%;
