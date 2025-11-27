@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { User, SquareArrowOutUpRight, CheckCircle2, XCircle, Play, Copy, Rocket } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -30,6 +31,14 @@ interface ChatMessageProps {
 }
 
 const ChatMessage = ({ message, onOpenAgentOutput, enableTypewriter = false, onTypewriterComplete }: ChatMessageProps) => {
+  // Fallback: Wenn Animation aktiviert aber Typewriter nicht gerendert wird (non-agent),
+  // sofort complete melden
+  useEffect(() => {
+    if (enableTypewriter && message.role !== "agent" && onTypewriterComplete) {
+      onTypewriterComplete();
+    }
+  }, [enableTypewriter, message.role, onTypewriterComplete]);
+
   const getIcon = () => {
     // Success/Error always have icons
     if (message.status === "success") return CheckCircle2;

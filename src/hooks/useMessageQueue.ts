@@ -75,10 +75,22 @@ export const useMessageQueue = <T extends { id: string; role?: string }>(
     previousIdsRef.current = currentIds;
   }, [allMessages, visibleIds, animatingId]);
 
+  // Sicherheits-Timeout: Falls Animation nicht innerhalb von 10 Sekunden abgeschlossen wird
+  useEffect(() => {
+    if (animatingId === null) return;
+    
+    const timeoutId = setTimeout(() => {
+      console.warn(`[MessageQueue] Animation timeout for message ${animatingId}, forcing completion`);
+      onAnimationComplete(animatingId);
+    }, 10000);
+    
+    return () => clearTimeout(timeoutId);
+  }, [animatingId, onAnimationComplete]);
+
   const visibleMessages = allMessages.filter(m => visibleIds.has(m.id));
   const hasQueuedMessages = queueRef.current.length > 0 || animatingId !== null;
 
-  return { 
+  return {
     visibleMessages, 
     hasQueuedMessages,
     animatingId,
