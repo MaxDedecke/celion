@@ -86,6 +86,8 @@ const normalizeActivityRecord = (activity: RawActivityRecord): Activity => {
   };
 };
 
+const MIGRATIONS_PAGE_SIZE = 20;
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const { migrationId, projectId } = useParams<{ migrationId?: string; projectId?: string }>();
@@ -110,6 +112,12 @@ const Dashboard = () => {
   const [transitioning, setTransitioning] = useState(false);
   const loaderVisible = useMinimumLoader(loading || transitioning, 1000);
   const migrationDetailsRef = useRef<MigrationDetailsRef>(null);
+  
+  // Lazy loading state for standalone migrations
+  const [hasMoreMigrations, setHasMoreMigrations] = useState(true);
+  const [isLoadingMoreMigrations, setIsLoadingMoreMigrations] = useState(false);
+  const [totalMigrationsCount, setTotalMigrationsCount] = useState(0);
+  const migrationsPageRef = useRef(0);
 
   // Check auth and load project data
   useEffect(() => {
@@ -152,13 +160,18 @@ const Dashboard = () => {
       }
       setMigrations(allMigrationsWithProjects);
 
-      // Load standalone migrations
-      const { data: standaloneData, error: standaloneError } = await supabaseDatabase.fetchStandaloneMigrations();
+      // Load standalone migrations with pagination (initial load)
+      migrationsPageRef.current = 0;
+      const { data: standaloneData, error: standaloneError, count } = await supabaseDatabase.fetchStandaloneMigrationsPaginated(MIGRATIONS_PAGE_SIZE, 0);
 
       if (standaloneError) throw standaloneError;
 
+      setTotalMigrationsCount(count || 0);
+      setHasMoreMigrations((standaloneData?.length || 0) === MIGRATIONS_PAGE_SIZE);
+      
       const standaloneWithDetails = await loadMigrationDetails(standaloneData || [], null);
       setStandaloneMigrations(standaloneWithDetails);
+      migrationsPageRef.current = 1;
     } catch (error: any) {
       toast.error("Fehler beim Laden der Daten");
       console.error(error);
@@ -224,6 +237,28 @@ const Dashboard = () => {
       }
     } catch (error: any) {
       console.error("Fehler beim Aktualisieren der Migration:", error);
+    }
+  };
+
+  // Load more migrations (infinite scroll)
+  const handleLoadMoreMigrations = async () => {
+    if (isLoadingMoreMigrations || !hasMoreMigrations) return;
+
+    setIsLoadingMoreMigrations(true);
+    try {
+      const offset = migrationsPageRef.current * MIGRATIONS_PAGE_SIZE;
+      const { data: standaloneData, error: standaloneError } = await supabaseDatabase.fetchStandaloneMigrationsPaginated(MIGRATIONS_PAGE_SIZE, offset);
+
+      if (standaloneError) throw standaloneError;
+
+      const newMigrationsWithDetails = await loadMigrationDetails(standaloneData || [], null);
+      setStandaloneMigrations(prev => [...prev, ...newMigrationsWithDetails]);
+      setHasMoreMigrations((standaloneData?.length || 0) === MIGRATIONS_PAGE_SIZE);
+      migrationsPageRef.current++;
+    } catch (error: any) {
+      console.error("Fehler beim Laden weiterer Migrationen:", error);
+    } finally {
+      setIsLoadingMoreMigrations(false);
     }
   };
 
@@ -612,6 +647,10 @@ const Dashboard = () => {
           onDeleteMigration={handleDeleteMigration}
           onEditMigration={handleEditMigration}
           onDuplicateMigration={handleDuplicateMigration}
+          onLoadMoreMigrations={handleLoadMoreMigrations}
+          hasMoreMigrations={hasMoreMigrations}
+          isLoadingMoreMigrations={isLoadingMoreMigrations}
+          totalMigrationsCount={totalMigrationsCount}
         />
 
         <div className="flex flex-1 flex-col gap-6">
