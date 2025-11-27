@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from "react";
+﻿import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import Sidebar from "@/components/Sidebar";
 import UserMenu from "@/components/UserMenu";
@@ -32,6 +32,8 @@ import {
   CONNECTOR_ENDPOINT_LABEL,
 } from "@/constants/migrations";
 
+const MIGRATIONS_PAGE_SIZE = 20;
+
 const Projects = () => {
   const navigate = useNavigate();
   const [selectedProject, setSelectedProject] = useState<string | null>(null);
@@ -53,6 +55,12 @@ const Projects = () => {
   const [projectIdForNewMigration, setProjectIdForNewMigration] = useState<string | null>(null);
   const [transitioning, setTransitioning] = useState(false);
   const loaderVisible = useMinimumLoader(loading || transitioning, 1000);
+  
+  // Lazy loading state for standalone migrations
+  const [hasMoreMigrations, setHasMoreMigrations] = useState(true);
+  const [isLoadingMoreMigrations, setIsLoadingMoreMigrations] = useState(false);
+  const [totalMigrationsCount, setTotalMigrationsCount] = useState(0);
+  const migrationsPageRef = useRef(0);
 
   useEffect(() => {
     checkAuth();
@@ -108,21 +116,51 @@ const Projects = () => {
       }
       setMigrations(allMigrationsWithProjects);
 
-      // Load standalone migrations
-      const { data: standaloneData, error: standaloneError } = await supabaseDatabase.fetchStandaloneMigrations();
+      // Load standalone migrations with pagination (initial load)
+      migrationsPageRef.current = 0;
+      const { data: standaloneData, error: standaloneError, count } = await supabaseDatabase.fetchStandaloneMigrationsPaginated(MIGRATIONS_PAGE_SIZE, 0);
 
       if (standaloneError) throw standaloneError;
+
+      setTotalMigrationsCount(count || 0);
+      setHasMoreMigrations((standaloneData?.length || 0) === MIGRATIONS_PAGE_SIZE);
 
       const standaloneFormatted = (standaloneData || []).map(m => ({
         id: m.id,
         name: m.name
       }));
       setStandaloneMigrations(standaloneFormatted);
+      migrationsPageRef.current = 1;
     } catch (error: any) {
       toast.error("Fehler beim Laden der Daten");
       console.error(error);
     } finally {
       setLoading(false);
+    }
+  };
+
+  // Load more migrations (infinite scroll)
+  const handleLoadMoreMigrations = async () => {
+    if (isLoadingMoreMigrations || !hasMoreMigrations) return;
+
+    setIsLoadingMoreMigrations(true);
+    try {
+      const offset = migrationsPageRef.current * MIGRATIONS_PAGE_SIZE;
+      const { data: standaloneData, error: standaloneError } = await supabaseDatabase.fetchStandaloneMigrationsPaginated(MIGRATIONS_PAGE_SIZE, offset);
+
+      if (standaloneError) throw standaloneError;
+
+      const newMigrations = (standaloneData || []).map(m => ({
+        id: m.id,
+        name: m.name
+      }));
+      setStandaloneMigrations(prev => [...prev, ...newMigrations]);
+      setHasMoreMigrations((standaloneData?.length || 0) === MIGRATIONS_PAGE_SIZE);
+      migrationsPageRef.current++;
+    } catch (error: any) {
+      console.error("Fehler beim Laden weiterer Migrationen:", error);
+    } finally {
+      setIsLoadingMoreMigrations(false);
     }
   };
 
@@ -366,6 +404,10 @@ const Projects = () => {
           }}
           onDeleteMigration={handleDeleteMigration}
           onEditMigration={handleEditMigration}
+          onLoadMoreMigrations={handleLoadMoreMigrations}
+          hasMoreMigrations={hasMoreMigrations}
+          isLoadingMoreMigrations={isLoadingMoreMigrations}
+          totalMigrationsCount={totalMigrationsCount}
         />
 
         <div className="flex flex-1 flex-col gap-6">

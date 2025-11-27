@@ -1,9 +1,10 @@
-import { Plus, Trash2, Pencil, PanelLeftClose, PanelLeft, Plug, ChevronDown, ChevronRight, Copy } from "lucide-react";
+import { Plus, Trash2, Pencil, PanelLeftClose, PanelLeft, Plug, ChevronDown, ChevronRight, Copy, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Logo from "./Logo";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 
 interface SidebarProps {
   projects: Array<{ id: string; name: string }>;
@@ -16,6 +17,11 @@ interface SidebarProps {
   onDeleteMigration?: (id: string) => void;
   onEditMigration?: (id: string) => void;
   onDuplicateMigration?: (id: string) => void;
+  // Lazy loading props
+  onLoadMoreMigrations?: () => Promise<void>;
+  hasMoreMigrations?: boolean;
+  isLoadingMoreMigrations?: boolean;
+  totalMigrationsCount?: number;
 }
 
 const Sidebar = ({
@@ -29,11 +35,17 @@ const Sidebar = ({
   onDeleteMigration,
   onEditMigration,
   onDuplicateMigration,
+  onLoadMoreMigrations,
+  hasMoreMigrations = false,
+  isLoadingMoreMigrations = false,
+  totalMigrationsCount = 0,
 }: SidebarProps) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [collapsedSize, setCollapsedSize] = useState<number>();
   const sidebarRef = useRef<HTMLDivElement | null>(null);
+  const migrationsScrollRef = useRef<HTMLDivElement | null>(null);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set(projects.map(p => p.id)));
+  const [projectsCollapsed, setProjectsCollapsed] = useState(false);
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -69,6 +81,24 @@ const Sidebar = ({
       resizeObserver.disconnect();
     };
   }, [isCollapsed]);
+
+  // Infinite scroll detection
+  useEffect(() => {
+    const scrollElement = migrationsScrollRef.current;
+    if (!scrollElement || !onLoadMoreMigrations) return;
+
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = scrollElement;
+      const nearBottom = scrollHeight - scrollTop - clientHeight < 100;
+
+      if (nearBottom && hasMoreMigrations && !isLoadingMoreMigrations) {
+        onLoadMoreMigrations();
+      }
+    };
+
+    scrollElement.addEventListener('scroll', handleScroll);
+    return () => scrollElement.removeEventListener('scroll', handleScroll);
+  }, [hasMoreMigrations, isLoadingMoreMigrations, onLoadMoreMigrations]);
 
   const collapsedDimension = collapsedSize ?? 80;
   const collapsedStyle = isCollapsed
@@ -112,7 +142,8 @@ const Sidebar = ({
         </Button>
       ) : (
         <>
-          <div className="mb-6 flex w-full items-center justify-between gap-2">
+          {/* Header - Fixed */}
+          <div className="mb-6 flex w-full items-center justify-between gap-2 flex-shrink-0">
             <Logo
               onClick={() => navigate("/dashboard")}
               className="cursor-pointer transition-all"
@@ -137,184 +168,236 @@ const Sidebar = ({
             </div>
           </div>
 
-          <nav className="flex-1 space-y-4 overflow-auto">
-            <div className="space-y-2">
-              <div className="flex items-center justify-between px-2">
-              <h3 
-                className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider cursor-pointer hover:text-foreground transition-colors"
-                onClick={() => navigate("/projects")}
-              >
-                Projekte
-              </h3>
-            </div>
-            {projects.map((project) => {
-              const projectMigs = projectMigrations.filter(m => m.projectId === project.id);
-              const hasProjectMigrations = projectMigs.length > 0;
-              return (
-                <div key={project.id} className="space-y-1">
-                  <div className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-sm transition-colors">
-                    <div className="flex flex-1 items-center gap-2">
-                      {hasProjectMigrations && (
-                        <button
-                          type="button"
-                          onClick={() => toggleProject(project.id)}
-                          className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-foreground/3 hover:text-foreground"
-                          aria-label={expandedProjects.has(project.id) ? "Projekt einklappen" : "Projekt ausklappen"}
-                          aria-expanded={expandedProjects.has(project.id)}
-                        >
-                          {expandedProjects.has(project.id) ? (
-                            <ChevronDown className="h-4 w-4" />
-                          ) : (
-                            <ChevronRight className="h-4 w-4" />
-                          )}
-                        </button>
-                      )}
-                      <button
-                        type="button"
-                        onClick={() => navigate(`/project/${encodeURIComponent(project.name)}`)}
-                        className="flex-1 text-left font-normal text-muted-foreground transition-colors hover:text-foreground"
-                      >
-                        {project.name}
-                      </button>
-                    </div>
+          <nav className="flex-1 flex flex-col min-h-0 overflow-hidden">
+            {/* Projects Section - Sticky & Collapsible */}
+            <div className="flex-shrink-0">
+              <Collapsible open={!projectsCollapsed} onOpenChange={(open) => setProjectsCollapsed(!open)}>
+                <div className="flex items-center justify-between px-2 py-2">
+                  <h3 
+                    className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider cursor-pointer hover:text-foreground transition-colors"
+                    onClick={() => navigate("/projects")}
+                  >
+                    Projekte
+                  </h3>
+                  <CollapsibleTrigger asChild>
                     <button
-                      onClick={() => onNewProjectMigration?.(project.id)}
-                      className="rounded p-1 transition-colors hover:bg-foreground/3"
-                      aria-label="Neue Migration"
+                      className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-foreground/3 hover:text-foreground"
+                      aria-label={projectsCollapsed ? "Projekte ausklappen" : "Projekte einklappen"}
                     >
-                      <Plus className="h-4 w-4" />
+                      {projectsCollapsed ? (
+                        <ChevronRight className="h-3 w-3" />
+                      ) : (
+                        <ChevronDown className="h-3 w-3" />
+                      )}
                     </button>
-                  </div>
+                  </CollapsibleTrigger>
+                </div>
 
-                  {expandedProjects.has(project.id) && projectMigs.length > 0 && (
-                    <div className="ml-6 space-y-1">
-                      {projectMigs.map((migration) => (
-                        <div
-                          key={migration.id}
-                          className={cn(
-                            "group flex items-center justify-between w-full rounded-xl px-4 py-2 text-sm transition-colors",
-                            selectedMigration === migration.id
-                              ? "border-l-2 border-primary bg-primary/5 text-foreground font-medium"
-                              : "text-muted-foreground/80 hover:bg-foreground/3 hover:text-foreground",
-                          )}
-                        >
-                          <button
-                            onClick={() => navigate(`/projects/${project.id}/migration/${migration.id}`)}
-                            className="flex-1 text-left"
-                          >
-                            {migration.name}
-                          </button>
-                          <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-70">
+                <CollapsibleContent className="animate-accordion-down data-[state=closed]:animate-accordion-up">
+                  <div className="space-y-1">
+                    {projects.map((project) => {
+                      const projectMigs = projectMigrations.filter(m => m.projectId === project.id);
+                      const hasProjectMigrations = projectMigs.length > 0;
+                      return (
+                        <div key={project.id} className="space-y-1">
+                          <div className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-sm transition-colors">
+                            <div className="flex flex-1 items-center gap-2">
+                              {hasProjectMigrations && (
+                                <button
+                                  type="button"
+                                  onClick={() => toggleProject(project.id)}
+                                  className="rounded-full p-1 text-muted-foreground transition-colors hover:bg-foreground/3 hover:text-foreground"
+                                  aria-label={expandedProjects.has(project.id) ? "Projekt einklappen" : "Projekt ausklappen"}
+                                  aria-expanded={expandedProjects.has(project.id)}
+                                >
+                                  {expandedProjects.has(project.id) ? (
+                                    <ChevronDown className="h-4 w-4" />
+                                  ) : (
+                                    <ChevronRight className="h-4 w-4" />
+                                  )}
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                onClick={() => navigate(`/project/${encodeURIComponent(project.name)}`)}
+                                className="flex-1 text-left font-normal text-muted-foreground transition-colors hover:text-foreground"
+                              >
+                                {project.name}
+                              </button>
+                            </div>
                             <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onDuplicateMigration?.(migration.id);
-                              }}
-                              className="rounded p-1 transition-colors hover:bg-foreground/3 hover:text-foreground"
-                              aria-label="Migration duplizieren"
+                              onClick={() => onNewProjectMigration?.(project.id)}
+                              className="rounded p-1 transition-colors hover:bg-foreground/3"
+                              aria-label="Neue Migration"
                             >
-                              <Copy className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onEditMigration?.(migration.id);
-                              }}
-                              className="rounded p-1 transition-colors hover:bg-foreground/3 hover:text-foreground"
-                              aria-label="Migration bearbeiten"
-                            >
-                              <Pencil className="h-4 w-4" />
-                            </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                onDeleteMigration?.(migration.id);
-                              }}
-                              className="rounded p-1 text-destructive transition-colors hover:bg-destructive/10"
-                              aria-label="Migration löschen"
-                            >
-                              <Trash2 className="h-4 w-4" />
+                              <Plus className="h-4 w-4" />
                             </button>
                           </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-              </div>
-            );
-          })}
-          </div>
 
-          <div className="space-y-2 border-t border-border/30 pt-4">
-            <div className="flex items-center justify-between px-2">
-              <h3 className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">Migrationen</h3>
-              <Button
-                onClick={onNewMigration}
-                variant="ghost"
-                size="icon"
-                className="h-6 w-6"
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
-            </div>
-            {standaloneMigrations.length > 0 ? (
-              <div className="space-y-1">
-                {standaloneMigrations.map((migration) => (
-                  <div
-                    key={migration.id}
-                    className={cn(
-                      "group flex items-center justify-between w-full rounded-xl px-4 py-2 text-sm transition-colors",
-                      selectedMigration === migration.id
-                        ? "border-l-2 border-primary bg-primary/5 text-foreground font-medium"
-                        : "text-muted-foreground/80 hover:bg-foreground/3 hover:text-foreground",
-                    )}
-                  >
-                    <button
-                      onClick={() => navigate(`/migration/${migration.id}`)}
-                      className="flex-1 text-left"
-                    >
-                      {migration.name}
-                    </button>
-                    <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-70">
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDuplicateMigration?.(migration.id);
-                        }}
-                        className="rounded p-1 transition-colors hover:bg-foreground/3 hover:text-foreground"
-                        aria-label="Migration duplizieren"
-                      >
-                        <Copy className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onEditMigration?.(migration.id);
-                        }}
-                        className="rounded p-1 transition-colors hover:bg-foreground/3 hover:text-foreground"
-                        aria-label="Migration bearbeiten"
-                      >
-                        <Pencil className="h-4 w-4" />
-                      </button>
-                      <button
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onDeleteMigration?.(migration.id);
-                        }}
-                        className="rounded p-1 text-destructive transition-colors hover:bg-destructive/10"
-                        aria-label="Migration löschen"
-                      >
-                        <Trash2 className="h-4 w-4" />
-                      </button>
-                    </div>
+                          {expandedProjects.has(project.id) && projectMigs.length > 0 && (
+                            <div className="ml-6 space-y-1">
+                              {projectMigs.map((migration) => (
+                                <div
+                                  key={migration.id}
+                                  className={cn(
+                                    "group flex items-center justify-between w-full rounded-xl px-4 py-2 text-sm transition-colors",
+                                    selectedMigration === migration.id
+                                      ? "border-l-2 border-primary bg-primary/5 text-foreground font-medium"
+                                      : "text-muted-foreground/80 hover:bg-foreground/3 hover:text-foreground",
+                                  )}
+                                >
+                                  <button
+                                    onClick={() => navigate(`/projects/${project.id}/migration/${migration.id}`)}
+                                    className="flex-1 text-left"
+                                  >
+                                    {migration.name}
+                                  </button>
+                                  <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-70">
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        onDuplicateMigration?.(migration.id);
+                                      }}
+                                      className="rounded p-1 transition-colors hover:bg-foreground/3 hover:text-foreground"
+                                      aria-label="Migration duplizieren"
+                                    >
+                                      <Copy className="h-4 w-4" />
+                                    </button>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        onEditMigration?.(migration.id);
+                                      }}
+                                      className="rounded p-1 transition-colors hover:bg-foreground/3 hover:text-foreground"
+                                      aria-label="Migration bearbeiten"
+                                    >
+                                      <Pencil className="h-4 w-4" />
+                                    </button>
+                                    <button
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        onDeleteMigration?.(migration.id);
+                                      }}
+                                      className="rounded p-1 text-destructive transition-colors hover:bg-destructive/10"
+                                      aria-label="Migration löschen"
+                                    >
+                                      <Trash2 className="h-4 w-4" />
+                                    </button>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
+                </CollapsibleContent>
+              </Collapsible>
+            </div>
+
+            {/* Divider */}
+            <div className="border-t border-border/30 my-2 flex-shrink-0" />
+
+            {/* Migrations Section - Scrollable with Infinite Scroll */}
+            <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
+              <div className="flex-shrink-0 flex items-center justify-between px-2 py-2">
+                <h3 className="text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">
+                  Migrationen {totalMigrationsCount > 0 && `(${totalMigrationsCount})`}
+                </h3>
+                <Button
+                  onClick={onNewMigration}
+                  variant="ghost"
+                  size="icon"
+                  className="h-6 w-6"
+                >
+                  <Plus className="h-4 w-4" />
+                </Button>
               </div>
-            ) : (
-              <p className="px-4 py-2 text-xs text-muted-foreground">Keine Migrationen</p>
-            )}
-          </div>
-        </nav>
+
+              {/* Scrollable Migrations Container */}
+              <div 
+                ref={migrationsScrollRef}
+                className="flex-1 overflow-y-auto min-h-0 space-y-1 pr-1"
+              >
+                {standaloneMigrations.length > 0 ? (
+                  <>
+                    {standaloneMigrations.map((migration) => (
+                      <div
+                        key={migration.id}
+                        className={cn(
+                          "group flex items-center justify-between w-full rounded-xl px-4 py-2 text-sm transition-colors",
+                          selectedMigration === migration.id
+                            ? "border-l-2 border-primary bg-primary/5 text-foreground font-medium"
+                            : "text-muted-foreground/80 hover:bg-foreground/3 hover:text-foreground",
+                        )}
+                      >
+                        <button
+                          onClick={() => navigate(`/migration/${migration.id}`)}
+                          className="flex-1 text-left"
+                        >
+                          {migration.name}
+                        </button>
+                        <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-70">
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDuplicateMigration?.(migration.id);
+                            }}
+                            className="rounded p-1 transition-colors hover:bg-foreground/3 hover:text-foreground"
+                            aria-label="Migration duplizieren"
+                          >
+                            <Copy className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onEditMigration?.(migration.id);
+                            }}
+                            className="rounded p-1 transition-colors hover:bg-foreground/3 hover:text-foreground"
+                            aria-label="Migration bearbeiten"
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </button>
+                          <button
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              onDeleteMigration?.(migration.id);
+                            }}
+                            className="rounded p-1 text-destructive transition-colors hover:bg-destructive/10"
+                            aria-label="Migration löschen"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Loading Indicator */}
+                    {isLoadingMoreMigrations && (
+                      <div className="flex items-center justify-center py-4 animate-fade-in">
+                        <div className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-muted/50">
+                          <Loader2 className="h-3 w-3 animate-spin text-primary" />
+                          <span className="text-xs text-muted-foreground">
+                            Lade weitere...
+                          </span>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* End of List Indicator */}
+                    {!hasMoreMigrations && standaloneMigrations.length > 0 && totalMigrationsCount > 20 && (
+                      <p className="text-center text-xs text-muted-foreground/50 py-2">
+                        Alle {totalMigrationsCount} Migrationen geladen
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <p className="px-4 py-2 text-xs text-muted-foreground">Keine Migrationen</p>
+                )}
+              </div>
+            </div>
+          </nav>
         </>
       )}
     </div>

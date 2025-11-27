@@ -48,6 +48,14 @@ export const supabaseDatabase = {
       .is("project_id", null)
       .order("created_at", { ascending: false }),
 
+  fetchStandaloneMigrationsPaginated: (limit: number, offset: number) =>
+    supabase
+      .from("migrations")
+      .select("*", { count: "exact" })
+      .is("project_id", null)
+      .order("created_at", { ascending: false })
+      .range(offset, offset + limit - 1),
+
   fetchMigrationById: (migrationId: string) =>
     supabase
       .from("migrations")
