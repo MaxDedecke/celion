@@ -181,13 +181,14 @@ const MigrationChatCard = ({
       <CardContent className="flex min-h-0 flex-1 flex-col p-4">
         <div className="relative min-h-0 flex-1">
           <div ref={scrollContainerRef} onScroll={handleScroll} className="absolute inset-0 overflow-y-auto">
-            <ChatMessageList 
+          <ChatMessageList 
               messages={chatMessages} 
               isAgentRunning={isStepRunning} 
               onOpenAgentOutput={onOpenAgentOutput}
               showContinueButton={(status === "not_started" || status === "running") && overallProgress < 100 && !isStepRunning}
               onContinue={onContinue}
               continueButtonText={status === "not_started" ? "Starten" : "Fortsetzen"}
+              currentStepTitle={activeStep?.title}
             />
           </div>
           

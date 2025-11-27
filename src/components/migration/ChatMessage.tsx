@@ -1,8 +1,7 @@
-import { Bot, User, Settings, SquareArrowOutUpRight, CheckCircle2, XCircle, Clock, Info, AlertTriangle } from "lucide-react";
+import { User, SquareArrowOutUpRight, CheckCircle2, XCircle, Play, Copy, Rocket } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { AGENT_WORKFLOW_STEPS } from "@/constants/agentWorkflow";
+import TypewriterText from "./TypewriterText";
 
 export type ChatMessageRole = "system" | "agent" | "user";
 export type ChatMessageStatus = "success" | "error" | "pending" | "info";
@@ -26,21 +25,34 @@ export interface ChatMessage {
 interface ChatMessageProps {
   message: ChatMessage;
   onOpenAgentOutput?: (stepId: string) => void;
+  enableTypewriter?: boolean;
 }
 
-const ChatMessage = ({ message, onOpenAgentOutput }: ChatMessageProps) => {
+const ChatMessage = ({ message, onOpenAgentOutput, enableTypewriter = false }: ChatMessageProps) => {
   const getIcon = () => {
-    if (message.role === "agent") return Bot;
+    // Success/Error always have icons
+    if (message.status === "success") return CheckCircle2;
+    if (message.status === "error") return XCircle;
+    
+    // Event-based icons
+    const content = message.content.toLowerCase();
+    if (content.includes("gestartet") || content.includes("erstellt") || content.includes("neue migration")) return Rocket;
+    if (content.includes("dupliziert") || content.includes("kopiert")) return Copy;
+    
+    // User always has icon
     if (message.role === "user") return User;
-    return null; // System-Nachrichten haben kein Icon
+    
+    // Everything else: no icon
+    return null;
   };
 
   const Icon = getIcon();
 
-  const getIconBackgroundColor = () => {
-    if (message.role === "agent") return "bg-accent/20";
-    if (message.role === "user") return "bg-primary/20";
-    return ""; // System-Nachrichten haben keinen Hintergrund
+  const getIconColor = () => {
+    if (message.status === "success") return "text-emerald-500";
+    if (message.status === "error") return "text-red-500";
+    if (message.role === "user") return "text-primary";
+    return "text-primary";
   };
 
   const getTextColor = () => {
@@ -50,17 +62,6 @@ const ChatMessage = ({ message, onOpenAgentOutput }: ChatMessageProps) => {
       case "pending": return "text-amber-700 dark:text-amber-300";
       default: return "text-foreground";
     }
-  };
-
-
-  const getBubbleStyles = () => {
-    if (message.role === "user") {
-      return "bg-transparent border-transparent ml-auto";
-    }
-    if (message.role === "agent") {
-      return "bg-transparent border-transparent";
-    }
-    return "bg-transparent border-transparent mx-auto";
   };
 
   const formatTimestamp = (timestamp: string) => {
@@ -78,23 +79,19 @@ const ChatMessage = ({ message, onOpenAgentOutput }: ChatMessageProps) => {
     <div
       className={cn(
         "flex w-full gap-3 rounded-2xl p-2 transition-all duration-300",
-        getBubbleStyles(),
-        message.role === "system" && "max-w-[85%]",
+        "bg-transparent border-transparent",
+        message.role === "user" && "ml-auto",
+        message.role === "system" && "max-w-[85%] mx-auto",
         message.role !== "system" && "max-w-[90%]",
       )}
     >
-      {Icon ? (
-        <div
-          className={cn(
-            "flex h-8 w-8 shrink-0 items-center justify-center rounded-full",
-            getIconBackgroundColor()
-          )}
-        >
-          <Icon className="h-4 w-4" />
-        </div>
-      ) : (
-        <div className="h-8 w-8 shrink-0" />
-      )}
+      {/* Icon or placeholder */}
+      <div className="h-8 w-8 shrink-0 flex items-center justify-center">
+        {Icon && (
+          <Icon className={cn("h-4 w-4", getIconColor())} />
+        )}
+      </div>
+      
       <div className="min-w-0 flex-1">
         <div className="mb-1 flex items-center gap-2">
           {message.stepInfo && (
@@ -105,7 +102,11 @@ const ChatMessage = ({ message, onOpenAgentOutput }: ChatMessageProps) => {
           <span className="text-[10px] text-muted-foreground">{formatTimestamp(message.timestamp)}</span>
         </div>
         <p className={cn("text-sm leading-relaxed", getTextColor())}>
-          {message.content}
+          {enableTypewriter && message.role === "agent" ? (
+            <TypewriterText text={message.content} speed={35} />
+          ) : (
+            message.content
+          )}
           {message.actionButton && onOpenAgentOutput && (
             <span
               onClick={() => onOpenAgentOutput(message.actionButton!.stepId)}
