@@ -49,17 +49,26 @@ const ChatMessageList = ({
   continueButtonText = "Fortsetzen",
   currentStepTitle
 }: ChatMessageListProps) => {
-  const { visibleMessages, hasQueuedMessages } = useMessageQueue(messages, {
-    delayMs: 800,
+  const { 
+    visibleMessages, 
+    hasQueuedMessages,
+    animatingId,
+    completedAnimations,
+    onAnimationComplete
+  } = useMessageQueue(messages, {
+    delayMs: 400,
   });
 
   return (
     <div className="flex flex-col gap-2 pb-4 pr-3">
       {visibleMessages.map((message, index) => {
-        const isNewMessage = index === visibleMessages.length - 1 && hasQueuedMessages;
+        // Typewriter nur für die aktuell animierende Nachricht
+        const shouldAnimate = animatingId === message.id && !completedAnimations.has(message.id);
+        
         return (
           <div
             key={message.id}
+            className="animate-fade-in"
             style={{
               animationDelay: `${Math.min(index * 30, 150)}ms`,
             }}
@@ -67,7 +76,8 @@ const ChatMessageList = ({
             <ChatMessage 
               message={message} 
               onOpenAgentOutput={onOpenAgentOutput}
-              enableTypewriter={isNewMessage}
+              enableTypewriter={shouldAnimate}
+              onTypewriterComplete={() => onAnimationComplete(message.id)}
             />
           </div>
         );

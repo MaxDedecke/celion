@@ -26,9 +26,10 @@ interface ChatMessageProps {
   message: ChatMessage;
   onOpenAgentOutput?: (stepId: string) => void;
   enableTypewriter?: boolean;
+  onTypewriterComplete?: () => void;
 }
 
-const ChatMessage = ({ message, onOpenAgentOutput, enableTypewriter = false }: ChatMessageProps) => {
+const ChatMessage = ({ message, onOpenAgentOutput, enableTypewriter = false, onTypewriterComplete }: ChatMessageProps) => {
   const getIcon = () => {
     // Success/Error always have icons
     if (message.status === "success") return CheckCircle2;
@@ -103,7 +104,7 @@ const ChatMessage = ({ message, onOpenAgentOutput, enableTypewriter = false }: C
         </div>
         <p className={cn("text-sm leading-relaxed", getTextColor())}>
           {enableTypewriter && message.role === "agent" ? (
-            <TypewriterText text={message.content} speed={35} />
+            <TypewriterText text={message.content} speed={35} onComplete={onTypewriterComplete} />
           ) : (
             message.content
           )}
