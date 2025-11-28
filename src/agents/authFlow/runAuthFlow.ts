@@ -45,9 +45,11 @@ ${credentialParts.join("\n")}
 
 Schritte:
 1. Lies das Schema mit read_scheme für "${normalizedSystem}"
-2. Konstruiere die Auth-Header basierend auf Schema und Credentials
-3. Führe den Probe-Request aus
-4. Gib das Ergebnis als JSON zurück`;
+2. Nutze construct_auth_header mit auth_type aus dem Schema, email und api_token aus den Credentials, und additional_headers aus schema.headers
+3. Führe http_request aus mit den konstruierten Headers zum Probe-Endpoint
+4. Gib das Ergebnis als JSON zurück
+
+WICHTIG: Verwende IMMER construct_auth_header für die Header-Konstruktion!`;
 };
 
 const processAuthFlowRun = async (
@@ -88,6 +90,60 @@ const processAuthFlowRun = async (
               output: JSON.stringify({ error: errorMessage }) 
             });
           }
+        }
+
+        // construct_auth_header Tool - führt Base64 Encoding durch
+        if (call.function?.name === "construct_auth_header") {
+          let args: {
+            auth_type: string;
+            email?: string;
+            api_token?: string;
+            additional_headers?: Record<string, string>;
+          } = { auth_type: "" };
+          
+          try {
+            args = JSON.parse(call.function?.arguments ?? "{}");
+          } catch {
+            // ignore parsing error
+          }
+
+          let constructedHeaders: Record<string, string> = {};
+
+          // Basic Auth: base64(email:apiToken)
+          if (args.auth_type === "basic" && args.email && args.api_token) {
+            const credentials = `${args.email}:${args.api_token}`;
+            const base64Encoded = btoa(credentials);
+            constructedHeaders["Authorization"] = `Basic ${base64Encoded}`;
+          }
+          // Bearer Auth: Bearer <token>
+          else if (["bearer", "bearer_token"].includes(args.auth_type) && args.api_token) {
+            constructedHeaders["Authorization"] = `Bearer ${args.api_token}`;
+          }
+          // API Key Header: X-Api-Key oder custom header
+          else if (args.auth_type === "api_key_header" && args.api_token) {
+            constructedHeaders["X-Api-Key"] = args.api_token;
+          }
+          // API Key Query: keine Auth-Header, wird als Query-Parameter verwendet
+          else if (["api_key_query", "api_key_token_query"].includes(args.auth_type)) {
+            // Keine Authorization Header für Query-basierte Auth
+            // Der Agent muss die Credentials als Query-Parameter an die URL anhängen
+          }
+
+          // Merge additional headers from schema
+          if (args.additional_headers) {
+            // Normalize header keys (contentType -> Content-Type, accept -> Accept)
+            for (const [key, value] of Object.entries(args.additional_headers)) {
+              if (key.toLowerCase() === "contenttype") {
+                constructedHeaders["Content-Type"] = value;
+              } else if (key.toLowerCase() === "accept") {
+                constructedHeaders["Accept"] = value;
+              } else {
+                constructedHeaders[key] = value;
+              }
+            }
+          }
+
+          toolOutputs.push({ tool_call_id: call.id, output: JSON.stringify(constructedHeaders) });
         }
 
         // http_request Tool

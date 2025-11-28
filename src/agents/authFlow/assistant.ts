@@ -11,19 +11,22 @@ export const createAuthFlowAssistant = async (
 
 ABLAUF:
 1. Lies zuerst das Schema für das System mit dem read_scheme Tool
-2. Konstruiere die korrekten Auth-Header basierend auf dem Schema und den Credentials
-3. Führe einen HTTP-Request zum Probe-Endpoint aus
+2. Rufe construct_auth_header auf mit den Credentials und Schema-Infos
+3. Führe http_request aus mit den konstruierten Headers
 4. Interpretiere das Ergebnis
 
-HEADER-KONSTRUKTION:
-- Bei type "basic": Authorization: Basic base64(email:apiToken)
-- Bei type "bearer" oder "bearer_token": Authorization: Bearer <token>
-- Bei type "api_key_query": Credentials als Query-Parameter (nicht im Header)
-- Beachte zusätzliche Headers aus dem Schema (z.B. Notion-Version, Content-Type)
+WICHTIG: Konstruiere NIEMALS die Authorization-Header selbst!
+Nutze IMMER construct_auth_header - nur dieses Tool kann Base64 korrekt kodieren.
+
+construct_auth_header PARAMETER:
+- auth_type: aus schema.auth.type (z.B. "basic", "bearer", "bearer_token")
+- email: aus den übergebenen Credentials (wenn schema.auth.requiresEmail = true)
+- api_token: aus den übergebenen Credentials
+- additional_headers: aus schema.headers (z.B. { "Accept": "application/json" })
 
 BASE-URL LOGIK:
 - Wenn apiBaseUrl im Schema definiert ist, verwende diese
-- Sonst extrahiere die Domain aus der übergebenen baseUrl
+- Sonst verwende die übergebene baseUrl
 
 ANTWORT-FORMAT (NUR JSON, kein anderer Text):
 {
@@ -70,8 +73,38 @@ Antworte NUR mit dem JSON-Objekt, ohne Markdown-Codeblöcke oder anderen Text.`;
     {
       type: "function" as const,
       function: {
+        name: "construct_auth_header",
+        description: "Konstruiert die Auth-Header basierend auf Schema und Credentials. Führt Base64-Encoding für Basic Auth durch. MUSS für alle Header-Konstruktion verwendet werden!",
+        parameters: {
+          type: "object",
+          properties: {
+            auth_type: {
+              type: "string",
+              enum: ["basic", "bearer", "bearer_token", "api_key_header", "api_key_query", "api_key_token_query"],
+              description: "Der Auth-Typ aus dem Schema (auth.type)",
+            },
+            email: {
+              type: "string",
+              description: "Email für Basic Auth (nur wenn auth.requiresEmail = true)",
+            },
+            api_token: {
+              type: "string",
+              description: "API Token für Basic/Bearer Auth",
+            },
+            additional_headers: {
+              type: "object",
+              description: "Zusätzliche Headers aus dem Schema (headers-Objekt, z.B. Accept, Content-Type)",
+            },
+          },
+          required: ["auth_type"],
+        },
+      },
+    },
+    {
+      type: "function" as const,
+      function: {
         name: "http_request",
-        description: "Führt einen HTTP-Request aus, um API-Credentials zu validieren. Nutzt den Backend-Proxy um CORS zu umgehen.",
+        description: "Führt einen HTTP-Request aus, um API-Credentials zu validieren. Nutzt den Backend-Proxy um CORS zu umgehen. WICHTIG: Verwende die Headers aus construct_auth_header!",
         parameters: {
           type: "object",
           properties: {
@@ -86,7 +119,7 @@ Antworte NUR mit dem JSON-Objekt, ohne Markdown-Codeblöcke oder anderen Text.`;
             },
             headers: {
               type: "object",
-              description: "HTTP-Header als Key-Value-Paare (Authorization, Content-Type, etc.)",
+              description: "HTTP-Header aus construct_auth_header (Authorization, Content-Type, etc.)",
             },
             body: {
               type: "string",
