@@ -798,7 +798,10 @@ const Dashboard = () => {
                         
                         // Count migrations activity per day based on updatedAt
                         [...migrations, ...standaloneMigrations].forEach(migration => {
-                          const migrationDate = new Date(migration.updatedAt).toISOString().split('T')[0];
+                          if (!migration.updatedAt) return;
+                          const date = new Date(migration.updatedAt);
+                          if (isNaN(date.getTime())) return;
+                          const migrationDate = date.toISOString().split('T')[0];
                           const dayData = last30Days.find(d => d.fullDate === migrationDate);
                           if (dayData) {
                             dayData.steps++;
