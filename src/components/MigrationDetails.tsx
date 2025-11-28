@@ -82,6 +82,53 @@ const collectProbeErrors = (probeResults: Record<string, unknown> | undefined): 
   return errors;
 };
 
+/**
+ * Extracts a human-readable output from agent results for display in chat.
+ * Prioritizes explanation/summary fields over raw output.
+ */
+const extractAgentReadableOutput = (
+  result: SystemDetectionStepResult | AuthFlowStepResult | CapabilityDiscoveryResult | undefined
+): string | null => {
+  if (!result) return null;
+
+  // AuthFlowStepResult - has source/target with explanation
+  if ('source' in result && result.source && 'explanation' in result.source) {
+    const authResult = result as AuthFlowStepResult;
+    const sourceExpl = (authResult.source as AuthFlowResult)?.explanation;
+    const targetExpl = (authResult.target as AuthFlowResult)?.explanation;
+    const combined = [sourceExpl, targetExpl].filter(Boolean).join(' ');
+    if (combined.trim()) return combined.trim();
+    
+    // Fallback to summary
+    const sourceSummary = (authResult.source as AuthFlowResult)?.summary;
+    const targetSummary = (authResult.target as AuthFlowResult)?.summary;
+    const summaryText = [sourceSummary, targetSummary].filter(Boolean).join(' ');
+    if (summaryText.trim()) return summaryText.trim();
+  }
+
+  // CapabilityDiscoveryResult - has summary
+  if ('summary' in result && typeof (result as CapabilityDiscoveryResult).summary === 'string') {
+    const summary = (result as CapabilityDiscoveryResult).summary;
+    if (summary?.trim()) return summary.trim();
+  }
+
+  // SystemDetectionStepResult - has source/target with rawOutput
+  // For system detection, we use rawOutput but keep it brief
+  if ('source' in result && result.source && 'rawOutput' in result.source) {
+    const sysResult = result as SystemDetectionStepResult;
+    const sourceRaw = (sysResult.source as SystemDetectionResult)?.rawOutput;
+    const targetRaw = (sysResult.target as SystemDetectionResult)?.rawOutput;
+    // Only use rawOutput if it's reasonably short (under 500 chars)
+    const combined = [sourceRaw, targetRaw]
+      .filter(Boolean)
+      .filter(text => text && text.length < 500)
+      .join('\n\n');
+    if (combined.trim()) return combined.trim();
+  }
+
+  return null;
+};
+
 export interface MigrationDetailsRef {
   openWorkflowPanel: () => void;
 }
@@ -1037,9 +1084,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         timestamp: new Date().toISOString()
       });
 
-      // Add activity with inline icon to open agent output
-      await createViewResultActivity(completedStepNode, false);
-
       setActivityLog((previous) => [
         {
           id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -1049,6 +1093,32 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         },
         ...previous,
       ]);
+
+      // Display agent's readable output in chat (if available)
+      const readableOutput = extractAgentReadableOutput(completedAgentResult);
+      if (readableOutput && readableOutput.trim().length > 0) {
+        const agentResponseTimestamp = new Date().toISOString();
+        
+        await supabaseDatabase.insertMigrationActivity({
+          migration_id: project.id,
+          type: "info",
+          title: readableOutput,
+          timestamp: agentResponseTimestamp
+        });
+        
+        setActivityLog((previous) => [
+          {
+            id: `agent-response-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            type: "info",
+            title: readableOutput,
+            timestamp: agentResponseTimestamp,
+          },
+          ...previous,
+        ]);
+      }
+
+      // Add activity with inline icon to open agent output
+      await createViewResultActivity(completedStepNode, false);
 
       const updatedNodes = nodesSnapshot.map((node, idx) => {
         if (idx === stepIndexToComplete) {
