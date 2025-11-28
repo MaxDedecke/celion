@@ -120,7 +120,7 @@ def _legacy_http_exception() -> HTTPException:
 @app.post("/agents/system-detection", response_model=LegacyResponse)
 async def run_system_detection(payload: DetectionRequest) -> LegacyResponse:
     """Inform callers that the Python discovery agent has been removed."""
-
+    print(f"run_system_detection called with payload: {payload}")
     raise _legacy_http_exception()
 
 
@@ -134,14 +134,14 @@ async def run_auth_flow(
     password: str | None = None,
 ) -> LegacyResponse:
     """Inform callers that the Python auth flow agent has been removed."""
-
+    print(f"run_auth_flow called with base_url: {base_url}, system: {system}, auth_type: {auth_type}")
     raise _legacy_http_exception()
 
 
 @app.post("/api/probe", response_model=ProbeResponse)
 async def run_credential_probe(payload: ProbeRequest) -> ProbeResponse:
     """Execute credential probe requests on the server to avoid browser CORS limits."""
-
+    print(f"run_credential_probe called with payload: {payload}")
     timestamp = datetime.now(timezone.utc).isoformat()
     headers = dict(payload.headers)
     used_headers: list[str] = list(headers.keys())
@@ -230,14 +230,14 @@ async def run_credential_probe(payload: ProbeRequest) -> ProbeResponse:
 @app.post("/api/schema-probe", response_model=SchemaProbeResponse)
 async def run_schema_probe(payload: SchemaProbeRequest) -> SchemaProbeResponse:
     """Perform generic schema discovery requests on behalf of the agent."""
-
+    print(f"run_schema_probe called with payload: {payload}")
     return await run_credential_probe(payload)  # type: ignore[arg-type]
 
 
 @app.post("/api/http-client", response_model=HttpClientResponse)
 async def run_http_client(payload: HttpClientRequest) -> HttpClientResponse:
     """Execute arbitrary HTTP requests on behalf of the agent without browser CORS limits."""
-
+    print(f"run_http_client called with payload: {payload}")
     headers = dict(payload.headers or {})
 
     try:
@@ -283,7 +283,7 @@ async def run_http_client(payload: HttpClientRequest) -> HttpClientResponse:
 @app.post("/api/curl-head-probe", response_model=CurlHeadProbeResponse)
 async def run_curl_head_probe(payload: CurlHeadProbeRequest) -> CurlHeadProbeResponse:
     """Perform a curl -I style HEAD probe via the backend and return redirects/headers."""
-
+    print(f"run_curl_head_probe called with payload: {payload}")
     headers = dict(payload.headers or {})
 
     try:
