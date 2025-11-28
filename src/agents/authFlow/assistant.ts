@@ -1,41 +1,83 @@
 // src/agents/authFlow/assistant.ts
 
 import type { OpenAiAssistant } from "../openai/types";
-import { httpRequestTool } from "../openai/httpTool";
 
 export const createAuthFlowAssistant = async (
   baseUrl: string,
   headers: Record<string, string>,
   model: string,
 ): Promise<OpenAiAssistant> => {
+  const instructions = `Du bist der Celion Auth Flow Agent. Deine Aufgabe ist es, API-Credentials zu validieren.
 
-  const instructions = [
-    "Du bist der Celion Auth Flow Agent.",
-    "Deine Aufgabe ist es, API-Credentials zu validieren, indem du einen echten Request an die API machst.",
-    "1. Analysiere das Zielsystem und bestimme die korrekte Authentifizierungsmethode.",
-    "2. Generiere alle notwendigen HTTP-Header (Authorization, Content-Type, spezielle Header wie Notion-Version, etc.).",
-    "3. Wähle einen geeigneten Endpunkt (z.B. /me, /user, /whoami) zur Validierung.",
-    "4. Führe den Request mit dem httpRequest-Tool aus.",
-    "5. Analysiere die Antwort: Bei Status 200-299 ist die Authentifizierung erfolgreich, bei 401/403 fehlgeschlagen.",
-    "Antworte ausschließlich als JSON mit den Feldern: system, base_url, authenticated (boolean basierend auf Response), auth_method, auth_headers, recommended_probe, explanation, raw_output.",
-    "Für Jira Cloud: Basic Auth mit base64(email:api_token).",
-    "Für Monday.com: Bearer Token im Authorization-Header, GraphQL an https://api.monday.com/v2.",
-    "Für Notion: Bearer Token, Notion-Version: 2022-06-28 Header erforderlich.",
-  ].join(" ");
+ABLAUF:
+1. Lies zuerst das Schema für das System mit dem read_scheme Tool
+2. Konstruiere die korrekten Auth-Header basierend auf dem Schema und den Credentials
+3. Führe einen HTTP-Request zum Probe-Endpoint aus
+4. Interpretiere das Ergebnis
+
+HEADER-KONSTRUKTION:
+- Bei type "basic": Authorization: Basic base64(email:apiToken)
+- Bei type "bearer" oder "bearer_token": Authorization: Bearer <token>
+- Bei type "api_key_query": Credentials als Query-Parameter (nicht im Header)
+- Beachte zusätzliche Headers aus dem Schema (z.B. Notion-Version, Content-Type)
+
+BASE-URL LOGIK:
+- Wenn apiBaseUrl im Schema definiert ist, verwende diese
+- Sonst extrahiere die Domain aus der übergebenen baseUrl
+
+ANTWORT-FORMAT (NUR JSON, kein anderer Text):
+{
+  "valid": boolean,
+  "explanation": "Lesbare Erklärung für den Chat (1-2 Sätze)",
+  "errorHint": "Bei Fehler: konkreter Hinweis was falsch sein könnte (null bei Erfolg)",
+  "authType": "basic|bearer|api_key_query|...",
+  "apiType": "REST|GRAPHQL",
+  "probe": {
+    "method": "GET|POST",
+    "endpoint": "/...",
+    "status": 200
+  },
+  "normalizedHeaders": { "Authorization": "...", ... },
+  "schemeUsed": "jiracloud"
+}
+
+FEHLER-HINWEISE (errorHint):
+- Bei 401: "Die Credentials scheinen ungültig zu sein. Prüfe ob der API-Token korrekt kopiert wurde."
+- Bei 403: "Der Zugriff wurde verweigert. Möglicherweise fehlen dem Token die nötigen Berechtigungen."
+- Bei 404: "Der Probe-Endpoint wurde nicht gefunden. Prüfe ob die Base-URL korrekt ist."
+- Bei Netzwerkfehler: "Verbindung fehlgeschlagen. Prüfe ob die URL erreichbar ist."
+
+Antworte NUR mit dem JSON-Objekt, ohne Markdown-Codeblöcke oder anderen Text.`;
 
   const tools = [
     {
       type: "function" as const,
       function: {
-        name: "httpClient",
-        description:
-          "Führt einen HTTP-Request aus, um API-Credentials zu validieren. Nutzt den Backend-Proxy (/api/http-client) um CORS zu umgehen.",
+        name: "read_scheme",
+        description: "Liest eine Schema-Datei aus /schemes/{system}.json. Die Schema-Datei enthält Auth-Konfiguration, Probe-Endpoints und Header-Templates.",
+        parameters: {
+          type: "object",
+          properties: {
+            system: {
+              type: "string",
+              description: "Der normalisierte System-Name (z.B. 'jiracloud', 'asana', 'mondaycom', 'notion'). Kleinbuchstaben, keine Sonderzeichen.",
+            },
+          },
+          required: ["system"],
+        },
+      },
+    },
+    {
+      type: "function" as const,
+      function: {
+        name: "http_request",
+        description: "Führt einen HTTP-Request aus, um API-Credentials zu validieren. Nutzt den Backend-Proxy um CORS zu umgehen.",
         parameters: {
           type: "object",
           properties: {
             url: {
               type: "string",
-              description: "Die vollständige URL für den Request",
+              description: "Die vollständige URL für den Request (Base-URL + Probe-Endpoint)",
             },
             method: {
               type: "string",
@@ -44,12 +86,11 @@ export const createAuthFlowAssistant = async (
             },
             headers: {
               type: "object",
-              description:
-                "HTTP-Header als Key-Value-Paare (z.B. Authorization, Content-Type, etc.). MUSS immer angegeben werden, auch wenn leer.",
+              description: "HTTP-Header als Key-Value-Paare (Authorization, Content-Type, etc.)",
             },
             body: {
-              type: "object",
-              description: "Request Body (optional, für POST/PUT)",
+              type: "string",
+              description: "Request Body als String (optional, für POST/PUT). Bei GraphQL der JSON-String mit query.",
             },
           },
           required: ["url", "method", "headers"],
@@ -63,8 +104,8 @@ export const createAuthFlowAssistant = async (
     headers,
     body: JSON.stringify({
       model,
-      name: "Celion Auth Flow",
-      description: "Validiert API-Credentials für Celion Migrationen.",
+      name: "Celion Auth Flow Agent",
+      description: "Validiert API-Credentials für Celion Migrationen mittels Schema-basierter Authentifizierung.",
       instructions,
       tools,
     }),

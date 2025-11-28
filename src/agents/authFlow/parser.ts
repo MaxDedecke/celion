@@ -7,7 +7,7 @@ export const parseAuthFlowResponse = (text: string): AuthFlowResult => {
   const jsonStr = extractJson(text);
   const parsed = JSON.parse(jsonStr);
 
-  // Abwärtskompatibilität: Unterstütze sowohl alte als auch neue Felder
+  // Neue Agent-Felder mit Fallbacks für Abwärtskompatibilität
   return {
     // Neue deterministische Felder
     valid: parsed.valid ?? Boolean(parsed.authenticated),
@@ -21,14 +21,21 @@ export const parseAuthFlowResponse = (text: string): AuthFlowResult => {
     },
     schemeUsed: parsed.schemeUsed ?? null,
     
+    // Neues Feld für Fehler-Hinweise
+    errorHint: parsed.errorHint ?? null,
+    
     // Alte Felder für Abwärtskompatibilität
     system: parsed.system ?? null,
     base_url: parsed.base_url ?? null,
     authenticated: Boolean(parsed.authenticated ?? parsed.valid),
     auth_method: parsed.auth_method ?? parsed.authType ?? null,
     auth_headers: parsed.auth_headers ?? parsed.normalizedHeaders ?? {},
-    recommended_probe: parsed.recommended_probe,
+    recommended_probe: parsed.recommended_probe ?? null,
     explanation: parsed.explanation ?? "",
     raw_output: parsed.raw_output ?? parsed,
+    reasoning: parsed.reasoning ?? null,
+    probe_result: parsed.probe_result ?? null,
+    summary: parsed.summary ?? null,
+    error_message: parsed.error_message ?? parsed.errorHint ?? null,
   };
 };
