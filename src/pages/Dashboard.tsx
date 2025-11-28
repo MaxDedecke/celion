@@ -772,9 +772,9 @@ const Dashboard = () => {
                 />
               </div>
             ) : (
-              <div className="app-surface flex h-full flex-col rounded-3xl px-8 py-6 overflow-y-auto">
-                {/* Activity Chart Section */}
-                <div className="pb-6 border-b border-border/20">
+              <div className="app-surface flex h-full flex-col rounded-3xl px-8 py-6 overflow-hidden">
+                {/* STICKY: Activity Chart Section */}
+                <div className="shrink-0 pb-6 border-b border-border/20">
                   <div className="flex items-center justify-between mb-4">
                     <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
                       Aktivitätsübersicht
@@ -846,8 +846,8 @@ const Dashboard = () => {
                   </div>
                 </div>
 
-                {/* Key Metrics Grid */}
-                <div className="grid grid-cols-3 gap-6 py-6 border-b border-border/20">
+                {/* STICKY: Key Metrics Grid */}
+                <div className="shrink-0 grid grid-cols-3 gap-6 py-6 border-b border-border/20">
                   {/* Vendor Lock-Ins Prevented */}
                   <div className="flex items-start gap-4">
                     <div className="p-2.5 rounded-xl bg-emerald-500/10">
@@ -947,14 +947,15 @@ const Dashboard = () => {
                   </div>
                 </div>
 
-                {/* Recent Activities List */}
-                <div className="flex-1 min-h-0 pt-6">
-                  <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-4">
+                {/* SCROLLABLE: Recent Activities List */}
+                <div className="flex-1 min-h-0 pt-6 flex flex-col">
+                  <h2 className="shrink-0 text-xs font-medium text-muted-foreground uppercase tracking-wide mb-4">
                     Letzte Aktivitäten
                   </h2>
                   
                   {[...migrations, ...standaloneMigrations].length > 0 ? (
-                    <div className="space-y-1">
+                    <div className="flex-1 min-h-0 overflow-y-auto -mx-4 px-4">
+                      <div className="space-y-1">
                       {[...migrations, ...standaloneMigrations]
                         .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
                         .slice(0, 6)
@@ -990,6 +991,7 @@ const Dashboard = () => {
                             </div>
                           </button>
                         ))}
+                      </div>
                     </div>
                   ) : (
                     <div className="flex flex-col items-center justify-center py-12 text-center">

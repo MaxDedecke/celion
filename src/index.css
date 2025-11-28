@@ -120,9 +120,10 @@ All colors MUST be HSL.
   * {
     @apply border-border;
     scrollbar-width: thin;
-    scrollbar-color: hsl(var(--accent) / 0.5) transparent;
+    scrollbar-color: transparent transparent;
   }
 
+  /* Webkit browsers - hide scrollbar by default, show on hover */
   *::-webkit-scrollbar {
     width: 8px;
   }
@@ -132,13 +133,23 @@ All colors MUST be HSL.
   }
 
   *::-webkit-scrollbar-thumb {
-    background-color: hsl(var(--accent) / 0.5);
+    background-color: transparent;
     border-radius: 4px;
     transition: background-color 0.2s;
   }
 
-  *::-webkit-scrollbar-thumb:hover {
+  /* Show scrollbar only when hovering over scrollable element */
+  *:hover::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--accent) / 0.5);
+  }
+
+  *:hover::-webkit-scrollbar-thumb:hover {
     background-color: hsl(var(--accent) / 0.7);
+  }
+
+  /* Firefox - show scrollbar on hover */
+  *:hover {
+    scrollbar-color: hsl(var(--accent) / 0.5) transparent;
   }
 
   body {
