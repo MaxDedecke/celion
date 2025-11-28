@@ -24,7 +24,7 @@ import {
   TrendingUp,
   TrendingDown
 } from "lucide-react";
-import { AreaChart, Area, ResponsiveContainer } from "recharts";
+import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts";
 import { toast } from "sonner";
 import { supabaseDatabase } from "@/api/supabaseDatabase";
 import { useMinimumLoader } from "@/hooks/useMinimumLoader";
@@ -773,14 +773,84 @@ const Dashboard = () => {
               </div>
             ) : (
               <div className="app-surface flex h-full flex-col rounded-3xl px-8 py-6 overflow-y-auto">
+                {/* Activity Chart Section */}
+                <div className="pb-6 border-b border-border/20">
+                  <div className="flex items-center justify-between mb-4">
+                    <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                      Aktivitätsübersicht
+                    </h2>
+                    <span className="text-xs text-muted-foreground">Letzte 30 Tage</span>
+                  </div>
+                  
+                  <div className="h-32">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={(() => {
+                        // Generate last 30 days activity data
+                        const last30Days = Array.from({ length: 30 }, (_, i) => {
+                          const date = new Date();
+                          date.setDate(date.getDate() - (29 - i));
+                          return {
+                            date: date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }),
+                            fullDate: date.toISOString().split('T')[0],
+                            steps: 0
+                          };
+                        });
+                        
+                        // Count migrations activity per day based on updatedAt
+                        [...migrations, ...standaloneMigrations].forEach(migration => {
+                          const migrationDate = new Date(migration.updatedAt).toISOString().split('T')[0];
+                          const dayData = last30Days.find(d => d.fullDate === migrationDate);
+                          if (dayData) {
+                            dayData.steps++;
+                          }
+                        });
+                        
+                        return last30Days;
+                      })()}>
+                        <defs>
+                          <linearGradient id="activityGradient" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
+                            <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                          </linearGradient>
+                        </defs>
+                        <XAxis 
+                          dataKey="date" 
+                          axisLine={false} 
+                          tickLine={false}
+                          tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                          interval="preserveStartEnd"
+                        />
+                        <YAxis hide />
+                        <Tooltip 
+                          content={({ active, payload }) => (
+                            active && payload?.[0] ? (
+                              <div className="bg-popover px-3 py-2 rounded-lg shadow-lg border">
+                                <p className="text-xs text-muted-foreground">{payload[0].payload.date}</p>
+                                <p className="text-sm font-semibold">{payload[0].value} Schritte</p>
+                              </div>
+                            ) : null
+                          )}
+                        />
+                        <Area 
+                          type="monotone" 
+                          dataKey="steps" 
+                          stroke="hsl(var(--primary))" 
+                          fill="url(#activityGradient)" 
+                          strokeWidth={2}
+                        />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+
                 {/* Key Metrics Grid */}
-                <div className="grid grid-cols-3 gap-6 pb-6 border-b border-border/20">
+                <div className="grid grid-cols-3 gap-6 py-6 border-b border-border/20">
                   {/* Vendor Lock-Ins Prevented */}
                   <div className="flex items-start gap-4">
                     <div className="p-2.5 rounded-xl bg-emerald-500/10">
                       <ShieldCheck className="h-5 w-5 text-emerald-500" />
                     </div>
-                    <div className="flex-1 min-w-0">
+                    <div>
                       <div className="flex items-baseline gap-2">
                         <p className="text-2xl font-semibold tabular-nums">
                           {[...migrations, ...standaloneMigrations].filter(m => m.progress === 100).length}
@@ -791,21 +861,6 @@ const Dashboard = () => {
                         </span>
                       </div>
                       <p className="text-sm text-muted-foreground">Vendor Lock-Ins verhindert</p>
-                    </div>
-                    <div className="w-16 h-8">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <AreaChart data={[
-                          { v: 1 }, { v: 2 }, { v: 2 }, { v: 3 }, { v: 4 }, { v: 4 }, { v: 5 }
-                        ]}>
-                          <Area 
-                            type="monotone" 
-                            dataKey="v" 
-                            stroke="hsl(var(--primary))" 
-                            fill="hsl(var(--primary) / 0.2)" 
-                            strokeWidth={1.5}
-                          />
-                        </AreaChart>
-                      </ResponsiveContainer>
                     </div>
                   </div>
 
@@ -889,7 +944,7 @@ const Dashboard = () => {
                   </div>
                 </div>
 
-                {/* Migrations List */}
+                {/* Recent Activities List */}
                 <div className="flex-1 min-h-0 pt-6">
                   <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-4">
                     Letzte Aktivitäten
