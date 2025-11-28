@@ -50,38 +50,6 @@ import {
   simulateTargetObjects,
 } from "./migration/migrationDetails.helpers";
 
-const collectProbeErrors = (probeResults: Record<string, unknown> | undefined): string[] => {
-  if (!probeResults || typeof probeResults !== "object") {
-    return [];
-  }
-
-  const errors: string[] = [];
-
-  const inspectValue = (value: unknown) => {
-    if (!value || typeof value !== "object") {
-      return;
-    }
-
-    if (Array.isArray(value)) {
-      value.forEach(inspectValue);
-      return;
-    }
-
-    const recordValue = value as Record<string, unknown>;
-    if (typeof recordValue.error === "string" && recordValue.error.trim()) {
-      errors.push(recordValue.error.trim());
-    } else if (typeof recordValue.status === "number" && recordValue.status >= 400) {
-      errors.push(`Probe antwortete mit Status ${recordValue.status}.`);
-    }
-
-    Object.values(recordValue).forEach(inspectValue);
-  };
-
-  Object.values(probeResults).forEach(inspectValue);
-
-  return errors;
-};
-
 /**
  * Extracts a human-readable output from agent results for display in chat.
  * Prioritizes explanation/summary fields over raw output.
@@ -106,10 +74,21 @@ const extractAgentReadableOutput = (
     if (summaryText.trim()) return summaryText.trim();
   }
 
-  // CapabilityDiscoveryResult - has summary
-  if ('summary' in result && typeof (result as CapabilityDiscoveryResult).summary === 'string') {
-    const summary = (result as CapabilityDiscoveryResult).summary;
-    if (summary?.trim()) return summary.trim();
+  // CapabilityDiscoveryResult - summarize object counts
+  if ('objects' in result && result.objects && typeof result.objects === 'object') {
+    const capability = result as CapabilityDiscoveryResult;
+    const entries = Object.entries(capability.objects || {})
+      .map(([key, value]) => {
+        const info = value as { count?: number; error?: string | null };
+        const countText = typeof info.count === 'number' ? info.count : 0;
+        const errorText = info.error ? ` (Fehler: ${info.error})` : '';
+        return `${key}: ${countText}${errorText}`;
+      })
+      .filter(Boolean);
+
+    if (entries.length > 0) {
+      return entries.join('; ');
+    }
   }
 
   // SystemDetectionStepResult - has source/target with rawOutput
@@ -724,18 +703,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
           email,
           password,
         );
-
-        const probeErrors = collectProbeErrors(discoveryResult?.probe_results);
-        if (probeErrors.length > 0) {
-          const combinedError = probeErrors.join(" | ");
-          const errorMessage = `Capability Discovery fehlgeschlagen: ${probeErrors[0]}`;
-          await appendActivity("error", errorMessage);
-          toast.error(errorMessage);
-          throw new AgentExecutionError(errorMessage, {
-            ...discoveryResult,
-            error: combinedError,
-          });
-        }
         reportProgress(90);
 
         await appendActivity("success", "Capability Discovery abgeschlossen");
@@ -1795,7 +1762,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
     return Boolean(
       value &&
       typeof value === "object" &&
-      ("api_spec_found" in (value as Record<string, unknown>) || "probe_results" in (value as Record<string, unknown>)),
+      "objects" in (value as Record<string, unknown>),
     );
   };
 

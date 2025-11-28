@@ -57,124 +57,45 @@ const AgentOutputDisplay = ({ sourceResult, targetResult, schemaResult }: AgentO
       );
     }
 
+    const objectEntries = Object.entries(result.objects || {});
+
     return (
       <Card className="h-full">
         <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            Capability Discovery
-            {result.api_spec_found ? (
-              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400" />
-            ) : (
-              <AlertCircle className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-            )}
-          </CardTitle>
-          {result.summary && <p className="text-sm text-muted-foreground">{result.summary}</p>}
+          <CardTitle className="text-lg flex items-center gap-2">Capability Discovery</CardTitle>
+          <p className="text-sm text-muted-foreground">System: {result.system || "Unbekannt"}</p>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="grid gap-3 md:grid-cols-2">
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase text-muted-foreground">API Spec</p>
-              <div className="flex items-center gap-2 text-sm">
-                <Badge variant={result.api_spec_found ? "secondary" : "destructive"}>
-                  {result.api_spec_found ? "Gefunden" : "Nicht gefunden"}
-                </Badge>
-                {result.spec_url && <span className="text-xs font-mono break-all">{result.spec_url}</span>}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <p className="text-xs font-semibold uppercase text-muted-foreground">Authentifizierung</p>
-              <pre className="rounded-md bg-muted/50 p-2 text-xs whitespace-pre-wrap break-all">
-                {JSON.stringify(result.authentication, null, 2) || "{}"}
-              </pre>
-            </div>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <div>
-              <p className="text-xs font-semibold uppercase text-muted-foreground">Entities ({result.entities.length})</p>
-              {result.entities.length > 0 ? (
-                <div className="flex flex-wrap gap-2 pt-1">
-                  {result.entities.map((entity, index) => {
-                    let entityLabel = "Unknown";
-                    if (typeof entity === "string") {
-                      entityLabel = entity;
-                    } else if (entity && typeof entity === "object") {
-                      const entityObj = entity as Record<string, unknown>;
-                      if ("name" in entityObj && typeof entityObj.name === "string") {
-                        entityLabel = entityObj.name;
-                      } else {
-                        entityLabel = JSON.stringify(entity, null, 2);
-                      }
-                    }
-
-                    return (
-                      <Badge key={`${index}-${entityLabel}`} variant="outline" className="text-xs whitespace-pre-wrap">
-                        {entityLabel}
-                      </Badge>
-                    );
-                  })}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">Keine Entities erkannt.</p>
-              )}
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase text-muted-foreground">Endpoints ({result.endpoints.length})</p>
-              {result.endpoints.length > 0 ? (
-                <div className="space-y-1 pt-1">
-                  {result.endpoints.slice(0, 6).map((endpoint, index) => {
-                    const endpointLabel =
-                      typeof endpoint === "string" ? endpoint : JSON.stringify(endpoint, null, 2);
-
-                    return (
-                      <p key={`${index}-${endpointLabel}`} className="text-xs font-mono break-all whitespace-pre-wrap">
-                        {endpointLabel}
-                      </p>
-                    );
-                  })}
-                  {result.endpoints.length > 6 && (
-                    <p className="text-xs text-muted-foreground">… {result.endpoints.length - 6} weitere</p>
-                  )}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">Keine Endpunkte extrahiert.</p>
-              )}
-            </div>
-          </div>
-
-          <div className="grid gap-3 md:grid-cols-2">
-            <div>
-              <p className="text-xs font-semibold uppercase text-muted-foreground">Pagination</p>
-              <pre className="rounded-md bg-muted/50 p-2 text-xs whitespace-pre-wrap break-all">
-                {JSON.stringify(result.pagination, null, 2) || "{}"}
-              </pre>
-            </div>
-            <div>
-              <p className="text-xs font-semibold uppercase text-muted-foreground">Schemas</p>
-              <pre className="rounded-md bg-muted/50 p-2 text-xs whitespace-pre-wrap break-all">
-                {JSON.stringify(result.schemas, null, 2) || "{}"}
-              </pre>
-            </div>
-          </div>
-
           <div className="space-y-2">
-            <p className="text-xs font-semibold uppercase text-muted-foreground">Probe Results</p>
-            <pre className="rounded-md bg-muted/50 p-2 text-xs whitespace-pre-wrap break-all">
-              {JSON.stringify(result.probe_results, null, 2) || "{}"}
-            </pre>
+            <p className="text-xs font-semibold uppercase text-muted-foreground">
+              Objekte ({objectEntries.length})
+            </p>
+            {objectEntries.length > 0 ? (
+              <div className="space-y-2">
+                {objectEntries.map(([name, info]) => {
+                  const count = typeof info?.count === "number" ? info.count : 0;
+                  const error = info?.error;
+                  return (
+                    <div key={name} className="flex items-center justify-between gap-3 text-sm">
+                      <span className="font-medium text-foreground truncate">{name}</span>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="text-xs px-2 py-0.5">
+                          {count}
+                        </Badge>
+                        {error && (
+                          <span className="text-xs text-red-600 dark:text-red-400 max-w-[280px] truncate" title={error}>
+                            {error}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Keine Objekte ermittelt.</p>
+            )}
           </div>
-
-          {result.limitations.length > 0 && (
-            <div className="space-y-1">
-              <p className="text-xs font-semibold uppercase text-muted-foreground">Limitations</p>
-              <ul className="list-disc pl-5 space-y-1 text-xs text-muted-foreground">
-                {result.limitations.map((item, index) => (
-                  <li key={`${item}-${index}`}>{item}</li>
-                ))}
-              </ul>
-            </div>
-          )}
 
           {result.raw_output && (
             <div className="flex items-center gap-2 pt-1">

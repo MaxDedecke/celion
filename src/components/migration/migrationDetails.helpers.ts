@@ -501,30 +501,30 @@ export const normalizeCapabilityDiscoveryResult = (
     return null;
   }
 
-  const record = input as Partial<CapabilityDiscoveryResult>;
+  const record = input as Partial<CapabilityDiscoveryResult> & { objects?: unknown; system?: unknown };
+
+  const normalizedObjects: CapabilityDiscoveryResult["objects"] = {};
+  if (record.objects && typeof record.objects === "object" && !Array.isArray(record.objects)) {
+    Object.entries(record.objects as Record<string, unknown>).forEach(([key, value]) => {
+      if (!value || typeof value !== "object") {
+        return;
+      }
+
+      const objectInfo = value as { count?: unknown; error?: unknown };
+      const count = typeof objectInfo.count === "number"
+        ? objectInfo.count
+        : Number(objectInfo.count) || 0;
+      const error = typeof objectInfo.error === "string" && objectInfo.error.trim()
+        ? objectInfo.error.trim()
+        : null;
+
+      normalizedObjects[key] = { count, ...(error ? { error } : {}) };
+    });
+  }
 
   return {
-    api_spec_found: Boolean(record.api_spec_found),
-    spec_url: typeof record.spec_url === "string" ? record.spec_url : "",
-    entities: Array.isArray(record.entities) ? (record.entities as string[]) : [],
-    endpoints: Array.isArray(record.endpoints) ? (record.endpoints as string[]) : [],
-    schemas: (record.schemas && typeof record.schemas === "object"
-      ? (record.schemas as Record<string, unknown>)
-      : {}),
-    authentication:
-      record.authentication && typeof record.authentication === "object"
-        ? (record.authentication as Record<string, unknown>)
-        : {},
-    pagination:
-      record.pagination && typeof record.pagination === "object"
-        ? (record.pagination as Record<string, unknown>)
-        : {},
-    probe_results:
-      record.probe_results && typeof record.probe_results === "object"
-        ? (record.probe_results as Record<string, unknown>)
-        : {},
-    limitations: Array.isArray(record.limitations) ? (record.limitations as string[]) : [],
-    summary: typeof record.summary === "string" ? record.summary : "",
+    system: typeof record.system === "string" ? record.system : "",
+    objects: normalizedObjects,
     raw_output: typeof record.raw_output === "string" ? record.raw_output : null,
   };
 };

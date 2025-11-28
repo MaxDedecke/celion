@@ -112,20 +112,14 @@ export interface CurlHeadProbeResponse {
   error?: string | null;
 }
 
-export interface ApiSpecAnalysis {
-  api_spec_found: boolean;
-  spec_url: string;
-  entities: string[];
-  endpoints: string[];
-  schemas: Record<string, unknown>;
-  authentication: Record<string, unknown>;
-  pagination: Record<string, unknown>;
-  probe_results: Record<string, unknown>;
-  limitations: string[];
-  summary: string;
+export interface CapabilityObjectInfo {
+  count: number;
+  error?: string | null;
 }
 
-export interface CapabilityDiscoveryResult extends ApiSpecAnalysis {
+export interface CapabilityDiscoveryResult {
+  system: string;
+  objects: Record<string, CapabilityObjectInfo>;
   raw_output?: string | null;
 }
 

@@ -42,7 +42,7 @@ const AgentResultDialog = ({
     return Boolean(
       value &&
         typeof value === "object" &&
-        ("api_spec_found" in (value as Record<string, unknown>) || "probe_results" in (value as Record<string, unknown>)),
+        "objects" in (value as Record<string, unknown>),
     );
   };
 

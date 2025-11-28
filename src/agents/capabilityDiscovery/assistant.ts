@@ -1,54 +1,99 @@
 // src/agents/capabilityDiscovery/assistant.ts
 
-import type { OpenAiAssistant } from "../openai/types";
+import type { SchemeDefinition } from "@/types/schemes";
 
-export const createCapabilityDiscoveryAssistant = async (
-  baseUrl: string,
-  headers: Record<string, string>,
-  model: string,
-): Promise<OpenAiAssistant> => {
+export type CapabilityDiscoveryCredentials = {
+  apiToken?: string;
+  email?: string;
+  password?: string;
+};
 
-  // EXAKT wie im alten agentService.ts
-  const response = await fetch(`${baseUrl}/assistants`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model,
-      name: "Celion Capability Discovery",
-      description: "Analysiert APIs vollständig autonom über httpClient.",
-      tools: [
-        {
-          type: "function",
-          function: {
-            name: "httpClient",
-            description: "Führt GET/POST Requests aus",
-            parameters: {
-              type: "object",
-              properties: {
-                url: { type: "string", description: "Vollständige URL des Requests" },
-                method: { type: "string", description: "HTTP Methode" },
-                headers: {
-                  type: "object",
-                  description: "HTTP Header als Key-Value Map",
-                  additionalProperties: { type: "string" },
-                },
-                body: { description: "Request Body (JSON oder Text)" },
-              },
-              required: ["url", "method"],
-            },
-          },
-        },
-      ],
-    }),
+export const normalizeSystemName = (systemName: string): string =>
+  systemName
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "")
+    .trim();
+
+export const resolveSchemePath = (normalizedSystem: string) => `/schemes/${normalizedSystem}.json`;
+
+const substituteCredentialToken = (
+  token: string,
+  credentials: CapabilityDiscoveryCredentials,
+): string => {
+  const normalized = token.toLowerCase();
+  switch (normalized) {
+    case "token":
+    case "apitoken":
+      return credentials.apiToken || "";
+    case "email":
+      return credentials.email || "";
+    case "password":
+      return credentials.password || "";
+    default:
+      return (credentials as Record<string, string | undefined>)[token] || "";
+  }
+};
+
+const replaceBase64Placeholders = (
+  value: string,
+  credentials: CapabilityDiscoveryCredentials,
+): string =>
+  value.replace(/<BASE64\(([^)]+)\)>/gi, (_match, inner) => {
+    const replacedInner = inner.replace(/([A-Za-z0-9_]+)/g, (token) => substituteCredentialToken(token, credentials));
+    return btoa(replacedInner);
   });
 
-  if (!response.ok) {
-    const msg = await response.text().catch(() => response.statusText);
-    throw new Error(`Capability Assistant konnte nicht erstellt werden: ${msg}`);
+const replaceCredentialPlaceholders = (
+  value: string,
+  credentials: CapabilityDiscoveryCredentials,
+): string =>
+  value.replace(/<([A-Za-z0-9_]+)>/g, (_match, token) => substituteCredentialToken(token, credentials));
+
+export const buildAuthHeaders = (
+  scheme: SchemeDefinition,
+  credentials: CapabilityDiscoveryCredentials,
+): Record<string, string> => {
+  const template = scheme.auth?.headerTemplate;
+
+  if (!template || typeof template !== "string") {
+    return {};
   }
 
-  const payload = await response.json();
-  if (!payload.id) throw new Error("Capability Assistant creation returned no ID");
+  const [rawKey, ...valueParts] = template.split(":");
+  if (!rawKey || valueParts.length === 0) {
+    return {};
+  }
 
-  return { id: payload.id };
+  const headerKey = rawKey.trim();
+  const rawValue = valueParts.join(":").trim();
+  const valueWithBase64 = replaceBase64Placeholders(rawValue, credentials);
+  const headerValue = replaceCredentialPlaceholders(valueWithBase64, credentials);
+
+  return { [headerKey]: headerValue };
+};
+
+export const mergeSchemeHeaders = (
+  scheme: SchemeDefinition,
+  authHeaders: Record<string, string>,
+): Record<string, string> => ({
+  ...(scheme.headers ?? {}),
+  ...authHeaders,
+});
+
+export const resolveApiBaseUrl = (scheme: SchemeDefinition, userProvidedUrl: string): string => {
+  if (scheme.apiBaseUrl) {
+    return scheme.apiBaseUrl.replace(/\/$/, "");
+  }
+
+  const trimmed = userProvidedUrl?.trim();
+  if (!trimmed) {
+    return "";
+  }
+
+  try {
+    const parsed = new URL(trimmed);
+    return `${parsed.protocol}//${parsed.host}`;
+  } catch {
+    return trimmed.replace(/\/$/, "");
+  }
 };
