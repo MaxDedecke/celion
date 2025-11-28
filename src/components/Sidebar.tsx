@@ -1,10 +1,23 @@
-import { Plus, Trash2, Pencil, PanelLeftClose, PanelLeft, Plug, ChevronDown, ChevronRight, Copy, Loader2 } from "lucide-react";
+import {
+  Plus,
+  Trash2,
+  Pencil,
+  PanelLeftClose,
+  PanelLeft,
+  Plug,
+  ChevronDown,
+  ChevronRight,
+  Copy,
+  Loader2,
+  MoreHorizontal,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Logo from "./Logo";
 import { cn } from "@/lib/utils";
 import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
 interface SidebarProps {
   projects: Array<{ id: string; name: string }>;
@@ -252,37 +265,32 @@ const Sidebar = ({
                                   >
                                     {migration.name}
                                   </button>
-                                  <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-70">
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        onDuplicateMigration?.(migration.id);
-                                      }}
-                                      className="rounded p-1 transition-colors hover:bg-foreground/3 hover:text-foreground"
-                                      aria-label="Migration duplizieren"
-                                    >
-                                      <Copy className="h-4 w-4" />
-                                    </button>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        onEditMigration?.(migration.id);
-                                      }}
-                                      className="rounded p-1 transition-colors hover:bg-foreground/3 hover:text-foreground"
-                                      aria-label="Migration bearbeiten"
-                                    >
-                                      <Pencil className="h-4 w-4" />
-                                    </button>
-                                    <button
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        onDeleteMigration?.(migration.id);
-                                      }}
-                                      className="rounded p-1 text-destructive transition-colors hover:bg-destructive/10"
-                                      aria-label="Migration löschen"
-                                    >
-                                      <Trash2 className="h-4 w-4" />
-                                    </button>
+                                  <div className="opacity-0 transition-opacity group-hover:opacity-100">
+                                    <DropdownMenu>
+                                      <DropdownMenuTrigger asChild>
+                                        <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => e.stopPropagation()}>
+                                          <MoreHorizontal className="h-4 w-4" />
+                                          <span className="sr-only">Migrationsmenü</span>
+                                        </Button>
+                                      </DropdownMenuTrigger>
+                                      <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                                        <DropdownMenuItem onSelect={() => onEditMigration?.(migration.id)}>
+                                          <Pencil className="mr-2 h-4 w-4" />
+                                          <span>Bearbeiten</span>
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem onSelect={() => onDuplicateMigration?.(migration.id)}>
+                                          <Copy className="mr-2 h-4 w-4" />
+                                          <span>Duplizieren</span>
+                                        </DropdownMenuItem>
+                                        <DropdownMenuItem
+                                          onSelect={() => onDeleteMigration?.(migration.id)}
+                                          className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                                        >
+                                          <Trash2 className="mr-2 h-4 w-4" />
+                                          <span>Löschen</span>
+                                        </DropdownMenuItem>
+                                      </DropdownMenuContent>
+                                    </DropdownMenu>
                                   </div>
                                 </div>
                               ))}
@@ -338,37 +346,32 @@ const Sidebar = ({
                         >
                           {migration.name}
                         </button>
-                        <div className="flex gap-1 opacity-0 transition-opacity group-hover:opacity-70">
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onDuplicateMigration?.(migration.id);
-                            }}
-                            className="rounded p-1 transition-colors hover:bg-foreground/3 hover:text-foreground"
-                            aria-label="Migration duplizieren"
-                          >
-                            <Copy className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onEditMigration?.(migration.id);
-                            }}
-                            className="rounded p-1 transition-colors hover:bg-foreground/3 hover:text-foreground"
-                            aria-label="Migration bearbeiten"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                          <button
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              onDeleteMigration?.(migration.id);
-                            }}
-                            className="rounded p-1 text-destructive transition-colors hover:bg-destructive/10"
-                            aria-label="Migration löschen"
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </button>
+                        <div className="opacity-0 transition-opacity group-hover:opacity-100">
+                          <DropdownMenu>
+                            <DropdownMenuTrigger asChild>
+                              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => e.stopPropagation()}>
+                                <MoreHorizontal className="h-4 w-4" />
+                                <span className="sr-only">Migrationsmenü</span>
+                              </Button>
+                            </DropdownMenuTrigger>
+                            <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
+                              <DropdownMenuItem onSelect={() => onEditMigration?.(migration.id)}>
+                                <Pencil className="mr-2 h-4 w-4" />
+                                <span>Bearbeiten</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem onSelect={() => onDuplicateMigration?.(migration.id)}>
+                                <Copy className="mr-2 h-4 w-4" />
+                                <span>Duplizieren</span>
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onSelect={() => onDeleteMigration?.(migration.id)}
+                                className="text-destructive focus:bg-destructive/10 focus:text-destructive"
+                              >
+                                <Trash2 className="mr-2 h-4 w-4" />
+                                <span>Löschen</span>
+                              </DropdownMenuItem>
+                            </DropdownMenuContent>
+                          </DropdownMenu>
                         </div>
                       </div>
                     ))}
