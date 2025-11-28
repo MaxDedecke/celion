@@ -120,10 +120,9 @@ All colors MUST be HSL.
   * {
     @apply border-border;
     scrollbar-width: thin;
-    scrollbar-color: transparent transparent;
+    scrollbar-color: hsl(var(--accent) / 0.5) transparent;
   }
 
-  /* Webkit browsers - hide scrollbar by default, show on hover */
   *::-webkit-scrollbar {
     width: 8px;
   }
@@ -133,23 +132,13 @@ All colors MUST be HSL.
   }
 
   *::-webkit-scrollbar-thumb {
-    background-color: transparent;
+    background-color: hsl(var(--accent) / 0.5);
     border-radius: 4px;
     transition: background-color 0.2s;
   }
 
-  /* Show scrollbar only when hovering over scrollable element */
-  *:hover::-webkit-scrollbar-thumb {
-    background-color: hsl(var(--accent) / 0.5);
-  }
-
-  *:hover::-webkit-scrollbar-thumb:hover {
+  *::-webkit-scrollbar-thumb:hover {
     background-color: hsl(var(--accent) / 0.7);
-  }
-
-  /* Firefox - show scrollbar on hover */
-  *:hover {
-    scrollbar-color: hsl(var(--accent) / 0.5) transparent;
   }
 
   body {
@@ -206,15 +195,15 @@ All colors MUST be HSL.
   }
 
   .loader-node-first {
-    animation: loader-node-first 0.75s ease-out forwards;
+    animation: loader-node-first 0.75s ease-out infinite;
   }
 
   .loader-node-second {
-    animation: loader-node-second 0.75s ease-out forwards;
+    animation: loader-node-second 0.75s ease-out infinite;
   }
 
   .loader-node-third {
-    animation: loader-node-third 0.75s ease-out forwards;
+    animation: loader-node-third 0.75s ease-out infinite;
   }
 
   .loader-connector {
@@ -229,11 +218,11 @@ All colors MUST be HSL.
   }
 
   .loader-connector-first {
-    animation: loader-connector-first 0.75s ease-out forwards;
+    animation: loader-connector-first 0.75s ease-out infinite;
   }
 
   .loader-connector-second {
-    animation: loader-connector-second 0.75s ease-out forwards;
+    animation: loader-connector-second 0.75s ease-out infinite;
   }
 }
 
