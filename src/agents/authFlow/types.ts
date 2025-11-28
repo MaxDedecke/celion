@@ -28,6 +28,9 @@ export type AuthFlowResult = {
     status: number | null;
   };
   schemeUsed: string | null;
+  
+  // Neues Feld für Fehler-Hinweise vom Agenten
+  errorHint?: string | null;
 
   // Abwärtskompatible Felder
   system?: string | null;
