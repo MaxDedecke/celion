@@ -10,7 +10,7 @@ interface TypewriterTextProps {
 
 const TypewriterText = ({ 
   text, 
-  speed = 40, 
+  speed = 150, 
   onComplete,
   className 
 }: TypewriterTextProps) => {

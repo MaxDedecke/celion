@@ -91,7 +91,7 @@ const ChatMessage = ({ message, onOpenAgentOutput, enableTypewriter = false, onT
         "flex w-full gap-3 rounded-2xl p-2 transition-all duration-300",
         "bg-transparent border-transparent",
         message.role === "user" && "ml-auto",
-        message.role === "system" && "max-w-[85%] mx-auto",
+        message.role === "system" && "max-w-[85%]",
         message.role !== "system" && "max-w-[90%]",
       )}
     >
@@ -113,7 +113,7 @@ const ChatMessage = ({ message, onOpenAgentOutput, enableTypewriter = false, onT
         </div>
         <p className={cn("text-sm leading-relaxed", getTextColor())}>
           {enableTypewriter && message.role === "agent" ? (
-            <TypewriterText text={message.content} speed={35} onComplete={onTypewriterComplete} />
+            <TypewriterText text={message.content} speed={150} onComplete={onTypewriterComplete} />
           ) : (
             message.content
           )}
