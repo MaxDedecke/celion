@@ -319,7 +319,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         }
       } catch (error) {
         console.error("Fehler beim Aktualisieren des Migrationsstatus:", error);
-        toast.error("Status konnte nicht aktualisiert werden");
+        await appendActivity("error", "Status konnte nicht aktualisiert werden");
       } finally {
         setIsUpdatingStatus(false);
       }
@@ -348,7 +348,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         if (connectorsError) {
           const message = connectorsError.message || "Konnektordaten konnten nicht geladen werden.";
           await appendActivity("error", message);
-          toast.error(message);
           throw new AgentExecutionError(message);
         }
 
@@ -368,7 +367,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
           if (!connector) {
             const message = `Keine Connector-Konfiguration für das ${scopeLabel} vorhanden.`;
             await appendActivity("error", message);
-            toast.error(message);
             throw new AgentExecutionError(message);
           }
 
@@ -376,7 +374,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
           if (!baseUrl) {
             const message = `Für das ${scopeLabel} ist keine API-URL hinterlegt.`;
             await appendActivity("error", message);
-            toast.error(message);
             throw new AgentExecutionError(message);
           }
           const apiToken = (connector.api_key ?? "").trim();
@@ -386,14 +383,12 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
           if (!apiToken) {
             const message = `Für das ${scopeLabel} wurde kein API-Token hinterlegt.`;
             await appendActivity("error", message);
-            toast.error(message);
             throw new AgentExecutionError(message);
           }
 
           if (!email || !password) {
             const message = `Für das ${scopeLabel} fehlen E-Mail oder Passwort.`;
             await appendActivity("error", message);
-            toast.error(message);
             throw new AgentExecutionError(message);
           }
 
@@ -438,9 +433,8 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
 
               await appendActivity(
                 "error",
-                `Authentifizierung ${statusLabel} (${scopeLabel}): ${system}`,
+                `Authentifizierung ${statusLabel} (${scopeLabel}): ${system} - ${errorMsg}`,
               );
-              toast.error(`Authentifizierung fehlgeschlagen (${scopeLabel}): ${errorMsg}`);
 
               const errorPayload =
                 scope === "source"
@@ -464,9 +458,8 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
             const message = error instanceof Error ? error.message : String(error);
             await appendActivity(
               "error",
-              `Authentifizierung fehlgeschlagen (${scopeLabel}): ${system}`,
+              `Authentifizierung fehlgeschlagen (${scopeLabel}): ${system} - ${message}`,
             );
-            toast.error(`Authentifizierung fehlgeschlagen (${scopeLabel}): ${message}`);
 
             const errorPayload =
               scope === "source" ? { error: message } : { error: message };
@@ -551,8 +544,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
             if (!detection.systemMatchesUrl) {
               const failureMessage =
                 `Die Systemerkennung (${scopeLabel}) konnte keine sichere Übereinstimmung der URL mit dem erwarteten System herstellen.`;
-              await appendActivity("warning", titleParts.join(" · ") || failureMessage);
-              toast.error(`Systemerkennung unvollständig (${scopeLabel}): URL passt nicht sicher.`);
+              await appendActivity("error", titleParts.join(" · ") || failureMessage);
               const errorPayload =
                 scope === "source"
                   ? { source: detection, error: failureMessage }
@@ -574,7 +566,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
 
             const message = error instanceof Error ? error.message : String(error);
             await appendActivity("error", `Systemerkennung fehlgeschlagen (${scopeLabel}): ${message}`);
-            toast.error(`Systemerkennung fehlgeschlagen (${scopeLabel}): ${message}`);
             const errorPayload = scope === "source" ? { error: message } : { error: message };
             throw new AgentExecutionError(message, errorPayload);
           }
@@ -609,7 +600,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
 
         if (!sourceBaseUrl) {
           const message = "Für die Systemerkennung des Quellsystems ist keine API-URL hinterlegt.";
-          toast.error(message);
           await appendActivity("error", message);
           sourceError = new AgentExecutionError(message);
         } else {
@@ -628,7 +618,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
           reportProgress(50);
           const message = "Für die Systemerkennung des Zielsystems ist keine API-URL hinterlegt.";
           await appendActivity("error", message);
-          toast.error(message);
           targetError = new AgentExecutionError(message);
         } else {
           try {
@@ -667,10 +656,8 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
 
         if (connectorsError) {
           const message = connectorsError.message || "Konnektordaten konnten nicht geladen werden.";
-          await appendActivity("error", message);
-          toast.error(message);
-          throw new AgentExecutionError(message);
-        }
+                  await appendActivity("error", message);
+                  throw new AgentExecutionError(message);        }
 
         const connectors = (connectorRows ?? []) as ConnectorRecord[];
         const sourceConnector = connectors.find((record) => record.connector_type === "in");
@@ -681,17 +668,13 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
 
         if (!baseUrl) {
           const message = "Für das Quellsystem ist keine Basis-URL hinterlegt. Capability Discovery nicht möglich.";
-          await appendActivity("error", message);
-          toast.error(message);
-          throw new AgentExecutionError(message);
-        }
+                  await appendActivity("error", message);
+                  throw new AgentExecutionError(message);        }
 
         if (!apiToken) {
           const message = "Für das Quellsystem wurde kein API-Token gefunden. Capability Discovery nicht möglich.";
-          await appendActivity("error", message);
-          toast.error(message);
-          throw new AgentExecutionError(message);
-        }
+                  await appendActivity("error", message);
+                  throw new AgentExecutionError(message);        }
 
         await appendActivity("info", `Capability Discovery gestartet (Quelle): ${project.sourceSystem || baseUrl}`);
         reportProgress(20);
@@ -959,7 +942,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
           const errorMsg =
             "Systemerkennung fehlgeschlagen: Es konnte kein Quellsystem hinter der URL erkannt werden.";
           await appendActivity("error", errorMsg);
-          toast.error(errorMsg);
           await revertActiveNodeToPending(
             completedAgentResult ? { ...completedAgentResult, error: errorMsg } : { error: errorMsg },
           );
@@ -978,7 +960,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         ) {
           const errorMsg = `Systemerkennung fehlgeschlagen: Erkannter Subtyp "${sourceDetection.apiSubtype}" stimmt nicht mit dem erwarteten Quellsystem "${project.sourceSystem}" überein.`;
           await appendActivity("error", errorMsg);
-          toast.error(errorMsg);
           await revertActiveNodeToPending(
             completedAgentResult ? { ...completedAgentResult, error: errorMsg } : { error: errorMsg },
           );
@@ -997,7 +978,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
           const errorMsg =
             "Systemerkennung fehlgeschlagen: Es konnte kein Zielsystem hinter der URL erkannt werden.";
           await appendActivity("error", errorMsg);
-          toast.error(errorMsg);
           await revertActiveNodeToPending(
             completedAgentResult ? { ...completedAgentResult, error: errorMsg } : { error: errorMsg },
           );
@@ -1016,7 +996,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         ) {
           const errorMsg = `Systemerkennung fehlgeschlagen: Erkannter Subtyp "${targetDetection.apiSubtype}" stimmt nicht mit dem erwarteten Zielsystem "${project.targetSystem}" überein.`;
           await appendActivity("error", errorMsg);
-          toast.error(errorMsg);
           await revertActiveNodeToPending(
             completedAgentResult ? { ...completedAgentResult, error: errorMsg } : { error: errorMsg },
           );
@@ -1157,7 +1136,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
       await onRefresh();
     } catch (error) {
       console.error("Error progressing workflow:", error);
-      toast.error("Fehler beim Fortschreiten des Workflows");
+      await appendActivity("error", "Fehler beim Fortschreiten des Workflows");
     } finally {
       if (progressInterval) {
         clearInterval(progressInterval);
@@ -1846,7 +1825,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
       await onRefresh();
     } catch (error) {
       console.error("Fehler beim Speichern der Anmerkungen:", error);
-      toast.error("Anmerkungen konnten nicht gespeichert werden");
+      await appendActivity("error", "Anmerkungen konnten nicht gespeichert werden");
     } finally {
       setIsSavingNotes(false);
     }
