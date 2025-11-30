@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef } from "react";
+﻿import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Sidebar from "@/components/Sidebar";
 import UserMenu from "@/components/UserMenu";
@@ -89,7 +89,7 @@ const normalizeActivityRecord = (activity: RawActivityRecord): ActivityType => {
   };
 };
 
-const MIGRATIONS_PAGE_SIZE = 20;
+const MIGRATIONS_PAGE_SIZE = 15;
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -183,7 +183,7 @@ const Dashboard = () => {
     }
   };
 
-  const loadMigrationDetails = async (migrationsData: any[], projectId: string | null) => {
+  const loadMigrationDetails = useCallback(async (migrationsData: any[], projectId: string | null) => {
     return await Promise.all(
       migrationsData.map(async (migration) => {
         const { data: activitiesData } = await supabaseDatabase.fetchMigrationActivities(migration.id);
@@ -213,7 +213,7 @@ const Dashboard = () => {
         };
       }),
     );
-  };
+  }, []);
 
   // Optimized refresh for only the current migration
   const refreshCurrentMigration = async () => {
@@ -244,7 +244,7 @@ const Dashboard = () => {
   };
 
   // Load more migrations (infinite scroll)
-  const handleLoadMoreMigrations = async () => {
+  const handleLoadMoreMigrations = useCallback(async () => {
     if (isLoadingMoreMigrations || !hasMoreMigrations) return;
 
     setIsLoadingMoreMigrations(true);
@@ -263,7 +263,7 @@ const Dashboard = () => {
     } finally {
       setIsLoadingMoreMigrations(false);
     }
-  };
+  }, [isLoadingMoreMigrations, hasMoreMigrations, loadMigrationDetails]);
 
   const handleSaveNotes = async () => {
     if (!currentMigration) return;
