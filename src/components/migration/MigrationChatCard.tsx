@@ -25,6 +25,7 @@ interface MigrationChatCardProps {
   targetSystem: string;
   sourceObjectsDisplay: string;
   targetObjectsDisplay: string;
+  hasCurrentStepFailed?: boolean;
   onSendMessage: (message: string) => void;
   onContinue: () => void;
   onOpenAgentOutput: (stepId: string) => void;
@@ -96,6 +97,7 @@ const MigrationChatCard = ({
   targetSystem,
   sourceObjectsDisplay,
   targetObjectsDisplay,
+  hasCurrentStepFailed,
   onSendMessage,
   onContinue,
   onOpenAgentOutput
@@ -147,7 +149,8 @@ const MigrationChatCard = ({
             <StepperDots 
               totalSteps={totalSteps} 
               completedSteps={completedCount} 
-              isCurrentStepRunning={isStepRunning} 
+              isCurrentStepRunning={isStepRunning}
+              hasCurrentStepFailed={hasCurrentStepFailed}
             />
             
             {/* Step Info */}
@@ -158,6 +161,11 @@ const MigrationChatCard = ({
               {isStepRunning && (
                 <span className="text-xs text-muted-foreground animate-pulse">
                   Wird ausgeführt...
+                </span>
+              )}
+              {!isStepRunning && hasCurrentStepFailed && (
+                <span className="text-xs text-destructive font-medium">
+                  Fehlgeschlagen – Wiederholen
                 </span>
               )}
             </div>
@@ -185,7 +193,13 @@ const MigrationChatCard = ({
               onOpenAgentOutput={onOpenAgentOutput}
               showContinueButton={(status === "not_started" || status === "running") && overallProgress < 100 && !isStepRunning}
               onContinue={onContinue}
-              continueButtonText={status === "not_started" ? "Starten" : "Fortsetzen"}
+              continueButtonText={
+                status === "not_started" 
+                  ? "Starten" 
+                  : hasCurrentStepFailed 
+                    ? `↻ Schritt wiederholen: ${activeStep?.title}` 
+                    : "Fortsetzen"
+              }
               currentStepTitle={activeStep?.title}
             />
           </div>
