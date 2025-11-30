@@ -1,8 +1,7 @@
 import { useMemo, useRef, useEffect, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Loader2, Play, Sparkles, Workflow, ChevronDown } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Activity } from "@/components/ActivityTimeline";
 import type { AgentWorkflowStepState } from "./types";
@@ -10,6 +9,9 @@ import ChatMessageList from "./ChatMessageList";
 import ChatInput from "./ChatInput";
 import type { ChatMessage } from "./ChatMessage";
 import { AGENT_WORKFLOW_STEPS } from "@/constants/agentWorkflow";
+import StepperDots from "./StepperDots";
+import { Progress } from "@/components/ui/progress";
+
 interface MigrationChatCardProps {
   activities: Activity[];
   isStepRunning: boolean;
@@ -27,6 +29,7 @@ interface MigrationChatCardProps {
   onContinue: () => void;
   onOpenAgentOutput: (stepId: string) => void;
 }
+
 const extractStepFromTitle = (title: string) => {
   const titleLower = title.toLowerCase();
   const step = AGENT_WORKFLOW_STEPS.find(s => {
@@ -42,11 +45,12 @@ const extractStepFromTitle = (title: string) => {
   }
   return null;
 };
+
 const activityToChatMessage = (activity: Activity): ChatMessage => {
-  // Check if this is a user message
   const isUserMessage = activity.title.startsWith("[user]");
   const stepInfo = extractStepFromTitle(activity.title);
   const isSystemActivity = activity.title.toLowerCase().includes("migration") || activity.title.toLowerCase().includes("erstellt") || activity.title.toLowerCase().includes("dupliziert") || activity.title.toLowerCase().includes("status");
+  
   const mapActivityTypeToStatus = (type: Activity["type"]): ChatMessage["status"] => {
     if (type === "success" || type === "error" || type === "info") {
       return type;
@@ -54,22 +58,20 @@ const activityToChatMessage = (activity: Activity): ChatMessage => {
     return "info";
   };
 
-  // Extract stepId from title format: "... [step:stepId]"
   const stepIdMatch = activity.title.match(/\[step:([^\]]+)\]/);
   const extractedStepId = stepIdMatch ? stepIdMatch[1] : null;
 
-  // Check if this is a result-available message
   const isResultMessage = activity.title.includes("Hier gehts zum Agenten Output");
   const actionButton = isResultMessage && extractedStepId ? {
     label: "Ergebnis anzeigen",
     stepId: extractedStepId
   } : undefined;
 
-  // Remove stepId encoding and [user] prefix from display title
   let displayTitle = activity.title.replace(/\s*\[step:[^\]]+\]/, '');
   if (isUserMessage) {
     displayTitle = displayTitle.replace("[user] ", "");
   }
+  
   return {
     id: activity.id,
     role: isUserMessage ? "user" : isSystemActivity ? "system" : "agent",
@@ -80,6 +82,7 @@ const activityToChatMessage = (activity: Activity): ChatMessage => {
     actionButton
   };
 };
+
 const MigrationChatCard = ({
   activities,
   isStepRunning,
@@ -125,63 +128,58 @@ const MigrationChatCard = ({
       scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
     }
   }, [chatMessages, isStepRunning, isNearBottom]);
-  return <Card style={{
-    height: "calc(100vh - 180px)"
-  }} className="flex flex-col overflow-hidden bg-[#0f1729]/0 border-[#1d293b]/0">
-      <CardHeader className="shrink-0 pb-2">
-        <div className="flex items-center gap-4 flex-wrap">
-          {/* Progress Badge */}
-          <Badge variant="secondary" className="text-xs font-semibold">
-            {Math.round(overallProgress)}%
-          </Badge>
-          
-          {/* Source/Target Info */}
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <span>Quelle: {sourceObjectsDisplay}</span>
-            <span>|</span>
-            <span>Ziel: {targetObjectsDisplay}</span>
+
+  // Determine current step number (1-indexed for display)
+  const currentStepNumber = isStepRunning ? completedCount + 1 : completedCount;
+  const currentStepTitle = activeStep?.title || (completedCount === totalSteps ? "Abgeschlossen" : "Bereit");
+
+  return (
+    <Card 
+      style={{ height: "calc(100vh - 180px)" }} 
+      className="flex flex-col overflow-hidden bg-transparent border-transparent"
+    >
+      <CardHeader className="shrink-0 py-3 px-4">
+        {/* Compact Status Header */}
+        <div className="flex flex-col gap-2">
+          {/* Main Row: Stepper Dots + Step Info + Progress */}
+          <div className="flex items-center gap-4">
+            {/* Stepper Dots */}
+            <StepperDots 
+              totalSteps={totalSteps} 
+              completedSteps={completedCount} 
+              isCurrentStepRunning={isStepRunning} 
+            />
+            
+            {/* Step Info */}
+            <div className="flex items-center gap-2 flex-1 min-w-0">
+              <span className="text-sm font-medium text-foreground truncate">
+                Schritt {currentStepNumber} von {totalSteps}: {currentStepTitle}
+              </span>
+              {isStepRunning && (
+                <span className="text-xs text-muted-foreground animate-pulse">
+                  Wird ausgeführt...
+                </span>
+              )}
+            </div>
+            
+            {/* Progress Percentage */}
+            <span className="text-sm font-semibold text-muted-foreground tabular-nums">
+              {Math.round(overallProgress)}%
+            </span>
           </div>
           
-          {/* Active Step */}
-          {activeStep && (
-            <>
-              <Sparkles className={cn("h-4 w-4 text-primary", isStepRunning && "animate-pulse")} />
-              <Badge variant="outline" className="text-xs">
-                {activeStep.title}
-              </Badge>
-            </>
-          )}
-          
-          {/* Step Counter */}
-          <Badge variant="secondary" className="text-xs">
-            {completedCount}/{totalSteps}
-          </Badge>
-          
-          {/* Step Progress Info & Bar */}
-          {(isStepRunning || activeStep) && (
-            <div className="flex items-center gap-3 flex-1 min-w-[200px]">
-              <span className="text-xs text-muted-foreground whitespace-nowrap">
-                Schritt {completedCount + (isStepRunning ? 1 : 0)} / {totalSteps}
-                {isStepRunning && " · Wird ausgeführt..."}
-              </span>
-              <div className="flex-1 h-1.5 rounded-full bg-muted">
-                <div 
-                  className={cn("h-full rounded-full bg-primary transition-all", isStepRunning ? "duration-100" : "duration-700")} 
-                  style={{ width: `${stepProgress}%` }} 
-                />
-              </div>
-              <span className="text-xs font-semibold text-muted-foreground">
-                {Math.round(stepProgress)}%
-              </span>
-            </div>
-          )}
+          {/* Progress Bar */}
+          <Progress 
+            value={overallProgress} 
+            className="h-1.5"
+          />
         </div>
       </CardHeader>
 
-      <CardContent className="flex min-h-0 flex-1 flex-col p-4">
+      <CardContent className="flex min-h-0 flex-1 flex-col p-4 pt-0">
         <div className="relative min-h-0 flex-1">
           <div ref={scrollContainerRef} onScroll={handleScroll} className="absolute inset-0 overflow-y-auto">
-          <ChatMessageList 
+            <ChatMessageList 
               messages={chatMessages} 
               isAgentRunning={isStepRunning} 
               onOpenAgentOutput={onOpenAgentOutput}
@@ -205,9 +203,15 @@ const MigrationChatCard = ({
         </div>
 
         <div className="mt-4 pt-4">
-          <ChatInput disabled={isStepRunning} onSend={onSendMessage} placeholder={isStepRunning ? "Agent arbeitet..." : "Nächsten Schritt starten oder Befehl eingeben..."} />
+          <ChatInput 
+            disabled={isStepRunning} 
+            onSend={onSendMessage} 
+            placeholder={isStepRunning ? "Agent arbeitet..." : "Nächsten Schritt starten oder Befehl eingeben..."} 
+          />
         </div>
       </CardContent>
-    </Card>;
+    </Card>
+  );
 };
+
 export default MigrationChatCard;
