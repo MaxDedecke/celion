@@ -941,7 +941,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
 
           await revertActiveNodeToPending(derivedAgentResult);
           await createViewResultActivity(completedStepNode, true);
-          setAgentResultDialogStepId(completedStepNode.id);
           return;
         }
         throw error;
@@ -965,7 +964,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
             completedAgentResult ? { ...completedAgentResult, error: errorMsg } : { error: errorMsg },
           );
           await createViewResultActivity(completedStepNode, true);
-          setAgentResultDialogStepId(completedStepNode.id);
           setIsUpdatingStatus(false);
           return;
         }
@@ -985,7 +983,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
             completedAgentResult ? { ...completedAgentResult, error: errorMsg } : { error: errorMsg },
           );
           await createViewResultActivity(completedStepNode, true);
-          setAgentResultDialogStepId(completedStepNode.id);
           setIsUpdatingStatus(false);
           return;
         }
@@ -1005,7 +1002,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
             completedAgentResult ? { ...completedAgentResult, error: errorMsg } : { error: errorMsg },
           );
           await createViewResultActivity(completedStepNode, true);
-          setAgentResultDialogStepId(completedStepNode.id);
           setIsUpdatingStatus(false);
           return;
         }
@@ -1025,7 +1021,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
             completedAgentResult ? { ...completedAgentResult, error: errorMsg } : { error: errorMsg },
           );
           await createViewResultActivity(completedStepNode, true);
-          setAgentResultDialogStepId(completedStepNode.id);
           setIsUpdatingStatus(false);
           return;
         }
