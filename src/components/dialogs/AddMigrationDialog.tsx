@@ -48,8 +48,6 @@ const AddMigrationDialog = ({
   const [targetApiToken, setTargetApiToken] = useState(initialData?.targetAuth?.apiToken ?? "");
   const [sourceEmail, setSourceEmail] = useState(initialData?.sourceAuth?.email ?? "");
   const [targetEmail, setTargetEmail] = useState(initialData?.targetAuth?.email ?? "");
-  const [sourcePassword, setSourcePassword] = useState(initialData?.sourceAuth?.password ?? "");
-  const [targetPassword, setTargetPassword] = useState(initialData?.targetAuth?.password ?? "");
   const [error, setError] = useState<string | null>(null);
 
   const resetForm = useCallback(() => {
@@ -63,8 +61,6 @@ const AddMigrationDialog = ({
       setTargetApiToken(initialData.targetAuth?.apiToken ?? "");
       setSourceEmail(initialData.sourceAuth?.email ?? "");
       setTargetEmail(initialData.targetAuth?.email ?? "");
-      setSourcePassword(initialData.sourceAuth?.password ?? "");
-      setTargetPassword(initialData.targetAuth?.password ?? "");
     } else {
       setName("");
       setSourceUrl("");
@@ -75,8 +71,6 @@ const AddMigrationDialog = ({
       setTargetApiToken("");
       setSourceEmail("");
       setTargetEmail("");
-      setSourcePassword("");
-      setTargetPassword("");
     }
     setError(null);
   }, [initialData, isEditMode]);
@@ -93,8 +87,6 @@ const AddMigrationDialog = ({
         setTargetApiToken(initialData.targetAuth?.apiToken ?? "");
         setSourceEmail(initialData.sourceAuth?.email ?? "");
         setTargetEmail(initialData.targetAuth?.email ?? "");
-        setSourcePassword(initialData.sourceAuth?.password ?? "");
-        setTargetPassword(initialData.targetAuth?.password ?? "");
       }
       setError(null);
     } else {
@@ -118,16 +110,6 @@ const AddMigrationDialog = ({
       return;
     }
 
-    if (!sourceEmail.trim() || !sourcePassword) {
-      setError("Bitte hinterlege E-Mail und Passwort für das Quellsystem.");
-      return;
-    }
-
-    if (!targetEmail.trim() || !targetPassword) {
-      setError("Bitte hinterlege E-Mail und Passwort für das Zielsystem.");
-      return;
-    }
-
     onSubmit({
       name: name.trim(),
       sourceUrl: sourceUrl.trim(),
@@ -138,13 +120,11 @@ const AddMigrationDialog = ({
         authType: "token",
         apiToken: sourceApiToken.trim(),
         email: sourceEmail.trim(),
-        password: sourcePassword,
       },
       targetAuth: {
         authType: "token",
         apiToken: targetApiToken.trim(),
         email: targetEmail.trim(),
-        password: targetPassword,
       },
     });
 
@@ -154,18 +134,25 @@ const AddMigrationDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-popover border-border w-full sm:max-w-4xl">
-        <DialogHeader>
-          <DialogTitle className="text-xl">
-            {title ?? (isEditMode ? "Migration konfigurieren" : "Migration hinzufügen")}
-          </DialogTitle>
-        </DialogHeader>
-        <div className="grid gap-6 py-4">
+      <DialogContent className="bg-popover border-border w-full sm:max-w-5xl p-0 overflow-hidden">
+        <div className="border-b border-border bg-muted/30 px-6 py-4">
+          <DialogHeader className="space-y-1">
+            <DialogTitle className="text-xl">
+              {title ?? (isEditMode ? "Migration konfigurieren" : "Migration hinzufügen")}
+            </DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Hinterlege die Ziel- und Quellverbindungen deiner Migration. Passwörter werden nicht mehr benötigt – API-Token
+              und Kontaktadresse reichen aus.
+            </p>
+          </DialogHeader>
+        </div>
+
+        <div className="grid gap-6 px-6 py-5">
           <div className="space-y-2">
             <Label htmlFor="migration-name">Migrationsname</Label>
             <Input
               id="migration-name"
-              placeholder="Name"
+              placeholder="z. B. CRM zu Data Warehouse"
               value={name}
               onChange={(e) => {
                 setName(e.target.value);
@@ -176,172 +163,113 @@ const AddMigrationDialog = ({
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
-            <div className="space-y-3 rounded-lg border border-border p-4">
-              <h3 className="text-sm font-semibold">Quellsystem</h3>
-              <div className="space-y-2">
-                <Label htmlFor="source-system">System</Label>
-                <Select
-                  value={sourceSystem}
-                  onValueChange={(value) => {
-                    setSourceSystem(value);
-                    setError(null);
-                  }}
-                >
-                  <SelectTrigger id="source-system" className="bg-input border-border">
-                    <SelectValue placeholder="System wählen" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {DATA_SOURCE_TYPE_OPTIONS.map((option) => (
-                      <SelectItem key={option} value={option}>
-                        {option}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="source-url">API-URL</Label>
-                <Input
-                  id="source-url"
-                  type="url"
-                  placeholder="https://source-api.partner.de"
-                  value={sourceUrl}
-                  onChange={(e) => {
-                    setSourceUrl(e.target.value);
-                    setError(null);
-                  }}
-                  className="bg-input border-border"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="source-api-token">API-Token</Label>
-                <Input
-                  id="source-api-token"
-                  type="password"
-                  placeholder="API-Token"
-                  value={sourceApiToken}
-                  onChange={(e) => {
-                    setSourceApiToken(e.target.value);
-                    setError(null);
-                  }}
-                  className="bg-input border-border"
-                />
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label htmlFor="source-email">E-Mail</Label>
-                  <Input
-                    id="source-email"
-                    type="email"
-                    placeholder="team@partner.de"
-                    value={sourceEmail}
-                    onChange={(e) => {
-                      setSourceEmail(e.target.value);
-                      setError(null);
-                    }}
-                    className="bg-input border-border"
-                  />
+            {[{
+              title: "Quellsystem",
+              systemId: "source-system",
+              systemValue: sourceSystem,
+              onSystemChange: setSourceSystem,
+              urlId: "source-url",
+              urlValue: sourceUrl,
+              onUrlChange: setSourceUrl,
+              tokenId: "source-api-token",
+              tokenValue: sourceApiToken,
+              onTokenChange: setSourceApiToken,
+              emailId: "source-email",
+              emailValue: sourceEmail,
+              onEmailChange: setSourceEmail,
+            }, {
+              title: "Zielsystem",
+              systemId: "target-system",
+              systemValue: targetSystem,
+              onSystemChange: setTargetSystem,
+              urlId: "target-url",
+              urlValue: targetUrl,
+              onUrlChange: setTargetUrl,
+              tokenId: "target-api-token",
+              tokenValue: targetApiToken,
+              onTokenChange: setTargetApiToken,
+              emailId: "target-email",
+              emailValue: targetEmail,
+              onEmailChange: setTargetEmail,
+            }].map((section) => (
+              <div key={section.title} className="space-y-4 rounded-xl border border-border/70 bg-card/60 p-4 shadow-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold">{section.title}</h3>
+                  <span className="rounded-full bg-secondary/20 px-3 py-1 text-[11px] font-medium text-secondary-foreground">
+                    Zugangsdaten
+                  </span>
                 </div>
-                <div className="space-y-2">
-                  <Label htmlFor="source-password">Passwort</Label>
-                  <Input
-                    id="source-password"
-                    type="password"
-                    placeholder="••••••••"
-                    value={sourcePassword}
-                    onChange={(e) => {
-                      setSourcePassword(e.target.value);
-                      setError(null);
-                    }}
-                    className="bg-input border-border"
-                  />
-                </div>
-              </div>
-            </div>
 
-            <div className="space-y-3 rounded-lg border border-border p-4">
-              <h3 className="text-sm font-semibold">Zielsystem</h3>
-              <div className="space-y-2">
-                <Label htmlFor="target-system">System</Label>
-                <Select
-                  value={targetSystem}
-                  onValueChange={(value) => {
-                    setTargetSystem(value);
-                    setError(null);
-                  }}
-                >
-                  <SelectTrigger id="target-system" className="bg-input border-border">
-                    <SelectValue placeholder="System wählen" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {DATA_SOURCE_TYPE_OPTIONS.map((option) => (
-                      <SelectItem key={option} value={option}>
-                        {option}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="target-url">API-URL</Label>
-                <Input
-                  id="target-url"
-                  type="url"
-                  placeholder="https://target-api.partner.de"
-                  value={targetUrl}
-                  onChange={(e) => {
-                    setTargetUrl(e.target.value);
-                    setError(null);
-                  }}
-                  className="bg-input border-border"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="target-api-token">API-Token</Label>
-                <Input
-                  id="target-api-token"
-                  type="password"
-                  placeholder="API-Token"
-                  value={targetApiToken}
-                  onChange={(e) => {
-                    setTargetApiToken(e.target.value);
-                    setError(null);
-                  }}
-                  className="bg-input border-border"
-                />
-              </div>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="target-email">E-Mail</Label>
+                  <Label htmlFor={section.systemId}>System</Label>
+                  <Select
+                    value={section.systemValue}
+                    onValueChange={(value) => {
+                      section.onSystemChange(value);
+                      setError(null);
+                    }}
+                  >
+                    <SelectTrigger id={section.systemId} className="bg-input border-border">
+                      <SelectValue placeholder="System wählen" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DATA_SOURCE_TYPE_OPTIONS.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor={section.urlId}>URL</Label>
                   <Input
-                    id="target-email"
+                    id={section.urlId}
+                    type="url"
+                    placeholder="https://partner.de"
+                    value={section.urlValue}
+                    onChange={(e) => {
+                      section.onUrlChange(e.target.value);
+                      setError(null);
+                    }}
+                    className="bg-input border-border"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor={section.tokenId}>API-Token</Label>
+                  <Input
+                    id={section.tokenId}
+                    type="password"
+                    placeholder="Sicherer Zugriffstoken"
+                    value={section.tokenValue}
+                    onChange={(e) => {
+                      section.onTokenChange(e.target.value);
+                      setError(null);
+                    }}
+                    className="bg-input border-border"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor={section.emailId}>Kontakt E-Mail</Label>
+                  <Input
+                    id={section.emailId}
                     type="email"
                     placeholder="team@partner.de"
-                    value={targetEmail}
+                    value={section.emailValue}
                     onChange={(e) => {
-                      setTargetEmail(e.target.value);
-                      setError(null);
-                    }}
-                    className="bg-input border-border"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="target-password">Passwort</Label>
-                  <Input
-                    id="target-password"
-                    type="password"
-                    placeholder="••••••••"
-                    value={targetPassword}
-                    onChange={(e) => {
-                      setTargetPassword(e.target.value);
+                      section.onEmailChange(e.target.value);
                       setError(null);
                     }}
                     className="bg-input border-border"
                   />
                 </div>
               </div>
-            </div>
+            ))}
           </div>
+
           <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
             {error && (
               <div className="flex items-center gap-2 text-destructive text-sm">

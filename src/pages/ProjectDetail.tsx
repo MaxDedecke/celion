@@ -302,7 +302,6 @@ const ProjectDetail = () => {
         auth_type: "api_key",
         api_key: sourceAuth.apiToken ?? null,
         username: sourceAuth.email ?? null,
-        password: sourceAuth.password ?? null,
       };
 
       const targetConnectorPayload = {
@@ -311,7 +310,6 @@ const ProjectDetail = () => {
         auth_type: "api_key",
         api_key: targetAuth.apiToken ?? null,
         username: targetAuth.email ?? null,
-        password: targetAuth.password ?? null,
       };
 
       const { error: connectorError } = await supabaseDatabase.insertConnectors([

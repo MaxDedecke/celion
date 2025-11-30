@@ -6,7 +6,6 @@ export interface MigrationSystemAuthConfig {
   authType: MigrationAuthType;
   apiToken: string;
   email: string;
-  password: string;
 }
 
 export interface NewMigrationInput {

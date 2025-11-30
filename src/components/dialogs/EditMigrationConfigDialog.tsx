@@ -49,8 +49,6 @@ const EditMigrationConfigDialog = ({
   const [targetApiToken, setTargetApiToken] = useState(currentData.targetAuth.apiToken ?? "");
   const [sourceEmail, setSourceEmail] = useState(currentData.sourceAuth.email ?? "");
   const [targetEmail, setTargetEmail] = useState(currentData.targetAuth.email ?? "");
-  const [sourcePassword, setSourcePassword] = useState(currentData.sourceAuth.password ?? "");
-  const [targetPassword, setTargetPassword] = useState(currentData.targetAuth.password ?? "");
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -64,8 +62,6 @@ const EditMigrationConfigDialog = ({
       setTargetApiToken(currentData.targetAuth.apiToken ?? "");
       setSourceEmail(currentData.sourceAuth.email ?? "");
       setTargetEmail(currentData.targetAuth.email ?? "");
-      setSourcePassword(currentData.sourceAuth.password ?? "");
-      setTargetPassword(currentData.targetAuth.password ?? "");
       setError(null);
     }
   }, [open, currentData]);
@@ -86,16 +82,6 @@ const EditMigrationConfigDialog = ({
       return;
     }
 
-    if (!sourceEmail.trim() || !sourcePassword) {
-      setError("Bitte hinterlege E-Mail und Passwort für das Quellsystem.");
-      return;
-    }
-
-    if (!targetEmail.trim() || !targetPassword) {
-      setError("Bitte hinterlege E-Mail und Passwort für das Zielsystem.");
-      return;
-    }
-
     onUpdate({
       name: name.trim(),
       sourceUrl: sourceUrl.trim(),
@@ -106,13 +92,11 @@ const EditMigrationConfigDialog = ({
         authType: "token",
         apiToken: sourceApiToken.trim(),
         email: sourceEmail.trim(),
-        password: sourcePassword,
       },
       targetAuth: {
         authType: "token",
         apiToken: targetApiToken.trim(),
         email: targetEmail.trim(),
-        password: targetPassword,
       },
     });
 
@@ -121,16 +105,22 @@ const EditMigrationConfigDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-popover border-border w-full sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="text-xl">Migrationskonfiguration bearbeiten</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto">
+      <DialogContent className="bg-popover border-border w-full sm:max-w-4xl p-0 overflow-hidden">
+        <div className="border-b border-border bg-muted/30 px-6 py-4">
+          <DialogHeader className="space-y-1">
+            <DialogTitle className="text-xl">Migrationskonfiguration bearbeiten</DialogTitle>
+            <p className="text-sm text-muted-foreground">
+              Aktualisiere Systeme, URLs und Tokens deiner Migration. Passwörter werden nicht mehr gespeichert.
+            </p>
+          </DialogHeader>
+        </div>
+
+        <div className="space-y-6 px-6 py-5 max-h-[70vh] overflow-y-auto">
           <div className="space-y-2">
             <Label htmlFor="edit-migration-name">Migrationsname</Label>
             <Input
               id="edit-migration-name"
-              placeholder="Name"
+              placeholder="z. B. Support-Daten migrieren"
               value={name}
               onChange={(e) => {
                 setName(e.target.value);
@@ -140,170 +130,112 @@ const EditMigrationConfigDialog = ({
             />
           </div>
 
-          <div className="space-y-3 rounded-lg border border-border p-4">
-            <h3 className="text-sm font-semibold">Quellsystem</h3>
-            <div className="space-y-2">
-              <Label htmlFor="edit-source-system">System</Label>
-              <Select
-                value={sourceSystem}
-                onValueChange={(value) => {
-                  setSourceSystem(value);
-                  setError(null);
-                }}
-              >
-                <SelectTrigger id="edit-source-system" className="bg-input border-border">
-                  <SelectValue placeholder="Auswählen..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {DATA_SOURCE_TYPE_OPTIONS.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-source-url">API-URL</Label>
-              <Input
-                id="edit-source-url"
-                type="url"
-                placeholder="https://source-api.partner.de"
-                value={sourceUrl}
-                onChange={(e) => {
-                  setSourceUrl(e.target.value);
-                  setError(null);
-                }}
-                className="bg-input border-border"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-source-api-token">API-Token</Label>
-              <Input
-                id="edit-source-api-token"
-                type="password"
-                placeholder="Token eingeben..."
-                value={sourceApiToken}
-                onChange={(e) => {
-                  setSourceApiToken(e.target.value);
-                  setError(null);
-                }}
-                className="bg-input border-border"
-              />
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="edit-source-email">E-Mail</Label>
-                <Input
-                  id="edit-source-email"
-                  type="email"
-                  placeholder="team@partner.de"
-                  value={sourceEmail}
-                  onChange={(e) => {
-                    setSourceEmail(e.target.value);
-                    setError(null);
-                  }}
-                  className="bg-input border-border"
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-source-password">Passwort</Label>
-                <Input
-                  id="edit-source-password"
-                  type="password"
-                  placeholder="Passwort"
-                  value={sourcePassword}
-                  onChange={(e) => {
-                    setSourcePassword(e.target.value);
-                    setError(null);
-                  }}
-                  className="bg-input border-border"
-                />
-              </div>
-            </div>
-          </div>
+          <div className="grid gap-4 md:grid-cols-2">
+            {[{
+              title: "Quellsystem",
+              systemId: "edit-source-system",
+              systemValue: sourceSystem,
+              onSystemChange: setSourceSystem,
+              urlId: "edit-source-url",
+              urlValue: sourceUrl,
+              onUrlChange: setSourceUrl,
+              tokenId: "edit-source-api-token",
+              tokenValue: sourceApiToken,
+              onTokenChange: setSourceApiToken,
+              emailId: "edit-source-email",
+              emailValue: sourceEmail,
+              onEmailChange: setSourceEmail,
+            }, {
+              title: "Zielsystem",
+              systemId: "edit-target-system",
+              systemValue: targetSystem,
+              onSystemChange: setTargetSystem,
+              urlId: "edit-target-url",
+              urlValue: targetUrl,
+              onUrlChange: setTargetUrl,
+              tokenId: "edit-target-api-token",
+              tokenValue: targetApiToken,
+              onTokenChange: setTargetApiToken,
+              emailId: "edit-target-email",
+              emailValue: targetEmail,
+              onEmailChange: setTargetEmail,
+            }].map((section) => (
+              <div key={section.title} className="space-y-4 rounded-xl border border-border/70 bg-card/60 p-4 shadow-sm">
+                <div className="flex items-center justify-between gap-2">
+                  <h3 className="text-sm font-semibold">{section.title}</h3>
+                  <span className="rounded-full bg-secondary/20 px-3 py-1 text-[11px] font-medium text-secondary-foreground">
+                    Zugangsdaten
+                  </span>
+                </div>
 
-          <div className="space-y-3 rounded-lg border border-border p-4">
-            <h3 className="text-sm font-semibold">Zielsystem</h3>
-            <div className="space-y-2">
-              <Label htmlFor="edit-target-system">System</Label>
-              <Select
-                value={targetSystem}
-                onValueChange={(value) => {
-                  setTargetSystem(value);
-                  setError(null);
-                }}
-              >
-                <SelectTrigger id="edit-target-system" className="bg-input border-border">
-                  <SelectValue placeholder="Auswählen..." />
-                </SelectTrigger>
-                <SelectContent>
-                  {DATA_SOURCE_TYPE_OPTIONS.map((option) => (
-                    <SelectItem key={option} value={option}>
-                      {option}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-target-url">API-URL</Label>
-              <Input
-                id="edit-target-url"
-                type="url"
-                placeholder="https://target-api.partner.de"
-                value={targetUrl}
-                onChange={(e) => {
-                  setTargetUrl(e.target.value);
-                  setError(null);
-                }}
-                className="bg-input border-border"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="edit-target-api-token">API-Token</Label>
-              <Input
-                id="edit-target-api-token"
-                type="password"
-                placeholder="Token eingeben..."
-                value={targetApiToken}
-                onChange={(e) => {
-                  setTargetApiToken(e.target.value);
-                  setError(null);
-                }}
-                className="bg-input border-border"
-              />
-            </div>
-            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="edit-target-email">E-Mail</Label>
-                <Input
-                  id="edit-target-email"
-                  type="email"
-                  placeholder="team@partner.de"
-                  value={targetEmail}
-                  onChange={(e) => {
-                    setTargetEmail(e.target.value);
-                    setError(null);
-                  }}
-                  className="bg-input border-border"
-                />
+                <div className="space-y-2">
+                  <Label htmlFor={section.systemId}>System</Label>
+                  <Select
+                    value={section.systemValue}
+                    onValueChange={(value) => {
+                      section.onSystemChange(value);
+                      setError(null);
+                    }}
+                  >
+                    <SelectTrigger id={section.systemId} className="bg-input border-border">
+                      <SelectValue placeholder="System wählen" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {DATA_SOURCE_TYPE_OPTIONS.map((option) => (
+                        <SelectItem key={option} value={option}>
+                          {option}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor={section.urlId}>URL</Label>
+                  <Input
+                    id={section.urlId}
+                    type="url"
+                    placeholder="https://partner.de"
+                    value={section.urlValue}
+                    onChange={(e) => {
+                      section.onUrlChange(e.target.value);
+                      setError(null);
+                    }}
+                    className="bg-input border-border"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor={section.tokenId}>API-Token</Label>
+                  <Input
+                    id={section.tokenId}
+                    type="password"
+                    placeholder="Sicherer Zugriffstoken"
+                    value={section.tokenValue}
+                    onChange={(e) => {
+                      section.onTokenChange(e.target.value);
+                      setError(null);
+                    }}
+                    className="bg-input border-border"
+                  />
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor={section.emailId}>Kontakt E-Mail</Label>
+                  <Input
+                    id={section.emailId}
+                    type="email"
+                    placeholder="team@partner.de"
+                    value={section.emailValue}
+                    onChange={(e) => {
+                      section.onEmailChange(e.target.value);
+                      setError(null);
+                    }}
+                    className="bg-input border-border"
+                  />
+                </div>
               </div>
-              <div className="space-y-2">
-                <Label htmlFor="edit-target-password">Passwort</Label>
-                <Input
-                  id="edit-target-password"
-                  type="password"
-                  placeholder="Passwort"
-                  value={targetPassword}
-                  onChange={(e) => {
-                    setTargetPassword(e.target.value);
-                    setError(null);
-                  }}
-                  className="bg-input border-border"
-                />
-              </div>
-            </div>
+            ))}
           </div>
 
           {error && (

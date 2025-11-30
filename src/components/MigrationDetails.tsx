@@ -378,7 +378,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
           }
           const apiToken = (connector.api_key ?? "").trim();
           const email = (connector.username ?? "").trim();
-          const password = connector.password ?? "";
 
           if (!apiToken) {
             const message = `Für das ${scopeLabel} wurde kein API-Token hinterlegt.`;
@@ -386,13 +385,13 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
             throw new AgentExecutionError(message);
           }
 
-          if (!email || !password) {
-            const message = `Für das ${scopeLabel} fehlen E-Mail oder Passwort.`;
+          if (!email) {
+            const message = `Für das ${scopeLabel} fehlt eine Kontakt-E-Mail.`;
             await appendActivity("error", message);
             throw new AgentExecutionError(message);
           }
 
-          return { baseUrl, apiToken, email, password };
+          return { baseUrl, apiToken, email };
         };
 
         const sourceAuthContext = await resolveConnectorAuth("source", sourceConnector, fallbackSourceBaseUrl);
@@ -416,7 +415,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
               baseUrl: auth.baseUrl,
               apiToken: auth.apiToken,
               email: auth.email,
-              password: auth.password,
             });
 
             const statusLabel = result.authenticated ? "erfolgreich" : "fehlgeschlagen";
@@ -664,7 +662,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         const baseUrl = (project.sourceUrl ?? project.inConnectorDetail ?? sourceConnector?.api_url ?? "").trim();
         const apiToken = (sourceConnector?.api_key ?? "").trim();
         const email = (sourceConnector?.username ?? "").trim();
-        const password = (sourceConnector?.password ?? "").trim();
 
         if (!baseUrl) {
           const message = "Für das Quellsystem ist keine Basis-URL hinterlegt. Capability Discovery nicht möglich.";
@@ -684,7 +681,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
           project.sourceSystem,
           apiToken,
           email,
-          password,
         );
         reportProgress(90);
 

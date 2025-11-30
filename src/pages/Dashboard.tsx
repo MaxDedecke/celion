@@ -338,7 +338,6 @@ const Dashboard = () => {
         auth_type: "api_key",
         api_key: sourceAuth.apiToken ?? null,
         username: sourceAuth.email ?? null,
-        password: sourceAuth.password ?? null,
       };
 
       const targetConnectorPayload = {
@@ -347,7 +346,6 @@ const Dashboard = () => {
         auth_type: "api_key",
         api_key: targetAuth.apiToken ?? null,
         username: targetAuth.email ?? null,
-        password: targetAuth.password ?? null,
       };
 
       const { error: connectorError } = await supabaseDatabase.insertConnectors([
@@ -565,7 +563,6 @@ const Dashboard = () => {
         auth_type: "api_key",
         api_key: data.sourceAuth.apiToken ?? null,
         username: data.sourceAuth.email ?? null,
-        password: data.sourceAuth.password ?? null,
       };
 
       const targetConnectorUpdates: Record<string, any> = {
@@ -573,7 +570,6 @@ const Dashboard = () => {
         auth_type: "api_key",
         api_key: data.targetAuth.apiToken ?? null,
         username: data.targetAuth.email ?? null,
-        password: data.targetAuth.password ?? null,
       };
 
       // Update source connector

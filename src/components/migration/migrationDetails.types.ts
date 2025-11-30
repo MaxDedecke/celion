@@ -21,5 +21,4 @@ export type AuthContext = {
   baseUrl: string;
   apiToken: string;
   email: string;
-  password: string;
 };
