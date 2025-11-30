@@ -1504,6 +1504,19 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
   const activeStepProgressPercent = Math.round((activeStep?.progress ?? 0) * 100);
   const activeColorTheme = getWorkflowTheme(activeStep?.color);
 
+  // Check if the current active step has failed (has error in agentResult)
+  const hasCurrentStepFailed = useMemo(() => {
+    if (!activeStep) return false;
+    
+    const activeNode = workflowBoard.nodes.find(n => n.id === activeStep.id);
+    if (!activeNode) return false;
+    
+    const result = activeNode.agentResult;
+    if (!result || typeof result !== 'object') return false;
+    
+    return 'error' in (result as Record<string, unknown>);
+  }, [activeStep, workflowBoard.nodes]);
+
   const workflowNodeMap = useMemo(() => {
     return workflowBoard.nodes.reduce<Record<string, WorkflowNode>>((accumulator, node) => {
       accumulator[node.id] = node;
@@ -1901,6 +1914,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
           targetSystem={project.targetSystem}
           sourceObjectsDisplay={sourceObjectsDisplay}
           targetObjectsDisplay={targetObjectsDisplay}
+          hasCurrentStepFailed={hasCurrentStepFailed}
           onSendMessage={handleSendChatMessage}
           onContinue={handleNextWorkflowStep}
           onOpenAgentOutput={(stepId) => setAgentResultDialogStepId(stepId)}
