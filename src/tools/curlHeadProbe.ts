@@ -1,4 +1,5 @@
 import type { CurlHeadProbeParams, CurlHeadProbeResponse } from "@/types/agents";
+import { resolveApiUrl } from "@/lib/server-helpers";
 
 const API_CURL_HEAD_PROBE_PATH = "/api/curl-head-probe";
 
@@ -19,7 +20,8 @@ export const curlHeadProbe = async (
   }
 
   try {
-    const response = await fetch(API_CURL_HEAD_PROBE_PATH, {
+    const apiUrl = resolveApiUrl(API_CURL_HEAD_PROBE_PATH);
+    const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

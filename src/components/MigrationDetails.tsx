@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useId, forwardRef, useImperativeHandle } from "react";
+import { supabase } from "@/integrations/supabase/client";
 import { AGENT_WORKFLOW_STEPS } from "@/constants/agentWorkflow";
 import { supabaseDatabase } from "@/api/supabaseDatabase";
 import { runAuthFlowAgent, runCapabilityDiscoveryAgent, runSystemDetectionAgent } from "@/agents/agentService";
@@ -327,383 +328,45 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
     [status, project.id],
   );
 
-  const executeAgentForStep = useCallback(
-    async (
-      node: WorkflowNode,
-      options?: { onProgress?: (value: number) => void },
-    ): Promise<SystemDetectionStepResult | AuthFlowStepResult | CapabilityDiscoveryResult | undefined> => {
-      if (!node.agentType || node.active === false) {
-        return undefined;
-      }
+  useEffect(() => {
+    if (!project.id) return;
 
-      const reportProgress = (value: number) => {
-        if (options?.onProgress) {
-          options.onProgress(clampProgressValue(value));
+    const channel = supabase
+      .channel(`migration-details:${project.id}`)
+      .on<MigrationProject>(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "migrations",
+          filter: `id=eq.${project.id}`,
+        },
+        (payload) => {
+          const newProject = payload.new;
+          
+          if (newProject.status && newProject.status !== status) {
+            setStatus(newProject.status as MigrationStatus);
+            setIsStepRunning(newProject.status === 'running');
+          }
+          
+          if (newProject.workflow_state) {
+            applyWorkflowState(newProject.workflow_state);
+          }
+
+          if(newProject.activities) {
+            setActivityLog((newProject.activities as RawActivityRecord[] ?? []).map(normalizeActivity));
+          }
+          
+          // As a fallback, refresh everything
+          onRefresh();
         }
-      };
-
-      if (node.agentType === "auth-flow") {
-        const { data: connectorRows, error: connectorsError } = await supabaseDatabase.fetchConnectorsByMigration(project.id);
-
-        if (connectorsError) {
-          const message = connectorsError.message || "Konnektordaten konnten nicht geladen werden.";
-          await appendActivity("error", message);
-          throw new AgentExecutionError(message);
-        }
-
-        const connectors = (connectorRows ?? []) as ConnectorRecord[];
-        const sourceConnector = connectors.find((record) => record.connector_type === "in");
-        const targetConnector = connectors.find((record) => record.connector_type === "out");
-        const fallbackSourceBaseUrl = (project.sourceUrl ?? project.inConnectorDetail ?? "").trim();
-        const fallbackTargetBaseUrl = (project.targetUrl ?? project.outConnectorDetail ?? "").trim();
-
-        const resolveConnectorAuth = async (
-          scope: "source" | "target",
-          connector: ConnectorRecord | undefined,
-          fallbackBaseUrl: string,
-        ): Promise<AuthContext> => {
-          const scopeLabel = scope === "source" ? "Quellsystem" : "Zielsystem";
-
-          if (!connector) {
-            const message = `Keine Connector-Konfiguration für das ${scopeLabel} vorhanden.`;
-            await appendActivity("error", message);
-            throw new AgentExecutionError(message);
-          }
-
-          const baseUrl = (connector.api_url ?? fallbackBaseUrl ?? "").trim();
-          if (!baseUrl) {
-            const message = `Für das ${scopeLabel} ist keine API-URL hinterlegt.`;
-            await appendActivity("error", message);
-            throw new AgentExecutionError(message);
-          }
-          const apiToken = (connector.api_key ?? "").trim();
-          const email = (connector.username ?? "").trim();
-
-          if (!apiToken) {
-            const message = `Für das ${scopeLabel} wurde kein API-Token hinterlegt.`;
-            await appendActivity("error", message);
-            throw new AgentExecutionError(message);
-          }
-
-          if (!email) {
-            const message = `Für das ${scopeLabel} fehlt eine Kontakt-E-Mail.`;
-            await appendActivity("error", message);
-            throw new AgentExecutionError(message);
-          }
-
-          return { baseUrl, apiToken, email };
-        };
-
-        const sourceAuthContext = await resolveConnectorAuth("source", sourceConnector, fallbackSourceBaseUrl);
-        const targetAuthContext = await resolveConnectorAuth("target", targetConnector, fallbackTargetBaseUrl);
-
-        const runAuthForScope = async (
-          scope: "source" | "target",
-          system: string,
-          auth: AuthContext,
-        ): Promise<AuthFlowResult> => {
-          const scopeLabel = scope === "source" ? "Quellsystem" : "Zielsystem";
-          await appendActivity(
-            "info",
-            `Authentifizierung gestartet (${scopeLabel}): ${system}`,
-          );
-
-          try {
-            // ✅ neues API: runAuthFlowAgent bekommt genau EIN Objekt
-            const result = await runAuthFlowAgent({
-              system,
-              baseUrl: auth.baseUrl,
-              apiToken: auth.apiToken,
-              email: auth.email,
-            });
-
-            const statusLabel = result.authenticated ? "erfolgreich" : "fehlgeschlagen";
-
-            if (!result.authenticated) {
-              // ✅ flexibel, egal ob das Resultat "error", "error_message", "summary" oder "reasoning" benutzt
-              const raw = result as any;
-              const errorMsg =
-                raw.error ||
-                raw.error_message ||
-                raw.summary ||
-                raw.reasoning ||
-                "Authentifizierung fehlgeschlagen";
-
-              await appendActivity(
-                "error",
-                `Authentifizierung ${statusLabel} (${scopeLabel}): ${system} - ${errorMsg}`,
-              );
-
-              const errorPayload =
-                scope === "source"
-                  ? { source: result, error: errorMsg }
-                  : { target: result, error: errorMsg };
-
-              throw new AgentExecutionError(errorMsg, errorPayload);
-            }
-
-            await appendActivity(
-              "success",
-              `Authentifizierung ${statusLabel} (${scopeLabel}): ${system}`,
-            );
-            return result;
-
-          } catch (error) {
-            if (error instanceof AgentExecutionError) {
-              throw error;
-            }
-
-            const message = error instanceof Error ? error.message : String(error);
-            await appendActivity(
-              "error",
-              `Authentifizierung fehlgeschlagen (${scopeLabel}): ${system} - ${message}`,
-            );
-
-            const errorPayload =
-              scope === "source" ? { error: message } : { error: message };
-
-            throw new AgentExecutionError(message, errorPayload);
-          }
-        };
-
-
-        let sourceAuth: AuthFlowResult | null = null;
-        let targetAuth: AuthFlowResult | null = null;
-
-        try {
-          reportProgress(25);
-          sourceAuth = await runAuthForScope("source", project.sourceSystem, sourceAuthContext);
-
-          reportProgress(75);
-          targetAuth = await runAuthForScope("target", project.targetSystem, targetAuthContext);
-
-          reportProgress(100);
-          return { source: sourceAuth, target: targetAuth };
-        } catch (error) {
-          if (error instanceof AgentExecutionError) {
-            const combinedPayload: Record<string, unknown> = {
-              ...(sourceAuth ? { source: sourceAuth } : {}),
-              ...(targetAuth ? { target: targetAuth } : {}),
-            };
-
-            if (error.agentResult && typeof error.agentResult === "object" && !Array.isArray(error.agentResult)) {
-              Object.assign(combinedPayload, error.agentResult as Record<string, unknown>);
-            }
-
-            if (!("error" in combinedPayload)) {
-              combinedPayload.error = error.message;
-            }
-
-            throw new AgentExecutionError(error.message, Object.keys(combinedPayload).length > 0 ? combinedPayload : undefined);
-          }
-
-          const message = error instanceof Error ? error.message : String(error);
-          throw new AgentExecutionError(message, { error: message });
-        }
-      }
-
-      if (node.agentType === "system-detection") {
-        const sourceBaseUrl = (project.sourceUrl ?? project.inConnectorDetail ?? "").trim();
-
-        const runDetectionForScope = async (
-          scope: "source" | "target",
-          baseUrl: string,
-          expectedSystem?: string | null,
-          completionProgress?: number,
-        ): Promise<SystemDetectionResult> => {
-          const scopeLabel = scope === "source" ? "Quellsystem" : "Zielsystem";
-          await appendActivity("info", `Systemerkennung gestartet (${scopeLabel}): ${expectedSystem || baseUrl}`);
-
-          try {
-            const rawDetection = await runSystemDetectionAgent(baseUrl, expectedSystem || undefined);
-            const detection = normalizeSystemDetectionResult(rawDetection);
-
-            if (!detection) {
-              const errorMessage = "Ungültige Systemerkennungs-Antwort erhalten.";
-              throw new AgentExecutionError(errorMessage, {
-                [`${scope}RawDetection`]: rawDetection,
-              });
-            }
-
-            const hasApiSubtype = typeof detection.apiSubtype === "string" && detection.apiSubtype.trim().length > 0;
-            const normalizedConfidence = confidenceToPercent(detection.confidenceScore);
-            const summaryParts = [
-              hasApiSubtype ? detection.apiSubtype : detection.apiTypeDetected ?? "Unbekannter Typ",
-              detection.recommendedBaseUrl,
-              normalizedConfidence !== null ? `Confidence ${normalizedConfidence}%` : null,
-            ].filter(Boolean);
-
-            const statusLabel = detection.systemMatchesUrl ? "erfolgreich" : "unvollständig";
-            const titleParts = [
-              `Systemerkennung ${statusLabel} (${scopeLabel})`,
-              summaryParts.join(" · ") || baseUrl,
-            ].filter(Boolean);
-
-            if (!detection.systemMatchesUrl) {
-              const failureMessage =
-                `Die Systemerkennung (${scopeLabel}) konnte keine sichere Übereinstimmung der URL mit dem erwarteten System herstellen.`;
-              await appendActivity("error", titleParts.join(" · ") || failureMessage);
-              const errorPayload =
-                scope === "source"
-                  ? { source: detection, error: failureMessage }
-                  : { target: detection, error: failureMessage };
-              throw new AgentExecutionError(failureMessage, errorPayload);
-            }
-
-            await appendActivity("success", titleParts.join(" · "));
-
-            if (typeof completionProgress === "number") {
-              reportProgress(completionProgress);
-            }
-
-            return detection;
-          } catch (error) {
-            if (error instanceof AgentExecutionError) {
-              throw error;
-            }
-
-            const message = error instanceof Error ? error.message : String(error);
-            await appendActivity("error", `Systemerkennung fehlgeschlagen (${scopeLabel}): ${message}`);
-            const errorPayload = scope === "source" ? { error: message } : { error: message };
-            throw new AgentExecutionError(message, errorPayload);
-          }
-        };
-
-        const toAgentError = (error: unknown, fallbackMessage: string) => {
-          if (error instanceof AgentExecutionError) {
-            return error;
-          }
-          const resolvedMessage = error instanceof Error ? error.message : fallbackMessage;
-          return new AgentExecutionError(resolvedMessage, { error: resolvedMessage });
-        };
-
-        const mergeAgentErrorPayload = (
-          payload: Record<string, unknown>,
-          scope: "source" | "target",
-          agentError: AgentExecutionError | null,
-        ) => {
-          if (!agentError) {
-            return;
-          }
-
-          if (agentError.agentResult && typeof agentError.agentResult === "object" && !Array.isArray(agentError.agentResult)) {
-            Object.assign(payload, agentError.agentResult as Record<string, unknown>);
-          } else if (agentError.message) {
-            payload[`${scope}Error`] = agentError.message;
-          }
-        };
-
-        let sourceDetection: SystemDetectionResult | null = null;
-        let sourceError: AgentExecutionError | null = null;
-
-        if (!sourceBaseUrl) {
-          const message = "Für die Systemerkennung des Quellsystems ist keine API-URL hinterlegt.";
-          await appendActivity("error", message);
-          sourceError = new AgentExecutionError(message);
-        } else {
-          try {
-            sourceDetection = await runDetectionForScope("source", sourceBaseUrl, project.sourceSystem, 50);
-          } catch (error) {
-            sourceError = toAgentError(error, "Systemerkennung fehlgeschlagen (Quellsystem).");
-          }
-        }
-
-        const targetBaseUrl = (project.targetUrl ?? project.outConnectorDetail ?? "").trim();
-        let targetDetection: SystemDetectionResult | null = null;
-        let targetError: AgentExecutionError | null = null;
-
-        if (!targetBaseUrl) {
-          reportProgress(50);
-          const message = "Für die Systemerkennung des Zielsystems ist keine API-URL hinterlegt.";
-          await appendActivity("error", message);
-          targetError = new AgentExecutionError(message);
-        } else {
-          try {
-            targetDetection = await runDetectionForScope("target", targetBaseUrl, project.targetSystem, 100);
-          } catch (error) {
-            targetError = toAgentError(error, "Systemerkennung fehlgeschlagen (Zielsystem).");
-          }
-        }
-
-        if (!sourceDetection || !targetDetection) {
-          const combinedPayload: Record<string, unknown> = {};
-          if (sourceDetection) {
-            combinedPayload.source = sourceDetection;
-          }
-          if (targetDetection) {
-            combinedPayload.target = targetDetection;
-          }
-
-          mergeAgentErrorPayload(combinedPayload, "source", sourceError);
-          mergeAgentErrorPayload(combinedPayload, "target", targetError);
-
-          const message =
-            sourceError?.message ||
-            targetError?.message ||
-            "Systemerkennung fehlgeschlagen: Bitte Eingaben prüfen und erneut versuchen.";
-
-          throw new AgentExecutionError(message, Object.keys(combinedPayload).length > 0 ? combinedPayload : undefined);
-        }
-
-        toast.success("Systemerkennung für Quelle und Ziel abgeschlossen");
-        return { source: sourceDetection, target: targetDetection };
-      }
-
-      if (node.agentType === "schema-discovery") {
-        const { data: connectorRows, error: connectorsError } = await supabaseDatabase.fetchConnectorsByMigration(project.id);
-
-        if (connectorsError) {
-          const message = connectorsError.message || "Konnektordaten konnten nicht geladen werden.";
-                  await appendActivity("error", message);
-                  throw new AgentExecutionError(message);        }
-
-        const connectors = (connectorRows ?? []) as ConnectorRecord[];
-        const sourceConnector = connectors.find((record) => record.connector_type === "in");
-        const baseUrl = (project.sourceUrl ?? project.inConnectorDetail ?? sourceConnector?.api_url ?? "").trim();
-        const apiToken = (sourceConnector?.api_key ?? "").trim();
-        const email = (sourceConnector?.username ?? "").trim();
-
-        if (!baseUrl) {
-          const message = "Für das Quellsystem ist keine Basis-URL hinterlegt. Capability Discovery nicht möglich.";
-                  await appendActivity("error", message);
-                  throw new AgentExecutionError(message);        }
-
-        if (!apiToken) {
-          const message = "Für das Quellsystem wurde kein API-Token gefunden. Capability Discovery nicht möglich.";
-                  await appendActivity("error", message);
-                  throw new AgentExecutionError(message);        }
-
-        await appendActivity("info", `Capability Discovery gestartet (Quelle): ${project.sourceSystem || baseUrl}`);
-        reportProgress(20);
-
-        const discoveryResult = await runCapabilityDiscoveryAgent(
-          baseUrl,
-          project.sourceSystem,
-          apiToken,
-          email,
-        );
-        reportProgress(90);
-
-        await appendActivity("success", "Capability Discovery abgeschlossen");
-        toast.success("Capability Discovery abgeschlossen");
-
-        reportProgress(100);
-        return discoveryResult;
-      }
-
-      return undefined;
-    },
-    [
-      appendActivity,
-      project.id,
-      project.inConnectorDetail,
-      project.outConnectorDetail,
-      project.sourceUrl,
-      project.targetUrl,
-      project.sourceSystem,
-      project.targetSystem,
-    ],
-  );
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [project.id, status, onRefresh, applyWorkflowState, normalizeActivity]);
 
   const ensureSystemDetectionRetryable = useCallback(
     async (board: WorkflowBoardState): Promise<WorkflowBoardState> => {
@@ -759,8 +422,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
   const handleNextWorkflowStep = useCallback(async () => {
     if (isStepRunning) return;
 
-    let progressInterval: ReturnType<typeof setInterval> | null = null;
-
     try {
       // Reset progress to 0 at the start of a new step
       setStepProgress(0);
@@ -778,377 +439,124 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         return;
       }
 
-      const completedStepNode = nodesSnapshot[stepIndexToComplete];
-      const isSystemDetectionStep = completedStepNode.id === "system-detection";
+      const stepToRun = nodesSnapshot[stepIndexToComplete];
+      
+      // --- Start Agent Parameter Preparation ---
+      let agentName: string | undefined = stepToRun.agentType;
+      let agentParams: any = {};
 
-      const revertActiveNodeToPending = async (agentResultPayload?: unknown) => {
-        let nextWorkflowState: WorkflowBoardState | null = null;
+      if (stepToRun.agentType === "system-detection") {
+        agentName = 'runSystemDetection';
+        agentParams = {
+          sourceUrl: (project.sourceUrl ?? project.inConnectorDetail ?? "").trim(),
+          sourceExpectedSystem: project.sourceSystem,
+          targetUrl: (project.targetUrl ?? project.outConnectorDetail ?? "").trim(),
+          targetExpectedSystem: project.targetSystem,
+        };
+      } else if (stepToRun.agentType === "auth-flow") {
+        agentName = 'runAuthFlow';
+        const { data: connectorRows, error: connectorsError } = await supabaseDatabase.fetchConnectorsByMigration(project.id);
+        if (connectorsError) throw new Error("Konnektordaten konnten nicht geladen werden.");
+        
+        const connectors = (connectorRows ?? []) as ConnectorRecord[];
+        const sourceConnector = connectors.find((record) => record.connector_type === "in");
+        const targetConnector = connectors.find((record) => record.connector_type === "out");
 
-        setWorkflowBoard((previous) => {
-          const updatedNodes = previous.nodes.map((node, index) => {
-            if (index !== stepIndexToComplete) {
-              return node;
-            }
+        agentParams = {
+          source: {
+            system: project.sourceSystem,
+            baseUrl: (sourceConnector?.api_url ?? project.sourceUrl ?? project.inConnectorDetail ?? "").trim(),
+            apiToken: (sourceConnector?.api_key ?? "").trim(),
+            email: (sourceConnector?.username ?? "").trim(),
+          },
+          target: {
+            system: project.targetSystem,
+            baseUrl: (targetConnector?.api_url ?? project.targetUrl ?? project.outConnectorDetail ?? "").trim(),
+            apiToken: (targetConnector?.api_key ?? "").trim(),
+            email: (targetConnector?.username ?? "").trim(),
+          },
+        };
+      } else if (stepToRun.agentType === "schema-discovery") {
+        agentName = 'runCapabilityDiscovery';
+        const { data: connectorRows, error: connectorsError } = await supabaseDatabase.fetchConnectorsByMigration(project.id);
+        if (connectorsError) throw new Error("Konnektordaten konnten nicht geladen werden.");
 
-            const nextStatus = node.status === "done" ? node.status : ("pending" as const);
+        const connectors = (connectorRows ?? []) as ConnectorRecord[];
+        const sourceConnector = connectors.find((record) => record.connector_type === "in");
 
-            return {
-              ...node,
-              status: nextStatus,
-              agentResult: agentResultPayload ?? node.agentResult,
-            };
-          });
-
-          nextWorkflowState = {
-            ...previous,
-            nodes: updatedNodes,
-          };
-
-          return nextWorkflowState;
-        });
-
-        if (nextWorkflowState) {
-          cacheWorkflowStateSnapshot(project.id, nextWorkflowState);
-          try {
-            await supabaseDatabase.updateMigration(project.id, {
-              workflow_state: serializeWorkflowState(nextWorkflowState) as any,
-            });
-          } catch (error) {
-            console.error("Fehler beim Speichern des Agenten-Outputs:", error);
-          }
-
-          await onRefresh();
-        }
-      };
-
-      if (!isSystemDetectionStep) {
-        // Animate progress from 0 to 100 over 2 seconds for non-detection steps
-        const animationDuration = 2000;
-        const animationSteps = 60;
-        const stepIncrement = 100 / animationSteps;
-        const stepInterval = animationDuration / animationSteps;
-
-        let currentProgress = 0;
-        progressInterval = setInterval(() => {
-          currentProgress += stepIncrement;
-          if (currentProgress >= 100) {
-            setStepProgress(100);
-            if (progressInterval) {
-              clearInterval(progressInterval);
-              progressInterval = null;
-            }
-          } else {
-            setStepProgress(currentProgress);
-          }
-        }, stepInterval);
-
-        await new Promise((resolve) => setTimeout(resolve, animationDuration + 100));
-
-        if (progressInterval) {
-          clearInterval(progressInterval);
-          progressInterval = null;
-          setStepProgress(100);
-        }
+        agentParams = {
+          baseUrl: (project.sourceUrl ?? project.inConnectorDetail ?? sourceConnector?.api_url ?? "").trim(),
+          system: project.sourceSystem,
+          apiToken: (sourceConnector?.api_key ?? "").trim(),
+          email: (sourceConnector?.username ?? "").trim(),
+        };
       }
-
-      setIsUpdatingStatus(true);
+      // --- End Agent Parameter Preparation ---
 
       if (activeStepIndex === -1) {
-        const startedActivity = `Schritt gestartet: ${completedStepNode.title}`;
-
+        const startedActivity = `Schritt gestartet: ${stepToRun.title}`;
         await supabaseDatabase.insertMigrationActivity({
           migration_id: project.id,
           type: "info",
           title: startedActivity,
           timestamp: new Date().toISOString()
         });
-
-        setActivityLog((previous) => [
-          {
-            id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            type: "info",
-            title: startedActivity,
-            timestamp: new Date().toISOString(),
-          },
-          ...previous,
-        ]);
+        setActivityLog((previous) => [{
+          id: `workflow-${Date.now()}`,
+          type: "info",
+          title: startedActivity,
+          timestamp: new Date().toISOString(),
+        }, ...previous]);
         toast.success(startedActivity);
 
         setWorkflowBoard((previous) => {
-          const runningNodes = previous.nodes.map((node, index) => {
-            if (index === stepIndexToComplete) {
-              return { ...node, status: "in-progress" as const };
-            }
-            return node;
-          });
-
+          const runningNodes = previous.nodes.map((node, index) => 
+            index === stepIndexToComplete ? { ...node, status: "in-progress" as const } : node
+          );
           return { ...previous, nodes: runningNodes };
         });
       }
 
-      let completedAgentResult: SystemDetectionStepResult | AuthFlowStepResult | CapabilityDiscoveryResult | undefined;
-      try {
-        completedAgentResult = await executeAgentForStep(completedStepNode, {
-          onProgress: isSystemDetectionStep
-            ? (value) => setStepProgress(clampProgressValue(value))
-            : undefined,
-        });
-
-        // Debug: Log the completed agent result
-        console.log(`[DEBUG] Completed agent result for step "${completedStepNode.id}":`, JSON.stringify(completedAgentResult, null, 2));
-      } catch (error) {
-        if (error instanceof AgentExecutionError) {
-          const derivedAgentResult = (() => {
-            if (error.agentResult === undefined) {
-              return error.message;
-            }
-
-            if (
-              error.agentResult &&
-              typeof error.agentResult === "object" &&
-              !Array.isArray(error.agentResult)
-            ) {
-              const resultRecord = error.agentResult as Record<string, unknown>;
-              if (typeof resultRecord.error === "string" && resultRecord.error.trim().length > 0) {
-                return { ...resultRecord };
-              }
-              return { ...resultRecord, error: error.message };
-            }
-
-            return error.agentResult;
-          })();
-
-          await revertActiveNodeToPending(derivedAgentResult);
-          await createViewResultActivity(completedStepNode, true);
-          return;
-        }
-        throw error;
-      }
-
-      // Validate system detection result if this is the system-detection step
-      if (completedStepNode.id === "system-detection" && completedAgentResult && "source" in completedAgentResult) {
-        const isSystemDetectionResult = (result: any): result is SystemDetectionResult => {
-          return result && typeof result === "object" && "systemMatchesUrl" in result;
-        };
-
-        const sourceDetection = completedAgentResult.source;
-        const targetDetection = completedAgentResult.target;
-
-        if (!sourceDetection || !isSystemDetectionResult(sourceDetection) || !sourceDetection.systemMatchesUrl) {
-          const errorMsg =
-            "Systemerkennung fehlgeschlagen: Es konnte kein Quellsystem hinter der URL erkannt werden.";
-          await appendActivity("error", errorMsg);
-          await revertActiveNodeToPending(
-            completedAgentResult ? { ...completedAgentResult, error: errorMsg } : { error: errorMsg },
-          );
-          await createViewResultActivity(completedStepNode, true);
-          setIsUpdatingStatus(false);
-          return;
-        }
-
-        const expectedSourceSystem = project.sourceSystem?.toLowerCase().trim();
-        const detectedSourceSystem = sourceDetection.apiSubtype?.toLowerCase().trim();
-
-        if (
-          !detectedSourceSystem ||
-          !expectedSourceSystem ||
-          !detectedSourceSystem.includes(expectedSourceSystem.split(" ")[0])
-        ) {
-          const errorMsg = `Systemerkennung fehlgeschlagen: Erkannter Subtyp "${sourceDetection.apiSubtype}" stimmt nicht mit dem erwarteten Quellsystem "${project.sourceSystem}" überein.`;
-          await appendActivity("error", errorMsg);
-          await revertActiveNodeToPending(
-            completedAgentResult ? { ...completedAgentResult, error: errorMsg } : { error: errorMsg },
-          );
-          await createViewResultActivity(completedStepNode, true);
-          setIsUpdatingStatus(false);
-          return;
-        }
-
-        const sourceConfidence = confidenceToPercent(sourceDetection.confidenceScore);
-        await appendActivity(
-          "success",
-          `Quellsystem erfolgreich erkannt: ${sourceDetection.apiSubtype ?? sourceDetection.apiTypeDetected} (Konfidenz: ${sourceConfidence ?? 0}%)`,
-        );
-
-        if (!targetDetection || !isSystemDetectionResult(targetDetection) || !targetDetection.systemMatchesUrl) {
-          const errorMsg =
-            "Systemerkennung fehlgeschlagen: Es konnte kein Zielsystem hinter der URL erkannt werden.";
-          await appendActivity("error", errorMsg);
-          await revertActiveNodeToPending(
-            completedAgentResult ? { ...completedAgentResult, error: errorMsg } : { error: errorMsg },
-          );
-          await createViewResultActivity(completedStepNode, true);
-          setIsUpdatingStatus(false);
-          return;
-        }
-
-        const expectedTargetSystem = project.targetSystem?.toLowerCase().trim();
-        const detectedTargetSystem = targetDetection.apiSubtype?.toLowerCase().trim();
-
-        if (
-          !detectedTargetSystem ||
-          !expectedTargetSystem ||
-          !detectedTargetSystem.includes(expectedTargetSystem.split(" ")[0])
-        ) {
-          const errorMsg = `Systemerkennung fehlgeschlagen: Erkannter Subtyp "${targetDetection.apiSubtype}" stimmt nicht mit dem erwarteten Zielsystem "${project.targetSystem}" überein.`;
-          await appendActivity("error", errorMsg);
-          await revertActiveNodeToPending(
-            completedAgentResult ? { ...completedAgentResult, error: errorMsg } : { error: errorMsg },
-          );
-          await createViewResultActivity(completedStepNode, true);
-          setIsUpdatingStatus(false);
-          return;
-        }
-
-        const targetConfidence = confidenceToPercent(targetDetection.confidenceScore);
-        await appendActivity(
-          "success",
-          `Zielsystem erfolgreich erkannt: ${targetDetection.apiSubtype ?? targetDetection.apiTypeDetected} (Konfidenz: ${targetConfidence ?? 0}%)`,
-        );
-
-        setStepProgress(100);
-      }
-
-      // Mark current step as done (but don't activate next step yet)
-      const completedStepTitle = completedStepNode.title;
-      const completedActivity = `Schritt abgeschlossen: ${completedStepTitle}`;
-
-      // Save completed step activity to database
-      await supabaseDatabase.insertMigrationActivity({
-        migration_id: project.id,
-        type: "success",
-        title: completedActivity,
-        timestamp: new Date().toISOString()
+      // --- Trigger agent asynchronously ---
+      const response = await fetch('/api/v2/migrations/run-step', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          migrationId: project.id,
+          stepId: stepToRun.id,
+          agentName: agentName,
+          agentParams: agentParams,
+        }),
       });
 
-      setActivityLog((previous) => [
-        {
-          id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          type: "success",
-          title: completedActivity,
-          timestamp: new Date().toISOString(),
-        },
-        ...previous,
-      ]);
-
-      // Display agent's readable output in chat (if available)
-      const readableOutput = extractAgentReadableOutput(completedAgentResult);
-      if (readableOutput && readableOutput.trim().length > 0) {
-        const agentResponseTimestamp = new Date().toISOString();
-        
-        await supabaseDatabase.insertMigrationActivity({
-          migration_id: project.id,
-          type: "info",
-          title: readableOutput,
-          timestamp: agentResponseTimestamp
-        });
-        
-        setActivityLog((previous) => [
-          {
-            id: `agent-response-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            type: "info",
-            title: readableOutput,
-            timestamp: agentResponseTimestamp,
-          },
-          ...previous,
-        ]);
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Failed to start agent: ${errorText}`);
       }
+      
+      // The UI will now wait for realtime updates to reflect completion.
+      // We no longer handle success/failure here.
 
-      // Add activity with inline icon to open agent output
-      await createViewResultActivity(completedStepNode, false);
-
-      const updatedNodes = nodesSnapshot.map((node, idx) => {
-        if (idx === stepIndexToComplete) {
-          const updatedNode = {
-            ...node,
-            status: "done" as const,
-            agentResult: completedAgentResult ?? node.agentResult,
-          };
-
-          // Debug: Log what will be persisted
-          console.log(`[DEBUG] Updating node "${node.id}" with agentResult:`, JSON.stringify(updatedNode.agentResult, null, 2));
-
-          return updatedNode;
-        }
-        return node;
-      });
-
-      const completedCount = updatedNodes.filter((node) => node.status === "done").length;
-      const stepCount = updatedNodes.length;
-      const normalizedProgress = stepCount > 0 ? Math.round((completedCount / stepCount) * 100) : 0;
-      const clampedProgress = Math.max(0, Math.min(100, normalizedProgress));
-      const isCompleted = completedCount >= stepCount && stepCount > 0;
-
-      const nextWorkflowState: WorkflowBoardState = {
-        ...boardForExecution,
-        nodes: updatedNodes,
-      };
-
-      setWorkflowBoard(nextWorkflowState);
-      cacheWorkflowStateSnapshot(project.id, nextWorkflowState);
-
-      // Debug: Log workflow state before persisting
-      const serializedState = serializeWorkflowState(nextWorkflowState);
-      console.log(`[DEBUG] Persisting workflow state:`, JSON.stringify(serializedState, null, 2));
-
-      const { error } = await supabaseDatabase.updateMigration(project.id, {
-        progress: isCompleted ? 100 : clampedProgress,
-        status: isCompleted ? "completed" : "running",
-        workflow_state: serializedState as any
-      });
-
-      if (error) throw error;
-
-      // Check if all steps are completed
-      if (isCompleted) {
-        const finalActivity = "Alle Schritte abgeschlossen";
-
-        // Save final activity to database
-        await supabaseDatabase.insertMigrationActivity({
-          migration_id: project.id,
-          type: "success",
-          title: finalActivity,
-          timestamp: new Date().toISOString()
-        });
-
-        setActivityLog((previous) => [
-          {
-            id: `workflow-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            type: "success",
-            title: finalActivity,
-            timestamp: new Date().toISOString(),
-          },
-          ...previous,
-        ]);
-        toast.success(finalActivity);
-      }
-
-      if (isCompleted) {
-        setStatus("completed");
-      } else {
-        setStatus("running");
-      }
-
-      await onRefresh();
     } catch (error) {
       console.error("Error progressing workflow:", error);
       await appendActivity("error", "Fehler beim Fortschreiten des Workflows");
-    } finally {
-      if (progressInterval) {
-        clearInterval(progressInterval);
-      }
-      setIsUpdatingStatus(false);
+      // Revert UI state if something went wrong before the agent even started
       setIsStepRunning(false);
-      // Keep stepProgress at 100 until next step starts
+    } finally {
+      // Don't set isStepRunning to false here, as it's now a background task.
+      // The UI state for this will be driven by the 'status' column from Supabase.
     }
   }, [
     workflowBoard,
     project.id,
     project.sourceSystem,
     project.targetSystem,
+    project.sourceUrl,
+    project.targetUrl,
+    project.inConnectorDetail,
+    project.outConnectorDetail,
     onRefresh,
     isStepRunning,
-    executeAgentForStep,
     ensureSystemDetectionRetryable,
     appendActivity,
   ]);

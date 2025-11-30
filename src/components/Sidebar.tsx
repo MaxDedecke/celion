@@ -21,8 +21,8 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 
 interface SidebarProps {
   projects: Array<{ id: string; name: string }>;
-  projectMigrations?: Array<{ id: string; name: string; projectId: string | null }>;
-  standaloneMigrations?: Array<{ id: string; name: string }>;
+  projectMigrations?: Array<{ id: string; name: string; projectId: string | null; status?: string }>;
+  standaloneMigrations?: Array<{ id: string; name: string; status?: string }>;
   selectedMigration?: string | null;
   onSelectMigration?: (id: string) => void;
   onNewMigration: () => void;
@@ -261,9 +261,10 @@ const Sidebar = ({
                                 >
                                   <button
                                     onClick={() => navigate(`/projects/${project.id}/migration/${migration.id}`)}
-                                    className="flex-1 text-left"
+                                    className="flex-1 text-left flex items-center gap-2"
                                   >
-                                    {migration.name}
+                                    {migration.status === 'running' && <Loader2 className="h-4 w-4 animate-spin" />}
+                                    <span>{migration.name}</span>
                                   </button>
                                   <div className="opacity-0 transition-opacity group-hover:opacity-100">
                                     <DropdownMenu>

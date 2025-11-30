@@ -1,4 +1,5 @@
 import type { HttpRequestParams, HttpResponse } from "@/types/agents";
+import { resolveApiUrl } from "@/lib/server-helpers";
 
 const API_HTTP_CLIENT_PATH = "/api/http-client";
 
@@ -25,7 +26,8 @@ export const httpClient = async (params: HttpRequestParams): Promise<HttpRespons
   }
 
   try {
-    const response = await fetch(API_HTTP_CLIENT_PATH, {
+    const apiUrl = resolveApiUrl(API_HTTP_CLIENT_PATH);
+    const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",

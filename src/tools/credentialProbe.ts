@@ -1,4 +1,6 @@
 // Tool for credential probing via FastAPI backend
+import { resolveApiUrl } from "@/lib/server-helpers";
+
 export interface CredentialProbeParams {
   url: string;
   method: string;
@@ -52,7 +54,8 @@ export const credentialProbe = async (
   }
 
   try {
-    const response = await fetch(API_PROBE_PATH, {
+    const apiUrl = resolveApiUrl(API_PROBE_PATH);
+    const response = await fetch(apiUrl, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
