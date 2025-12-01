@@ -112,6 +112,11 @@ export interface CurlHeadProbeResponse {
   error?: string | null;
 }
 
+export type AgentName = 
+  | 'runSystemDetection' 
+  | 'runAuthFlow' 
+  | 'runCapabilityDiscovery';
+
 export interface CapabilityObjectInfo {
   count: number;
   error?: string | null;

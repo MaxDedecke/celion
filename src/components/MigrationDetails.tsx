@@ -328,46 +328,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
     [status, project.id],
   );
 
-  useEffect(() => {
-    if (!project.id) return;
-
-    const channel = supabase
-      .channel(`migration-details:${project.id}`)
-      .on<MigrationProject>(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "migrations",
-          filter: `id=eq.${project.id}`,
-        },
-        (payload) => {
-          const newProject = payload.new;
-          
-          if (newProject.status && newProject.status !== status) {
-            setStatus(newProject.status as MigrationStatus);
-            setIsStepRunning(newProject.status === 'running');
-          }
-          
-          if (newProject.workflow_state) {
-            applyWorkflowState(newProject.workflow_state);
-          }
-
-          if(newProject.activities) {
-            setActivityLog((newProject.activities as RawActivityRecord[] ?? []).map(normalizeActivity));
-          }
-          
-          // As a fallback, refresh everything
-          onRefresh();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [project.id, status, onRefresh, applyWorkflowState, normalizeActivity]);
-
   const ensureSystemDetectionRetryable = useCallback(
     async (board: WorkflowBoardState): Promise<WorkflowBoardState> => {
       const systemDetectionIndex = board.nodes.findIndex((node) => node.id === "system-detection");
@@ -662,6 +622,47 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
       isCancelled = true;
     };
   }, [project.id, applyWorkflowState, normalizeWorkflowState]);
+
+  // Realtime subscription for migration updates - must be after applyWorkflowState/normalizeActivity definitions
+  useEffect(() => {
+    if (!project.id) return;
+
+    const channel = supabase
+      .channel(`migration-details:${project.id}`)
+      .on<MigrationProject>(
+        "postgres_changes",
+        {
+          event: "UPDATE",
+          schema: "public",
+          table: "migrations",
+          filter: `id=eq.${project.id}`,
+        },
+        (payload) => {
+          const newProject = payload.new;
+          
+          if (newProject.status && newProject.status !== status) {
+            setStatus(newProject.status as MigrationStatus);
+            setIsStepRunning(newProject.status === 'running');
+          }
+          
+          if (newProject.workflowState) {
+            applyWorkflowState(newProject.workflowState);
+          }
+
+          if(newProject.activities) {
+            setActivityLog((newProject.activities as RawActivityRecord[] ?? []).map(normalizeActivity));
+          }
+          
+          // As a fallback, refresh everything
+          onRefresh();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [project.id, status, onRefresh, applyWorkflowState, normalizeActivity]);
 
   useEffect(() => {
     void ensureSystemDetectionRetryable(workflowBoard);
