@@ -1,0 +1,16 @@
+# Use the same base image as the main app for consistency
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Copy package.json and package-lock.json
+COPY package*.json ./
+
+# Install dependencies
+RUN npm install --force
+
+# Copy the application code
+COPY . .
+
+# Command to run the worker
+CMD ["npm", "run", "worker"]

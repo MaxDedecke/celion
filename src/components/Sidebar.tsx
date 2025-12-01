@@ -263,7 +263,7 @@ const Sidebar = ({
                                     onClick={() => navigate(`/projects/${project.id}/migration/${migration.id}`)}
                                     className="flex-1 text-left flex items-center gap-2"
                                   >
-                                    {migration.status === 'running' && <Loader2 className="h-4 w-4 animate-spin" />}
+                                    {migration.status === 'processing' && <Loader2 className="h-4 w-4 animate-spin" />}
                                     <span>{migration.name}</span>
                                   </button>
                                   <div className="opacity-0 transition-opacity group-hover:opacity-100">
@@ -345,7 +345,7 @@ const Sidebar = ({
                           onClick={() => navigate(`/migration/${migration.id}`)}
                           className="flex-1 text-left flex items-center gap-2"
                         >
-                          {migration.status === 'running' && <Loader2 className="h-4 w-4 animate-spin" />}
+                          {migration.status === 'processing' && <Loader2 className="h-4 w-4 animate-spin" />}
                           <span>{migration.name}</span>
                         </button>
                         <div className="opacity-0 transition-opacity group-hover:opacity-100">

@@ -115,6 +115,7 @@ const Dashboard = () => {
   const [transitioning, setTransitioning] = useState(false);
   const loaderVisible = useMinimumLoader(loading || transitioning, 1000);
   const migrationDetailsRef = useRef<MigrationDetailsRef>(null);
+  const [processingMigrationId, setProcessingMigrationId] = useState<string | null>(null);
   
   // Lazy loading state for standalone migrations
   const [hasMoreMigrations, setHasMoreMigrations] = useState(true);
@@ -214,6 +215,10 @@ const Dashboard = () => {
       }),
     );
   }, []);
+
+  const handleStepRunningChange = (migrationId: string, isRunning: boolean) => {
+    setProcessingMigrationId(isRunning ? migrationId : null);
+  };
 
   // Optimized refresh for only the current migration
   const refreshCurrentMigration = async () => {
@@ -619,13 +624,23 @@ const Dashboard = () => {
     );
   }
 
+  const standaloneMigrationsWithProcessingStatus = standaloneMigrations.map(m => ({
+    ...m,
+    status: processingMigrationId === m.id ? 'processing' : m.status,
+  }));
+
+  const migrationsWithProcessingStatus = migrations.map(m => ({
+    ...m,
+    status: processingMigrationId === m.id ? 'processing' : m.status,
+  }));
+
   return (
     <div className="app-shell flex h-screen flex-col px-6 pt-6 pb-6 overflow-hidden">
       <div className="flex flex-1 gap-6 min-h-0">
         <Sidebar
           projects={allProjects}
-          projectMigrations={migrations}
-          standaloneMigrations={standaloneMigrations}
+          projectMigrations={migrationsWithProcessingStatus}
+          standaloneMigrations={standaloneMigrationsWithProcessingStatus}
           selectedMigration={selectedMigration}
           onSelectMigration={(id) => {
             const migration = [...migrations, ...standaloneMigrations].find(m => m.id === id);
@@ -765,6 +780,7 @@ const Dashboard = () => {
                   ref={migrationDetailsRef}
                   project={currentMigration}
                   onRefresh={refreshCurrentMigration}
+                  onStepRunningChange={(isRunning) => handleStepRunningChange(currentMigration.id, isRunning)}
                 />
               </div>
             ) : (

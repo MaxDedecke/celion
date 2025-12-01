@@ -5,6 +5,7 @@ import type { MigrationProject } from "./types";
 export interface MigrationDetailsProps {
   project: MigrationProject;
   onRefresh: () => Promise<void>;
+  onStepRunningChange?: (isRunning: boolean) => void;
 }
 
 export type RawActivityRecord = {

@@ -1,54 +1,42 @@
-
 import type { Plugin, ViteDevServer } from 'vite';
-import { runSystemDetectionAgent, runAuthFlowAgent, runCapabilityDiscoveryAgent } from './src/agents/agentService';
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
-import type { AgentName } from './src/types/agents';
 
-async function runAgentInBackground(
+async function enqueueAgentStep(
   supabase: SupabaseClient,
-  agentName: AgentName,
-  agentParams: any,
   migrationId: string,
-  stepId: string,
+  stepName: string,
+  agentName: string,
+  agentParams: any,
 ) {
-  const updateStatus = async (status: string, message?: string, data?: any) => {
-    // Here we should update the specific step, not the whole migration.
-    // The database schema needs to be adjusted for this. For now, I'll update the migration.
-    const { error } = await supabase
-      .from('migrations')
-      .update({ status, status_message: message, ...data })
-      .eq('id', migrationId);
+  // 1. Create a new step in the 'migration_steps' table
+  const { data: step, error: stepError } = await supabase
+    .from('migration_steps')
+    .insert({
+      migration_id: migrationId,
+      name: stepName,
+      status: 'pending',
+    })
+    .select()
+    .single();
 
-    if (error) {
-      console.error(`Failed to update migration ${migrationId} status to ${status}:`, error);
-    }
-  };
-
-  try {
-    await updateStatus('running');
-
-    let result: any;
-    // This is where the agent runners need to be adapted for the server environment
-    if (agentName === 'runSystemDetection') {
-      result = await runSystemDetectionAgent(agentParams.url, agentParams.expectedSystem);
-    } else if (agentName === 'runAuthFlow') {
-      // result = await runAuthFlowAgent(...);
-      throw new Error(`Agent ${agentName} is not yet implemented in the background runner.`);
-    } else if (agentName === 'runCapabilityDiscovery') {
-      // result = await runCapabilityDiscoveryAgent(...);
-      throw new Error(`Agent ${agentName} is not yet implemented in the background runner.`);
-    } else {
-      throw new Error(`Unknown agent: ${agentName}`);
-    }
-
-    // TODO: The result from the agent should be processed and stored correctly.
-    // For now, I'm just storing the whole thing.
-    await updateStatus('completed', 'Agent run completed successfully.', { result: result });
-
-  } catch (error) {
-    console.error(`Error running agent for migration ${migrationId}:`, error);
-    await updateStatus('failed', (error as Error).message);
+  if (stepError) {
+    throw new Error(`Failed to create migration step: ${stepError.message}`);
   }
+
+  // 2. Create a new job in the 'jobs' table
+  const { error: jobError } = await supabase.from('jobs').insert({
+    step_id: step.id,
+    payload: { agentName, agentParams },
+    status: 'pending',
+  });
+
+  if (jobError) {
+    // If job creation fails, we should probably roll back the step creation
+    // For now, just log the error
+    throw new Error(`Failed to enqueue job: ${jobError.message}`);
+  }
+
+  return { step, job: null }; // Should return the created job as well if needed
 }
 
 function agentRunnerMiddleware(server: ViteDevServer, supabase: SupabaseClient) {
@@ -62,25 +50,27 @@ function agentRunnerMiddleware(server: ViteDevServer, supabase: SupabaseClient) 
       body += chunk.toString();
     });
 
-    req.on('end', () => {
+    req.on('end', async () => {
       try {
-        const { migrationId, stepId, agentName, agentParams } = JSON.parse(body);
+        // The frontend will need to be adapted to send `stepName` instead of `stepId`
+        const { migrationId, stepName, agentName, agentParams } = JSON.parse(body);
 
-        if (!migrationId || !stepId || !agentName) {
+        if (!migrationId || !stepName || !agentName) {
           res.statusCode = 400;
-          res.end(JSON.stringify({ error: 'migrationId, stepId and agentName are required' }));
+          res.end(JSON.stringify({ error: 'migrationId, stepName and agentName are required' }));
           return;
         }
 
-        // Run in the background
-        Promise.resolve().then(() => runAgentInBackground(supabase, agentName, agentParams, migrationId, stepId));
+        // Enqueue the job and create the step
+        await enqueueAgentStep(supabase, migrationId, stepName, agentName, agentParams);
 
         res.statusCode = 202;
-        res.end(JSON.stringify({ message: 'Agent execution started' }));
+        res.end(JSON.stringify({ message: 'Agent execution has been enqueued' }));
 
       } catch (e) {
+        console.error('Error enqueuing agent step:', e);
         res.statusCode = 500;
-        res.end(JSON.stringify({ error: 'Failed to start agent execution', details: (e as Error).message }));
+        res.end(JSON.stringify({ error: 'Failed to enqueue agent execution', details: (e as Error).message }));
       }
     });
   });

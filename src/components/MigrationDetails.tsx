@@ -113,7 +113,7 @@ export interface MigrationDetailsRef {
   openWorkflowPanel: () => void;
 }
 
-const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(({ project, onRefresh }, ref) => {
+const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(({ project, onRefresh, onStepRunningChange }, ref) => {
   const [notes, setNotes] = useState(project.notes ?? "");
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
@@ -386,6 +386,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
       // Reset progress to 0 at the start of a new step
       setStepProgress(0);
       setIsStepRunning(true);
+      onStepRunningChange?.(true);
 
       const boardForExecution = await ensureSystemDetectionRetryable(workflowBoard);
       const nodesSnapshot = boardForExecution.nodes.map((node) => ({ ...node }));
@@ -642,10 +643,12 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
           
           if (newProject.status && newProject.status !== status) {
             setStatus(newProject.status as MigrationStatus);
-            setIsStepRunning(newProject.status === 'running');
           }
           
           if (newProject.workflowState) {
+            // A workflow state change from the backend means the agent step finished.
+            setIsStepRunning(false);
+            onStepRunningChange?.(false);
             applyWorkflowState(newProject.workflowState);
           }
 
