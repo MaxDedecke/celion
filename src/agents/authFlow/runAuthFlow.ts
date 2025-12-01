@@ -6,9 +6,9 @@ import { createThread, postUserMessage } from "../openai/thread";
 import { createRun } from "../openai/run";
 import { fetchLatestAssistantMessage, extractMessageText } from "../openai/message";
 import { parseAuthFlowResponse } from "./parser";
-import { readSchemeFile } from "@/tools/readSchemeFile";
+import { readSchemeFile } from "../../tools/readSchemeFile";
 import { httpRequestTool } from "../openai/httpTool";
-import type { HttpRequestParams } from "@/types/agents";
+import type { HttpRequestParams } from "../../types/agents";
 import type { OpenAiRun } from "../openai/types";
 import type { AuthFlowResult, AuthSchemeDefinition } from "./types";
 

@@ -1,6 +1,6 @@
 // src/agents/capabilityDiscovery/assistant.ts
 
-import type { SchemeDefinition } from "@/types/schemes";
+import type { SchemeDefinition } from "../../types/schemes";
 
 export type CapabilityDiscoveryCredentials = {
   apiToken?: string;

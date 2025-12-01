@@ -1,19 +1,16 @@
 
 import type { Plugin, ViteDevServer } from 'vite';
 import { runSystemDetectionAgent, runAuthFlowAgent, runCapabilityDiscoveryAgent } from './src/agents/agentService';
-import { createClient } from '@supabase/supabase-js';
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import type { AgentName } from './src/types/agents';
 
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseKey = process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  throw new Error("Supabase URL and Key must be provided in environment variables.");
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
-
-async function runAgentInBackground(agentName: AgentName, agentParams: any, migrationId: string, stepId: string) {
+async function runAgentInBackground(
+  supabase: SupabaseClient,
+  agentName: AgentName,
+  agentParams: any,
+  migrationId: string,
+  stepId: string,
+) {
   const updateStatus = async (status: string, message?: string, data?: any) => {
     // Here we should update the specific step, not the whole migration.
     // The database schema needs to be adjusted for this. For now, I'll update the migration.
@@ -54,7 +51,7 @@ async function runAgentInBackground(agentName: AgentName, agentParams: any, migr
   }
 }
 
-function agentRunnerMiddleware(server: ViteDevServer) {
+function agentRunnerMiddleware(server: ViteDevServer, supabase: SupabaseClient) {
   server.middlewares.use('/api/v2/migrations/run-step', async (req, res, next) => {
     if (req.method !== 'POST') {
       return next();
@@ -76,7 +73,7 @@ function agentRunnerMiddleware(server: ViteDevServer) {
         }
 
         // Run in the background
-        Promise.resolve().then(() => runAgentInBackground(agentName, agentParams, migrationId, stepId));
+        Promise.resolve().then(() => runAgentInBackground(supabase, agentName, agentParams, migrationId, stepId));
 
         res.statusCode = 202;
         res.end(JSON.stringify({ message: 'Agent execution started' }));
@@ -93,8 +90,17 @@ export function agentRunnerPlugin(): Plugin {
   return {
     name: 'agent-runner-plugin',
     configureServer(server) {
+      const supabaseUrl = process.env.VITE_SUPABASE_URL;
+      const supabaseKey = process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
+
+      if (!supabaseUrl || !supabaseKey) {
+        console.warn('Supabase credentials not found; agent runner middleware will be disabled.');
+        return;
+      }
+
       console.log('Configuring agent runner middleware...');
-      agentRunnerMiddleware(server);
+      const supabase = createClient(supabaseUrl, supabaseKey);
+      agentRunnerMiddleware(server, supabase);
     },
   };
 }

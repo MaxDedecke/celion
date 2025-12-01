@@ -1,5 +1,5 @@
 import type { HttpRequestParams, HttpResponse } from "@/types/agents";
-import { resolveApiUrl } from "@/lib/server-helpers";
+import { resolveApiUrl } from "../lib/server-helpers";
 
 const API_HTTP_CLIENT_PATH = "/api/http-client";
 

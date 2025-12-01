@@ -9,7 +9,7 @@ import { fetchLatestAssistantMessage, extractMessageText } from "../openai/messa
 import { parseSystemDetectionResponse } from "./parser";
 import { curlHeadProbeTool } from "../openai/curlHeadTool";
 import { httpRequestTool } from "../openai/httpTool";
-import type { CurlHeadProbeParams, CurlHeadProbeResponse, HttpRequestParams } from "@/types/agents";
+import type { CurlHeadProbeParams, CurlHeadProbeResponse, HttpRequestParams } from "../../types/agents";
 import type { OpenAiRun } from "../openai/types";
 
 const processSystemDetectionRun = async (

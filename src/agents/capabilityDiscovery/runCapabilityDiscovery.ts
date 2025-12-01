@@ -5,9 +5,9 @@ import { buildAuthHeaders, mergeSchemeHeaders, normalizeSystemName, resolveApiBa
 import { buildUrlWithQuery, hasPathPlaceholders } from "./prompt";
 import { extractFirstArray, extractHasMoreFlag, extractNextCursor, normalizeResponseBody } from "./parser";
 import type { CapabilityDiscoveryCredentials } from "./assistant";
-import type { CapabilityDiscoveryResult, HttpResponse } from "@/types/agents";
-import type { DiscoveryPaginationConfig, SchemeDefinition } from "@/types/schemes";
-import { readJsonFile } from "@/tools/fileReader";
+import type { CapabilityDiscoveryResult, HttpResponse } from "../../types/agents";
+import type { DiscoveryPaginationConfig, SchemeDefinition } from "../../types/schemes";
+import { readJsonFile } from "../../tools/fileReader";
 
 const MAX_PAGES = 50;
 const DEFAULT_LIMIT = 50;

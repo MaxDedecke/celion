@@ -1,5 +1,5 @@
 // Tool for credential probing via FastAPI backend
-import { resolveApiUrl } from "@/lib/server-helpers";
+import { resolveApiUrl } from "../lib/server-helpers";
 
 export interface CredentialProbeParams {
   url: string;

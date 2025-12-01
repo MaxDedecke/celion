@@ -1,5 +1,5 @@
 import type { CurlHeadProbeParams, CurlHeadProbeResponse } from "@/types/agents";
-import { resolveApiUrl } from "@/lib/server-helpers";
+import { resolveApiUrl } from "../lib/server-helpers";
 
 const API_CURL_HEAD_PROBE_PATH = "/api/curl-head-probe";
 
