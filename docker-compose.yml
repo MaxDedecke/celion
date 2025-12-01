@@ -71,6 +71,17 @@ services:
     networks:
       - celion-net
 
+  portainer:
+    image: portainer/portainer-ce:latest
+    ports:
+      - "9000:9000"
+      - "9443:9443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+      - portainer_data:/data
+    networks:
+      - celion-net
+
 networks:
   celion-net:
     driver: bridge
@@ -79,3 +90,4 @@ volumes:
   webapp_node_modules:
   worker_node_modules:
   db_data:
+  portainer_data:
