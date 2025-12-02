@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import sys
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Dict, Optional, Union
 
 import requests
 from fastapi import FastAPI, HTTPException
@@ -42,7 +42,7 @@ class LegacyResponse(BaseModel):
 class ProbeEvidence(BaseModel):
     """Metadata describing the performed credential probe."""
 
-    request_url: HttpUrl | str
+    request_url: Union[HttpUrl, str]
     method: str
     used_headers: list[str]
     timestamp: str
@@ -54,19 +54,19 @@ class ProbeRequest(BaseModel):
     method: str
     url: HttpUrl
     headers: dict[str, str]
-    body: Any | None = None
-    request_format: str | None = None
-    graphql: dict[str, Any] | None = None
+    body: Optional[Any] = None
+    request_format: Optional[str] = None
+    graphql: Optional[Dict[str, Any]] = None
 
 
 class ProbeResponse(BaseModel):
     """Normalized response returned to the frontend after performing the probe."""
 
-    status: int | None
+    status: Optional[int]
     ok: bool
-    body: Any | None
-    raw_response: str | None
-    error: str | None
+    body: Optional[Any]
+    raw_response: Optional[str]
+    error: Optional[str]
     evidence: ProbeEvidence
 
 
@@ -79,36 +79,36 @@ class HttpClientRequest(BaseModel):
 
     url: HttpUrl
     method: str
-    headers: dict[str, str] | None = None
-    body: Any | None = None
+    headers: Optional[Dict[str, str]] = None
+    body: Optional[Any] = None
 
 
 class HttpClientResponse(BaseModel):
     """Normalized HTTP response for the agent httpClient tool."""
 
-    status: int | None
+    status: Optional[int]
     headers: dict[str, str]
-    body: Any | None
-    error: str | None = None
+    body: Optional[Any]
+    error: Optional[str] = None
 
 
 class CurlHeadProbeRequest(BaseModel):
     """Request payload for executing a curl-style HEAD probe via the backend."""
 
     url: HttpUrl
-    headers: dict[str, str] | None = None
+    headers: Optional[Dict[str, str]] = None
     follow_redirects: bool = True
 
 
 class CurlHeadProbeResponse(BaseModel):
     """Normalized response for curl_head_probe to expose headers and redirects."""
 
-    status: int | None
+    status: Optional[int]
     headers: dict[str, str]
     redirects: list[dict[str, Any]]
-    final_url: str | None
-    raw_response: str | None
-    error: str | None = None
+    final_url: Optional[str]
+    raw_response: Optional[str]
+    error: Optional[str] = None
 
 
 def _legacy_http_exception() -> HTTPException:
@@ -129,9 +129,9 @@ async def run_auth_flow(
     base_url: str,
     system: str,
     auth_type: str,
-    api_token: str | None = None,
-    username: str | None = None,
-    password: str | None = None,
+    api_token: Optional[str] = None,
+    username: Optional[str] = None,
+    password: Optional[str] = None,
 ) -> LegacyResponse:
     """Inform callers that the Python auth flow agent has been removed."""
     print(f"run_auth_flow called with base_url: {base_url}, system: {system}, auth_type: {auth_type}")
@@ -188,8 +188,8 @@ async def run_credential_probe(payload: ProbeRequest) -> ProbeResponse:
         response = await run_in_threadpool(_perform_request)
         content_type = response.headers.get("content-type", "").lower()
 
-        body: Any | None
-        raw_response: str | None
+        body: Optional[Any]
+        raw_response: Optional[str]
         if "application/json" in content_type:
             try:
                 body = response.json()
@@ -261,7 +261,7 @@ async def run_http_client(payload: HttpClientRequest) -> HttpClientResponse:
         content_type = response.headers.get("content-type", "").lower()
         response_headers = {k: v for k, v in response.headers.items()}
 
-        body: Any | None
+        body: Optional[Any]
         if "application/json" in content_type:
             try:
                 body = response.json()
