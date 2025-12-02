@@ -22,8 +22,23 @@ async function processJob(job: any, supabase: SupabaseClient) {
   const { step_id, payload } = job;
   const { agentName, agentParams } = payload;
 
-  // 1. Update step status to 'running'
+  const { data: stepRecord, error: stepLookupError } = await supabase
+    .from('migration_steps')
+    .select('id, migration_id')
+    .eq('id', step_id)
+    .maybeSingle();
+
+  if (stepLookupError || !stepRecord) {
+    console.error('Unable to find migration step for job', job.id, stepLookupError);
+    await supabase.from('jobs').update({ status: 'failed', last_error: 'Step not found' }).eq('id', job.id);
+    return;
+  }
+
+  const migrationId = stepRecord.migration_id;
+
+  // 1. Update step status to 'running' and mark migration as processing
   await supabase.from('migration_steps').update({ status: 'running' }).eq('id', step_id);
+  await supabase.from('migrations').update({ status: 'processing' }).eq('id', migrationId);
 
   try {
     // 2. Run the actual agent
@@ -40,6 +55,8 @@ async function processJob(job: any, supabase: SupabaseClient) {
       .update({ status: 'completed', result, status_message: 'Agent run completed successfully.' })
       .eq('id', step_id);
 
+    await supabase.from('migrations').update({ status: 'running' }).eq('id', migrationId);
+
     // 4. Update job status to 'completed'
     await supabase.from('jobs').update({ status: 'completed' }).eq('id', job.id);
 
@@ -54,6 +71,8 @@ async function processJob(job: any, supabase: SupabaseClient) {
       .from('migration_steps')
       .update({ status: 'failed', status_message: errorMessage })
       .eq('id', step_id);
+
+    await supabase.from('migrations').update({ status: 'running' }).eq('id', migrationId);
 
     // 6. Update job status to 'failed'
     await supabase.from('jobs').update({ status: 'failed', last_error: errorMessage }).eq('id', job.id);

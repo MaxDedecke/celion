@@ -113,6 +113,8 @@ export interface MigrationDetailsRef {
   openWorkflowPanel: () => void;
 }
 
+const STEP_TIMEOUT = 5 * 60 * 1000; // 5 minutes
+
 const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(({ project, onRefresh, onStepRunningChange }, ref) => {
   const [notes, setNotes] = useState(project.notes ?? "");
   const [isSavingNotes, setIsSavingNotes] = useState(false);
@@ -471,8 +473,10 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         toast.success(startedActivity);
 
         setWorkflowBoard((previous) => {
-          const runningNodes = previous.nodes.map((node, index) => 
-            index === stepIndexToComplete ? { ...node, status: "in-progress" as const } : node
+          const runningNodes = previous.nodes.map((node, index) =>
+            index === stepIndexToComplete
+              ? { ...node, status: "in-progress" as const, stepStartTime: Date.now() }
+              : node,
           );
           return { ...previous, nodes: runningNodes };
         });
@@ -485,6 +489,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         body: JSON.stringify({
           migrationId: project.id,
           stepId: stepToRun.id,
+          stepName: stepToRun.title,
           agentName: agentName,
           agentParams: agentParams,
         }),
@@ -500,9 +505,12 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
 
     } catch (error) {
       console.error("Error progressing workflow:", error);
-      await appendActivity("error", "Fehler beim Fortschreiten des Workflows");
+      const errorMessage = error instanceof Error ? error.message : "Ein unbekannter Fehler ist aufgetreten";
+      await appendActivity("error", `Fehler beim Fortschreiten des Workflows: ${errorMessage}`);
+      
       // Revert UI state if something went wrong before the agent even started
       setIsStepRunning(false);
+      onStepRunningChange?.(false);
     } finally {
       // Don't set isStepRunning to false here, as it's now a background task.
       // The UI state for this will be driven by the 'status' column from Supabase.
@@ -520,6 +528,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
     isStepRunning,
     ensureSystemDetectionRetryable,
     appendActivity,
+    onStepRunningChange,
   ]);
 
   const handleAgentResultDialogOpenChange = useCallback((open: boolean) => {
@@ -665,11 +674,87 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
     return () => {
       supabase.removeChannel(channel);
     };
-  }, [project.id, status, onRefresh, applyWorkflowState, normalizeActivity]);
+  }, [project.id, status, onRefresh, applyWorkflowState, normalizeActivity, onStepRunningChange]);
 
   useEffect(() => {
     void ensureSystemDetectionRetryable(workflowBoard);
   }, [workflowBoard, ensureSystemDetectionRetryable]);
+
+  useEffect(() => {
+    const inProgressNode = workflowBoard.nodes.find((node) => node.status === "in-progress");
+
+    if (!inProgressNode) {
+      return;
+    }
+    
+    const startTime = (inProgressNode as any).stepStartTime;
+    if (!startTime) {
+      return;
+    }
+
+    const elapsedTime = Date.now() - startTime;
+    const remainingTime = STEP_TIMEOUT - elapsedTime;
+
+    if (remainingTime <= 0) {
+      setWorkflowBoard((previousBoard) => {
+        const updatedNodes = previousBoard.nodes.map((node) => {
+          if (node.id === inProgressNode.id) {
+            return {
+              ...node,
+              status: "done" as const,
+              agentResult: {
+                error:
+                  "Operation timed out. The backend service may be unavailable. Please try again later.",
+              },
+            };
+          }
+          return node;
+        });
+        const newState = { ...previousBoard, nodes: updatedNodes };
+        cacheWorkflowStateSnapshot(project.id, newState);
+        return newState;
+      });
+
+      setIsStepRunning(false);
+      onStepRunningChange?.(false);
+      appendActivity("error", `Schritt "${inProgressNode.title}" hat das Zeitlimit überschritten.`);
+      toast.error(`Schritt "${inProgressNode.title}" hat das Zeitlimit überschritten.`);
+      return;
+    }
+
+    const timeoutId = setTimeout(() => {
+      setWorkflowBoard((previousBoard) => {
+        const currentNode = previousBoard.nodes.find((n) => n.id === inProgressNode.id);
+
+        if (currentNode && currentNode.status === "in-progress") {
+          const updatedNodes = previousBoard.nodes.map((node) => {
+            if (node.id === inProgressNode.id) {
+              return {
+                ...node,
+                status: "done" as const,
+                agentResult: {
+                  error:
+                    "Operation timed out. The backend service may be unavailable. Please try again later.",
+                },
+              };
+            }
+            return node;
+          });
+          const newState = { ...previousBoard, nodes: updatedNodes };
+          cacheWorkflowStateSnapshot(project.id, newState);
+          return newState;
+        }
+        return previousBoard;
+      });
+
+      setIsStepRunning(false);
+      onStepRunningChange?.(false);
+      appendActivity("error", `Schritt "${inProgressNode.title}" hat das Zeitlimit überschritten.`);
+      toast.error(`Schritt "${inProgressNode.title}" hat das Zeitlimit überschritten.`);
+    }, remainingTime);
+
+    return () => clearTimeout(timeoutId);
+  }, [workflowBoard, appendActivity, onStepRunningChange, project.id]);
 
   useEffect(() => {
     if (!project.id) {

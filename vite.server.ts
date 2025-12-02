@@ -4,26 +4,65 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 async function enqueueAgentStep(
   supabase: SupabaseClient,
   migrationId: string,
-  stepName: string,
   agentName: string,
   agentParams: any,
+  stepId?: string,
+  stepName?: string,
 ) {
-  // 1. Create a new step in the 'migration_steps' table
-  const { data: step, error: stepError } = await supabase
-    .from('migration_steps')
-    .insert({
-      migration_id: migrationId,
-      name: stepName,
-      status: 'pending',
-    })
-    .select()
-    .single();
+  // 1. Create or reset a step in the 'migration_steps' table
+  let step = null as any;
 
-  if (stepError) {
-    throw new Error(`Failed to create migration step: ${stepError.message}`);
+  if (stepId) {
+    const { data: existingStep, error: stepFetchError } = await supabase
+      .from('migration_steps')
+      .select('*')
+      .eq('id', stepId)
+      .maybeSingle();
+
+    if (stepFetchError) {
+      throw new Error(`Failed to load migration step: ${stepFetchError.message}`);
+    }
+
+    if (existingStep) {
+      const { data: updatedStep, error: stepUpdateError } = await supabase
+        .from('migration_steps')
+        .update({ status: 'pending', status_message: null, result: null })
+        .eq('id', stepId)
+        .select()
+        .single();
+
+      if (stepUpdateError) {
+        throw new Error(`Failed to reset migration step: ${stepUpdateError.message}`);
+      }
+
+      step = updatedStep;
+    }
   }
 
-  // 2. Create a new job in the 'jobs' table
+  if (!step) {
+    const effectiveStepName = stepName || 'Unnamed step';
+
+    const { data: createdStep, error: stepError } = await supabase
+      .from('migration_steps')
+      .insert({
+        migration_id: migrationId,
+        name: effectiveStepName,
+        status: 'pending',
+      })
+      .select()
+      .single();
+
+    if (stepError) {
+      throw new Error(`Failed to create migration step: ${stepError.message}`);
+    }
+
+    step = createdStep;
+  }
+
+  // 2. Mark the migration as processing while the worker runs
+  await supabase.from('migrations').update({ status: 'processing' }).eq('id', migrationId);
+
+  // 3. Create a new job in the 'jobs' table
   const { error: jobError } = await supabase.from('jobs').insert({
     step_id: step.id,
     payload: { agentName, agentParams },
@@ -31,12 +70,10 @@ async function enqueueAgentStep(
   });
 
   if (jobError) {
-    // If job creation fails, we should probably roll back the step creation
-    // For now, just log the error
     throw new Error(`Failed to enqueue job: ${jobError.message}`);
   }
 
-  return { step, job: null }; // Should return the created job as well if needed
+  return { step };
 }
 
 function agentRunnerMiddleware(server: ViteDevServer, supabase: SupabaseClient) {
@@ -52,17 +89,16 @@ function agentRunnerMiddleware(server: ViteDevServer, supabase: SupabaseClient) 
 
     req.on('end', async () => {
       try {
-        // The frontend will need to be adapted to send `stepName` instead of `stepId`
-        const { migrationId, stepName, agentName, agentParams } = JSON.parse(body);
+        const { migrationId, stepId, stepName, agentName, agentParams } = JSON.parse(body);
 
-        if (!migrationId || !stepName || !agentName) {
+        if (!migrationId || !agentName || (!stepId && !stepName)) {
           res.statusCode = 400;
-          res.end(JSON.stringify({ error: 'migrationId, stepName and agentName are required' }));
+          res.end(JSON.stringify({ error: 'migrationId, agentName and either stepId or stepName are required' }));
           return;
         }
 
-        // Enqueue the job and create the step
-        await enqueueAgentStep(supabase, migrationId, stepName, agentName, agentParams);
+        // Enqueue the job and create or reset the step
+        await enqueueAgentStep(supabase, migrationId, agentName, agentParams, stepId, stepName);
 
         res.statusCode = 202;
         res.end(JSON.stringify({ message: 'Agent execution has been enqueued' }));

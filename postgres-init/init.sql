@@ -3,6 +3,13 @@
 -- have been removed or commented out to ensure compatibility with a standard PostgreSQL database.
 -- It is assumed that security will be handled at the application/API level.
 
+-- Grant necessary privileges to the application role
+GRANT USAGE ON SCHEMA public TO celion;
+GRANT ALL ON ALL TABLES IN SCHEMA public TO celion;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO celion;
+GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO celion;
+ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO celion;
+
 -- Create migrations table
 CREATE TABLE public.migrations (
   id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
@@ -451,6 +458,7 @@ ADD COLUMN meta_model_approved boolean NOT NULL DEFAULT false;
 -- Create field_mappings table to store field mapping configurations for migrations
 CREATE TABLE public.field_mappings (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  migration_id UUID NOT NULL REFERENCES public.migrations(id) ON DELETE CASCADE,
   target_field_id TEXT NOT NULL,
   source_field_id TEXT NOT NULL,
   mapping_type TEXT NOT NULL DEFAULT 'direct' CHECK (mapping_type IN ('direct', 'collection')),
@@ -616,8 +624,8 @@ SET pipeline_id = (
 -- Make pipeline_id NOT NULL after migration
 ALTER TABLE public.field_mappings ALTER COLUMN pipeline_id SET NOT NULL;
 
--- This ALTER statement would fail because the column doesn't exist anymore after the next step
--- ALTER TABLE public.field_mappings DROP COLUMN migration_id;
+-- Drop the now-redundant migration_id column
+ALTER TABLE public.field_mappings DROP COLUMN migration_id;
 
 -- CREATE POLICY "Users can view mappings of their pipelines"
 -- ON public.field_mappings FOR SELECT

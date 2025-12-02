@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   webapp:
     build:
@@ -9,11 +7,13 @@ services:
       - "8080:8080"
     env_file:
       - .env
+      - .env.local
     volumes:
       - .:/app # Mount app source
       - webapp_node_modules:/app/node_modules # Use a named volume for node_modules
     depends_on:
-      - api
+      rest:
+        condition: service_healthy
     networks:
       - celion-net
 
@@ -23,11 +23,13 @@ services:
       dockerfile: Dockerfile.worker
     env_file:
       - .env
+      - .env.local
     volumes:
       - .:/app # Mount app source
       - worker_node_modules:/app/node_modules # Use a named volume for node_modules
     depends_on:
-      - webapp # wait for webapp to be somewhat ready
+      rest:
+        condition: service_healthy
     networks:
       - celion-net
 
@@ -39,6 +41,7 @@ services:
       - "8000:8000"
     env_file:
       - .env
+      - .env.local
     environment:
       POSTGRES_DB: celion
       POSTGRES_USER: celion
@@ -50,6 +53,26 @@ services:
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - celion-net
+
+  rest:
+    image: postgrest/postgrest:v12.0.2
+    ports:
+      - "3000:3000"
+    environment:
+      PGRST_DB_URI: postgres://celion:celion@db:5432/celion
+      PGRST_DB_SCHEMA: public
+      PGRST_DB_ANON_ROLE: celion
+      PGRST_JWT_SECRET: thisisadummyjwtsecretforlocal!!
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 5s
+      timeout: 2s
+      retries: 5
     networks:
       - celion-net
 
@@ -65,10 +88,10 @@ services:
       - db_data:/var/lib/postgresql/data
       - ./postgres-init:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      test: ["CMD-SHELL", "pg_isready -U celion -d celion"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 10
     networks:
       - celion-net
 
