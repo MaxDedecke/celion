@@ -7,6 +7,7 @@ import Logo from "@/components/Logo";
 import { toast } from "sonner";
 import { databaseClient } from "@/api/databaseClient";
 import { useMinimumLoader } from "@/hooks/useMinimumLoader";
+import { buildUserFromKeycloak, hasKeycloakConfig, loginWithKeycloak } from "@/auth/keycloakClient";
 
 const Login = () => {
   const [email, setEmail] = useState("");
@@ -50,6 +51,42 @@ const Login = () => {
     }
   };
 
+  const handleKeycloakLogin = async () => {
+    setLoading(true);
+    try {
+      const result = await loginWithKeycloak();
+      if (!result) {
+        // Redirect initiated
+        return;
+      }
+
+      const { profile, tokenParsed } = result;
+      const user = buildUserFromKeycloak(profile, tokenParsed);
+      await databaseClient.setSessionUser(user as any);
+
+      toast.success("Login via Keycloak erfolgreich");
+      navigate("/dashboard");
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Keycloak Login fehlgeschlagen";
+      toast.error(message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleGuestLogin = async () => {
+    try {
+      setLoading(true);
+      await databaseClient.createGuestSession();
+      toast.success("Gastmodus aktiviert");
+      navigate("/dashboard");
+    } catch (error) {
+      toast.error("Gastmodus konnte nicht aktiviert werden");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <div className="app-shell relative flex items-center justify-center px-6 py-16">
       {loaderVisible && (
@@ -68,6 +105,25 @@ const Login = () => {
         </div>
 
         <div className="app-surface relative w-full max-w-md px-10 py-12">
+          {hasKeycloakConfig() && (
+            <div className="mb-6 flex flex-col gap-3">
+              <Button
+                type="button"
+                variant="secondary"
+                className="h-11 w-full rounded-2xl"
+                onClick={handleKeycloakLogin}
+                disabled={loading}
+              >
+                Mit Keycloak anmelden
+              </Button>
+              <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="h-px flex-1 bg-border" />
+                <span>oder E-Mail Login</span>
+                <span className="h-px flex-1 bg-border" />
+              </div>
+            </div>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-8">
             <div className="space-y-4">
               <Input
@@ -100,6 +156,21 @@ const Login = () => {
               ) : isSignUp ? "Registrieren" : "Anmelden"}
             </Button>
           </form>
+
+          <div className="mt-6 space-y-2">
+            <Button
+              type="button"
+              variant="ghost"
+              className="w-full text-sm"
+              onClick={handleGuestLogin}
+              disabled={loading}
+            >
+              Ohne Anmeldung fortfahren
+            </Button>
+            <p className="text-center text-xs text-muted-foreground">
+              Du gelangst direkt zum Dashboard im Gastmodus.
+            </p>
+          </div>
         </div>
       </div>
     </div>
@@ -107,4 +178,3 @@ const Login = () => {
 };
 
 export default Login;
-

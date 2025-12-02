@@ -64,6 +64,21 @@ export const databaseClient = {
     clearStoredUser();
     return Promise.resolve({ error: null });
   },
+  setSessionUser: (user: StoredUser) => {
+    persistUser(user);
+    return Promise.resolve(buildSessionResponse(user));
+  },
+  createGuestSession: () => {
+    const guestUser: StoredUser = {
+      id: `guest-${Date.now()}`,
+      email: "guest@celion.local",
+      full_name: "Guest",
+      created_at: new Date().toISOString(),
+    } as StoredUser;
+
+    persistUser(guestUser);
+    return Promise.resolve(buildSessionResponse(guestUser));
+  },
   signUp: async (email: string, password: string) => {
     const response = await fetch(`${API_BASE_URL}/auth/signup`, {
       method: "POST",
