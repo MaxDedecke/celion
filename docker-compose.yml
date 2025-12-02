@@ -83,6 +83,29 @@ services:
     networks:
       - celion-net
 
+  keycloak:
+    image: quay.io/keycloak/keycloak:latest
+    command: start-dev
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "8888:8080" # Avoid conflict with webapp on 8080
+    networks:
+      - celion-net
+
+  neo4j:
+    image: neo4j:latest
+    ports:
+      - "7474:7474"
+      - "7687:7687"
+    environment:
+      NEO4J_AUTH: neo4j/password
+    volumes:
+      - neo4j_data:/data
+    networks:
+      - celion-net
+
 networks:
   celion-net:
     driver: bridge
@@ -92,3 +115,4 @@ volumes:
   worker_node_modules:
   db_data:
   portainer_data:
+  neo4j_data:
