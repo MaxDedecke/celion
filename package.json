@@ -9,7 +9,7 @@
     "build:dev": "vite build --mode development",
     "lint": "eslint .",
     "preview": "vite preview",
-    "worker": "tsx src/worker/worker.ts"
+    "worker": "node --import=tsx src/worker/worker.ts"
   },
   "dependencies": {
     "@hookform/resolvers": "^3.10.0",
