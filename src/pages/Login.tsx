@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Logo from "@/components/Logo";
 import { toast } from "sonner";
-import { supabaseDatabase } from "@/api/supabaseDatabase";
+import { databaseClient } from "@/api/databaseClient";
 import { useMinimumLoader } from "@/hooks/useMinimumLoader";
 
 const Login = () => {
@@ -28,14 +28,14 @@ const Login = () => {
 
     try {
       if (isSignUp) {
-        const { error } = await supabaseDatabase.signUp(email, password);
+        const { error } = await databaseClient.signUp(email, password);
 
         if (error) throw error;
         
         toast.success("Account created successfully!");
         navigate("/dashboard");
       } else {
-        const { error } = await supabaseDatabase.signInWithPassword(email, password);
+        const { error } = await databaseClient.signInWithPassword(email, password);
 
         if (error) throw error;
         

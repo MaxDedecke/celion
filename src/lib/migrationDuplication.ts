@@ -1,5 +1,5 @@
-import { supabaseDatabase } from "@/api/supabaseDatabase";
-import type { TablesInsert } from "@/integrations/supabase/types";
+import { databaseClient } from "@/api/databaseClient";
+import type { TablesInsert } from "@/integrations/database/types";
 
 const DUPLICATE_SUFFIX = " (Kopie)";
 
@@ -36,7 +36,7 @@ export const duplicateMigration = async (
   migrationId: string,
   options: { existingNames?: string[] } = {},
 ) => {
-  const { data: original, error: originalError } = await supabaseDatabase.fetchMigrationById(migrationId);
+  const { data: original, error: originalError } = await databaseClient.fetchMigrationById(migrationId);
 
   if (originalError) {
     throw new Error("Migration konnte nicht geladen werden");
@@ -46,13 +46,13 @@ export const duplicateMigration = async (
     throw new Error("Migration nicht gefunden");
   }
 
-  const { data: connectors, error: connectorsError } = await supabaseDatabase.fetchConnectorsByMigration(migrationId);
+  const { data: connectors, error: connectorsError } = await databaseClient.fetchConnectorsByMigration(migrationId);
 
   if (connectorsError) {
     throw new Error("Connectoren konnten nicht geladen werden");
   }
 
-  const { data: activities, error: activitiesError } = await supabaseDatabase.fetchMigrationActivities(migrationId);
+  const { data: activities, error: activitiesError } = await databaseClient.fetchMigrationActivities(migrationId);
 
   if (activitiesError) {
     throw new Error("Aktivitäten konnten nicht geladen werden");
@@ -60,7 +60,7 @@ export const duplicateMigration = async (
 
   const duplicateName = generateDuplicateName(original.name, options.existingNames);
 
-  const { data: newMigration, error: insertError } = await supabaseDatabase.insertMigration({
+  const { data: newMigration, error: insertError } = await databaseClient.insertMigration({
     user_id: original.user_id,
     project_id: original.project_id,
     name: duplicateName,
@@ -96,7 +96,7 @@ export const duplicateMigration = async (
       password: connector.password,
     }));
 
-    const { error: connectorInsertError } = await supabaseDatabase.insertConnectors(connectorPayload);
+    const { error: connectorInsertError } = await databaseClient.insertConnectors(connectorPayload);
 
     if (connectorInsertError) {
       throw new Error("Connectoren konnten nicht dupliziert werden");
@@ -122,7 +122,7 @@ export const duplicateMigration = async (
   }
 
   if (duplicatedActivities.length > 0) {
-    const { error: activityError } = await supabaseDatabase.insertMigrationActivities(duplicatedActivities);
+    const { error: activityError } = await databaseClient.insertMigrationActivities(duplicatedActivities);
 
     if (activityError) {
       throw new Error("Aktivitäten konnten nicht dupliziert werden");

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useId, forwardRef, useImperativeHandle } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { supabase } from "@/integrations/database/client";
 import { AGENT_WORKFLOW_STEPS } from "@/constants/agentWorkflow";
-import { supabaseDatabase } from "@/api/supabaseDatabase";
+import { databaseClient } from "@/api/databaseClient";
 import { runAuthFlowAgent, runCapabilityDiscoveryAgent, runSystemDetectionAgent } from "@/agents/agentService";
 import type {
   AuthFlowResult,
@@ -133,7 +133,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
     async (stepNode: WorkflowNode, isError: boolean = false) => {
       const viewResultActivity = `Hier gehts zum Agenten Output [step:${stepNode.id}]`;
       
-      await supabaseDatabase.insertMigrationActivity({
+      await databaseClient.insertMigrationActivity({
         migration_id: project.id,
         type: isError ? "warning" : "info",
         title: viewResultActivity,
@@ -158,7 +158,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
       const timestampIso = new Date().toISOString();
 
       try {
-        await supabaseDatabase.insertMigrationActivity({
+        await databaseClient.insertMigrationActivity({
           migration_id: project.id,
           type,
           title,
@@ -292,7 +292,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
               ? "warning"
               : "info";
 
-        const { error: activityError } = await supabaseDatabase.insertMigrationActivity({
+        const { error: activityError } = await databaseClient.insertMigrationActivity({
           migration_id: project.id,
           type: activityType,
           title: activityTitle,
@@ -369,7 +369,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
       cacheWorkflowStateSnapshot(project.id, nextState);
 
       try {
-        await supabaseDatabase.updateMigration(project.id, {
+        await databaseClient.updateMigration(project.id, {
           workflow_state: serializeWorkflowState(nextState) as any,
         });
       } catch (error) {
@@ -418,7 +418,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         };
       } else if (stepToRun.agentType === "auth-flow") {
         agentName = 'runAuthFlow';
-        const { data: connectorRows, error: connectorsError } = await supabaseDatabase.fetchConnectorsByMigration(project.id);
+        const { data: connectorRows, error: connectorsError } = await databaseClient.fetchConnectorsByMigration(project.id);
         if (connectorsError) throw new Error("Konnektordaten konnten nicht geladen werden.");
         
         const connectors = (connectorRows ?? []) as ConnectorRecord[];
@@ -441,7 +441,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         };
       } else if (stepToRun.agentType === "schema-discovery") {
         agentName = 'runCapabilityDiscovery';
-        const { data: connectorRows, error: connectorsError } = await supabaseDatabase.fetchConnectorsByMigration(project.id);
+        const { data: connectorRows, error: connectorsError } = await databaseClient.fetchConnectorsByMigration(project.id);
         if (connectorsError) throw new Error("Konnektordaten konnten nicht geladen werden.");
 
         const connectors = (connectorRows ?? []) as ConnectorRecord[];
@@ -458,7 +458,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
 
       if (activeStepIndex === -1) {
         const startedActivity = `Schritt gestartet: ${stepToRun.title}`;
-        await supabaseDatabase.insertMigrationActivity({
+        await databaseClient.insertMigrationActivity({
           migration_id: project.id,
           type: "info",
           title: startedActivity,
@@ -605,7 +605,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
 
     const fetchWorkflowState = async () => {
       try {
-        const { data, error } = await supabaseDatabase.fetchMigrationById(project.id);
+        const { data, error } = await databaseClient.fetchMigrationById(project.id);
 
         if (error) {
           throw error;
@@ -785,7 +785,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
       cacheWorkflowStateSnapshot(project.id, snapshot);
 
       try {
-        await supabaseDatabase.updateMigration(project.id, { workflow_state: snapshot as any });
+        await databaseClient.updateMigration(project.id, { workflow_state: snapshot as any });
       } catch (error) {
         console.error("Fehler beim automatischen Speichern des Agenten-Outputs:", error);
       }
@@ -1310,7 +1310,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
 
     try {
       setIsSavingNotes(true);
-      const { error } = await supabaseDatabase.updateMigration(project.id, { notes });
+      const { error } = await databaseClient.updateMigration(project.id, { notes });
 
       if (error) throw error;
 
@@ -1338,7 +1338,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
       
       // Auch in Datenbank speichern
       try {
-        await supabaseDatabase.insertMigrationActivity({
+        await databaseClient.insertMigrationActivity({
           migration_id: project.id,
           type: "info",
           title: `[user] ${message}`,

@@ -1,4 +1,4 @@
-import type { Database } from "@/integrations/supabase/types";
+import type { Database } from "@/integrations/database/types";
 import type { Activity } from "../ActivityTimeline";
 import type { MigrationProject } from "./types";
 

@@ -8,6 +8,10 @@ import sys
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Union
 
+import os
+
+import psycopg
+import psycopg.rows
 import requests
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -25,6 +29,31 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _get_db_connection() -> psycopg.Connection:
+    """Create a new PostgreSQL connection using environment variables."""
+
+    return psycopg.connect(
+        host=os.environ.get("POSTGRES_HOST", "localhost"),
+        port=os.environ.get("POSTGRES_PORT", "5432"),
+        dbname=os.environ.get("POSTGRES_DB", "celion"),
+        user=os.environ.get("POSTGRES_USER", "celion"),
+        password=os.environ.get("POSTGRES_PASSWORD", "celion"),
+        row_factory=psycopg.rows.dict_row,
+    )
+
+
+def _serialize_user_row(row: dict[str, Any]) -> dict[str, Any]:
+    """Convert a database user row into a JSON-serializable dict without the password."""
+
+    sanitized = {key: value for key, value in (row or {}).items() if key != "password"}
+    created_at = sanitized.get("created_at")
+
+    if isinstance(created_at, datetime):
+        sanitized["created_at"] = created_at.astimezone(timezone.utc).isoformat()
+
+    return sanitized
 
 
 class DetectionRequest(BaseModel):
@@ -72,6 +101,12 @@ class ProbeResponse(BaseModel):
 
 SchemaProbeRequest = ProbeRequest
 SchemaProbeResponse = ProbeResponse
+
+
+class AuthPayload(BaseModel):
+    email: str
+    password: str
+    full_name: Optional[str] = None
 
 
 class HttpClientRequest(BaseModel):
@@ -122,6 +157,47 @@ async def run_system_detection(payload: DetectionRequest) -> LegacyResponse:
     """Inform callers that the Python discovery agent has been removed."""
     print(f"run_system_detection called with payload: {payload}")
     raise _legacy_http_exception()
+
+
+@app.post("/auth/signup")
+async def sign_up_user(payload: AuthPayload) -> dict[str, Any]:
+    """Create a user record directly in PostgreSQL without Supabase."""
+
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO public.users (email, password, full_name) VALUES (%s, %s, %s) RETURNING id, email, password, full_name, created_at",
+                (payload.email, payload.password, payload.full_name),
+            )
+            user_row = cur.fetchone()
+            conn.commit()
+            return _serialize_user_row(user_row)
+    except psycopg.errors.UniqueViolation:
+        raise HTTPException(status_code=400, detail="Nutzer existiert bereits")
+    except Exception as exc:  # pragma: no cover - defensive catch for DB errors
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/auth/login")
+async def login_user(payload: AuthPayload) -> dict[str, Any]:
+    """Validate credentials directly against the Postgres users table."""
+
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, email, password, full_name, created_at FROM public.users WHERE email = %s",
+                (payload.email,),
+            )
+            user_row = cur.fetchone()
+
+        if not user_row or user_row.get("password") != payload.password:
+            raise HTTPException(status_code=401, detail="Ungültige Zugangsdaten")
+
+        return _serialize_user_row(user_row)
+    except HTTPException:
+        raise
+    except Exception as exc:  # pragma: no cover - defensive catch for DB errors
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
 @app.get("/auth-flow", response_model=LegacyResponse)

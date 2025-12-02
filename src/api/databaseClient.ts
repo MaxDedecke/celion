@@ -1,13 +1,102 @@
-import { supabase } from "@/integrations/supabase/client";
-import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/supabase/types";
+import { supabase } from "@/integrations/database/client";
+import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/database/types";
 
-export const supabaseDatabase = {
-  getSession: () => supabase.auth.getSession(),
-  signOut: () => supabase.auth.signOut(),
-  signUp: (email: string, password: string) => supabase.auth.signUp({ email, password }),
-  signInWithPassword: (email: string, password: string) =>
-    supabase.auth.signInWithPassword({ email, password }),
-  getUser: () => supabase.auth.getUser(),
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
+
+const USER_STORAGE_KEY = "celion_local_user";
+
+type StoredUser = Omit<Tables<"users">["Row"], "password"> | null;
+
+const getStorage = () => (typeof localStorage !== "undefined" ? localStorage : null);
+
+const getStoredUser = (): StoredUser => {
+  const storage = getStorage();
+  if (!storage) return null;
+
+  try {
+    const raw = storage.getItem(USER_STORAGE_KEY);
+    return raw ? (JSON.parse(raw) as Tables<"users">["Row"]) : null;
+  } catch (error) {
+    console.error("Failed to read stored user", error);
+    return null;
+  }
+};
+
+const persistUser = (user: StoredUser) => {
+  const storage = getStorage();
+  storage?.setItem(USER_STORAGE_KEY, JSON.stringify(user));
+};
+
+const clearStoredUser = () => {
+  const storage = getStorage();
+  storage?.removeItem(USER_STORAGE_KEY);
+};
+
+const buildSessionResponse = (user: StoredUser) => ({
+  data: { session: user ? { user } : null },
+  error: null,
+});
+
+const buildUserResponse = (user: StoredUser) => ({
+  data: { user: user ?? null },
+  error: null,
+});
+
+const parseErrorDetail = async (response: Response) => {
+  try {
+    const body = await response.json();
+    if (body && typeof body === "object" && "detail" in body) {
+      return (body as { detail?: string }).detail ?? null;
+    }
+    return typeof body === "string" ? body : JSON.stringify(body);
+  } catch {
+    try {
+      return await response.text();
+    } catch {
+      return null;
+    }
+  }
+};
+
+export const databaseClient = {
+  getSession: () => Promise.resolve(buildSessionResponse(getStoredUser())),
+  signOut: () => {
+    clearStoredUser();
+    return Promise.resolve({ error: null });
+  },
+  signUp: async (email: string, password: string) => {
+    const response = await fetch(`${API_BASE_URL}/auth/signup`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+
+    if (!response.ok) {
+      const detail = await parseErrorDetail(response);
+      return { data: null, error: new Error(detail ?? "Registrierung fehlgeschlagen") };
+    }
+
+    const data = (await response.json()) as StoredUser;
+    persistUser(data);
+    return { data, error: null };
+  },
+  signInWithPassword: async (email: string, password: string) => {
+    const response = await fetch(`${API_BASE_URL}/auth/login`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    });
+
+    if (!response.ok) {
+      const detail = await parseErrorDetail(response);
+      return { data: null, error: new Error(detail ?? "Ungültige Zugangsdaten") };
+    }
+
+    const data = (await response.json()) as StoredUser;
+    persistUser(data);
+    return { data, error: null };
+  },
+  getUser: () => Promise.resolve(buildUserResponse(getStoredUser())),
 
   fetchProjects: () =>
     supabase

@@ -1,7 +1,23 @@
 -- This is a concatenated and modified initialization script from the supabase/migrations directory.
--- Supabase-specific features like Row Level Security (RLS) and dependencies on the 'auth' schema
 -- have been removed or commented out to ensure compatibility with a standard PostgreSQL database.
 -- It is assumed that security will be handled at the application/API level.
+
+-- Ensure UUID generation helpers are available
+CREATE EXTENSION IF NOT EXISTS pgcrypto;
+
+-- Basic user store for application logins
+CREATE TABLE IF NOT EXISTS public.users (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  email text NOT NULL UNIQUE,
+  password text NOT NULL,
+  full_name text,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+-- Seed a demo user for local development
+INSERT INTO public.users (email, password, full_name)
+VALUES ('demo@celion.local', 'celion', 'Celion Demo User')
+ON CONFLICT (email) DO NOTHING;
 
 -- Grant necessary privileges to the application role
 GRANT USAGE ON SCHEMA public TO celion;

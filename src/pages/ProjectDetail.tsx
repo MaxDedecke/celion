@@ -20,7 +20,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useMinimumLoader } from "@/hooks/useMinimumLoader";
-import { supabaseDatabase } from "@/api/supabaseDatabase";
+import { databaseClient } from "@/api/databaseClient";
 import { toast } from "sonner";
 import type { NewMigrationInput } from "@/types/migration";
 import {
@@ -89,7 +89,7 @@ const ProjectDetail = () => {
   const checkAuth = useCallback(async () => {
     const {
       data: { session },
-    } = await supabaseDatabase.getSession();
+    } = await databaseClient.getSession();
     if (!session) {
       navigate("/");
     }
@@ -101,7 +101,7 @@ const ProjectDetail = () => {
 
   const loadSidebarData = useCallback(async () => {
     try {
-      const { data: projectsData, error: projectsError } = await supabaseDatabase.fetchProjects();
+      const { data: projectsData, error: projectsError } = await databaseClient.fetchProjects();
 
       if (projectsError) throw projectsError;
 
@@ -116,7 +116,7 @@ const ProjectDetail = () => {
       const projectMigrationEntries: SidebarMigration[] = [];
 
       for (const project of projectsData || []) {
-        const { data: projectMigrationsData, error: projectMigrationsError } = await supabaseDatabase.fetchMigrationsByProject(project.id);
+        const { data: projectMigrationsData, error: projectMigrationsError } = await databaseClient.fetchMigrationsByProject(project.id);
 
         if (projectMigrationsError) throw projectMigrationsError;
 
@@ -131,7 +131,7 @@ const ProjectDetail = () => {
 
       setSidebarMigrations(projectMigrationEntries);
 
-      const { data: standaloneData, error: standaloneError, count } = await supabaseDatabase.fetchStandaloneMigrationsPaginated(MIGRATIONS_PAGE_SIZE, 0);
+      const { data: standaloneData, error: standaloneError, count } = await databaseClient.fetchStandaloneMigrationsPaginated(MIGRATIONS_PAGE_SIZE, 0);
 
       if (standaloneError) throw standaloneError;
 
@@ -159,7 +159,7 @@ const ProjectDetail = () => {
     setIsLoadingMoreMigrations(true);
     try {
       const offset = migrationsPageRef.current * MIGRATIONS_PAGE_SIZE;
-      const { data: standaloneData, error: standaloneError } = await supabaseDatabase.fetchStandaloneMigrationsPaginated(MIGRATIONS_PAGE_SIZE, offset);
+      const { data: standaloneData, error: standaloneError } = await databaseClient.fetchStandaloneMigrationsPaginated(MIGRATIONS_PAGE_SIZE, offset);
 
       if (standaloneError) throw standaloneError;
 
@@ -181,7 +181,7 @@ const ProjectDetail = () => {
   const loadProjectData = useCallback(
     async (name: string) => {
       try {
-        const { data: projectData, error: projectError } = await supabaseDatabase.fetchProjectByName(name);
+        const { data: projectData, error: projectError } = await databaseClient.fetchProjectByName(name);
 
         if (projectError) throw projectError;
 
@@ -200,7 +200,7 @@ const ProjectDetail = () => {
         setProject(details);
         setProjectIdForNewMigration(projectData.id);
 
-        const { data: migrationsData, error: migrationsError } = await supabaseDatabase.fetchMigrationsByProject(projectData.id);
+        const { data: migrationsData, error: migrationsError } = await databaseClient.fetchMigrationsByProject(projectData.id);
 
         if (migrationsError) throw migrationsError;
 
@@ -241,7 +241,7 @@ const ProjectDetail = () => {
   const handleLogout = async () => {
     try {
       setTransitioning(true);
-      await supabaseDatabase.signOut();
+      await databaseClient.signOut();
       navigate("/");
     } catch (error) {
       console.error(error);
@@ -266,7 +266,7 @@ const ProjectDetail = () => {
     try {
       const {
         data: { user },
-      } = await supabaseDatabase.getUser();
+      } = await databaseClient.getUser();
       if (!user) throw new Error("Nicht authentifiziert");
 
       const {
@@ -280,7 +280,7 @@ const ProjectDetail = () => {
       } = migrationData;
       const targetAuthDetail = AUTH_DETAIL_TOKEN;
 
-      const { data: migration, error: migrationError } = await supabaseDatabase.insertMigration({
+      const { data: migration, error: migrationError } = await databaseClient.insertMigration({
         user_id: user.id,
         project_id: projectIdForNewMigration,
         name,
@@ -312,14 +312,14 @@ const ProjectDetail = () => {
         username: targetAuth.email ?? null,
       };
 
-      const { error: connectorError } = await supabaseDatabase.insertConnectors([
+      const { error: connectorError } = await databaseClient.insertConnectors([
         { ...sourceConnectorPayload, connector_type: "in" },
         { ...targetConnectorPayload, connector_type: "out" },
       ]);
 
       if (connectorError) throw connectorError;
 
-      await supabaseDatabase.insertMigrationActivity({
+      await databaseClient.insertMigrationActivity({
         migration_id: migration.id,
         type: "info",
         title: "Neues Migrationsprojekt erstellt",
@@ -350,7 +350,7 @@ const ProjectDetail = () => {
     if (!migrationToDelete) return;
 
     try {
-      const { error } = await supabaseDatabase.deleteMigration(migrationToDelete);
+      const { error } = await databaseClient.deleteMigration(migrationToDelete);
 
       if (error) throw error;
 
@@ -403,7 +403,7 @@ const ProjectDetail = () => {
     if (!editingMigration) return;
 
     try {
-      const { error } = await supabaseDatabase.updateMigration(editingMigration.id, { name });
+      const { error } = await databaseClient.updateMigration(editingMigration.id, { name });
 
       if (error) throw error;
 

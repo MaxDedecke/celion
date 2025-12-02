@@ -1,5 +1,5 @@
 import type { FieldMapping, MappingType } from "@/types/mapping";
-import { supabaseDatabase } from "@/api/supabaseDatabase";
+import { databaseClient } from "@/api/databaseClient";
 
 export const createMappingId = (): string => {
   if (typeof crypto !== "undefined" && typeof crypto.randomUUID === "function") {
@@ -79,7 +79,7 @@ export const loadMappingsFromDatabase = async (
   targetObjectType: string
 ): Promise<FieldMapping[]> => {
   try {
-    const { data, error } = await supabaseDatabase.fetchFieldMappings(
+    const { data, error } = await databaseClient.fetchFieldMappings(
       pipelineId,
       sourceObjectType,
       targetObjectType
@@ -102,7 +102,7 @@ export const loadAllMappingsForSource = async (
   sourceObjectType: string
 ): Promise<(FieldMapping & { sourceObjectType: string; targetObjectType: string })[]> => {
   try {
-    const { data, error } = await supabaseDatabase.fetchAllMappingsForSource(pipelineId, sourceObjectType);
+    const { data, error } = await databaseClient.fetchAllMappingsForSource(pipelineId, sourceObjectType);
 
     if (error) {
       console.error("Failed to load all mappings from database:", error);
@@ -129,7 +129,7 @@ export const saveMappingToDatabase = async (
   try {
     const dbMapping = fieldMappingToDbMapping(mapping, pipelineId);
 
-    const { error } = await supabaseDatabase.upsertFieldMapping({
+    const { error } = await databaseClient.upsertFieldMapping({
       id: mapping.id,
       ...dbMapping,
       source_object_type: sourceObjectType,
@@ -152,7 +152,7 @@ export const deleteMappingFromDatabase = async (
   mappingId: string
 ): Promise<boolean> => {
   try {
-    const { error } = await supabaseDatabase.deleteFieldMapping(mappingId);
+    const { error } = await databaseClient.deleteFieldMapping(mappingId);
 
     if (error) {
       console.error("Failed to delete mapping from database:", error);
@@ -170,7 +170,7 @@ export const clearAllMappingsForPipeline = async (
   pipelineId: string
 ): Promise<boolean> => {
   try {
-    const { error } = await supabaseDatabase.clearFieldMappingsForPipeline(pipelineId);
+    const { error } = await databaseClient.clearFieldMappingsForPipeline(pipelineId);
 
     if (error) {
       console.error("Failed to clear mappings from database:", error);

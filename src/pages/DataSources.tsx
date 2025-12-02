@@ -21,9 +21,9 @@ import { Button } from "@/components/ui/button";
 import DataFlowLoader from "@/components/DataFlowLoader";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { supabaseDatabase } from "@/api/supabaseDatabase";
+import { databaseClient } from "@/api/databaseClient";
 import { useMinimumLoader } from "@/hooks/useMinimumLoader";
-import type { Tables, TablesInsert } from "@/integrations/supabase/types";
+import type { Tables, TablesInsert } from "@/integrations/database/types";
 import { toast } from "sonner";
 import {
   Dialog,
@@ -406,7 +406,7 @@ const DataSources = () => {
     : [formData.source_type, ...SOURCE_TYPE_OPTIONS];
 
   const checkAuth = useCallback(async () => {
-    const { data: { session } } = await supabaseDatabase.getSession();
+    const { data: { session } } = await databaseClient.getSession();
     if (!session) {
       navigate("/");
     }
@@ -424,7 +424,7 @@ const DataSources = () => {
 
   const loadProjects = useCallback(async (): Promise<void> => {
     try {
-      const { data, error } = await supabaseDatabase.fetchProjectNames();
+      const { data, error } = await databaseClient.fetchProjectNames();
 
       if (error) throw error;
       setProjects(data ?? []);
@@ -435,14 +435,14 @@ const DataSources = () => {
 
   const loadDataSources = useCallback(async (): Promise<void> => {
     try {
-      const { data, error } = await supabaseDatabase.fetchDataSources();
+      const { data, error } = await databaseClient.fetchDataSources();
 
       if (error) throw error;
 
       // Load project assignments for each data source
       const sourcesWithProjects = await Promise.all(
         (data ?? []).map(async (source): Promise<DataSourceWithProjects> => {
-          const { data: assignments } = await supabaseDatabase.fetchDataSourceAssignments(source.id);
+          const { data: assignments } = await databaseClient.fetchDataSourceAssignments(source.id);
 
           return {
             ...source,
@@ -494,7 +494,7 @@ const DataSources = () => {
 
   const handleSave = async () => {
     try {
-      const { data: { user } } = await supabaseDatabase.getUser();
+      const { data: { user } } = await databaseClient.getUser();
       if (!user) throw new Error("Nicht authentifiziert");
 
       let sourceId: string;
@@ -516,7 +516,7 @@ const DataSources = () => {
       };
 
       if (editingSource) {
-        const { error } = await supabaseDatabase.updateDataSource(editingSource.id, {
+        const { error } = await databaseClient.updateDataSource(editingSource.id, {
           ...baseData,
           user_id: editingSource.user_id,
         });
@@ -525,11 +525,11 @@ const DataSources = () => {
         sourceId = editingSource.id;
 
         // Delete existing project assignments
-        await supabaseDatabase.deleteDataSourceProjectAssignments(sourceId);
+        await databaseClient.deleteDataSourceProjectAssignments(sourceId);
         
         toast.success("Datenquelle aktualisiert");
       } else {
-        const { data, error } = await supabaseDatabase.insertDataSource(baseData);
+        const { data, error } = await databaseClient.insertDataSource(baseData);
 
         if (error) throw error;
         sourceId = data.id;
@@ -543,7 +543,7 @@ const DataSources = () => {
           project_id: projectId,
         }));
 
-        const { error: assignmentError } = await supabaseDatabase.insertDataSourceProjectAssignments(assignments);
+        const { error: assignmentError } = await databaseClient.insertDataSourceProjectAssignments(assignments);
 
         if (assignmentError) throw assignmentError;
       }
@@ -560,7 +560,7 @@ const DataSources = () => {
 
   const handleDelete = async (id: string) => {
     try {
-      const { error } = await supabaseDatabase.deleteDataSource(id);
+      const { error } = await databaseClient.deleteDataSource(id);
 
       if (error) throw error;
       toast.success("Datenquelle gelöscht");
