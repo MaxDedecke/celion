@@ -2,6 +2,7 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { runSystemDetectionAgent } from '../agents/agentService';
 import type { AgentName } from '../types/agents';
+import { AGENT_WORKFLOW_STEPS } from '../constants/agentWorkflow';
 
 // TODO: Move these to a central configuration
 const supabaseUrl = process.env.VITE_SUPABASE_URL;
@@ -16,21 +17,65 @@ const supabase = createClient(supabaseUrl, supabaseKey);
 
 const POLL_INTERVAL = 5000; // 5 seconds
 
+type JobStatus = 'pending' | 'running' | 'completed' | 'failed';
+
+async function logActivity(migrationId: string, type: 'success' | 'error' | 'info' | 'warning', title: string) {
+  const timestamp = new Date().toISOString();
+  await supabase.from('migration_activities').insert({
+    migration_id: migrationId,
+    type,
+    title,
+    timestamp,
+  });
+}
+
+const ensureWorkflowState = (state: any = {}) => {
+  const nodes = Array.isArray(state.nodes) ? [...state.nodes] : [];
+  const connections = Array.isArray(state.connections) ? [...state.connections] : [];
+  return { nodes, connections };
+};
+
+const updateWorkflowForStep = (state: any, workflowStepId: string, result: any, isError: boolean) => {
+  const nextState = ensureWorkflowState(state);
+  const nodes = nextState.nodes.map((node: any) => ({ ...node }));
+
+  let targetNode = nodes.find((node: any) => node.id === workflowStepId);
+  if (!targetNode) {
+    targetNode = {
+      id: workflowStepId,
+      title: workflowStepId,
+      status: 'pending',
+      agentResult: undefined,
+    };
+    nodes.push(targetNode);
+  }
+
+  targetNode.status = 'done';
+  targetNode.agentResult = isError ? { error: String(result) } : result;
+
+  nextState.nodes = nodes;
+  const completedCount = nodes.filter((n: any) => n.status === 'done').length;
+  const totalSteps = nodes.length || AGENT_WORKFLOW_STEPS.length || 1;
+  const progress = Math.round((completedCount / totalSteps) * 100);
+
+  return { nextState, progress, completedCount, totalSteps };
+};
+
 async function processJob(job: any, supabase: SupabaseClient) {
   console.log(`Processing job ${job.id} for step ${job.step_id}`);
 
   const { step_id, payload } = job;
-  const { agentName, agentParams } = payload;
+  const { agentName, agentParams, stepId } = payload;
 
   const { data: stepRecord, error: stepLookupError } = await supabase
     .from('migration_steps')
-    .select('id, migration_id')
+    .select('id, migration_id, workflow_step_id, name')
     .eq('id', step_id)
     .maybeSingle();
 
   if (stepLookupError || !stepRecord) {
     console.error('Unable to find migration step for job', job.id, stepLookupError);
-    await supabase.from('jobs').update({ status: 'failed', last_error: 'Step not found' }).eq('id', job.id);
+    await supabase.from('jobs').update({ status: 'failed' as JobStatus, last_error: 'Step not found' }).eq('id', job.id);
     return;
   }
 
@@ -44,7 +89,9 @@ async function processJob(job: any, supabase: SupabaseClient) {
     // 2. Run the actual agent
     let result: any;
     if (agentName === 'runSystemDetection') {
-      result = await runSystemDetectionAgent(agentParams.url, agentParams.expectedSystem);
+      const url = agentParams?.sourceUrl || agentParams?.url;
+      const expected = agentParams?.sourceExpectedSystem || agentParams?.expectedSystem;
+      result = await runSystemDetectionAgent(url, expected);
     } else {
       throw new Error(`Agent ${agentName} is not yet implemented in the worker.`);
     }
@@ -55,10 +102,31 @@ async function processJob(job: any, supabase: SupabaseClient) {
       .update({ status: 'completed', result, status_message: 'Agent run completed successfully.' })
       .eq('id', step_id);
 
-    await supabase.from('migrations').update({ status: 'running' }).eq('id', migrationId);
+    // 3b. Update workflow_state & progress
+    const { data: migrationData } = await supabase
+      .from('migrations')
+      .select('workflow_state')
+      .eq('id', migrationId)
+      .maybeSingle();
+
+    const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(
+      migrationData?.workflow_state,
+      stepRecord.workflow_step_id || stepId,
+      result,
+      false
+    );
+
+    const migrationStatus = completedCount >= totalSteps ? 'completed' : 'running';
+
+    await supabase
+      .from('migrations')
+      .update({ workflow_state: nextState, progress, status: migrationStatus })
+      .eq('id', migrationId);
+
+    await logActivity(migrationId, 'success', `Schritt abgeschlossen: ${stepRecord.name}`);
 
     // 4. Update job status to 'completed'
-    await supabase.from('jobs').update({ status: 'completed' }).eq('id', job.id);
+    await supabase.from('jobs').update({ status: 'completed' as JobStatus }).eq('id', job.id);
 
     console.log(`Job ${job.id} completed successfully.`);
 
@@ -72,31 +140,52 @@ async function processJob(job: any, supabase: SupabaseClient) {
       .update({ status: 'failed', status_message: errorMessage })
       .eq('id', step_id);
 
-    await supabase.from('migrations').update({ status: 'running' }).eq('id', migrationId);
+    const { data: migrationData } = await supabase
+      .from('migrations')
+      .select('workflow_state')
+      .eq('id', migrationId)
+      .maybeSingle();
+
+    const { nextState, progress } = updateWorkflowForStep(
+      migrationData?.workflow_state,
+      stepRecord.workflow_step_id || stepId,
+      errorMessage,
+      true
+    );
+
+    await supabase
+      .from('migrations')
+      .update({ workflow_state: nextState, progress, status: 'paused' })
+      .eq('id', migrationId);
+
+    await logActivity(migrationId, 'error', `Schritt fehlgeschlagen: ${errorMessage}`);
 
     // 6. Update job status to 'failed'
-    await supabase.from('jobs').update({ status: 'failed', last_error: errorMessage }).eq('id', job.id);
+    await supabase.from('jobs').update({ status: 'failed' as JobStatus, last_error: errorMessage }).eq('id', job.id);
   }
 }
 
 async function pollForJobs(supabase: SupabaseClient) {
   console.log('Polling for new jobs...');
 
-  // Fetch a pending job and lock it by setting its status to 'running'
-  // This is a simple "advisory lock" to prevent multiple workers from picking up the same job.
-  const { data: job, error } = await supabase
+  const { data: jobs, error } = await supabase
     .from('jobs')
-    .update({ status: 'running' })
+    .select('*')
     .eq('status', 'pending')
-    .select()
-    .single();
+    .order('created_at', { ascending: true })
+    .limit(1);
 
-  if (error || !job) {
-    if (error && error.code !== 'PGRST116') { // PGRST116 = "No rows found"
-      console.error('Error polling for jobs:', error);
-    }
+  if (error) {
+    console.error('Error polling for jobs:', error);
+    return;
+  }
+
+  const job = jobs?.[0];
+  if (!job) {
     return; // No pending jobs
   }
+
+  await supabase.from('jobs').update({ status: 'running', attempts: (job.attempts || 0) + 1 }).eq('id', job.id);
 
   await processJob(job, supabase);
 }

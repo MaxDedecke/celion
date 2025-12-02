@@ -799,6 +799,55 @@ begin
 end;
 $$ language plpgsql;
 
+-- -------------------------
+-- Background job orchestration tables
+-- -------------------------
+
+-- Allow a dedicated step table that maps UI workflow steps to persisted executions
+CREATE TABLE IF NOT EXISTS public.migration_steps (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  migration_id uuid NOT NULL REFERENCES public.migrations(id) ON DELETE CASCADE,
+  workflow_step_id text NOT NULL,
+  name text NOT NULL,
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed')),
+  status_message text,
+  result jsonb,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now(),
+  UNIQUE (migration_id, workflow_step_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_migration_steps_migration_id ON public.migration_steps(migration_id);
+CREATE TRIGGER update_migration_steps_updated_at
+BEFORE UPDATE ON public.migration_steps
+FOR EACH ROW
+EXECUTE FUNCTION public.handle_updated_at();
+
+-- Jobs table for worker queue processing
+CREATE TABLE IF NOT EXISTS public.jobs (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  step_id uuid NOT NULL REFERENCES public.migration_steps(id) ON DELETE CASCADE,
+  payload jsonb NOT NULL,
+  status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed')),
+  last_error text,
+  attempts integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now(),
+  updated_at timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_jobs_step_id ON public.jobs(step_id);
+CREATE INDEX IF NOT EXISTS idx_jobs_status ON public.jobs(status);
+CREATE TRIGGER update_jobs_updated_at
+BEFORE UPDATE ON public.jobs
+FOR EACH ROW
+EXECUTE FUNCTION public.handle_updated_at();
+
+-- Broaden allowed migration statuses to reflect background processing
+ALTER TABLE public.migrations DROP CONSTRAINT IF EXISTS migrations_status_check;
+ALTER TABLE public.migrations
+ADD CONSTRAINT migrations_status_check
+CHECK (status IN ('not_started', 'running', 'paused', 'completed', 'processing'));
+
 -- Migration steps table
 create table public.migration_steps (
     id uuid primary key default gen_random_uuid(),

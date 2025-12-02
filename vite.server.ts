@@ -11,12 +11,14 @@ async function enqueueAgentStep(
 ) {
   // 1. Create or reset a step in the 'migration_steps' table
   let step = null as any;
+  const workflowStepId = stepId || stepName || 'step';
 
   if (stepId) {
     const { data: existingStep, error: stepFetchError } = await supabase
       .from('migration_steps')
       .select('*')
-      .eq('id', stepId)
+      .eq('migration_id', migrationId)
+      .eq('workflow_step_id', stepId)
       .maybeSingle();
 
     if (stepFetchError) {
@@ -26,8 +28,8 @@ async function enqueueAgentStep(
     if (existingStep) {
       const { data: updatedStep, error: stepUpdateError } = await supabase
         .from('migration_steps')
-        .update({ status: 'pending', status_message: null, result: null })
-        .eq('id', stepId)
+        .update({ status: 'pending', status_message: null, result: null, workflow_step_id: workflowStepId })
+        .eq('id', existingStep.id)
         .select()
         .single();
 
@@ -46,6 +48,7 @@ async function enqueueAgentStep(
       .from('migration_steps')
       .insert({
         migration_id: migrationId,
+        workflow_step_id: workflowStepId,
         name: effectiveStepName,
         status: 'pending',
       })
@@ -65,7 +68,7 @@ async function enqueueAgentStep(
   // 3. Create a new job in the 'jobs' table
   const { error: jobError } = await supabase.from('jobs').insert({
     step_id: step.id,
-    payload: { agentName, agentParams },
+    payload: { agentName, agentParams, stepId: workflowStepId },
     status: 'pending',
   });
 

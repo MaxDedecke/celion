@@ -1,6 +1,6 @@
 export type MigrationAuthType = "token";
 
-export type MigrationStatus = "not_started" | "running" | "paused" | "completed";
+export type MigrationStatus = "not_started" | "running" | "paused" | "completed" | "processing";
 
 export interface MigrationSystemAuthConfig {
   authType: MigrationAuthType;

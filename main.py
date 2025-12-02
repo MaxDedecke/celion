@@ -146,6 +146,16 @@ class CurlHeadProbeResponse(BaseModel):
     error: Optional[str] = None
 
 
+class RunStepRequest(BaseModel):
+    """Request payload to enqueue an agent step for background execution."""
+
+    migrationId: str
+    agentName: str
+    agentParams: Optional[Dict[str, Any]] = None
+    stepId: Optional[str] = None
+    stepName: Optional[str] = None
+
+
 def _legacy_http_exception() -> HTTPException:
     """Provide a consistent 410 response when legacy endpoints are used."""
 
@@ -407,6 +417,105 @@ async def run_curl_head_probe(payload: CurlHeadProbeRequest) -> CurlHeadProbeRes
         )
 
 
+@app.post("/api/v2/migrations/run-step")
+async def enqueue_migration_step(payload: RunStepRequest) -> dict[str, Any]:
+    """
+    Production-ready counterpart to the dev-only Vite middleware.
+    Creates/resets a migration_step and enqueues a job record for the worker.
+    """
+
+    if not payload.migrationId:
+        raise HTTPException(status_code=400, detail="migrationId is required")
+    if not payload.agentName:
+        raise HTTPException(status_code=400, detail="agentName is required")
+    if not payload.stepId and not payload.stepName:
+        raise HTTPException(status_code=400, detail="stepId or stepName is required")
+
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            # Ensure migration exists and mark as processing
+            cur.execute("SELECT id FROM public.migrations WHERE id = %s", (payload.migrationId,))
+            migration_row = cur.fetchone()
+            if not migration_row:
+                raise HTTPException(status_code=404, detail="Migration not found")
+
+            cur.execute(
+                "UPDATE public.migrations SET status = 'processing' WHERE id = %s RETURNING id",
+                (payload.migrationId,),
+            )
+            cur.fetchone()
+
+            # Try to find existing step by workflow_step_id or id::text
+            step_row: Optional[dict[str, Any]] = None
+            if payload.stepId:
+                cur.execute(
+                    """
+                    SELECT id, workflow_step_id
+                    FROM public.migration_steps
+                    WHERE migration_id = %s AND (workflow_step_id = %s OR id::text = %s)
+                    LIMIT 1
+                    """,
+                    (payload.migrationId, payload.stepId, payload.stepId),
+                )
+                step_row = cur.fetchone()
+
+            if step_row:
+                cur.execute(
+                    """
+                    UPDATE public.migration_steps
+                    SET status = 'pending',
+                        status_message = NULL,
+                        result = NULL,
+                        workflow_step_id = COALESCE(%s, workflow_step_id),
+                        name = COALESCE(%s, name),
+                        updated_at = now()
+                    WHERE id = %s
+                    RETURNING id, workflow_step_id
+                    """,
+                    (payload.stepId, payload.stepName, step_row["id"]),
+                )
+                step_row = cur.fetchone()
+            else:
+                workflow_step_id = payload.stepId or (payload.stepName or "").lower().replace(" ", "-") or "step"
+                step_name = payload.stepName or payload.stepId or "Unnamed step"
+                cur.execute(
+                    """
+                    INSERT INTO public.migration_steps (migration_id, workflow_step_id, name, status)
+                    VALUES (%s, %s, %s, 'pending')
+                    RETURNING id, workflow_step_id
+                    """,
+                    (payload.migrationId, workflow_step_id, step_name),
+                )
+                step_row = cur.fetchone()
+
+            if not step_row:
+                raise HTTPException(status_code=500, detail="Failed to create migration step")
+
+            # Enqueue job
+            cur.execute(
+                """
+                INSERT INTO public.jobs (step_id, payload, status)
+                VALUES (%s, %s, 'pending')
+                RETURNING id
+                """,
+                (step_row["id"], payload.model_dump()),
+            )
+            job_row = cur.fetchone()
+
+            conn.commit()
+
+            return {
+                "jobId": job_row["id"] if job_row else None,
+                "stepId": step_row["workflow_step_id"],
+                "stepRowId": step_row["id"],
+                "message": "Agent execution has been enqueued",
+            }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
 def _cli(url: str) -> int:
     """Provide a clear CLI notice that legacy agents are no longer available."""
 
@@ -424,4 +533,3 @@ if __name__ == "__main__":
 
     print(LEGACY_MESSAGE, file=sys.stderr)
     raise SystemExit(1)
-

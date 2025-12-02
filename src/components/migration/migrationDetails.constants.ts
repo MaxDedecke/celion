@@ -7,6 +7,11 @@ export const MIGRATION_STATUS_META: Record<MigrationStatus, MigrationStatusMeta>
     description: "Alles vorbereitet – du kannst die Migration mit einem Klick starten.",
     badgeClassName: "bg-muted text-muted-foreground",
   },
+  processing: {
+    label: "In Verarbeitung",
+    description: "Ein Schritt läuft im Hintergrund. Fortschritt und Ergebnisse werden automatisch aktualisiert.",
+    badgeClassName: "bg-primary/10 text-primary",
+  },
   running: {
     label: "Laufend",
     description:
