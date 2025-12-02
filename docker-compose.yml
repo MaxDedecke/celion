@@ -65,14 +65,16 @@ services:
       PGRST_DB_SCHEMA: public
       PGRST_DB_ANON_ROLE: celion
       PGRST_JWT_SECRET: thisisadummyjwtsecretforlocal!!
+      PGRST_LOG_LEVEL: info
     depends_on:
       db:
         condition: service_healthy
     healthcheck:
-      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      test: ["CMD-SHELL", "nc -z localhost 3000 || exit 1"]
       interval: 5s
-      timeout: 2s
-      retries: 5
+      timeout: 3s
+      retries: 10
+      start_period: 15s
     networks:
       - celion-net
 
