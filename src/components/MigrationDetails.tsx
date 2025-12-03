@@ -1,5 +1,4 @@
 import { useCallback, useEffect, useMemo, useRef, useState, useId, forwardRef, useImperativeHandle } from "react";
-import { supabase } from "@/integrations/database/client";
 import { AGENT_WORKFLOW_STEPS } from "@/constants/agentWorkflow";
 import { databaseClient } from "@/api/databaseClient";
 import { runAuthFlowAgent, runCapabilityDiscoveryAgent, runSystemDetectionAgent } from "@/agents/agentService";
@@ -513,7 +512,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
       onStepRunningChange?.(false);
     } finally {
       // Don't set isStepRunning to false here, as it's now a background task.
-      // The UI state for this will be driven by the 'status' column from Supabase.
+      // The UI state for this will be driven by the 'status' column from the database.
     }
   }, [
     workflowBoard,
@@ -633,48 +632,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
     };
   }, [project.id, applyWorkflowState, normalizeWorkflowState]);
 
-  // Realtime subscription for migration updates - must be after applyWorkflowState/normalizeActivity definitions
-  useEffect(() => {
-    if (!project.id) return;
 
-    const channel = supabase
-      .channel(`migration-details:${project.id}`)
-      .on<MigrationProject>(
-        "postgres_changes",
-        {
-          event: "UPDATE",
-          schema: "public",
-          table: "migrations",
-          filter: `id=eq.${project.id}`,
-        },
-        (payload) => {
-          const newProject = payload.new;
-          
-          if (newProject.status && newProject.status !== status) {
-            setStatus(newProject.status as MigrationStatus);
-          }
-          
-          if (newProject.workflowState) {
-            // A workflow state change from the backend means the agent step finished.
-            setIsStepRunning(false);
-            onStepRunningChange?.(false);
-            applyWorkflowState(newProject.workflowState);
-          }
-
-          if(newProject.activities) {
-            setActivityLog((newProject.activities as RawActivityRecord[] ?? []).map(normalizeActivity));
-          }
-          
-          // As a fallback, refresh everything
-          onRefresh();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [project.id, status, onRefresh, applyWorkflowState, normalizeActivity, onStepRunningChange]);
 
   useEffect(() => {
     void ensureSystemDetectionRetryable(workflowBoard);

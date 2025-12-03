@@ -1,7 +1,3 @@
--- This is a concatenated and modified initialization script from the supabase/migrations directory.
--- have been removed or commented out to ensure compatibility with a standard PostgreSQL database.
--- It is assumed that security will be handled at the application/API level.
-
 -- Ensure UUID generation helpers are available
 CREATE EXTENSION IF NOT EXISTS pgcrypto;
 
@@ -54,51 +50,6 @@ CREATE TABLE IF NOT EXISTS public.migration_activities (
   created_at timestamp with time zone NOT NULL DEFAULT now()
 );
 
--- ALTER TABLE public.migrations ENABLE ROW LEVEL SECURITY;
--- ALTER TABLE public.migration_activities ENABLE ROW LEVEL SECURITY;
-
--- CREATE POLICY "Users can view their own migrations" 
--- ON public.migrations 
--- FOR SELECT 
--- USING (auth.uid() = user_id);
-
--- CREATE POLICY "Users can create their own migrations" 
--- ON public.migrations 
--- FOR INSERT 
--- WITH CHECK (auth.uid() = user_id);
-
--- CREATE POLICY "Users can update their own migrations" 
--- ON public.migrations 
--- FOR UPDATE 
--- USING (auth.uid() = user_id);
-
--- CREATE POLICY "Users can delete their own migrations" 
--- ON public.migrations 
--- FOR DELETE 
--- USING (auth.uid() = user_id);
-
--- CREATE POLICY "Users can view activities of their migrations" 
--- ON public.migration_activities 
--- FOR SELECT 
--- USING (
---   EXISTS (
---     SELECT 1 FROM public.migrations 
---     WHERE migrations.id = migration_activities.migration_id 
---     AND migrations.user_id = auth.uid()
---   )
--- );
-
--- CREATE POLICY "Users can create activities for their migrations" 
--- ON public.migration_activities 
--- FOR INSERT 
--- WITH CHECK (
---   EXISTS (
---     SELECT 1 FROM public.migrations 
---     WHERE migrations.id = migration_activities.migration_id 
---     AND migrations.user_id = auth.uid()
---   )
--- );
-
 -- Function to update updated_at timestamp
 CREATE OR REPLACE FUNCTION public.handle_updated_at()
 RETURNS TRIGGER AS $$
@@ -148,52 +99,6 @@ CREATE TABLE IF NOT EXISTS public.connectors (
   updated_at timestamp with time zone NOT NULL DEFAULT now(),
   UNIQUE(migration_id, connector_type)
 );
-
--- ALTER TABLE public.connectors ENABLE ROW LEVEL SECURITY;
-
--- CREATE POLICY "Users can view connectors of their migrations" 
--- ON public.connectors 
--- FOR SELECT 
--- USING (
---   EXISTS (
---     SELECT 1 FROM public.migrations 
---     WHERE migrations.id = connectors.migration_id 
---     AND migrations.user_id = auth.uid()
---   )
--- );
-
--- CREATE POLICY "Users can create connectors for their migrations" 
--- ON public.connectors 
--- FOR INSERT 
--- WITH CHECK (
---   EXISTS (
---     SELECT 1 FROM public.migrations 
---     WHERE migrations.id = connectors.migration_id 
---     AND migrations.user_id = auth.uid()
---   )
--- );
-
--- CREATE POLICY "Users can update connectors of their migrations" 
--- ON public.connectors 
--- FOR UPDATE 
--- USING (
---   EXISTS (
---     SELECT 1 FROM public.migrations 
---     WHERE migrations.id = connectors.migration_id 
---     AND migrations.user_id = auth.uid()
---   )
--- );
-
--- CREATE POLICY "Users can delete connectors of their migrations" 
--- ON public.connectors 
--- FOR DELETE 
--- USING (
---   EXISTS (
---     SELECT 1 FROM public.migrations 
---     WHERE migrations.id = connectors.migration_id 
---     AND migrations.user_id = auth.uid()
---   )
--- );
 
 -- Trigger for connectors table
 CREATE TRIGGER set_connectors_updated_at
@@ -247,28 +152,6 @@ CREATE TABLE IF NOT EXISTS public.data_sources (
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
 
--- ALTER TABLE public.data_sources ENABLE ROW LEVEL SECURITY;
-
--- CREATE POLICY "Users can view their own data sources"
--- ON public.data_sources
--- FOR SELECT
--- USING (auth.uid() = user_id);
-
--- CREATE POLICY "Users can create their own data sources"
--- ON public.data_sources
--- FOR INSERT
--- WITH CHECK (auth.uid() = user_id);
-
--- CREATE POLICY "Users can update their own data sources"
--- ON public.data_sources
--- FOR UPDATE
--- USING (auth.uid() = user_id);
-
--- CREATE POLICY "Users can delete their own data sources"
--- ON public.data_sources
--- FOR DELETE
--- USING (auth.uid() = user_id);
-
 -- Create trigger for updated_at
 CREATE TRIGGER update_data_sources_updated_at
 BEFORE UPDATE ON public.data_sources
@@ -297,28 +180,6 @@ CREATE TABLE IF NOT EXISTS public.projects (
   CONSTRAINT unique_user_project_name UNIQUE (user_id, name)
 );
 
--- ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
-
--- CREATE POLICY "Users can view their own projects"
--- ON public.projects
--- FOR SELECT
--- USING (auth.uid() = user_id);
-
--- CREATE POLICY "Users can create their own projects"
--- ON public.projects
--- FOR INSERT
--- WITH CHECK (auth.uid() = user_id);
-
--- CREATE POLICY "Users can update their own projects"
--- ON public.projects
--- FOR UPDATE
--- USING (auth.uid() = user_id);
-
--- CREATE POLICY "Users can delete their own projects"
--- ON public.projects
--- FOR DELETE
--- USING (auth.uid() = user_id);
-
 -- Add trigger for automatic timestamp updates
 CREATE TRIGGER update_projects_updated_at
 BEFORE UPDATE ON public.projects
@@ -331,55 +192,6 @@ ADD COLUMN project_id UUID REFERENCES public.projects(id) ON DELETE CASCADE;
 
 -- Create index for better performance
 CREATE INDEX idx_migrations_project_id ON public.migrations(project_id);
-
--- DROP POLICY IF EXISTS "Users can view their own migrations" ON public.migrations;
--- DROP POLICY IF EXISTS "Users can create their own migrations" ON public.migrations;
--- DROP POLICY IF EXISTS "Users can update their own migrations" ON public.migrations;
--- DROP POLICY IF EXISTS "Users can delete their own migrations" ON public.migrations;
-
--- CREATE POLICY "Users can view migrations in their projects"
--- ON public.migrations
--- FOR SELECT
--- USING (
---   EXISTS (
---     SELECT 1 FROM public.projects
---     WHERE projects.id = migrations.project_id
---     AND projects.user_id = auth.uid()
---   )
--- );
-
--- CREATE POLICY "Users can create migrations in their projects"
--- ON public.migrations
--- FOR INSERT
--- WITH CHECK (
---   EXISTS (
---     SELECT 1 FROM public.projects
---     WHERE projects.id = migrations.project_id
---     AND projects.user_id = auth.uid()
---   )
--- );
-
--- CREATE POLICY "Users can update migrations in their projects"
--- ON public.migrations
--- FOR UPDATE
--- USING (
---   EXISTS (
---     SELECT 1 FROM public.projects
---     WHERE projects.id = migrations.project_id
---     AND projects.user_id = auth.uid()
---   )
--- );
-
--- CREATE POLICY "Users can delete migrations in their projects"
--- ON public.migrations
--- FOR DELETE
--- USING (
---   EXISTS (
---     SELECT 1 FROM public.projects
---     WHERE projects.id = migrations.project_id
---     AND projects.user_id = auth.uid()
---   )
--- );
 
 
 -- Add is_global flag to data_sources
@@ -395,76 +207,9 @@ CREATE TABLE IF NOT EXISTS public.data_source_projects (
   CONSTRAINT unique_data_source_project UNIQUE (data_source_id, project_id)
 );
 
--- ALTER TABLE public.data_source_projects ENABLE ROW LEVEL SECURITY;
-
--- CREATE POLICY "Users can view assignments for their data sources"
--- ON public.data_source_projects
--- FOR SELECT
--- USING (
---   EXISTS (
---     SELECT 1 FROM public.data_sources
---     WHERE data_sources.id = data_source_projects.data_source_id
---     AND data_sources.user_id = auth.uid()
---   )
--- );
-
--- CREATE POLICY "Users can create assignments for their data sources"
--- ON public.data_source_projects
--- FOR INSERT
--- WITH CHECK (
---   EXISTS (
---     SELECT 1 FROM public.data_sources
---     WHERE data_sources.id = data_source_projects.data_source_id
---     AND data_sources.user_id = auth.uid()
---   )
--- );
-
--- CREATE POLICY "Users can delete assignments for their data sources"
--- ON public.data_source_projects
--- FOR DELETE
--- USING (
---   EXISTS (
---     SELECT 1 FROM public.data_sources
---     WHERE data_sources.id = data_source_projects.data_source_id
---     AND data_sources.user_id = auth.uid()
---   )
--- );
-
 -- Create index for better performance
 CREATE INDEX idx_data_source_projects_data_source_id ON public.data_source_projects(data_source_id);
 CREATE INDEX idx_data_source_projects_project_id ON public.data_source_projects(project_id);
-
-
--- DROP POLICY IF EXISTS "Users can create migrations in their projects" ON migrations;
--- DROP POLICY IF EXISTS "Users can view migrations in their projects" ON migrations;
--- DROP POLICY IF EXISTS "Users can update migrations in their projects" ON migrations;
--- DROP POLICY IF EXISTS "Users can delete migrations in their projects" ON migrations;
-
--- CREATE POLICY "Users can create their own migrations"
--- ON migrations FOR INSERT
--- WITH CHECK (
---   auth.uid() = user_id AND
---   (project_id IS NULL OR EXISTS (
---     SELECT 1 FROM projects 
---     WHERE projects.id = migrations.project_id 
---     AND projects.user_id = auth.uid()
---   ))
--- );
-
--- CREATE POLICY "Users can view their own migrations"
--- ON migrations FOR SELECT
--- USING (
---   auth.uid() = user_id
--- );
-
--- CREATE POLICY "Users can update their own migrations"
--- ON migrations FOR UPDATE
--- USING (auth.uid() = user_id);
-
--- CREATE POLICY "Users can delete their own migrations"
--- ON migrations FOR DELETE
--- USING (auth.uid() = user_id);
-
 
 -- Add meta_model_approved column to migrations table
 ALTER TABLE public.migrations 
@@ -484,52 +229,6 @@ CREATE TABLE IF NOT EXISTS public.field_mappings (
   created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
-
--- ALTER TABLE public.field_mappings ENABLE ROW LEVEL SECURITY;
-
--- CREATE POLICY "Users can view mappings of their migrations"
---   ON public.field_mappings
---   FOR SELECT
---   USING (
---     EXISTS (
---       SELECT 1 FROM public.migrations
---       WHERE migrations.id = field_mappings.migration_id
---       AND migrations.user_id = auth.uid()
---     )
---   );
-
--- CREATE POLICY "Users can create mappings for their migrations"
---   ON public.field_mappings
---   FOR INSERT
---   WITH CHECK (
---     EXISTS (
---       SELECT 1 FROM public.migrations
---       WHERE migrations.id = field_mappings.migration_id
---       AND migrations.user_id = auth.uid()
---     )
---   );
-
--- CREATE POLICY "Users can update mappings of their migrations"
---   ON public.field_mappings
---   FOR UPDATE
---   USING (
---     EXISTS (
---       SELECT 1 FROM public.migrations
---       WHERE migrations.id = field_mappings.migration_id
---       AND migrations.user_id = auth.uid()
---     )
---   );
-
--- CREATE POLICY "Users can delete mappings of their migrations"
---   ON public.field_mappings
---   FOR DELETE
---   USING (
---     EXISTS (
---       SELECT 1 FROM public.migrations
---       WHERE migrations.id = field_mappings.migration_id
---       AND migrations.user_id = auth.uid()
---     )
---   );
 
 -- Trigger for updated_at
 CREATE TRIGGER update_field_mappings_updated_at
@@ -575,36 +274,6 @@ CREATE TABLE IF NOT EXISTS public.pipelines (
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now()
 );
 
--- ALTER TABLE public.pipelines ENABLE ROW LEVEL SECURITY;
-
--- CREATE POLICY "Users can view pipelines of their migrations"
--- ON public.pipelines FOR SELECT
--- USING (EXISTS (
---   SELECT 1 FROM public.migrations
---   WHERE migrations.id = pipelines.migration_id AND migrations.user_id = auth.uid()
--- ));
-
--- CREATE POLICY "Users can create pipelines for their migrations"
--- ON public.pipelines FOR INSERT
--- WITH CHECK (EXISTS (
---   SELECT 1 FROM public.migrations
---   WHERE migrations.id = pipelines.migration_id AND migrations.user_id = auth.uid()
--- ));
-
--- CREATE POLICY "Users can update pipelines of their migrations"
--- ON public.pipelines FOR UPDATE
--- USING (EXISTS (
---   SELECT 1 FROM public.migrations
---   WHERE migrations.id = pipelines.migration_id AND migrations.user_id = auth.uid()
--- ));
-
--- CREATE POLICY "Users can delete pipelines of their migrations"
--- ON public.pipelines FOR DELETE
--- USING (EXISTS (
---   SELECT 1 FROM public.migrations
---   WHERE migrations.id = pipelines.migration_id AND migrations.user_id = auth.uid()
--- ));
-
 -- Add trigger for updated_at
 CREATE TRIGGER update_pipelines_updated_at
 BEFORE UPDATE ON public.pipelines
@@ -643,39 +312,6 @@ ALTER TABLE public.field_mappings ALTER COLUMN pipeline_id SET NOT NULL;
 -- Drop the now-redundant migration_id column
 ALTER TABLE public.field_mappings DROP COLUMN migration_id;
 
--- CREATE POLICY "Users can view mappings of their pipelines"
--- ON public.field_mappings FOR SELECT
--- USING (EXISTS (
---   SELECT 1 FROM public.pipelines p
---   JOIN public.migrations m ON m.id = p.migration_id
---   WHERE p.id = field_mappings.pipeline_id AND m.user_id = auth.uid()
--- ));
-
--- CREATE POLICY "Users can create mappings for their pipelines"
--- ON public.field_mappings FOR INSERT
--- WITH CHECK (EXISTS (
---   SELECT 1 FROM public.pipelines p
---   JOIN public.migrations m ON m.id = p.migration_id
---   WHERE p.id = field_mappings.pipeline_id AND m.user_id = auth.uid()
--- ));
-
--- CREATE POLICY "Users can update mappings of their pipelines"
--- ON public.field_mappings FOR UPDATE
--- USING (EXISTS (
---   SELECT 1 FROM public.pipelines p
---   JOIN public.migrations m ON m.id = p.migration_id
---   WHERE p.id = field_mappings.pipeline_id AND m.user_id = auth.uid()
--- ));
-
--- CREATE POLICY "Users can delete mappings of their pipelines"
--- ON public.field_mappings FOR DELETE
--- USING (EXISTS (
---   SELECT 1 FROM public.pipelines p
---   JOIN public.migrations m ON m.id = p.migration_id
---   WHERE p.id = field_mappings.pipeline_id AND m.user_id = auth.uid()
--- ));
-
-
 -- Add workflow_type column to pipelines table
 ALTER TABLE pipelines 
 ADD COLUMN workflow_type TEXT NOT NULL DEFAULT 'manual' CHECK (workflow_type IN ('manual', 'agent'));
@@ -693,56 +329,6 @@ CREATE TABLE IF NOT EXISTS agent_workflow_states (
   updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
   UNIQUE(pipeline_id)
 );
-
--- ALTER TABLE agent_workflow_states ENABLE ROW LEVEL SECURITY;
-
--- CREATE POLICY "Users can view agent states of their pipelines"
--- ON agent_workflow_states
--- FOR SELECT
--- USING (
---   EXISTS (
---     SELECT 1 FROM pipelines p
---     JOIN migrations m ON m.id = p.migration_id
---     WHERE p.id = agent_workflow_states.pipeline_id
---     AND m.user_id = auth.uid()
---   )
--- );
-
--- CREATE POLICY "Users can create agent states for their pipelines"
--- ON agent_workflow_states
--- FOR INSERT
--- WITH CHECK (
---   EXISTS (
---     SELECT 1 FROM pipelines p
---     JOIN migrations m ON m.id = p.migration_id
---     WHERE p.id = agent_workflow_states.pipeline_id
---     AND m.user_id = auth.uid()
---   )
--- );
-
--- CREATE POLICY "Users can update agent states of their pipelines"
--- ON agent_workflow_states
--- FOR UPDATE
--- USING (
---   EXISTS (
---     SELECT 1 FROM pipelines p
---     JOIN migrations m ON m.id = p.migration_id
---     WHERE p.id = agent_workflow_states.pipeline_id
---     AND m.user_id = auth.uid()
---   )
--- );
-
--- CREATE POLICY "Users can delete agent states of their pipelines"
--- ON agent_workflow_states
--- FOR DELETE
--- USING (
---   EXISTS (
---     SELECT 1 FROM pipelines p
---     JOIN migrations m ON m.id = p.migration_id
---     WHERE p.id = agent_workflow_states.pipeline_id
---     AND m.user_id = auth.uid()
---   )
--- );
 
 -- Add trigger for updated_at on agent_workflow_states
 CREATE TRIGGER update_agent_workflow_states_updated_at

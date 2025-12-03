@@ -1,4 +1,3 @@
-import { supabase } from "@/integrations/database/client";
 import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/database/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
@@ -58,6 +57,20 @@ const parseErrorDetail = async (response: Response) => {
   }
 };
 
+async function fetchFromApi<T>(path: string, options: RequestInit = {}): Promise<{ data: T | null; error: Error | null; }> {
+  try {
+    const response = await fetch(`${API_BASE_URL}${path}`, options);
+    if (!response.ok) {
+      const detail = await parseErrorDetail(response);
+      return { data: null, error: new Error(detail ?? `Request failed with status ${response.status}`) };
+    }
+    const data = await response.json();
+    return { data, error: null };
+  } catch (error) {
+    return { data: null, error: error as Error };
+  }
+}
+
 export const databaseClient = {
   getSession: () => Promise.resolve(buildSessionResponse(getStoredUser())),
   signOut: () => {
@@ -113,218 +126,86 @@ export const databaseClient = {
   },
   getUser: () => Promise.resolve(buildUserResponse(getStoredUser())),
 
-  fetchProjects: () =>
-    supabase
-      .from("projects")
-      .select("*")
-      .order("created_at", { ascending: false }),
+  fetchProjects: () => fetchFromApi<Tables<"projects">[]>("/projects"),
 
-  fetchProjectNames: () =>
-    supabase
-      .from("projects")
-      .select("id, name")
-      .order("name", { ascending: true }),
+  fetchProjectNames: () => fetchFromApi<{id: string, name: string}[]>("/projects?select=id,name"),
 
-  fetchProjectByName: (name: string) =>
-    supabase
-      .from("projects")
-      .select("*")
-      .eq("name", name)
-      .maybeSingle(),
+  fetchProjectByName: (name: string) => fetchFromApi<Tables<"projects">>(`/projects?name=eq.${name}`),
 
-  countMigrationsByProject: (projectId: string) =>
-    supabase
-      .from("migrations")
-      .select("*", { count: "exact", head: true })
-      .eq("project_id", projectId),
+  countMigrationsByProject: (projectId: string) => fetchFromApi<number>(`/migrations?project_id=eq.${projectId}&select=count`),
 
-  fetchMigrationsByProject: (projectId: string) =>
-    supabase
-      .from("migrations")
-      .select("*")
-      .eq("project_id", projectId)
-      .order("created_at", { ascending: false }),
+  fetchMigrationsByProject: (projectId: string) => fetchFromApi<Tables<"migrations">[]>(`/migrations?project_id=eq.${projectId}`),
 
-  fetchStandaloneMigrations: () =>
-    supabase
-      .from("migrations")
-      .select("*")
-      .is("project_id", null)
-      .order("created_at", { ascending: false }),
+  fetchStandaloneMigrations: () => fetchFromApi<Tables<"migrations">[]>(`/migrations?project_id=is.null`),
 
-  fetchStandaloneMigrationsPaginated: (limit: number, offset: number) =>
-    supabase
-      .from("migrations")
-      .select("*", { count: "exact" })
-      .is("project_id", null)
-      .order("created_at", { ascending: false })
-      .range(offset, offset + limit - 1),
+  fetchStandaloneMigrationsPaginated: (limit: number, offset: number) => fetchFromApi<Tables<"migrations">[]>(`/migrations?project_id=is.null&limit=${limit}&offset=${offset}`),
 
-  fetchMigrationById: (migrationId: string) =>
-    supabase
-      .from("migrations")
-      .select("*")
-      .eq("id", migrationId)
-      .single(),
+  fetchMigrationById: (migrationId: string) => fetchFromApi<Tables<"migrations">>(`/migrations?id=eq.${migrationId}`),
 
-  fetchMigrationActivities: (migrationId: string) =>
-    supabase
-      .from("migration_activities")
-      .select("*")
-      .eq("migration_id", migrationId)
-      .order("created_at", { ascending: false }),
+  fetchMigrationActivities: (migrationId: string) => fetchFromApi<Tables<"migration_activities">[]>(`/migration_activities?migration_id=eq.${migrationId}`),
 
-  fetchConnectorsByMigration: (migrationId: string) =>
-    supabase
-      .from("connectors")
-      .select("*")
-      .eq("migration_id", migrationId),
+  fetchConnectorsByMigration: (migrationId: string) => fetchFromApi<Tables<"connectors">[]>(`/connectors?migration_id=eq.${migrationId}`),
 
-  fetchConnectorByType: (migrationId: string, connectorType: "in" | "out") =>
-    supabase
-      .from("connectors")
-      .select("*")
-      .eq("migration_id", migrationId)
-      .eq("connector_type", connectorType)
-      .maybeSingle(),
+  fetchConnectorByType: (migrationId: string, connectorType: "in" | "out") => fetchFromApi<Tables<"connectors">>(`/connectors?migration_id=eq.${migrationId}&connector_type=eq.${connectorType}`),
 
-  insertProject: (payload: TablesInsert<"projects">) =>
-    supabase.from("projects").insert(payload),
+  insertProject: (payload: TablesInsert<"projects">) => fetchFromApi<Tables<"projects">>("/projects", { method: "POST", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
 
-  updateProject: (id: string, payload: TablesUpdate<"projects">) =>
-    supabase
-      .from("projects")
-      .update(payload)
-      .eq("id", id),
+  updateProject: (id: string, payload: TablesUpdate<"projects">) => fetchFromApi<Tables<"projects">>(`/projects?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
 
-  deleteProject: (id: string) =>
-    supabase
-      .from("projects")
-      .delete()
-      .eq("id", id),
+  deleteProject: (id: string) => fetchFromApi<void>(`/projects?id=eq.${id}`, { method: "DELETE" }),
 
-  insertMigration: (payload: TablesInsert<"migrations">) =>
-    supabase
-      .from("migrations")
-      .insert(payload)
-      .select()
-      .single(),
+  insertMigration: (payload: TablesInsert<"migrations">) => fetchFromApi<Tables<"migrations">>("/migrations", { method: "POST", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
 
-  updateMigration: (id: string, payload: TablesUpdate<"migrations">) =>
-    supabase
-      .from("migrations")
-      .update(payload)
-      .eq("id", id),
+  updateMigration: (id: string, payload: TablesUpdate<"migrations">) => fetchFromApi<Tables<"migrations">>(`/migrations?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
 
-  deleteMigration: (id: string) =>
-    supabase
-      .from("migrations")
-      .delete()
-      .eq("id", id),
+  deleteMigration: (id: string) => fetchFromApi<void>(`/migrations?id=eq.${id}`, { method: "DELETE" }),
 
-  insertMigrationActivities: (payloads: TablesInsert<"migration_activities">[]) =>
-    supabase.from("migration_activities").insert(payloads),
+  insertMigrationActivities: (payloads: TablesInsert<"migration_activities">[]) => fetchFromApi<Tables<"migration_activities">>("/migration_activities", { method: "POST", body: JSON.stringify(payloads), headers: { "Content-Type": "application/json" } }),
 
-  insertConnectors: (payload: TablesInsert<"connectors">[]) =>
-    supabase.from("connectors").insert(payload),
+  insertConnectors: (payload: TablesInsert<"connectors">[]) => fetchFromApi<Tables<"connectors">>("/connectors", { method: "POST", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
 
-  updateConnector: (id: string, payload: TablesUpdate<"connectors">) =>
-    supabase
-      .from("connectors")
-      .update(payload)
-      .eq("id", id),
+  updateConnector: (id: string, payload: TablesUpdate<"connectors">) => fetchFromApi<Tables<"connectors">>(`/connectors?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
 
   updateConnectorByType: (
     migrationId: string,
     connectorType: "in" | "out",
     payload: TablesUpdate<"connectors">,
-  ) =>
-    supabase
-      .from("connectors")
-      .update(payload)
-      .eq("migration_id", migrationId)
-      .eq("connector_type", connectorType),
+  ) => fetchFromApi<Tables<"connectors">>(`/connectors?migration_id=eq.${migrationId}&connector_type=eq.${connectorType}`, { method: "PATCH", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
 
-  insertMigrationActivity: (payload: TablesInsert<"migration_activities">) =>
-    supabase.from("migration_activities").insert(payload),
+  insertMigrationActivity: (payload: TablesInsert<"migration_activities">) => fetchFromApi<Tables<"migration_activities">>("/migration_activities", { method: "POST", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
 
-  fetchDataSources: () =>
-    supabase
-      .from("data_sources")
-      .select("*")
-      .order("created_at", { ascending: false }),
+  fetchDataSources: () => fetchFromApi<Tables<"data_sources">[]>("/data_sources"),
 
-  fetchDataSourceAssignments: (dataSourceId: string) =>
-    supabase
-      .from("data_source_projects")
-      .select("project_id")
-      .eq("data_source_id", dataSourceId),
+  fetchDataSourceAssignments: (dataSourceId: string) => fetchFromApi<{project_id: string}[]>(`/data_source_projects?data_source_id=eq.${dataSourceId}&select=project_id`),
 
-  insertDataSource: (payload: TablesInsert<"data_sources">) =>
-    supabase.from("data_sources").insert(payload).select().single(),
+  insertDataSource: (payload: TablesInsert<"data_sources">) => fetchFromApi<Tables<"data_sources">>("/data_sources", { method: "POST", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
 
-  updateDataSource: (id: string, payload: TablesUpdate<"data_sources">) =>
-    supabase
-      .from("data_sources")
-      .update(payload)
-      .eq("id", id),
+  updateDataSource: (id: string, payload: TablesUpdate<"data_sources">) => fetchFromApi<Tables<"data_sources">>(`/data_sources?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
 
-  deleteDataSource: (id: string) =>
-    supabase
-      .from("data_sources")
-      .delete()
-      .eq("id", id),
+  deleteDataSource: (id: string) => fetchFromApi<void>(`/data_sources?id=eq.${id}`, { method: "DELETE" }),
 
   upsertDataSourceProjectAssignment: (
     dataSourceId: string,
     projectId: string,
     payload: TablesInsert<"data_source_projects">,
-  ) =>
-    supabase
-      .from("data_source_projects")
-      .upsert(payload)
-      .eq("data_source_id", dataSourceId)
-      .eq("project_id", projectId),
+  ) => fetchFromApi<Tables<"data_source_projects">>(`/data_source_projects?data_source_id=eq.${dataSourceId}&project_id=eq.${projectId}`, { method: "POST", body: JSON.stringify(payload), headers: { "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates" } }),
 
-  deleteDataSourceProjectAssignments: (dataSourceId: string) =>
-    supabase
-      .from("data_source_projects")
-      .delete()
-      .eq("data_source_id", dataSourceId),
+  deleteDataSourceProjectAssignments: (dataSourceId: string) => fetchFromApi<void>(`/data_source_projects?data_source_id=eq.${dataSourceId}`, { method: "DELETE" }),
 
   insertDataSourceProjectAssignments: (
     assignments: TablesInsert<"data_source_projects">[],
-  ) => supabase.from("data_source_projects").insert(assignments),
+  ) => fetchFromApi<Tables<"data_source_projects">>("/data_source_projects", { method: "POST", body: JSON.stringify(assignments), headers: { "Content-Type": "application/json" } }),
 
-  fetchFieldMappings: (pipelineId: string, sourceObjectType: string, targetObjectType: string) =>
-    supabase
-      .from("field_mappings")
-      .select("*")
-      .eq("pipeline_id", pipelineId)
-      .eq("source_object_type", sourceObjectType)
-      .eq("target_object_type", targetObjectType),
+  fetchFieldMappings: (pipelineId: string, sourceObjectType: string, targetObjectType: string) => fetchFromApi<Tables<"field_mappings">[]>(`/field_mappings?pipeline_id=eq.${pipelineId}&source_object_type=eq.${sourceObjectType}&target_object_type=eq.${targetObjectType}`),
 
-  fetchAllMappingsForSource: (pipelineId: string, sourceObjectType: string) =>
-    supabase
-      .from("field_mappings")
-      .select("*")
-      .eq("pipeline_id", pipelineId)
-      .eq("source_object_type", sourceObjectType),
+  fetchAllMappingsForSource: (pipelineId: string, sourceObjectType: string) => fetchFromApi<Tables<"field_mappings">[]>(`/field_mappings?pipeline_id=eq.${pipelineId}&source_object_type=eq.${sourceObjectType}`),
 
   upsertFieldMapping: (payload: TablesInsert<"field_mappings"> | TablesUpdate<"field_mappings">) => {
     const payloadArray = Array.isArray(payload) ? payload : [payload];
-    return supabase.from("field_mappings").upsert(payloadArray);
+    return fetchFromApi<Tables<"field_mappings">>("/field_mappings", { method: "POST", body: JSON.stringify(payloadArray), headers: { "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates" } });
   },
 
-  deleteFieldMapping: (mappingId: string) =>
-    supabase
-      .from("field_mappings")
-      .delete()
-      .eq("id", mappingId),
+  deleteFieldMapping: (mappingId: string) => fetchFromApi<void>(`/field_mappings?id=eq.${mappingId}`, { method: "DELETE" }),
 
-  clearFieldMappingsForPipeline: (pipelineId: string) =>
-    supabase
-      .from("field_mappings")
-      .delete()
-      .eq("pipeline_id", pipelineId),
+  clearFieldMappingsForPipeline: (pipelineId: string) => fetchFromApi<void>(`/field_mappings?pipeline_id=eq.${pipelineId}`, { method: "DELETE" }),
 };

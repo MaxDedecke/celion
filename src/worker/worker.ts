@@ -1,19 +1,11 @@
-
-import { createClient, type SupabaseClient } from '@supabase/supabase-js';
+import { Pool } from 'pg';
 import { runSystemDetectionAgent } from '../agents/agentService';
 import type { AgentName } from '../types/agents';
 import { AGENT_WORKFLOW_STEPS } from '../constants/agentWorkflow';
 
-// TODO: Move these to a central configuration
-const supabaseUrl = process.env.VITE_SUPABASE_URL;
-const supabaseKey = process.env.VITE_SUPABASE_PUBLISHABLE_KEY;
-
-if (!supabaseUrl || !supabaseKey) {
-  console.error('Supabase credentials not found. The worker cannot start.');
-  process.exit(1);
-}
-
-const supabase = createClient(supabaseUrl, supabaseKey);
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+});
 
 const POLL_INTERVAL = 5000; // 5 seconds
 
@@ -21,12 +13,12 @@ type JobStatus = 'pending' | 'running' | 'completed' | 'failed';
 
 async function logActivity(migrationId: string, type: 'success' | 'error' | 'info' | 'warning', title: string) {
   const timestamp = new Date().toISOString();
-  await supabase.from('migration_activities').insert({
-    migration_id: migrationId,
+  await pool.query('INSERT INTO migration_activities (migration_id, type, title, timestamp) VALUES ($1, $2, $3, $4)', [
+    migrationId,
     type,
     title,
     timestamp,
-  });
+  ]);
 }
 
 const ensureWorkflowState = (state: any = {}) => {
@@ -61,138 +53,138 @@ const updateWorkflowForStep = (state: any, workflowStepId: string, result: any, 
   return { nextState, progress, completedCount, totalSteps };
 };
 
-async function processJob(job: any, supabase: SupabaseClient) {
+async function processJob(job: any) {
   console.log(`Processing job ${job.id} for step ${job.step_id}`);
 
   const { step_id, payload } = job;
   const { agentName, agentParams, stepId } = payload;
 
-  const { data: stepRecord, error: stepLookupError } = await supabase
-    .from('migration_steps')
-    .select('id, migration_id, workflow_step_id, name')
-    .eq('id', step_id)
-    .maybeSingle();
-
-  if (stepLookupError || !stepRecord) {
-    console.error('Unable to find migration step for job', job.id, stepLookupError);
-    await supabase.from('jobs').update({ status: 'failed' as JobStatus, last_error: 'Step not found' }).eq('id', job.id);
-    return;
-  }
-
-  const migrationId = stepRecord.migration_id;
-
-  // 1. Update step status to 'running' and mark migration as processing
-  await supabase.from('migration_steps').update({ status: 'running' }).eq('id', step_id);
-  await supabase.from('migrations').update({ status: 'processing' }).eq('id', migrationId);
-
+  const client = await pool.connect();
   try {
-    // 2. Run the actual agent
-    let result: any;
-    if (agentName === 'runSystemDetection') {
-      const url = agentParams?.sourceUrl || agentParams?.url;
-      const expected = agentParams?.sourceExpectedSystem || agentParams?.expectedSystem;
-      result = await runSystemDetectionAgent(url, expected);
-    } else {
-      throw new Error(`Agent ${agentName} is not yet implemented in the worker.`);
+    const { rows: stepRows } = await client.query('SELECT id, migration_id, workflow_step_id, name FROM migration_steps WHERE id = $1', [step_id]);
+    const stepRecord = stepRows[0];
+
+    if (!stepRecord) {
+      console.error('Unable to find migration step for job', job.id);
+      await client.query('UPDATE jobs SET status = $1, last_error = $2 WHERE id = $3', ['failed', 'Step not found', job.id]);
+      return;
     }
 
-    // 3. Update step status to 'completed' with the result
-    await supabase
-      .from('migration_steps')
-      .update({ status: 'completed', result, status_message: 'Agent run completed successfully.' })
-      .eq('id', step_id);
+    const migrationId = stepRecord.migration_id;
 
-    // 3b. Update workflow_state & progress
-    const { data: migrationData } = await supabase
-      .from('migrations')
-      .select('workflow_state')
-      .eq('id', migrationId)
-      .maybeSingle();
+    await client.query('BEGIN');
+    await client.query('UPDATE migration_steps SET status = $1 WHERE id = $2', ['running', step_id]);
+    await client.query('UPDATE migrations SET status = $1 WHERE id = $2', ['processing', migrationId]);
 
-    const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(
-      migrationData?.workflow_state,
-      stepRecord.workflow_step_id || stepId,
-      result,
-      false
-    );
+    try {
+      let result: any;
+      if (agentName === 'runSystemDetection') {
+        const url = agentParams?.sourceUrl || agentParams?.url;
+        const expected = agentParams?.sourceExpectedSystem || agentParams?.expectedSystem;
+        result = await runSystemDetectionAgent(url, expected);
+      } else {
+        throw new Error(`Agent ${agentName} is not yet implemented in the worker.`);
+      }
 
-    const migrationStatus = completedCount >= totalSteps ? 'completed' : 'running';
+      await client.query('UPDATE migration_steps SET status = $1, result = $2, status_message = $3 WHERE id = $4', [
+        'completed',
+        result,
+        'Agent run completed successfully.',
+        step_id,
+      ]);
 
-    await supabase
-      .from('migrations')
-      .update({ workflow_state: nextState, progress, status: migrationStatus })
-      .eq('id', migrationId);
+      const { rows: migrationRows } = await client.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
+      const migrationData = migrationRows[0];
 
-    await logActivity(migrationId, 'success', `Schritt abgeschlossen: ${stepRecord.name}`);
+      const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(
+        migrationData?.workflow_state,
+        stepRecord.workflow_step_id || stepId,
+        result,
+        false
+      );
 
-    // 4. Update job status to 'completed'
-    await supabase.from('jobs').update({ status: 'completed' as JobStatus }).eq('id', job.id);
+      const migrationStatus = completedCount >= totalSteps ? 'completed' : 'running';
 
-    console.log(`Job ${job.id} completed successfully.`);
+      await client.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3 WHERE id = $4', [
+        nextState,
+        progress,
+        migrationStatus,
+        migrationId,
+      ]);
 
-  } catch (error) {
-    console.error(`Error processing job ${job.id}:`, error);
-    const errorMessage = (error as Error).message;
+      await logActivity(migrationId, 'success', `Schritt abgeschlossen: ${stepRecord.name}`);
 
-    // 5. Update step status to 'failed'
-    await supabase
-      .from('migration_steps')
-      .update({ status: 'failed', status_message: errorMessage })
-      .eq('id', step_id);
+      await client.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
 
-    const { data: migrationData } = await supabase
-      .from('migrations')
-      .select('workflow_state')
-      .eq('id', migrationId)
-      .maybeSingle();
+      console.log(`Job ${job.id} completed successfully.`);
+      await client.query('COMMIT');
+    } catch (error) {
+      await client.query('ROLLBACK');
+      console.error(`Error processing job ${job.id}:`, error);
+      const errorMessage = (error as Error).message;
 
-    const { nextState, progress } = updateWorkflowForStep(
-      migrationData?.workflow_state,
-      stepRecord.workflow_step_id || stepId,
-      errorMessage,
-      true
-    );
+      const client2 = await pool.connect();
+      try {
+        await client2.query('BEGIN');
+        await client2.query('UPDATE migration_steps SET status = $1, status_message = $2 WHERE id = $3', ['failed', errorMessage, step_id]);
 
-    await supabase
-      .from('migrations')
-      .update({ workflow_state: nextState, progress, status: 'paused' })
-      .eq('id', migrationId);
+        const { rows: migrationRows } = await client2.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
+        const migrationData = migrationRows[0];
 
-    await logActivity(migrationId, 'error', `Schritt fehlgeschlagen: ${errorMessage}`);
+        const { nextState, progress } = updateWorkflowForStep(
+          migrationData?.workflow_state,
+          stepRecord.workflow_step_id || stepId,
+          errorMessage,
+          true
+        );
 
-    // 6. Update job status to 'failed'
-    await supabase.from('jobs').update({ status: 'failed' as JobStatus, last_error: errorMessage }).eq('id', job.id);
+        await client2.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3 WHERE id = $4', [
+          nextState,
+          progress,
+          'paused',
+          migrationId,
+        ]);
+
+        await logActivity(migrationId, 'error', `Schritt fehlgeschlagen: ${errorMessage}`);
+
+        await client2.query('UPDATE jobs SET status = $1, last_error = $2 WHERE id = $3', ['failed', errorMessage, job.id]);
+        await client2.query('COMMIT');
+      } catch (e2) {
+        await client2.query('ROLLBACK');
+        console.error('Error in error handling:', e2);
+      } finally {
+        client2.release();
+      }
+    }
+  } finally {
+    client.release();
   }
 }
 
-async function pollForJobs(supabase: SupabaseClient) {
+async function pollForJobs() {
   console.log('Polling for new jobs...');
 
-  const { data: jobs, error } = await supabase
-    .from('jobs')
-    .select('*')
-    .eq('status', 'pending')
-    .order('created_at', { ascending: true })
-    .limit(1);
-
-  if (error) {
-    console.error('Error polling for jobs:', error);
-    return;
-  }
+  const { rows: jobs } = await pool.query(
+    "SELECT * FROM jobs WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1"
+  );
 
   const job = jobs?.[0];
   if (!job) {
     return; // No pending jobs
   }
 
-  await supabase.from('jobs').update({ status: 'running', attempts: (job.attempts || 0) + 1 }).eq('id', job.id);
+  await pool.query('UPDATE jobs SET status = $1, attempts = $2 WHERE id = $3', ['running', (job.attempts || 0) + 1, job.id]);
 
-  await processJob(job, supabase);
+  await processJob(job);
 }
 
 function main() {
+  if (!process.env.DATABASE_URL) {
+    console.error('DATABASE_URL not found. The worker cannot start.');
+    process.exit(1);
+  }
   console.log('Worker started.');
-  setInterval(() => pollForJobs(supabase), POLL_INTERVAL);
+  setInterval(() => pollForJobs(), POLL_INTERVAL);
 }
 
 main();
