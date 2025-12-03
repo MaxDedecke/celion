@@ -1,0 +1,39 @@
+{
+  "realm": "celion",
+  "enabled": true,
+  "clients": [
+    {
+      "clientId": "celion-web",
+      "publicClient": true,
+      "redirectUris": [
+        "http://localhost:8080/*"
+      ],
+      "webOrigins": [
+        "http://localhost:8080"
+      ],
+      "attributes": {
+        "post.logout.redirect.uris": "http://localhost:8080/*"
+      },
+      "rootUrl": "http://localhost:8080",
+      "enabled": true,
+      "protocol": "openid-connect"
+    }
+  ],
+  "users": [
+    {
+      "username": "JMD",
+      "enabled": true,
+      "emailVerified": true,
+      "email": "jm.dedecke@gmail.com",
+      "firstName": "Jan Maximilian",
+      "lastName": "Dedecke",
+      "credentials": [
+        {
+          "type": "password",
+          "value": "password",
+          "temporary": true
+        }
+      ]
+    }
+  ]
+}

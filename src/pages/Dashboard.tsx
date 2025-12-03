@@ -51,7 +51,7 @@ import {
 } from "@/constants/migrations";
 import { duplicateMigration } from "@/lib/migrationDuplication";
 import { cn } from "@/lib/utils";
-import { logoutKeycloak } from "@/auth/keycloakClient";
+import { logout } from "@/auth/keycloakClient";
 
 const deriveMigrationStatus = (migration: any): MigrationStatus => {
   const progress = Number(migration?.progress ?? 0);
@@ -295,7 +295,7 @@ const Dashboard = () => {
     try {
       setTransitioning(true);
       await databaseClient.signOut();
-      await logoutKeycloak();
+      await logout();
       toast.success("Erfolgreich abgemeldet");
       navigate("/");
     } catch (error) {

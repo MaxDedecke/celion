@@ -87,14 +87,24 @@ services:
 
   keycloak:
     image: quay.io/keycloak/keycloak:latest
-    command: start-dev
     environment:
       KEYCLOAK_ADMIN: admin
       KEYCLOAK_ADMIN_PASSWORD: admin
+      KC_DB: postgres
+      KC_DB_URL_HOST: postgres-db
+      KC_DB_URL_DATABASE: celion
+      KC_DB_USERNAME: celion
+      KC_DB_PASSWORD: celion
     ports:
       - "8888:8080"
+    volumes:
+      - ./celion-realm.json:/opt/keycloak/data/import/celion-realm.json
+    command: ["start-dev", "--import-realm"]
     networks:
       - celion-net
+    depends_on:
+      postgres-db:
+        condition: service_healthy
 
   portainer:
     image: portainer/portainer-ce:latest

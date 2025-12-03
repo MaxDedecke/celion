@@ -17,6 +17,7 @@ const keycloakConfig: KeycloakConfig | null = (() => {
 })();
 
 let keycloak: Keycloak | null = null;
+let initialized = false;
 
 const getClient = () => {
   if (!keycloakConfig) return null;
@@ -28,12 +29,12 @@ const getClient = () => {
 
 export const hasKeycloakConfig = () => Boolean(keycloakConfig);
 
-export const initKeycloak = async () => {
+export const initKeycloak = async (onLoad?: "check-sso" | "login-required") => {
   const client = getClient();
   if (!client) return { client: null, authenticated: false };
 
   const authenticated = await client.init({
-    onLoad: "check-sso",
+    onLoad,
     pkceMethod: "S256",
     checkLoginIframe: false,
   });
@@ -41,23 +42,15 @@ export const initKeycloak = async () => {
   return { client, authenticated };
 };
 
-export const loginWithKeycloak = async () => {
-  const { client } = await initKeycloak();
+export const login = async () => {
+  const client = getClient();
   if (!client) {
     throw new Error("Keycloak ist nicht konfiguriert (VITE_KEYCLOAK_URL/REALM/CLIENT_ID).");
   }
-
-  const authenticated = client.authenticated;
-  if (!authenticated) {
-    await client.login();
-    return null; // Redirect handled by Keycloak
-  }
-
-  const profile = await client.loadUserProfile();
-  return { client, profile, tokenParsed: client.tokenParsed };
+  await client.login();
 };
 
-export const logoutKeycloak = async () => {
+export const logout = async () => {
   const client = getClient();
   if (!client || !client.authenticated) return;
 

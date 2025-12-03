@@ -1,4 +1,4 @@
-﻿import { useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DataFlowLoader from "@/components/DataFlowLoader";
 import { Button } from "@/components/ui/button";
@@ -7,19 +7,44 @@ import Logo from "@/components/Logo";
 import { toast } from "sonner";
 import { databaseClient } from "@/api/databaseClient";
 import { useMinimumLoader } from "@/hooks/useMinimumLoader";
-import { buildUserFromKeycloak, hasKeycloakConfig, loginWithKeycloak } from "@/auth/keycloakClient";
+import { buildUserFromKeycloak, hasKeycloakConfig, initKeycloak, login } from "@/auth/keycloakClient";
 
 const Login = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isSignUp, setIsSignUp] = useState(false);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(hasKeycloakConfig());
   const loaderVisible = useMinimumLoader(loading, 1000);
   const navigate = useNavigate();
 
+  useEffect(() => {
+    const completeLogin = async () => {
+      if (!hasKeycloakConfig()) return;
+
+      try {
+        const { client, authenticated } = await initKeycloak();
+        if (client && authenticated) {
+          const profile = await client.loadUserProfile();
+          const user = buildUserFromKeycloak(profile, client.tokenParsed);
+          await databaseClient.setSessionUser(user as any);
+          toast.success("Login via Keycloak erfolgreich");
+          navigate("/dashboard");
+        } else {
+          setLoading(false);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Keycloak Login fehlgeschlagen";
+        toast.error(message);
+        setLoading(false);
+      }
+    };
+
+    completeLogin();
+  }, [navigate]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!email || !password) {
       toast.error("Please fill in all fields");
       return;
@@ -32,14 +57,14 @@ const Login = () => {
         const { error } = await databaseClient.signUp(email, password);
 
         if (error) throw error;
-        
+
         toast.success("Account created successfully!");
         navigate("/dashboard");
       } else {
         const { error } = await databaseClient.signInWithPassword(email, password);
 
         if (error) throw error;
-        
+
         toast.success("Login successful");
         navigate("/dashboard");
       }
@@ -54,22 +79,11 @@ const Login = () => {
   const handleKeycloakLogin = async () => {
     setLoading(true);
     try {
-      const result = await loginWithKeycloak();
-      if (!result) {
-        // Redirect initiated
-        return;
-      }
-
-      const { profile, tokenParsed } = result;
-      const user = buildUserFromKeycloak(profile, tokenParsed);
-      await databaseClient.setSessionUser(user as any);
-
-      toast.success("Login via Keycloak erfolgreich");
-      navigate("/dashboard");
+      await login();
+      // Redirect initiated by login()
     } catch (error) {
       const message = error instanceof Error ? error.message : "Keycloak Login fehlgeschlagen";
       toast.error(message);
-    } finally {
       setLoading(false);
     }
   };
