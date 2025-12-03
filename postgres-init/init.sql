@@ -27,7 +27,7 @@ GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO celion;
 ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO celion;
 
 -- Create migrations table
-CREATE TABLE public.migrations (
+CREATE TABLE IF NOT EXISTS public.migrations (
   id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id uuid NOT NULL,
   name text NOT NULL,
@@ -45,7 +45,7 @@ CREATE TABLE public.migrations (
 );
 
 -- Create activities table
-CREATE TABLE public.migration_activities (
+CREATE TABLE IF NOT EXISTS public.migration_activities (
   id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   migration_id uuid NOT NULL REFERENCES public.migrations(id) ON DELETE CASCADE,
   type text NOT NULL CHECK (type IN ('success', 'info', 'error', 'warning')),
@@ -134,7 +134,7 @@ $$;
 
 
 -- Create connectors table
-CREATE TABLE public.connectors (
+CREATE TABLE IF NOT EXISTS public.connectors (
   id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   migration_id uuid NOT NULL REFERENCES public.migrations(id) ON DELETE CASCADE,
   connector_type text NOT NULL CHECK (connector_type IN ('in', 'out')),
@@ -231,7 +231,7 @@ CHECK (type IN ('success', 'error', 'info', 'warning', 'system'));
 
 
 -- Create data_sources table for managing company data sources
-CREATE TABLE public.data_sources (
+CREATE TABLE IF NOT EXISTS public.data_sources (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID NOT NULL,
   name TEXT NOT NULL,
@@ -287,7 +287,7 @@ ALTER COLUMN progress TYPE numeric(5,2);
 
 
 -- Create projects table
-CREATE TABLE public.projects (
+CREATE TABLE IF NOT EXISTS public.projects (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   user_id UUID NOT NULL,
   name TEXT NOT NULL,
@@ -387,7 +387,7 @@ ALTER TABLE public.data_sources
 ADD COLUMN is_global BOOLEAN NOT NULL DEFAULT false;
 
 -- Create junction table for data_source to project assignments
-CREATE TABLE public.data_source_projects (
+CREATE TABLE IF NOT EXISTS public.data_source_projects (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   data_source_id UUID NOT NULL REFERENCES public.data_sources(id) ON DELETE CASCADE,
   project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
@@ -472,7 +472,7 @@ ADD COLUMN meta_model_approved boolean NOT NULL DEFAULT false;
 
 
 -- Create field_mappings table to store field mapping configurations for migrations
-CREATE TABLE public.field_mappings (
+CREATE TABLE IF NOT EXISTS public.field_mappings (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   migration_id UUID NOT NULL REFERENCES public.migrations(id) ON DELETE CASCADE,
   target_field_id TEXT NOT NULL,
@@ -557,7 +557,7 @@ ALTER COLUMN target_object_type SET NOT NULL;
 
 
 -- Create pipelines table to support multiple API connections per migration
-CREATE TABLE public.pipelines (
+CREATE TABLE IF NOT EXISTS public.pipelines (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   migration_id UUID NOT NULL REFERENCES public.migrations(id) ON DELETE CASCADE,
   name TEXT NOT NULL,
@@ -681,7 +681,7 @@ ALTER TABLE pipelines
 ADD COLUMN workflow_type TEXT NOT NULL DEFAULT 'manual' CHECK (workflow_type IN ('manual', 'agent'));
 
 -- Create agent_workflow_states table to persist agent workflow data
-CREATE TABLE agent_workflow_states (
+CREATE TABLE IF NOT EXISTS agent_workflow_states (
   id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
   pipeline_id UUID NOT NULL REFERENCES pipelines(id) ON DELETE CASCADE,
   briefing TEXT NOT NULL DEFAULT '',
@@ -848,46 +848,7 @@ ALTER TABLE public.migrations
 ADD CONSTRAINT migrations_status_check
 CHECK (status IN ('not_started', 'running', 'paused', 'completed', 'processing'));
 
--- Migration steps table
-create table public.migration_steps (
-    id uuid primary key default gen_random_uuid(),
-    migration_id uuid not null references public.migrations(id) on delete cascade,
-    name text not null,
-    status text not null default 'pending',
-    status_message text,
-    result jsonb,
-    created_at timestamptz not null default now(),
-    updated_at timestamptz not null default now()
-);
-
--- Index for faster lookups
-create index on public.migration_steps (migration_id);
-
--- Trigger to automatically update updated_at
-create trigger on_migration_steps_update
-  before update on public.migration_steps
-  for each row execute procedure public.handle_updated_at();
 
 -- Add a "steps" column to the migrations table to store the order of steps
 alter table public.migrations
 add column if not exists steps jsonb;
-
-
--- Jobs table for the queue
-create table public.jobs (
-    id bigserial primary key,
-    step_id uuid not null references public.migration_steps(id) on delete cascade,
-    status text not null default 'pending' check (status in ('pending', 'running', 'completed', 'failed')),
-    payload jsonb not null,
-    last_error text,
-    created_at timestamptz not null default now(),
-    updated_at timestamptz not null default now()
-);
-
--- Index for faster worker polling
-create index on public.jobs (status);
-
--- Trigger to automatically update updated_at
-create trigger on_jobs_update
-  before update on public.jobs
-  for each row execute procedure public.handle_updated_at();
