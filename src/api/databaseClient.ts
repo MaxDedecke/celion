@@ -5,7 +5,7 @@ const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
 
 const USER_STORAGE_KEY = "celion_local_user";
 
-type StoredUser = Omit<Tables<"users">["Row"], "password"> | null;
+type StoredUser = Omit<Tables<"users">, "password"> | null;
 
 const getStorage = () => (typeof localStorage !== "undefined" ? localStorage : null);
 
@@ -15,7 +15,7 @@ const getStoredUser = (): StoredUser => {
 
   try {
     const raw = storage.getItem(USER_STORAGE_KEY);
-    return raw ? (JSON.parse(raw) as Tables<"users">["Row"]) : null;
+    return raw ? (JSON.parse(raw) as Tables<"users">) : null;
   } catch (error) {
     console.error("Failed to read stored user", error);
     return null;
