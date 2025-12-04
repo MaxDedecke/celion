@@ -19,7 +19,7 @@ const keycloakConfig: KeycloakConfig | null = (() => {
 let keycloak: Keycloak | null = null;
 let initialized = false;
 
-const getClient = () => {
+export const getClient = () => {
   if (!keycloakConfig) return null;
   if (!keycloak) {
     keycloak = new Keycloak(keycloakConfig);

@@ -2,6 +2,9 @@ import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -34,10 +37,16 @@ const AccountDialog = ({ open, onOpenChange, activeTab = "account" }: AccountDia
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-popover border-border max-w-xl min-h-[520px]">
+        <DialogHeader>
+          <DialogTitle>Account & Settings</DialogTitle>
+          <DialogDescription>
+            Manage your account settings, preferences, and more.
+          </DialogDescription>
+        </DialogHeader>
         <Tabs
           value={currentTab}
           onValueChange={(value) => setCurrentTab(value as "account" | "settings")}
-          className="mt-8 w-full"
+          className="w-full"
         >
           <TabsList className="inline-flex items-center gap-2 rounded-full bg-foreground/5 p-1 text-sm">
             <TabsTrigger

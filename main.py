@@ -13,7 +13,7 @@ import os
 import psycopg
 import psycopg.rows
 import requests
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl
 from starlette.concurrency import run_in_threadpool
@@ -28,6 +28,7 @@ app.add_middleware(
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["X-Total-Count"],
 )
 
 
@@ -54,6 +55,15 @@ def _serialize_user_row(row: dict[str, Any]) -> dict[str, Any]:
         sanitized["created_at"] = created_at.astimezone(timezone.utc).isoformat()
 
     return sanitized
+
+
+class Project(BaseModel):
+    """Pydantic model for a project."""
+
+    id: str
+    name: str
+    description: Optional[str] = None
+    created_at: str
 
 
 class DetectionRequest(BaseModel):
@@ -208,6 +218,129 @@ async def login_user(payload: AuthPayload) -> dict[str, Any]:
         raise
     except Exception as exc:  # pragma: no cover - defensive catch for DB errors
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.get("/api/projects", response_model=list[Project])
+async def get_projects() -> list[Project]:
+    """Fetch all projects from the database."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, name, description, created_at FROM public.projects ORDER BY created_at DESC"
+            )
+            project_rows = cur.fetchall()
+            projects = [
+                Project(
+                    id=str(row["id"]),
+                    name=row["name"],
+                    description=row["description"],
+                    created_at=row["created_at"].isoformat(),
+                )
+                for row in project_rows
+            ]
+            return projects
+    except Exception as exc:
+        # Log the exception for debugging purposes
+        print(f"Error fetching projects: {exc}")
+        # Return an empty list or raise an HTTPException
+        raise HTTPException(status_code=500, detail="Failed to fetch projects.") from exc
+
+
+class Migration(BaseModel):
+    """Pydantic model for a migration."""
+
+    id: str
+    name: str
+    source_system: str
+    target_system: str
+    source_url: str
+    target_url: str
+    in_connector: Optional[str] = None
+    in_connector_detail: Optional[str] = None
+    out_connector: Optional[str] = None
+    out_connector_detail: Optional[str] = None
+    objects_transferred: Optional[str] = None
+    mapped_objects: Optional[str] = None
+    project_id: Optional[str] = None
+    notes: Optional[str] = None
+    workflow_state: Optional[dict] = None
+    progress: Optional[int] = 0
+    created_at: str
+    updated_at: Optional[str] = None
+
+
+@app.get("/api/migrations", response_model=list[Migration])
+async def get_migrations(
+    response: Response,
+    project_id: Optional[str] = None,
+    limit: int = 15,
+    offset: int = 0,
+) -> list[Migration]:
+    """Fetch migrations from the database."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            
+            count_query = "SELECT COUNT(*) FROM public.migrations"
+            query = "SELECT id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, created_at, updated_at FROM public.migrations"
+            
+            params = []
+            
+            if project_id:
+                if project_id == "is.null":
+                    where_clause = " WHERE project_id IS NULL"
+                elif project_id.startswith("eq."):
+                    where_clause = " WHERE project_id = %s"
+                    params.append(project_id.replace("eq.", ""))
+                else: # fallback for just id
+                    where_clause = " WHERE project_id = %s"
+                    params.append(project_id)
+                
+                count_query += where_clause
+                query += where_clause
+
+            cur.execute(count_query, tuple(params))
+            count_result = cur.fetchone()
+            total_count = count_result['count'] if count_result else 0
+            
+            query += " ORDER BY updated_at DESC NULLS LAST, created_at DESC LIMIT %s OFFSET %s"
+            params.extend([limit, offset])
+
+            cur.execute(query, tuple(params))
+            migration_rows = cur.fetchall()
+
+            migrations = [
+                Migration(
+                    id=str(row["id"]),
+                    name=row["name"],
+                    source_system=row["source_system"],
+                    target_system=row["target_system"],
+                    source_url=row["source_url"],
+                    target_url=row["target_url"],
+                    in_connector=row["in_connector"],
+                    in_connector_detail=row["in_connector_detail"],
+                    out_connector=row["out_connector"],
+                    out_connector_detail=row["out_connector_detail"],
+                    objects_transferred=row["objects_transferred"],
+                    mapped_objects=row["mapped_objects"],
+                    project_id=str(row["project_id"]) if row["project_id"] else None,
+                    notes=row["notes"],
+                    workflow_state=row["workflow_state"],
+                    progress=row["progress"],
+                    created_at=row["created_at"].isoformat(),
+                    updated_at=row["updated_at"].isoformat() if row["updated_at"] else None,
+                )
+                for row in migration_rows
+            ]
+            
+            response.headers["X-Total-Count"] = str(total_count)
+            
+            return migrations
+            
+    except Exception as exc:
+        print(f"Error fetching migrations: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to fetch migrations.") from exc
+
+
 
 
 @app.get("/auth-flow", response_model=LegacyResponse)

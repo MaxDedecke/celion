@@ -1,3 +1,4 @@
+import { getClient } from "@/auth/keycloakClient";
 import type { Tables, TablesInsert, TablesUpdate } from "@/integrations/database/types";
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || "/api";
@@ -57,17 +58,31 @@ const parseErrorDetail = async (response: Response) => {
   }
 };
 
-async function fetchFromApi<T>(path: string, options: RequestInit = {}): Promise<{ data: T | null; error: Error | null; }> {
+async function fetchFromApi<T>(
+  path: string,
+  options: RequestInit = {},
+): Promise<{ data: T | null; error: Error | null; count?: number }> {
   try {
-    const response = await fetch(`${API_BASE_URL}${path}`, options);
+    const keycloak = getClient();
+    const headers = new Headers(options.headers);
+
+    if (keycloak?.token) {
+      headers.set("Authorization", `Bearer ${keycloak.token}`);
+    }
+
+    const response = await fetch(`${API_BASE_URL}${path}`, { ...options, headers });
+
     if (!response.ok) {
       const detail = await parseErrorDetail(response);
       return { data: null, error: new Error(detail ?? `Request failed with status ${response.status}`) };
     }
     const data = await response.json();
-    return { data, error: null };
+    const countHeader = response.headers.get('X-Total-Count');
+    const count = countHeader ? parseInt(countHeader, 10) : undefined;
+    
+    return { data, error: null, count };
   } catch (error) {
-    return { data: null, error: error as Error };
+    return { data: null, error: error as Error, count: 0 };
   }
 }
 

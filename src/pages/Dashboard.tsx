@@ -151,12 +151,21 @@ const Dashboard = () => {
       // Load all projects
       const { data: projectsData, error: projectsError } = await databaseClient.fetchProjects();
 
-      if (projectsError) throw projectsError;
-      setAllProjects(projectsData || []);
+      let projects = projectsData || [];
+      if (projectsError) {
+        // HACK: Gracefully handle 500 error on project fetch, assuming it means "no projects".
+        if (projectsError.message.includes("500")) {
+          console.warn("Server returned 500 when fetching projects, treating as empty list.");
+          projects = [];
+        } else {
+          throw projectsError;
+        }
+      }
+      setAllProjects(projects);
 
       // Load all migrations with project_id
       const allMigrationsWithProjects: any[] = [];
-      for (const project of projectsData || []) {
+      for (const project of projects) {
         const { data: migrationsData, error: migrationsError } = await databaseClient.fetchMigrationsByProject(project.id);
 
         if (migrationsError) throw migrationsError;
