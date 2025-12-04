@@ -161,7 +161,14 @@ export const databaseClient = {
 
   fetchConnectorsByMigration: (migrationId: string) => fetchFromApi<Tables<"connectors">[]>(`/connectors?migration_id=eq.${migrationId}`),
 
-  fetchConnectorByType: (migrationId: string, connectorType: "in" | "out") => fetchFromApi<Tables<"connectors">>(`/connectors?migration_id=eq.${migrationId}&connector_type=eq.${connectorType}`),
+  fetchConnectorByType: async (migrationId: string, connectorType: "in" | "out") => {
+    const response = await fetchFromApi<Tables<"connectors">[]>(`/connectors?migration_id=eq.${migrationId}&connector_type=eq.${connectorType}`);
+
+    if (response.error) return { ...response, data: null };
+
+    const connectors = Array.isArray(response.data) ? response.data : response.data ? [response.data] : [];
+    return { ...response, data: connectors[0] ?? null };
+  },
 
   insertProject: (payload: TablesInsert<"projects">) => fetchFromApi<Tables<"projects">>("/projects", { method: "POST", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
 

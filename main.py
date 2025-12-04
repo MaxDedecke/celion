@@ -645,6 +645,14 @@ def _row_to_connector(row: dict[str, Any]) -> Connector:
     )
 
 
+def _strip_eq_prefix(value: Optional[str]) -> Optional[str]:
+    """Normalize PostgREST-style filter values by removing the `eq.` prefix."""
+
+    if value and value.startswith("eq."):
+        return value.replace("eq.", "", 1)
+    return value
+
+
 @app.post("/api/connectors", response_model=list[Connector])
 async def create_connectors(payloads: list[CreateConnectorPayload]) -> list[Connector]:
     """Create one or more connectors in the database."""
@@ -694,6 +702,9 @@ async def get_connectors(
     connector_type: Optional[str] = None,
 ) -> list[Connector]:
     """Fetch connectors, optionally filtered by migration_id and/or connector_type."""
+
+    migration_id = _strip_eq_prefix(migration_id)
+    connector_type = _strip_eq_prefix(connector_type)
     try:
         with _get_db_connection() as conn, conn.cursor() as cur:
             query = """
@@ -738,7 +749,11 @@ async def update_connector(
             status_code=400,
             detail="Either 'id' or both 'migration_id' and 'connector_type' are required.",
         )
-    
+
+    id = _strip_eq_prefix(id)
+    migration_id = _strip_eq_prefix(migration_id)
+    connector_type = _strip_eq_prefix(connector_type)
+
     try:
         with _get_db_connection() as conn, conn.cursor() as cur:
             # Build SET clause dynamically from non-None payload fields
