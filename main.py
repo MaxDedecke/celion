@@ -269,6 +269,70 @@ class Migration(BaseModel):
     updated_at: Optional[str] = None
 
 
+class CreateMigrationPayload(BaseModel):
+    """Pydantic model for creating a migration."""
+
+    name: str
+    source_system: str
+    target_system: str
+    source_url: str
+    target_url: str
+    project_id: Optional[str] = None
+    user_id: str
+
+
+@app.post("/api/migrations", response_model=Migration)
+async def create_migration(payload: CreateMigrationPayload) -> Migration:
+    """Create a new migration in the database."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO public.migrations (name, source_system, target_system, source_url, target_url, project_id, user_id)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, created_at, updated_at
+                """,
+                (
+                    payload.name,
+                    payload.source_system,
+                    payload.target_system,
+                    payload.source_url,
+                    payload.target_url,
+                    payload.project_id,
+                    payload.user_id,
+                ),
+            )
+            row = cur.fetchone()
+            conn.commit()
+
+            if not row:
+                raise HTTPException(status_code=500, detail="Failed to create migration.")
+
+            return Migration(
+                id=str(row["id"]),
+                name=row["name"],
+                source_system=row["source_system"],
+                target_system=row["target_system"],
+                source_url=row["source_url"],
+                target_url=row["target_url"],
+                in_connector=row["in_connector"],
+                in_connector_detail=row["in_connector_detail"],
+                out_connector=row["out_connector"],
+                out_connector_detail=row["out_connector_detail"],
+                objects_transferred=row["objects_transferred"],
+                mapped_objects=row["mapped_objects"],
+                project_id=str(row["project_id"]) if row["project_id"] else None,
+                notes=row["notes"],
+                workflow_state=row["workflow_state"],
+                progress=row["progress"],
+                created_at=row["created_at"].isoformat(),
+                updated_at=row["updated_at"].isoformat() if row["updated_at"] else None,
+            )
+    except Exception as exc:
+        print(f"Error creating migration: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to create migration.") from exc
+
+
 @app.get("/api/migrations", response_model=list[Migration])
 async def get_migrations(
     response: Response,
