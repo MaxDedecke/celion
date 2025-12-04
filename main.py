@@ -273,18 +273,18 @@ class MigrationActivity(BaseModel):
     """Pydantic model for a migration activity."""
     id: str
     migration_id: str
+    type: str
+    title: str
     timestamp: str
-    message: str
-    status: Optional[str] = None
-    data: Optional[dict] = None
+    created_at: Optional[str] = None
 
 
 class CreateMigrationActivityPayload(BaseModel):
     """Pydantic model for creating a migration activity."""
     migration_id: str
-    message: str
-    status: Optional[str] = None
-    data: Optional[dict] = None
+    type: str
+    title: str
+    timestamp: str
 
 
 class CreateMigrationPayload(BaseModel):
@@ -365,36 +365,52 @@ async def create_migration(payload: CreateMigrationPayload) -> Migration:
         raise HTTPException(status_code=500, detail="Failed to create migration.") from exc
 
 
-@app.post("/api/migration_activities", response_model=MigrationActivity)
-async def insert_migration_activity(payload: CreateMigrationActivityPayload) -> MigrationActivity:
-    """Insert a new migration activity into the database."""
+@app.post(
+    "/api/migration_activities",
+    response_model=Union[MigrationActivity, list[MigrationActivity]],
+)
+async def insert_migration_activity(
+    payload: Union[CreateMigrationActivityPayload, list[CreateMigrationActivityPayload]]
+) -> Union[MigrationActivity, list[MigrationActivity]]:
+    """Insert one or many migration activities into the database."""
+
+    def _insert_activity(cur: psycopg.Cursor, item: CreateMigrationActivityPayload) -> dict[str, Any]:
+        cur.execute(
+            """
+            INSERT INTO public.migration_activities (migration_id, type, title, timestamp)
+            VALUES (%s, %s, %s, %s)
+            RETURNING id, migration_id, type, title, timestamp, created_at
+            """,
+            (item.migration_id, item.type, item.title, item.timestamp),
+        )
+        return cur.fetchone()
+
     try:
         with _get_db_connection() as conn, conn.cursor() as cur:
-            import json
-            data_json = json.dumps(payload.data) if payload.data else None
-
-            cur.execute(
-                """
-                INSERT INTO public.migration_activities (migration_id, message, status, data)
-                VALUES (%s, %s, %s, %s)
-                RETURNING id, migration_id, timestamp, message, status, data
-                """,
-                (payload.migration_id, payload.message, payload.status, data_json),
-            )
-            row = cur.fetchone()
+            items = payload if isinstance(payload, list) else [payload]
+            inserted_rows = [_insert_activity(cur, item) for item in items]
             conn.commit()
 
-            if not row:
-                raise HTTPException(status_code=500, detail="Failed to insert migration activity.")
+            activities = [
+                MigrationActivity(
+                    id=str(row["id"]),
+                    migration_id=str(row["migration_id"]),
+                    type=row["type"],
+                    title=row["title"],
+                    timestamp=str(row["timestamp"]),
+                    created_at=row["created_at"].isoformat()
+                    if hasattr(row["created_at"], "isoformat")
+                    else str(row["created_at"])
+                    if row["created_at"]
+                    else None,
+                )
+                for row in inserted_rows
+            ]
 
-            return MigrationActivity(
-                id=str(row["id"]),
-                migration_id=str(row["migration_id"]),
-                timestamp=row["timestamp"].isoformat(),
-                message=row["message"],
-                status=row["status"],
-                data=row["data"],
-            )
+            if isinstance(payload, list):
+                return activities
+
+            return activities[0]
     except Exception as exc:
         print(f"Error inserting migration activity: {exc}")
         raise HTTPException(status_code=500, detail="Failed to insert migration activity.") from exc
@@ -411,7 +427,7 @@ async def get_migration_activities(
     try:
         with _get_db_connection() as conn, conn.cursor() as cur:
             count_query = "SELECT COUNT(*) FROM public.migration_activities"
-            query = "SELECT id, migration_id, timestamp, message, status, data FROM public.migration_activities"
+            query = "SELECT id, migration_id, type, title, timestamp, created_at FROM public.migration_activities"
 
             params = []
             where_clause = ""
@@ -441,10 +457,14 @@ async def get_migration_activities(
                 MigrationActivity(
                     id=str(row["id"]),
                     migration_id=str(row["migration_id"]),
-                    timestamp=row["timestamp"].isoformat(),
-                    message=row["message"],
-                    status=row["status"],
-                    data=row["data"],
+                    type=row["type"],
+                    title=row["title"],
+                    timestamp=str(row["timestamp"]),
+                    created_at=row["created_at"].isoformat()
+                    if hasattr(row["created_at"], "isoformat")
+                    else str(row["created_at"])
+                    if row["created_at"]
+                    else None,
                 )
                 for row in activity_rows
             ]
