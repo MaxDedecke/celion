@@ -20,7 +20,7 @@ interface MigrationChatCardProps {
   completedCount: number;
   totalSteps: number;
   overallProgress: number;
-  status: "not_started" | "running" | "paused" | "completed";
+  status: "not_started" | "running" | "paused" | "completed" | "processing";
   sourceSystem: string;
   targetSystem: string;
   sourceObjectsDisplay: string;

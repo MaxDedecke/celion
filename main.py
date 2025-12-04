@@ -279,6 +279,11 @@ class CreateMigrationPayload(BaseModel):
     target_url: str
     project_id: Optional[str] = None
     user_id: str
+    in_connector: str
+    in_connector_detail: str
+    out_connector: str
+    out_connector_detail: str
+    status: Optional[str] = "not_started"
 
 
 @app.post("/api/migrations", response_model=Migration)
@@ -288,8 +293,12 @@ async def create_migration(payload: CreateMigrationPayload) -> Migration:
         with _get_db_connection() as conn, conn.cursor() as cur:
             cur.execute(
                 """
-                INSERT INTO public.migrations (name, source_system, target_system, source_url, target_url, project_id, user_id)
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                INSERT INTO public.migrations (
+                    name, source_system, target_system, source_url, target_url, 
+                    project_id, user_id, in_connector, in_connector_detail, 
+                    out_connector, out_connector_detail, status
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, created_at, updated_at
                 """,
                 (
@@ -300,6 +309,11 @@ async def create_migration(payload: CreateMigrationPayload) -> Migration:
                     payload.target_url,
                     payload.project_id,
                     payload.user_id,
+                    payload.in_connector,
+                    payload.in_connector_detail,
+                    payload.out_connector,
+                    payload.out_connector_detail,
+                    payload.status,
                 ),
             )
             row = cur.fetchone()
