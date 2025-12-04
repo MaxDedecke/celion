@@ -269,6 +269,24 @@ class Migration(BaseModel):
     updated_at: Optional[str] = None
 
 
+class MigrationActivity(BaseModel):
+    """Pydantic model for a migration activity."""
+    id: str
+    migration_id: str
+    timestamp: str
+    message: str
+    status: Optional[str] = None
+    data: Optional[dict] = None
+
+
+class CreateMigrationActivityPayload(BaseModel):
+    """Pydantic model for creating a migration activity."""
+    migration_id: str
+    message: str
+    status: Optional[str] = None
+    data: Optional[dict] = None
+
+
 class CreateMigrationPayload(BaseModel):
     """Pydantic model for creating a migration."""
 
@@ -347,6 +365,98 @@ async def create_migration(payload: CreateMigrationPayload) -> Migration:
         raise HTTPException(status_code=500, detail="Failed to create migration.") from exc
 
 
+@app.post("/api/migration_activities", response_model=MigrationActivity)
+async def insert_migration_activity(payload: CreateMigrationActivityPayload) -> MigrationActivity:
+    """Insert a new migration activity into the database."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            import json
+            data_json = json.dumps(payload.data) if payload.data else None
+
+            cur.execute(
+                """
+                INSERT INTO public.migration_activities (migration_id, message, status, data)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id, migration_id, timestamp, message, status, data
+                """,
+                (payload.migration_id, payload.message, payload.status, data_json),
+            )
+            row = cur.fetchone()
+            conn.commit()
+
+            if not row:
+                raise HTTPException(status_code=500, detail="Failed to insert migration activity.")
+
+            return MigrationActivity(
+                id=str(row["id"]),
+                migration_id=str(row["migration_id"]),
+                timestamp=row["timestamp"].isoformat(),
+                message=row["message"],
+                status=row["status"],
+                data=row["data"],
+            )
+    except Exception as exc:
+        print(f"Error inserting migration activity: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to insert migration activity.") from exc
+
+
+@app.get("/api/migration_activities", response_model=list[MigrationActivity])
+async def get_migration_activities(
+    response: Response,
+    migration_id: Optional[str] = None,
+    limit: int = 15,
+    offset: int = 0,
+) -> list[MigrationActivity]:
+    """Fetch migration activities from the database, optionally filtered by migration_id."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            count_query = "SELECT COUNT(*) FROM public.migration_activities"
+            query = "SELECT id, migration_id, timestamp, message, status, data FROM public.migration_activities"
+
+            params = []
+            where_clause = ""
+
+            if migration_id:
+                if migration_id.startswith("eq."):
+                    where_clause = " WHERE migration_id = %s"
+                    params.append(migration_id.replace("eq.", ""))
+                else: # fallback for just id
+                    where_clause = " WHERE migration_id = %s"
+                    params.append(migration_id)
+            
+            count_query += where_clause
+            query += where_clause
+
+            cur.execute(count_query, tuple(params))
+            count_result = cur.fetchone()
+            total_count = count_result['count'] if count_result else 0
+
+            query += " ORDER BY timestamp DESC LIMIT %s OFFSET %s"
+            params.extend([limit, offset])
+
+            cur.execute(query, tuple(params))
+            activity_rows = cur.fetchall()
+
+            activities = [
+                MigrationActivity(
+                    id=str(row["id"]),
+                    migration_id=str(row["migration_id"]),
+                    timestamp=row["timestamp"].isoformat(),
+                    message=row["message"],
+                    status=row["status"],
+                    data=row["data"],
+                )
+                for row in activity_rows
+            ]
+
+            response.headers["X-Total-Count"] = str(total_count)
+
+            return activities
+    except Exception as exc:
+        print(f"Error fetching migration activities: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to fetch migration activities.") from exc
+
+
 @app.get("/api/migrations", response_model=list[Migration])
 async def get_migrations(
     response: Response,
@@ -417,6 +527,35 @@ async def get_migrations(
     except Exception as exc:
         print(f"Error fetching migrations: {exc}")
         raise HTTPException(status_code=500, detail="Failed to fetch migrations.") from exc
+
+
+@app.delete("/api/migrations")
+async def delete_migration(
+    id: str,
+) -> dict[str, str]:
+    """Delete a migration and its related records from the database."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            # Check if migration exists
+            cur.execute("SELECT id FROM public.migrations WHERE id = %s", (id,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Migration not found.")
+
+            # Delete related migration activities
+            cur.execute("DELETE FROM public.migration_activities WHERE migration_id = %s", (id,))
+            # Delete related connectors
+            cur.execute("DELETE FROM public.connectors WHERE migration_id = %s", (id,))
+            # Delete the migration itself
+            cur.execute("DELETE FROM public.migrations WHERE id = %s", (id,))
+            
+            conn.commit()
+            
+            return {"message": f"Migration {id} and related records deleted successfully."}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"Error deleting migration: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to delete migration.") from exc
 
 
 
