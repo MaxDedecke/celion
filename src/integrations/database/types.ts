@@ -494,6 +494,45 @@ export type Database = {
         }
         Relationships: []
       }
+      project_members: {
+        Row: {
+          id: string
+          project_id: string
+          user_id: string
+          role: string
+          created_at: string
+        }
+        Insert: {
+          id?: string
+          project_id: string
+          user_id: string
+          role?: string
+          created_at?: string
+        }
+        Update: {
+          id?: string
+          project_id?: string
+          user_id?: string
+          role?: string
+          created_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "project_members_project_id_fkey"
+            columns: ["project_id"]
+            isOneToOne: false
+            referencedRelation: "projects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "project_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "users"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

@@ -141,9 +141,15 @@ export const databaseClient = {
   },
   getUser: () => Promise.resolve(buildUserResponse(getStoredUser())),
 
-  fetchProjects: () => fetchFromApi<Tables<"projects">[]>("/projects"),
+  fetchProjects: () => {
+    const user = getStoredUser();
+    return fetchFromApi<Tables<"projects">[]>(`/projects${user?.id ? `?user_id=${user.id}` : ''}`);
+  },
 
-  fetchProjectNames: () => fetchFromApi<{id: string, name: string}[]>("/projects?select=id,name"),
+  fetchProjectNames: () => {
+    const user = getStoredUser();
+    return fetchFromApi<{id: string, name: string}[]>(`/projects?select=id,name${user?.id ? `&user_id=${user.id}` : ''}`);
+  },
 
   fetchProjectByName: (name: string) => fetchFromApi<Tables<"projects">>(`/projects?name=eq.${name}`),
 
@@ -151,9 +157,15 @@ export const databaseClient = {
 
   fetchMigrationsByProject: (projectId: string) => fetchFromApi<Tables<"migrations">[]>(`/migrations?project_id=eq.${projectId}`),
 
-  fetchStandaloneMigrations: () => fetchFromApi<Tables<"migrations">[]>(`/migrations?project_id=is.null`),
+  fetchStandaloneMigrations: () => {
+    const user = getStoredUser();
+    return fetchFromApi<Tables<"migrations">[]>(`/migrations?project_id=is.null${user?.id ? `&user_id=${user.id}` : ''}`);
+  },
 
-  fetchStandaloneMigrationsPaginated: (limit: number, offset: number) => fetchFromApi<Tables<"migrations">[]>(`/migrations?project_id=is.null&limit=${limit}&offset=${offset}`),
+  fetchStandaloneMigrationsPaginated: (limit: number, offset: number) => {
+    const user = getStoredUser();
+    return fetchFromApi<Tables<"migrations">[]>(`/migrations?project_id=is.null&limit=${limit}&offset=${offset}${user?.id ? `&user_id=${user.id}` : ''}`);
+  },
 
   fetchMigrationById: (migrationId: string) => fetchFromApi<Tables<"migrations">>(`/migrations?id=eq.${migrationId}`),
 
@@ -230,4 +242,17 @@ export const databaseClient = {
   deleteFieldMapping: (mappingId: string) => fetchFromApi<void>(`/field_mappings?id=eq.${mappingId}`, { method: "DELETE" }),
 
   clearFieldMappingsForPipeline: (pipelineId: string) => fetchFromApi<void>(`/field_mappings?pipeline_id=eq.${pipelineId}`, { method: "DELETE" }),
+
+  // Project members
+  fetchProjectMembers: (projectId: string) => fetchFromApi<Tables<"project_members">[]>(`/project_members?project_id=eq.${projectId}`),
+
+  addProjectMember: (projectId: string, userId: string, role: string = 'member') =>
+    fetchFromApi<Tables<"project_members">>("/project_members", {
+      method: "POST",
+      body: JSON.stringify({ project_id: projectId, user_id: userId, role }),
+      headers: { "Content-Type": "application/json" }
+    }),
+
+  removeProjectMember: (projectId: string, userId: string) =>
+    fetchFromApi<void>(`/project_members?project_id=eq.${projectId}&user_id=eq.${userId}`, { method: "DELETE" }),
 };

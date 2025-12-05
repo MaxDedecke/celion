@@ -221,13 +221,26 @@ async def login_user(payload: AuthPayload) -> dict[str, Any]:
 
 
 @app.get("/api/projects", response_model=list[Project])
-async def get_projects() -> list[Project]:
-    """Fetch all projects from the database."""
+async def get_projects(user_id: Optional[str] = None) -> list[Project]:
+    """Fetch projects where user is owner or member."""
     try:
         with _get_db_connection() as conn, conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, name, description, created_at FROM public.projects ORDER BY created_at DESC"
-            )
+            if user_id:
+                # Fetch projects where user is owner OR member via project_members
+                cur.execute(
+                    """
+                    SELECT DISTINCT p.id, p.name, p.description, p.created_at 
+                    FROM public.projects p
+                    LEFT JOIN public.project_members pm ON pm.project_id = p.id
+                    WHERE p.user_id = %s OR pm.user_id = %s
+                    ORDER BY p.created_at DESC
+                    """,
+                    (user_id, user_id),
+                )
+            else:
+                cur.execute(
+                    "SELECT id, name, description, created_at FROM public.projects ORDER BY created_at DESC"
+                )
             project_rows = cur.fetchall()
             projects = [
                 Project(
@@ -240,10 +253,145 @@ async def get_projects() -> list[Project]:
             ]
             return projects
     except Exception as exc:
-        # Log the exception for debugging purposes
         print(f"Error fetching projects: {exc}")
-        # Return an empty list or raise an HTTPException
         raise HTTPException(status_code=500, detail="Failed to fetch projects.") from exc
+
+
+class CreateProjectPayload(BaseModel):
+    """Pydantic model for creating a project."""
+    name: str
+    description: Optional[str] = None
+    user_id: str
+
+
+class UpdateProjectPayload(BaseModel):
+    """Pydantic model for updating a project."""
+    name: Optional[str] = None
+    description: Optional[str] = None
+
+
+@app.post("/api/projects", response_model=Project)
+async def create_project(payload: CreateProjectPayload) -> Project:
+    """Create a new project and automatically add the creator as owner."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            # Create the project
+            cur.execute(
+                """
+                INSERT INTO public.projects (name, description, user_id)
+                VALUES (%s, %s, %s)
+                RETURNING id, name, description, created_at
+                """,
+                (payload.name, payload.description, payload.user_id),
+            )
+            row = cur.fetchone()
+
+            if not row:
+                raise HTTPException(status_code=500, detail="Failed to create project.")
+
+            project_id = str(row["id"])
+
+            # Automatically add creator as owner in project_members
+            cur.execute(
+                """
+                INSERT INTO public.project_members (project_id, user_id, role)
+                VALUES (%s, %s, 'owner')
+                ON CONFLICT (project_id, user_id) DO NOTHING
+                """,
+                (project_id, payload.user_id),
+            )
+
+            conn.commit()
+
+            return Project(
+                id=project_id,
+                name=row["name"],
+                description=row["description"],
+                created_at=row["created_at"].isoformat(),
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"Error creating project: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to create project.") from exc
+
+
+@app.patch("/api/projects")
+async def update_project(
+    id: Optional[str] = None,
+    payload: UpdateProjectPayload = None,
+) -> Project:
+    """Update a project by id."""
+    id = _strip_eq_prefix(id)
+    
+    if not id:
+        raise HTTPException(status_code=400, detail="Project id is required.")
+
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            updates: list[str] = []
+            params: list[Any] = []
+            
+            if payload:
+                payload_dict = payload.model_dump(exclude_none=True)
+                for field, value in payload_dict.items():
+                    updates.append(f"{field} = %s")
+                    params.append(value)
+            
+            if not updates:
+                raise HTTPException(status_code=400, detail="No fields to update.")
+            
+            updates.append("updated_at = now()")
+            params.append(id)
+            
+            query = f"""
+                UPDATE public.projects
+                SET {", ".join(updates)}
+                WHERE id = %s
+                RETURNING id, name, description, created_at
+            """
+            
+            cur.execute(query, tuple(params))
+            row = cur.fetchone()
+            conn.commit()
+            
+            if not row:
+                raise HTTPException(status_code=404, detail="Project not found.")
+            
+            return Project(
+                id=str(row["id"]),
+                name=row["name"],
+                description=row["description"],
+                created_at=row["created_at"].isoformat(),
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"Error updating project: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to update project.") from exc
+
+
+@app.delete("/api/projects")
+async def delete_project(id: str) -> dict[str, str]:
+    """Delete a project and all related records."""
+    id = _strip_eq_prefix(id)
+    
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            cur.execute("SELECT id FROM public.projects WHERE id = %s", (id,))
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="Project not found.")
+
+            # Delete project (cascades to project_members and migrations)
+            cur.execute("DELETE FROM public.projects WHERE id = %s", (id,))
+            conn.commit()
+            
+            return {"message": f"Project {id} deleted successfully."}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"Error deleting project: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to delete project.") from exc
 
 
 class Migration(BaseModel):
@@ -481,36 +629,53 @@ async def get_migration_activities(
 async def get_migrations(
     response: Response,
     project_id: Optional[str] = None,
+    user_id: Optional[str] = None,
     limit: int = 15,
     offset: int = 0,
 ) -> list[Migration]:
-    """Fetch migrations from the database."""
+    """Fetch migrations from the database with user-based visibility."""
     try:
         with _get_db_connection() as conn, conn.cursor() as cur:
             
-            count_query = "SELECT COUNT(*) FROM public.migrations"
-            query = "SELECT id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, created_at, updated_at FROM public.migrations"
+            base_select = "SELECT m.id, m.name, m.source_system, m.target_system, m.source_url, m.target_url, m.in_connector, m.in_connector_detail, m.out_connector, m.out_connector_detail, m.objects_transferred, m.mapped_objects, m.project_id, m.notes, m.workflow_state, m.progress, m.created_at, m.updated_at FROM public.migrations m"
             
+            conditions = []
             params = []
             
+            # Handle project_id filter
             if project_id:
                 if project_id == "is.null":
-                    where_clause = " WHERE project_id IS NULL"
+                    conditions.append("m.project_id IS NULL")
+                    # For standalone migrations, only show user's own
+                    if user_id:
+                        conditions.append("m.user_id = %s")
+                        params.append(user_id)
                 elif project_id.startswith("eq."):
-                    where_clause = " WHERE project_id = %s"
+                    conditions.append("m.project_id = %s")
                     params.append(project_id.replace("eq.", ""))
-                else: # fallback for just id
-                    where_clause = " WHERE project_id = %s"
+                else:
+                    conditions.append("m.project_id = %s")
                     params.append(project_id)
-                
-                count_query += where_clause
-                query += where_clause
-
+            elif user_id:
+                # No project_id filter: show user's standalone migrations + migrations in projects they can access
+                conditions.append("""(
+                    (m.project_id IS NULL AND m.user_id = %s)
+                    OR m.project_id IN (
+                        SELECT p.id FROM public.projects p WHERE p.user_id = %s
+                        UNION
+                        SELECT pm.project_id FROM public.project_members pm WHERE pm.user_id = %s
+                    )
+                )""")
+                params.extend([user_id, user_id, user_id])
+            
+            where_clause = " WHERE " + " AND ".join(conditions) if conditions else ""
+            
+            count_query = f"SELECT COUNT(*) FROM public.migrations m{where_clause}"
             cur.execute(count_query, tuple(params))
             count_result = cur.fetchone()
             total_count = count_result['count'] if count_result else 0
             
-            query += " ORDER BY updated_at DESC NULLS LAST, created_at DESC LIMIT %s OFFSET %s"
+            query = f"{base_select}{where_clause} ORDER BY m.updated_at DESC NULLS LAST, m.created_at DESC LIMIT %s OFFSET %s"
             params.extend([limit, offset])
 
             cur.execute(query, tuple(params))
@@ -809,6 +974,139 @@ async def update_connector(
     except Exception as exc:
         print(f"Error updating connector: {exc}")
         raise HTTPException(status_code=500, detail="Failed to update connector.") from exc
+
+
+# ============================================================================
+# Project Members Endpoints
+# ============================================================================
+
+class ProjectMember(BaseModel):
+    """Pydantic model for a project member."""
+    id: str
+    project_id: str
+    user_id: str
+    role: str
+    created_at: str
+
+
+class CreateProjectMemberPayload(BaseModel):
+    """Pydantic model for creating a project member."""
+    project_id: str
+    user_id: str
+    role: str = "member"
+
+
+@app.get("/api/project_members", response_model=list[ProjectMember])
+async def get_project_members(
+    project_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+) -> list[ProjectMember]:
+    """Fetch project members, optionally filtered by project_id or user_id."""
+    project_id = _strip_eq_prefix(project_id)
+    user_id = _strip_eq_prefix(user_id)
+    
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            query = "SELECT id, project_id, user_id, role, created_at FROM public.project_members"
+            conditions: list[str] = []
+            params: list[Any] = []
+
+            if project_id:
+                conditions.append("project_id = %s")
+                params.append(project_id)
+            if user_id:
+                conditions.append("user_id = %s")
+                params.append(user_id)
+
+            if conditions:
+                query += " WHERE " + " AND ".join(conditions)
+
+            query += " ORDER BY created_at DESC"
+
+            cur.execute(query, tuple(params))
+            rows = cur.fetchall()
+            return [
+                ProjectMember(
+                    id=str(row["id"]),
+                    project_id=str(row["project_id"]),
+                    user_id=str(row["user_id"]),
+                    role=row["role"],
+                    created_at=row["created_at"].isoformat() if row.get("created_at") else "",
+                )
+                for row in rows
+            ]
+    except Exception as exc:
+        print(f"Error fetching project members: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to fetch project members.") from exc
+
+
+@app.post("/api/project_members", response_model=ProjectMember)
+async def create_project_member(payload: CreateProjectMemberPayload) -> ProjectMember:
+    """Add a member to a project."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO public.project_members (project_id, user_id, role)
+                VALUES (%s, %s, %s)
+                ON CONFLICT (project_id, user_id) DO UPDATE SET role = EXCLUDED.role
+                RETURNING id, project_id, user_id, role, created_at
+                """,
+                (payload.project_id, payload.user_id, payload.role),
+            )
+            row = cur.fetchone()
+            conn.commit()
+
+            if not row:
+                raise HTTPException(status_code=500, detail="Failed to create project member.")
+
+            return ProjectMember(
+                id=str(row["id"]),
+                project_id=str(row["project_id"]),
+                user_id=str(row["user_id"]),
+                role=row["role"],
+                created_at=row["created_at"].isoformat() if row.get("created_at") else "",
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"Error creating project member: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to create project member.") from exc
+
+
+@app.delete("/api/project_members")
+async def delete_project_member(
+    project_id: Optional[str] = None,
+    user_id: Optional[str] = None,
+) -> dict[str, str]:
+    """Remove a member from a project."""
+    project_id = _strip_eq_prefix(project_id)
+    user_id = _strip_eq_prefix(user_id)
+    
+    if not project_id or not user_id:
+        raise HTTPException(
+            status_code=400,
+            detail="Both 'project_id' and 'user_id' are required.",
+        )
+
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM public.project_members WHERE project_id = %s AND user_id = %s RETURNING id",
+                (project_id, user_id),
+            )
+            deleted = cur.fetchone()
+            conn.commit()
+
+            if not deleted:
+                raise HTTPException(status_code=404, detail="Project member not found.")
+
+            return {"message": "Project member removed successfully."}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"Error deleting project member: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to delete project member.") from exc
 
 
 # ============================================================================
