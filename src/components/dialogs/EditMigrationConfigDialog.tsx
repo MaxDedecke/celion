@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -18,6 +19,10 @@ import {
 } from "@/components/ui/select";
 import { DATA_SOURCE_TYPE_OPTIONS } from "@/constants/sourceTypes";
 import type { MigrationSystemAuthConfig, NewMigrationInput } from "@/types/migration";
+import { databaseClient } from "@/api/databaseClient";
+import type { Tables } from "@/integrations/database/types";
+
+type DataSourceRow = Tables<"data_sources">;
 
 interface EditMigrationConfigDialogProps {
   open: boolean;
@@ -50,9 +55,17 @@ const EditMigrationConfigDialog = ({
   const [sourceEmail, setSourceEmail] = useState(currentData.sourceAuth.email ?? "");
   const [targetEmail, setTargetEmail] = useState(currentData.targetAuth.email ?? "");
   const [error, setError] = useState<string | null>(null);
+  const [dataSources, setDataSources] = useState<DataSourceRow[]>([]);
 
   useEffect(() => {
+    const loadDataSources = async () => {
+      const { data } = await databaseClient.fetchDataSources();
+      if (data) {
+        setDataSources(data);
+      }
+    };
     if (open) {
+      loadDataSources();
       setName(currentData.name);
       setSourceUrl(currentData.sourceUrl);
       setTargetUrl(currentData.targetUrl);
@@ -67,41 +80,72 @@ const EditMigrationConfigDialog = ({
   }, [open, currentData]);
 
   const handleSubmit = () => {
-    if (!name.trim() || !sourceUrl.trim() || !targetUrl.trim() || !sourceSystem || !targetSystem) {
+    const trimmedName = name.trim();
+    const trimmedSourceUrl = sourceUrl.trim();
+    const trimmedTargetUrl = targetUrl.trim();
+    const trimmedSourceApiToken = sourceApiToken.trim();
+    const trimmedTargetApiToken = targetApiToken.trim();
+    const trimmedSourceEmail = sourceEmail.trim();
+    const trimmedTargetEmail = targetEmail.trim();
+
+    if (!trimmedName || !trimmedSourceUrl || !trimmedTargetUrl || !sourceSystem || !targetSystem) {
       setError("Bitte fülle alle Pflichtfelder aus.");
       return;
     }
 
-    if (!sourceApiToken.trim()) {
+    const urlRegex = /^(https?:\/\/)?([\da-z.-]+)\.([a-z.]{2,6})([/\w .-]*)*\/?$/;
+    if (!urlRegex.test(trimmedSourceUrl)) {
+      setError("Bitte gib eine gültige Quell-URL ein.");
+      return;
+    }
+    if (!urlRegex.test(trimmedTargetUrl)) {
+      setError("Bitte gib eine gültige Ziel-URL ein.");
+      return;
+    }
+
+    if (!trimmedSourceApiToken) {
       setError("Bitte hinterlege einen API Token für das Quellsystem.");
       return;
     }
 
-    if (!targetApiToken.trim()) {
+    if (!trimmedTargetApiToken) {
       setError("Bitte hinterlege einen API Token für das Zielsystem.");
       return;
     }
 
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (trimmedSourceEmail && !emailRegex.test(trimmedSourceEmail)) {
+        setError("Bitte gib eine gültige E-Mail-Adresse für das Quellsystem ein.");
+        return;
+    }
+    if (trimmedTargetEmail && !emailRegex.test(trimmedTargetEmail)) {
+        setError("Bitte gib eine gültige E-Mail-Adresse für das Zielsystem ein.");
+        return;
+    }
+
     onUpdate({
-      name: name.trim(),
-      sourceUrl: sourceUrl.trim(),
-      targetUrl: targetUrl.trim(),
+      name: trimmedName,
+      sourceUrl: trimmedSourceUrl,
+      targetUrl: trimmedTargetUrl,
       sourceSystem,
       targetSystem,
       sourceAuth: {
         authType: "token",
-        apiToken: sourceApiToken.trim(),
-        email: sourceEmail.trim(),
+        apiToken: trimmedSourceApiToken,
+        email: trimmedSourceEmail,
       },
       targetAuth: {
         authType: "token",
-        apiToken: targetApiToken.trim(),
-        email: targetEmail.trim(),
+        apiToken: trimmedTargetApiToken,
+        email: trimmedTargetEmail,
       },
     });
 
     onOpenChange(false);
   };
+
+  const systemOptions = [ ...DATA_SOURCE_TYPE_OPTIONS, ...dataSources.map(ds => ds.name) ];
+  const uniqueSystemOptions = [...new Set(systemOptions)];
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -109,9 +153,9 @@ const EditMigrationConfigDialog = ({
         <div className="border-b border-border bg-muted/30 px-6 py-4">
           <DialogHeader className="space-y-1">
             <DialogTitle className="text-xl">Migrationskonfiguration bearbeiten</DialogTitle>
-            <p className="text-sm text-muted-foreground">
+            <DialogDescription className="text-sm text-muted-foreground">
               Aktualisiere Systeme, URLs und Tokens deiner Migration. Passwörter werden nicht mehr gespeichert.
-            </p>
+            </DialogDescription>
           </DialogHeader>
         </div>
 
@@ -181,7 +225,7 @@ const EditMigrationConfigDialog = ({
                       <SelectValue placeholder="System wählen" />
                     </SelectTrigger>
                     <SelectContent>
-                      {DATA_SOURCE_TYPE_OPTIONS.map((option) => (
+                      {uniqueSystemOptions.map((option) => (
                         <SelectItem key={option} value={option}>
                           {option}
                         </SelectItem>
