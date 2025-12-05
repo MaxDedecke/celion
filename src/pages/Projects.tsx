@@ -237,16 +237,7 @@ const Projects = () => {
   };
 
   const handleProjectClick = (projectId: string) => {
-    const project = projects.find(p => p.id === projectId);
-    if (project) {
-      // Find first migration in this project and navigate to it
-      const projectMigration = migrations.find(m => m.projectId === projectId);
-      if (projectMigration) {
-        navigate(`/projects/${projectId}/migration/${projectMigration.id}`);
-      } else {
-        navigate('/dashboard');
-      }
-    }
+    navigate(`/projects/${projectId}`);
   };
 
   const handleAddMigration = async (migrationData: NewMigrationInput) => {
@@ -480,7 +471,7 @@ const Projects = () => {
                     {projects.map((project) => (
                       <Card
                         key={project.id}
-                        className="app-subtle relative cursor-pointer transition-colors hover:border-border/70"
+                        className="group relative cursor-pointer overflow-hidden border-border/60 bg-gradient-to-br from-background/95 to-background/80 transition-all duration-200 hover:-translate-y-1 hover:border-primary/40 hover:shadow-[0_24px_48px_-28px_rgba(15,23,42,0.45)]"
                         onClick={() => handleProjectClick(project.id)}
                       >
                         <CardHeader>
@@ -497,11 +488,11 @@ const Projects = () => {
                             <Trash2 className="h-4 w-4" />
                           </Button>
                           <div className="flex items-start gap-3 pr-10">
-                            <div className="mt-1 flex h-9 w-9 items-center justify-center rounded-full bg-foreground/5">
-                              <ClipboardList className="h-4 w-4 text-foreground" />
+                            <div className="mt-1 flex h-9 w-9 items-center justify-center rounded-full bg-foreground/5 text-foreground transition-all duration-300 group-hover:bg-primary/10 group-hover:text-primary">
+                              <ClipboardList className="h-4 w-4" />
                             </div>
                             <div>
-                              <CardTitle className="text-xl text-foreground">{project.name}</CardTitle>
+                              <CardTitle className="text-xl text-foreground group-hover:text-primary">{project.name}</CardTitle>
                               <CardDescription className="text-sm text-muted-foreground">
                                 {project.description || "Keine Beschreibung"}
                               </CardDescription>

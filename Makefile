@@ -31,6 +31,12 @@ stop: down
 # Restart application containers.
 restart: down up
 
+# Rebuild and restart the frontend service.
+rebuild-frontend:
+	@echo "Rebuilding and restarting the frontend service..."
+	@$(COMPOSE) up -d --no-deps --build frontend
+
+
 # Follow the logs of the application containers.
 logs:
 	@$(COMPOSE) logs -f
