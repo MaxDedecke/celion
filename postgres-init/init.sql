@@ -145,6 +145,7 @@ CREATE TABLE IF NOT EXISTS public.data_sources (
   api_key TEXT,
   username TEXT,
   password TEXT,
+  email TEXT,
   auth_type TEXT NOT NULL DEFAULT 'api_key',
   additional_config JSONB DEFAULT '{}'::jsonb,
   is_active BOOLEAN NOT NULL DEFAULT true,
@@ -197,6 +198,10 @@ CREATE INDEX idx_migrations_project_id ON public.migrations(project_id);
 -- Add is_global flag to data_sources
 ALTER TABLE public.data_sources
 ADD COLUMN is_global BOOLEAN NOT NULL DEFAULT false;
+
+-- Ensure email column exists for data_sources
+ALTER TABLE public.data_sources
+ADD COLUMN IF NOT EXISTS email TEXT;
 
 -- Create junction table for data_source to project assignments
 CREATE TABLE IF NOT EXISTS public.data_source_projects (

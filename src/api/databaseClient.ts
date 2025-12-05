@@ -247,15 +247,15 @@ export const databaseClient = {
 
   insertMigrationActivity: (payload: TablesInsert<"migration_activities">) => fetchFromApi<Tables<"migration_activities">>("/migration_activities", { method: "POST", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
 
-  fetchDataSources: () => fetchFromApi<Tables<"data_sources">[]>("/datasources"),
+  fetchDataSources: () => fetchFromApi<Tables<"data_sources">[]>("/data_sources"),
 
   fetchDataSourceAssignments: (dataSourceId: string) => fetchFromApi<{project_id: string}[]>(`/data_source_projects?data_source_id=eq.${dataSourceId}&select=project_id`),
 
-  insertDataSource: (payload: TablesInsert<"data_sources">) => fetchFromApi<Tables<"data_sources">>("/datasources", { method: "POST", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
+  insertDataSource: (payload: TablesInsert<"data_sources">) => fetchFromApi<Tables<"data_sources">>("/data_sources", { method: "POST", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
 
-  updateDataSource: (id: string, payload: TablesUpdate<"data_sources">) => fetchFromApi<Tables<"data_sources">>(`/datasources?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
+  updateDataSource: (id: string, payload: TablesUpdate<"data_sources">) => fetchFromApi<Tables<"data_sources">>(`/data_sources?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
 
-  deleteDataSource: (id: string) => fetchFromApi<void>(`/datasources?id=eq.${id}`, { method: "DELETE" }),
+  deleteDataSource: (id: string) => fetchFromApi<void>(`/data_sources?id=eq.${id}`, { method: "DELETE" }),
 
   upsertDataSourceProjectAssignment: (
     dataSourceId: string,
