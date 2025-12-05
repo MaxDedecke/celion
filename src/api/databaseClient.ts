@@ -178,7 +178,14 @@ export const databaseClient = {
     return fetchFromApi<{id: string, name: string}[]>(`/projects?select=id,name${user?.id ? `&user_id=${user.id}` : ''}`);
   },
 
-  fetchProjectByName: (name: string) => fetchFromApi<Tables<"projects">>(`/projects?name=eq.${name}`),
+  fetchProjectByName: async (name: string) => {
+    const response = await fetchFromApi<Tables<"projects">[]>(`/projects?name=${name}`);
+    if (response.error) return { ...response, data: null };
+    const projects = Array.isArray(response.data) ? response.data : response.data ? [response.data] : [];
+    return { ...response, data: projects[0] ?? null };
+  },
+
+  fetchProjectById: (id: string) => fetchFromApi<Tables<"projects">>(`/projects/${id}`),
 
   countMigrationsByProject: (projectId: string) => fetchFromApi<number>(`/migrations?project_id=eq.${projectId}&select=count`),
 
@@ -194,7 +201,7 @@ export const databaseClient = {
     return fetchFromApi<Tables<"migrations">[]>(`/migrations?project_id=is.null&limit=${limit}&offset=${offset}${user?.id ? `&user_id=${user.id}` : ''}`);
   },
 
-  fetchMigrationById: (migrationId: string) => fetchFromApi<Tables<"migrations">>(`/migrations?id=eq.${migrationId}`),
+  fetchMigrationById: (migrationId: string) => fetchFromApi<Tables<"migrations">>(`/migrations/${migrationId}`),
 
   fetchMigrationActivities: (migrationId: string) => fetchFromApi<Tables<"migration_activities">[]>(`/migration_activities?migration_id=eq.${migrationId}`),
 
@@ -211,15 +218,20 @@ export const databaseClient = {
 
   insertProject: (payload: TablesInsert<"projects">) => fetchFromApi<Tables<"projects">>("/projects", { method: "POST", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
 
-  updateProject: (id: string, payload: TablesUpdate<"projects">) => fetchFromApi<Tables<"projects">>(`/projects?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
+  updateProject: (id: string, payload: TablesUpdate<"projects">) => fetchFromApi<Tables<"projects">>(`/projects/${id}`, { method: "PATCH", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
 
-  deleteProject: (id: string) => fetchFromApi<void>(`/projects?id=eq.${id}`, { method: "DELETE" }),
+  deleteProject: (id: string) => fetchFromApi<void>(`/projects/${id}`, { method: "DELETE" }),
 
   insertMigration: (payload: TablesInsert<"migrations">) => fetchFromApi<Tables<"migrations">>("/migrations", { method: "POST", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
 
-  updateMigration: (id: string, payload: TablesUpdate<"migrations">) => fetchFromApi<Tables<"migrations">>(`/migrations?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
+  updateMigration: (id: string, payload: TablesUpdate<"migrations">) => fetchFromApi<Tables<"migrations">>(`/migrations/${id}`, { method: "PATCH", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
 
-  deleteMigration: (id: string) => fetchFromApi<void>(`/migrations?id=eq.${id}`, { method: "DELETE" }),
+  duplicateMigration: (id: string) => {
+    const user = getStoredUser();
+    return fetchFromApi<Tables<"migrations">>(`/migrations/${id}/duplicate?user_id=${user?.id}`, { method: "POST" });
+  },
+
+  deleteMigration: (id: string) => fetchFromApi<void>(`/migrations/${id}`, { method: "DELETE" }),
 
   insertMigrationActivities: (payloads: TablesInsert<"migration_activities">[]) => fetchFromApi<Tables<"migration_activities">>("/migration_activities", { method: "POST", body: JSON.stringify(payloads), headers: { "Content-Type": "application/json" } }),
 

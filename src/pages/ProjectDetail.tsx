@@ -56,11 +56,7 @@ const MIGRATIONS_PAGE_SIZE = 20;
 
 const ProjectDetail = () => {
   const navigate = useNavigate();
-  const { projectName: rawProjectName } = useParams<{ projectName?: string }>();
-  const projectName = useMemo(
-    () => (rawProjectName ? decodeURIComponent(rawProjectName) : ""),
-    [rawProjectName]
-  );
+  const { projectId } = useParams<{ projectId?: string }>();
 
   const [projects, setProjects] = useState<ProjectDetails[]>([]);
   const [sidebarMigrations, setSidebarMigrations] = useState<SidebarMigration[]>([]);
@@ -179,9 +175,9 @@ const ProjectDetail = () => {
   }, [isLoadingMoreMigrations, hasMoreMigrations]);
 
   const loadProjectData = useCallback(
-    async (name: string) => {
+    async (id: string) => {
       try {
-        const { data: projectData, error: projectError } = await databaseClient.fetchProjectByName(name);
+        const { data: projectData, error: projectError } = await databaseClient.fetchProjectById(id);
 
         if (projectError) throw projectError;
 
@@ -222,7 +218,7 @@ const ProjectDetail = () => {
   );
 
   useEffect(() => {
-    if (!projectName) {
+    if (!projectId) {
       navigate("/projects");
       return;
     }
@@ -230,14 +226,14 @@ const ProjectDetail = () => {
     const fetchData = async () => {
       try {
         setLoading(true);
-        await Promise.all([loadSidebarData(), loadProjectData(projectName)]);
+        await Promise.all([loadSidebarData(), loadProjectData(projectId)]);
       } finally {
         setLoading(false);
       }
     };
 
     void fetchData();
-  }, [projectName, loadSidebarData, loadProjectData, navigate]);
+  }, [projectId, loadSidebarData, loadProjectData, navigate]);
   const handleLogout = async () => {
     try {
       setTransitioning(true);

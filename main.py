@@ -271,11 +271,16 @@ async def sync_user(payload: SyncUserPayload) -> dict[str, Any]:
 
 
 @app.get("/api/projects", response_model=list[Project])
-async def get_projects(user_id: Optional[str] = None) -> list[Project]:
+async def get_projects(user_id: Optional[str] = None, name: Optional[str] = None) -> list[Project]:
     """Fetch projects where user is owner or member."""
     try:
         with _get_db_connection() as conn, conn.cursor() as cur:
-            if user_id:
+            if name:
+                cur.execute(
+                    "SELECT id, name, description, created_at FROM public.projects WHERE name = %s",
+                    (name,),
+                )
+            elif user_id:
                 # Fetch projects where user is owner OR member via project_members
                 cur.execute(
                     """
@@ -305,6 +310,32 @@ async def get_projects(user_id: Optional[str] = None) -> list[Project]:
     except Exception as exc:
         print(f"Error fetching projects: {exc}")
         raise HTTPException(status_code=500, detail="Failed to fetch projects.") from exc
+
+
+@app.get("/api/projects/{id}", response_model=Project)
+async def get_project(id: str) -> Project:
+    """Fetch a single project from the database."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, name, description, created_at FROM public.projects WHERE id = %s",
+                (id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Project not found.")
+
+            return Project(
+                id=str(row["id"]),
+                name=row["name"],
+                description=row["description"],
+                created_at=row["created_at"].isoformat(),
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"Error fetching project: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to fetch project.") from exc
 
 
 class CreateProjectPayload(BaseModel):
@@ -366,14 +397,9 @@ async def create_project(payload: CreateProjectPayload) -> Project:
         raise HTTPException(status_code=500, detail="Failed to create project.") from exc
 
 
-@app.patch("/api/projects")
-async def update_project(
-    id: Optional[str] = None,
-    payload: UpdateProjectPayload = None,
-) -> Project:
+@app.patch("/api/projects/{id}", response_model=Project)
+async def update_project(id: str, payload: UpdateProjectPayload) -> Project:
     """Update a project by id."""
-    id = _strip_eq_prefix(id)
-    
     if not id:
         raise HTTPException(status_code=400, detail="Project id is required.")
 
@@ -382,11 +408,10 @@ async def update_project(
             updates: list[str] = []
             params: list[Any] = []
             
-            if payload:
-                payload_dict = payload.model_dump(exclude_none=True)
-                for field, value in payload_dict.items():
-                    updates.append(f"{field} = %s")
-                    params.append(value)
+            payload_dict = payload.model_dump(exclude_none=True)
+            for field, value in payload_dict.items():
+                updates.append(f"{field} = %s")
+                params.append(value)
             
             if not updates:
                 raise HTTPException(status_code=400, detail="No fields to update.")
@@ -421,11 +446,9 @@ async def update_project(
         raise HTTPException(status_code=500, detail="Failed to update project.") from exc
 
 
-@app.delete("/api/projects")
+@app.delete("/api/projects/{id}")
 async def delete_project(id: str) -> dict[str, str]:
     """Delete a project and all related records."""
-    id = _strip_eq_prefix(id)
-    
     try:
         with _get_db_connection() as conn, conn.cursor() as cur:
             cur.execute("SELECT id FROM public.projects WHERE id = %s", (id,))
@@ -764,10 +787,196 @@ async def get_migrations(
         raise HTTPException(status_code=500, detail="Failed to fetch migrations.") from exc
 
 
-@app.delete("/api/migrations")
-async def delete_migration(
-    id: str,
-) -> dict[str, str]:
+@app.get("/api/migrations/{id}", response_model=Migration)
+async def get_migration(id: str) -> Migration:
+    """Fetch a single migration from the database."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, created_at, updated_at FROM public.migrations WHERE id = %s",
+                (id,),
+            )
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Migration not found.")
+
+            return Migration(
+                id=str(row["id"]),
+                name=row["name"],
+                source_system=row["source_system"],
+                target_system=row["target_system"],
+                source_url=row["source_url"],
+                target_url=row["target_url"],
+                in_connector=row["in_connector"],
+                in_connector_detail=row["in_connector_detail"],
+                out_connector=row["out_connector"],
+                out_connector_detail=row["out_connector_detail"],
+                objects_transferred=row["objects_transferred"],
+                mapped_objects=row["mapped_objects"],
+                project_id=str(row["project_id"]) if row["project_id"] else None,
+                notes=row["notes"],
+                workflow_state=row["workflow_state"],
+                progress=row["progress"],
+                created_at=row["created_at"].isoformat(),
+                updated_at=row["updated_at"].isoformat() if row["updated_at"] else None,
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"Error fetching migration: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to fetch migration.") from exc
+
+
+class UpdateMigrationPayload(BaseModel):
+    """Pydantic model for updating a migration."""
+    name: Optional[str] = None
+    source_system: Optional[str] = None
+    target_system: Optional[str] = None
+    source_url: Optional[str] = None
+    target_url: Optional[str] = None
+    in_connector: Optional[str] = None
+    in_connector_detail: Optional[str] = None
+    out_connector: Optional[str] = None
+    out_connector_detail: Optional[str] = None
+    objects_transferred: Optional[str] = None
+    mapped_objects: Optional[str] = None
+    notes: Optional[str] = None
+    workflow_state: Optional[dict] = None
+    progress: Optional[int] = None
+
+@app.patch("/api/migrations/{id}", response_model=Migration)
+async def update_migration(id: str, payload: UpdateMigrationPayload) -> Migration:
+    """Update a migration in the database."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            updates: list[str] = []
+            params: list[Any] = []
+            
+            payload_dict = payload.model_dump(exclude_none=True)
+            for field, value in payload_dict.items():
+                updates.append(f"{field} = %s")
+                params.append(value)
+            
+            if not updates:
+                raise HTTPException(status_code=400, detail="No fields to update.")
+            
+            updates.append("updated_at = now()")
+            params.append(id)
+
+            query = f"""
+                UPDATE public.migrations
+                SET {", ".join(updates)}
+                WHERE id = %s
+                RETURNING id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, created_at, updated_at
+            """
+            
+            cur.execute(query, tuple(params))
+            row = cur.fetchone()
+            conn.commit()
+            
+            if not row:
+                raise HTTPException(status_code=404, detail="Migration not found.")
+            
+            return Migration(
+                id=str(row["id"]),
+                name=row["name"],
+                source_system=row["source_system"],
+                target_system=row["target_system"],
+                source_url=row["source_url"],
+                target_url=row["target_url"],
+                in_connector=row["in_connector"],
+                in_connector_detail=row["in_connector_detail"],
+                out_connector=row["out_connector"],
+                out_connector_detail=row["out_connector_detail"],
+                objects_transferred=row["objects_transferred"],
+                mapped_objects=row["mapped_objects"],
+                project_id=str(row["project_id"]) if row["project_id"] else None,
+                notes=row["notes"],
+                workflow_state=row["workflow_state"],
+                progress=row["progress"],
+                created_at=row["created_at"].isoformat(),
+                updated_at=row["updated_at"].isoformat() if row["updated_at"] else None,
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"Error updating migration: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to update migration.") from exc
+
+@app.post("/api/migrations/{id}/duplicate", response_model=Migration)
+async def duplicate_migration(id: str, user_id: str) -> Migration:
+    """Duplicate a migration, creating a new one with copied data."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            # Fetch the original migration
+            cur.execute(
+                "SELECT name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, project_id FROM public.migrations WHERE id = %s",
+                (id,),
+            )
+            original = cur.fetchone()
+            if not original:
+                raise HTTPException(status_code=404, detail="Migration not found.")
+
+            # Create the new migration
+            new_name = f"{original['name']} (copy)"
+            cur.execute(
+                """
+                INSERT INTO public.migrations (
+                    name, source_system, target_system, source_url, target_url, 
+                    project_id, user_id, in_connector, in_connector_detail, 
+                    out_connector, out_connector_detail, status
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'not_started')
+                RETURNING id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, created_at, updated_at
+                """,
+                (
+                    new_name,
+                    original["source_system"],
+                    original["target_system"],
+                    original["source_url"],
+                    original["target_url"],
+                    original["project_id"],
+                    user_id,
+                    original["in_connector"],
+                    original["in_connector_detail"],
+                    original["out_connector"],
+                    original["out_connector_detail"],
+                ),
+            )
+            row = cur.fetchone()
+            conn.commit()
+
+            if not row:
+                raise HTTPException(status_code=500, detail="Failed to duplicate migration.")
+
+            return Migration(
+                id=str(row["id"]),
+                name=row["name"],
+                source_system=row["source_system"],
+                target_system=row["target_system"],
+                source_url=row["source_url"],
+                target_url=row["target_url"],
+                in_connector=row["in_connector"],
+                in_connector_detail=row["in_connector_detail"],
+                out_connector=row["out_connector"],
+                out_connector_detail=row["out_connector_detail"],
+                objects_transferred=row["objects_transferred"],
+                mapped_objects=row["mapped_objects"],
+                project_id=str(row["project_id"]) if row["project_id"] else None,
+                notes=row["notes"],
+                workflow_state=row["workflow_state"],
+                progress=row["progress"],
+                created_at=row["created_at"].isoformat(),
+                updated_at=row["updated_at"].isoformat() if row["updated_at"] else None,
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"Error duplicating migration: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to duplicate migration.") from exc
+
+@app.delete("/api/migrations/{id}")
+async def delete_migration(id: str) -> dict[str, str]:
     """Delete a migration and its related records from the database."""
     try:
         with _get_db_connection() as conn, conn.cursor() as cur:
