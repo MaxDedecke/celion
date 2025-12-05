@@ -25,7 +25,7 @@ const App = () => (
             <Route path="/dashboard" element={<Dashboard />} />
             <Route path="/migration/:migrationId" element={<Dashboard />} />
             <Route path="/projects/:projectId/migration/:migrationId" element={<Dashboard />} />
-            <Route path="/project/:projectName" element={<ProjectDetail />} />
+            <Route path="/projects/:projectId" element={<ProjectDetail />} />
             <Route path="/projects" element={<Projects />} />
             <Route path="/data-sources" element={<DataSources />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

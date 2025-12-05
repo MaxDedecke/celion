@@ -232,7 +232,7 @@ const Sidebar = ({
                               )}
                               <button
                                 type="button"
-                                onClick={() => navigate(`/project/${encodeURIComponent(project.name)}`)}
+                                onClick={() => navigate(`/projects/${project.id}`)}
                                 className="flex-1 text-left font-normal text-muted-foreground transition-colors hover:text-foreground"
                               >
                                 {project.name}

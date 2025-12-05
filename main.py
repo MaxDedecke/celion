@@ -231,39 +231,35 @@ async def login_user(payload: AuthPayload) -> dict[str, Any]:
 async def sync_user(payload: SyncUserPayload) -> dict[str, Any]:
     """
     Synchronize a user to the database.
-    If user doesn't exist, create them.
-    If user exists, optionally update their info.
+    This function handles new users and gracefully merges users from Keycloak
+    who may already exist in the database with a different ID but the same email.
     """
     try:
         with _get_db_connection() as conn, conn.cursor() as cur:
-            # Check if user exists
-            cur.execute("SELECT id FROM public.users WHERE id = %s", (payload.id,))
-            existing = cur.fetchone()
-            
-            if existing:
-                # User exists - optionally update
-                cur.execute(
-                    """
-                    UPDATE public.users 
-                    SET email = %s, full_name = %s
-                    WHERE id = %s
-                    RETURNING id, email, password, full_name, created_at
-                    """,
-                    (payload.email, payload.full_name, payload.id)
-                )
-            else:
-                # User doesn't exist - create with provided ID
-                cur.execute(
-                    """
-                    INSERT INTO public.users (id, email, password, full_name)
-                    VALUES (%s, %s, '', %s)
-                    RETURNING id, email, password, full_name, created_at
-                    """,
-                    (payload.id, payload.email, payload.full_name)
-                )
-            
+            # Attempt to insert the user. If the email already exists, do nothing.
+            # This prevents a crash if a user was created via another method.
+            cur.execute(
+                """
+                INSERT INTO public.users (id, email, full_name, password)
+                VALUES (%s, %s, %s, '')
+                ON CONFLICT (email) DO NOTHING
+                """,
+                (payload.id, payload.email, payload.full_name),
+            )
+
+            # Whether the user was inserted or already existed, fetch the
+            # canonical user record by email. This is now the source of truth.
+            cur.execute(
+                "SELECT id, email, password, full_name, created_at FROM public.users WHERE email = %s",
+                (payload.email,),
+            )
             user_row = cur.fetchone()
             conn.commit()
+
+            if not user_row:
+                 # This case should be virtually impossible if the previous logic is sound.
+                raise HTTPException(status_code=500, detail="Failed to retrieve user after sync.")
+
             return _serialize_user_row(user_row)
     except Exception as exc:
         print(f"Error syncing user: {exc}")

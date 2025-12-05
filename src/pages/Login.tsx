@@ -28,13 +28,19 @@ const Login = () => {
           const user = buildUserFromKeycloak(profile, client.tokenParsed);
           
           // Sync user to database before setting session
-          await databaseClient.syncUser({
+          const { data: syncedUser, error: syncError } = await databaseClient.syncUser({
             id: user.id,
             email: user.email,
             full_name: user.full_name,
           });
-          
-          await databaseClient.setSessionUser(user as any);
+
+          if (syncError || !syncedUser) {
+            toast.error(`Benutzersynchronisierung fehlgeschlagen: ${syncError?.message ?? "Unknown error"}`);
+            setLoading(false);
+            return;
+          }
+
+          await databaseClient.setSessionUser(syncedUser as any);
           toast.success("Login via Keycloak erfolgreich");
           navigate("/dashboard");
         } else {
