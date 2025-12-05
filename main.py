@@ -465,6 +465,31 @@ async def delete_project(id: str) -> dict[str, str]:
         raise HTTPException(status_code=500, detail="Failed to delete project.") from exc
 
 
+class DataSourceProject(BaseModel):
+    project_id: str
+
+@app.get("/api/data_source_projects", response_model=list[DataSourceProject])
+async def get_data_source_projects(data_source_id: Optional[str] = None) -> list[DataSourceProject]:
+    """Fetch data source to project assignments."""
+    data_source_id = _strip_eq_prefix(data_source_id)
+    
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            query = "SELECT project_id FROM public.data_source_projects"
+            params = []
+
+            if data_source_id:
+                query += " WHERE data_source_id = %s"
+                params.append(data_source_id)
+
+            cur.execute(query, tuple(params))
+            rows = cur.fetchall()
+            return [{"project_id": str(row['project_id'])} for row in rows]
+    except Exception as exc:
+        print(f"Error fetching data source projects: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to fetch data source projects.") from exc
+
+
 class Migration(BaseModel):
     """Pydantic model for a migration."""
 
