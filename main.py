@@ -119,6 +119,13 @@ class AuthPayload(BaseModel):
     full_name: Optional[str] = None
 
 
+class SyncUserPayload(BaseModel):
+    """Payload for syncing a user (from Keycloak or other sources)."""
+    id: str
+    email: str
+    full_name: Optional[str] = None
+
+
 class HttpClientRequest(BaseModel):
     """Generic HTTP request payload executed by the backend."""
 
@@ -218,6 +225,49 @@ async def login_user(payload: AuthPayload) -> dict[str, Any]:
         raise
     except Exception as exc:  # pragma: no cover - defensive catch for DB errors
         raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@app.post("/api/users/sync")
+async def sync_user(payload: SyncUserPayload) -> dict[str, Any]:
+    """
+    Synchronize a user to the database.
+    If user doesn't exist, create them.
+    If user exists, optionally update their info.
+    """
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            # Check if user exists
+            cur.execute("SELECT id FROM public.users WHERE id = %s", (payload.id,))
+            existing = cur.fetchone()
+            
+            if existing:
+                # User exists - optionally update
+                cur.execute(
+                    """
+                    UPDATE public.users 
+                    SET email = %s, full_name = %s
+                    WHERE id = %s
+                    RETURNING id, email, password, full_name, created_at
+                    """,
+                    (payload.email, payload.full_name, payload.id)
+                )
+            else:
+                # User doesn't exist - create with provided ID
+                cur.execute(
+                    """
+                    INSERT INTO public.users (id, email, password, full_name)
+                    VALUES (%s, %s, '', %s)
+                    RETURNING id, email, password, full_name, created_at
+                    """,
+                    (payload.id, payload.email, payload.full_name)
+                )
+            
+            user_row = cur.fetchone()
+            conn.commit()
+            return _serialize_user_row(user_row)
+    except Exception as exc:
+        print(f"Error syncing user: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to sync user.") from exc
 
 
 @app.get("/api/projects", response_model=list[Project])

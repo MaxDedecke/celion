@@ -96,7 +96,7 @@ export const databaseClient = {
     persistUser(user);
     return Promise.resolve(buildSessionResponse(user));
   },
-  createGuestSession: () => {
+  createGuestSession: async () => {
     const guestUser: StoredUser = {
       id: `guest-${Date.now()}`,
       email: "guest@celion.local",
@@ -104,8 +104,35 @@ export const databaseClient = {
       created_at: new Date().toISOString(),
     } as StoredUser;
 
+    // Sync guest user to database
+    await databaseClient.syncUser({
+      id: guestUser.id,
+      email: guestUser.email,
+      full_name: guestUser.full_name,
+    });
+
     persistUser(guestUser);
     return Promise.resolve(buildSessionResponse(guestUser));
+  },
+  syncUser: async (user: { id: string; email: string; full_name?: string }) => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/users/sync`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(user),
+      });
+
+      if (!response.ok) {
+        const detail = await parseErrorDetail(response);
+        console.error("User sync failed:", detail);
+        return { data: null, error: new Error(detail ?? "User sync failed") };
+      }
+
+      return { data: await response.json(), error: null };
+    } catch (error) {
+      console.error("User sync error:", error);
+      return { data: null, error: error as Error };
+    }
   },
   signUp: async (email: string, password: string) => {
     const response = await fetch(`${API_BASE_URL}/auth/signup`, {
