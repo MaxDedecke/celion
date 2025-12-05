@@ -438,3 +438,21 @@ CHECK (status IN ('not_started', 'running', 'paused', 'completed', 'processing')
 -- Add a "steps" column to the migrations table to store the order of steps
 alter table public.migrations
 add column if not exists steps jsonb;
+
+
+-- -------------------------
+-- Project membership for collaboration
+-- -------------------------
+
+-- Create project_members junction table for collaboration
+CREATE TABLE IF NOT EXISTS public.project_members (
+  id UUID NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  project_id UUID NOT NULL REFERENCES public.projects(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES public.users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('owner', 'admin', 'member', 'viewer')),
+  created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT now(),
+  UNIQUE (project_id, user_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_project_members_user_id ON public.project_members(user_id);
+CREATE INDEX IF NOT EXISTS idx_project_members_project_id ON public.project_members(project_id);
