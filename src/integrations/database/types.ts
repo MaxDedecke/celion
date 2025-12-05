@@ -185,6 +185,7 @@ export type Database = {
           updated_at: string
           user_id: string
           username: string | null
+          email: string | null
         }
         Insert: {
           additional_config?: Json | null
@@ -201,6 +202,7 @@ export type Database = {
           updated_at?: string
           user_id: string
           username?: string | null
+          email?: string | null
         }
         Update: {
           additional_config?: Json | null
@@ -217,6 +219,7 @@ export type Database = {
           updated_at?: string
           user_id?: string
           username?: string | null
+          email?: string | null
         }
         Relationships: []
       }

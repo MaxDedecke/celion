@@ -65,6 +65,7 @@ type BaseDataSourceForm = Omit<
   api_key: string;
   username: string;
   password: string;
+  email: string;
 };
 
 type DataSourceFormData = BaseDataSourceForm & {
@@ -135,6 +136,7 @@ const createInitialDataSourceFormData = (): DataSourceFormData => ({
   api_key: "",
   username: "",
   password: "",
+  email: "",
   auth_type: "api_key",
   is_active: true,
   is_global: false,
@@ -208,6 +210,7 @@ const mapDataSourceToFormData = (source?: DataSourceWithProjects): DataSourceFor
     api_key: source.api_key || "",
     username: source.username || "",
     password: source.password || "",
+    email: (config.email as string) || "",
     auth_type: source.auth_type,
     is_active: source.is_active,
     is_global: source.is_global,
@@ -339,6 +342,7 @@ const buildDataSourceAdditionalConfig = (form: DataSourceFormData): Record<strin
   };
 
   const baseConfig: Record<string, any> = {
+    email: form.email,
     ssl_verification: form.sslVerification,
     proxy_host: form.proxyHost,
     proxy_port: form.proxyPort,
@@ -493,6 +497,19 @@ const DataSources = () => {
   }, [isDialogOpen, currentStep]);
 
   const handleSave = async () => {
+    if (!formData.name) {
+      toast.error("Bitte geben Sie einen Namen für die Datenquelle ein.");
+      return;
+    }
+
+    const hasApiKeyAuth = formData.api_key && formData.username && formData.password;
+    const hasEmailAuth = formData.api_key && formData.email;
+
+    if (!hasApiKeyAuth && !hasEmailAuth) {
+      toast.error("Bitte geben Sie entweder API-Key, Benutzername und Passwort oder API-Key and Email an.");
+      return;
+    }
+
     try {
       const { data: { user } } = await databaseClient.getUser();
       if (!user) throw new Error("Nicht authentifiziert");
@@ -508,6 +525,7 @@ const DataSources = () => {
         api_key: formData.api_key || null,
         username: formData.username || null,
         password: formData.password || null,
+        email: formData.email || null,
         auth_type: formData.auth_type,
         is_active: formData.is_active,
         is_global: formData.is_global,
@@ -825,13 +843,6 @@ const DataSources = () => {
 
               {currentStep === 1 && (
                 <div className="space-y-6">
-                  <Alert className="border-border/50 bg-muted/40">
-                    <AlertTitle>Zugänge nachvollziehbar dokumentieren</AlertTitle>
-                    <AlertDescription className="space-y-2 text-sm text-muted-foreground">
-                      <p>Notieren Sie, welche Credentials produktiv genutzt werden dürfen und wer sie verwaltet.</p>
-                      <p>Vermerken Sie Rotationszyklen oder Ablaufdaten direkt in den Notizen.</p>
-                    </AlertDescription>
-                  </Alert>
                   <div className="space-y-2">
                     <div className="flex items-center gap-2">
                       <Label htmlFor="auth-type">Authentifizierung</Label>
@@ -876,6 +887,14 @@ const DataSources = () => {
                         id="api_key"
                         value={formData.api_key}
                         onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="email">Email</Label>
+                      <Input
+                        id="email"
+                        value={formData.email}
+                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
                       />
                     </div>
                     <div className="space-y-2">
