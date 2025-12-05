@@ -645,15 +645,18 @@ const DataSources = () => {
                 ? `${source.assigned_projects.length} ${source.assigned_projects.length === 1 ? "Projekt" : "Projekte"}`
                 : "Kein Zugriff";
               return (
-                <Card key={source.id} className="app-subtle border border-border/50">
+                <Card
+                  key={source.id}
+                  className="group relative cursor-pointer overflow-hidden border-border/60 bg-gradient-to-br from-background/95 to-background/80 transition-all duration-200 hover:-translate-y-1 hover:border-primary/40 hover:shadow-[0_24px_48px_-28px_rgba(15,23,42,0.45)]"
+                >
                   <CardHeader className="flex flex-row items-center gap-4 pb-3">
                     <div className="flex-shrink-0">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-full border border-border/50 bg-foreground/5">
-                        <SourceIcon className="h-6 w-6 text-foreground" />
+                      <div className="flex h-12 w-12 items-center justify-center rounded-full border border-border/50 bg-foreground/5 text-foreground transition-all duration-300 group-hover:bg-primary/10 group-hover:text-primary">
+                        <SourceIcon className="h-6 w-6" />
                       </div>
                     </div>
                     <div className="flex-1 min-w-0">
-                      <CardTitle className="text-lg text-foreground">{source.name}</CardTitle>
+                      <CardTitle className="text-lg text-foreground group-hover:text-primary">{source.name}</CardTitle>
                       <p className="mt-1 text-sm text-muted-foreground">{source.source_type}</p>
                     </div>
                     <div className="flex gap-1">
