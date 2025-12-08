@@ -60,6 +60,19 @@ async function enqueueAgentStep(
   }
 }
 
+async function getStepStatus(stepId: string) {
+  const client = await pool.connect();
+  try {
+    const { rows } = await client.query('SELECT * FROM migration_steps WHERE id = $1', [stepId]);
+    if (rows.length === 0) {
+      return null;
+    }
+    return rows[0];
+  } finally {
+    client.release();
+  }
+}
+
 function agentRunnerMiddleware(server: ViteDevServer) {
   server.middlewares.use('/api/v2/migrations/run-step', async (req, res, next) => {
     if (req.method !== 'POST') {
@@ -81,16 +94,50 @@ function agentRunnerMiddleware(server: ViteDevServer) {
           return;
         }
 
-        await enqueueAgentStep(migrationId, agentName, agentParams, stepId, stepName);
+        const { step } = await enqueueAgentStep(migrationId, agentName, agentParams, stepId, stepName);
 
         res.statusCode = 202;
-        res.end(JSON.stringify({ message: 'Agent execution has been enqueued' }));
+        res.end(JSON.stringify({ message: 'Agent execution has been enqueued', stepId: step.id }));
       } catch (e) {
         console.error('Error enqueuing agent step:', e);
         res.statusCode = 500;
         res.end(JSON.stringify({ error: 'Failed to enqueue agent execution', details: (e as Error).message }));
       }
     });
+  });
+}
+
+function agentStatusMiddleware(server: ViteDevServer) {
+  server.middlewares.use('/api/v2/migrations/step-status', async (req, res, next) => {
+    if (req.method !== 'GET') {
+      return next();
+    }
+
+    const url = new URL(req.originalUrl, `http://${req.headers.host}`);
+    const stepId = url.searchParams.get('stepId');
+
+    if (!stepId) {
+      res.statusCode = 400;
+      res.end(JSON.stringify({ error: 'stepId is required' }));
+      return;
+    }
+
+    try {
+      const step = await getStepStatus(stepId);
+      if (!step) {
+        res.statusCode = 404;
+        res.end(JSON.stringify({ error: 'Step not found' }));
+        return;
+      }
+
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.end(JSON.stringify(step));
+    } catch (e) {
+      console.error('Error getting step status:', e);
+      res.statusCode = 500;
+      res.end(JSON.stringify({ error: 'Failed to get step status', details: (e as Error).message }));
+    }
   });
 }
 
@@ -105,6 +152,7 @@ export function agentRunnerPlugin(): Plugin {
 
       console.log('Configuring agent runner middleware...');
       agentRunnerMiddleware(server);
+      agentStatusMiddleware(server);
     },
   };
 }

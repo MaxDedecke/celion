@@ -1435,6 +1435,7 @@ async def run_credential_probe(payload: ProbeRequest) -> ProbeResponse:
                 "method": payload.method,
                 "url": str(payload.url),
                 "headers": headers,
+                "timeout": 15,
             }
 
             request_body = payload.body
@@ -1528,6 +1529,7 @@ async def run_http_client(payload: HttpClientRequest) -> HttpClientResponse:
                 "method": payload.method,
                 "url": str(payload.url),
                 "headers": headers,
+                "timeout": 15,
             }
 
             if payload.body is not None:
@@ -1575,6 +1577,7 @@ async def run_curl_head_probe(payload: CurlHeadProbeRequest) -> CurlHeadProbeRes
                 "url": str(payload.url),
                 "headers": headers,
                 "allow_redirects": payload.follow_redirects,
+                "timeout": 15,
             }
 
             return requests.request(**request_kwargs)

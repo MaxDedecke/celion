@@ -486,7 +486,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         });
       }
 
-      // --- Trigger agent asynchronously ---
+      // --- Trigger agent asynchronously and prepare for polling ---
       const response = await fetch('/api/v2/migrations/run-step', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -503,9 +503,22 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         const errorText = await response.text();
         throw new Error(`Failed to start agent: ${errorText}`);
       }
+
+      const { stepId: databaseStepId } = await response.json();
+
+      if (databaseStepId) {
+        setWorkflowBoard((prev) => {
+          const newNodes = prev.nodes.map((node) => {
+            if (node.id === stepToRun.id) {
+              return { ...node, databaseId: databaseStepId };
+            }
+            return node;
+          });
+          return { ...prev, nodes: newNodes };
+        });
+      }
       
-      // The UI will now wait for realtime updates to reflect completion.
-      // We no longer handle success/failure here.
+      // The UI will now wait for polling updates to reflect completion.
 
     } catch (error) {
       console.error("Error progressing workflow:", error);
@@ -516,7 +529,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
       onStepRunningChange?.(false);
     } finally {
       // Don't set isStepRunning to false here, as it's now a background task.
-      // The UI state for this will be driven by the 'status' column from the database.
     }
   }, [
     workflowBoard,
@@ -533,6 +545,57 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
     appendActivity,
     onStepRunningChange,
   ]);
+
+  const inProgressNode = useMemo(() => workflowBoard.nodes.find(node => node.status === 'in-progress'), [workflowBoard.nodes]);
+
+  useEffect(() => {
+    if (!inProgressNode || !inProgressNode.databaseId) {
+      return;
+    }
+
+    let isCancelled = false;
+    const pollInterval = setInterval(async () => {
+      if (isCancelled) return;
+
+      try {
+        const statusResponse = await fetch(`/api/v2/migrations/step-status?stepId=${inProgressNode.databaseId}`);
+        if (isCancelled) return;
+
+        if (statusResponse.ok) {
+          const stepResult = await statusResponse.json();
+          const isDone = stepResult.status === 'done' || stepResult.status === 'completed' || stepResult.status === 'failed';
+
+          if (isDone) {
+            setWorkflowBoard(prev => {
+              const newNodes = prev.nodes.map(node => {
+                if (node.id === inProgressNode.id) {
+                  return {
+                    ...node,
+                    status: 'done',
+                    agentResult: stepResult.result || { error: stepResult.status_message },
+                  };
+                }
+                return node;
+              });
+              const newState = { ...prev, nodes: newNodes };
+              cacheWorkflowStateSnapshot(project.id, newState);
+              return newState;
+            });
+          }
+        } else if (statusResponse.status !== 404) { // Don't log for 404s, which can happen before the step is ready
+          console.error(`Error polling for step ${inProgressNode.databaseId}. Status: ${statusResponse.status}`);
+        }
+      } catch (error) {
+        if (isCancelled) return;
+        console.error(`Error during polling for step ${inProgressNode.databaseId}:`, error);
+      }
+    }, 3000); // Poll every 3 seconds
+
+    return () => {
+      isCancelled = true;
+      clearInterval(pollInterval);
+    };
+  }, [inProgressNode, project.id, setWorkflowBoard]);
 
   const handleAgentResultDialogOpenChange = useCallback((open: boolean) => {
     if (!open) {

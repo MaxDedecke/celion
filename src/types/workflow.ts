@@ -13,6 +13,7 @@ export interface WorkflowNode {
   agentType?: string;
   agentPrompt?: string;
   agentResult?: unknown;
+  databaseId?: string;
 }
 
 export interface WorkflowConnection {
