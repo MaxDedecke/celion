@@ -122,11 +122,18 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
   const [activityLog, setActivityLog] = useState<Activity[]>(project.activities ?? []);
   const [isWorkflowPanelOpen, setIsWorkflowPanelOpen] = useState(false);
   const [workflowPanelSelection, setWorkflowPanelSelection] = useState<string | null>(null);
-  const [isStepRunning, setIsStepRunning] = useState(false);
   const [stepProgress, setStepProgress] = useState(0);
   const [agentResultDialogStepId, setAgentResultDialogStepId] = useState<string | null>(null);
   const [workflowBoard, setWorkflowBoard] = useState<WorkflowBoardState>(() => createDefaultWorkflowBoard());
+  const isStepRunning = useMemo(
+    () => workflowBoard.nodes.some((node) => node.status === "in-progress"),
+    [workflowBoard.nodes],
+  );
   const agentResultPersistenceSignatureRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    onStepRunningChange?.(isStepRunning);
+  }, [isStepRunning, onStepRunningChange]);
 
   const createViewResultActivity = useCallback(
     async (stepNode: WorkflowNode, isError: boolean = false) => {
@@ -386,8 +393,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
     try {
       // Reset progress to 0 at the start of a new step
       setStepProgress(0);
-      setIsStepRunning(true);
-      onStepRunningChange?.(true);
 
       const boardForExecution = await ensureSystemDetectionRetryable(workflowBoard);
       const nodesSnapshot = boardForExecution.nodes.map((node) => ({ ...node }));
@@ -508,7 +513,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
       await appendActivity("error", `Fehler beim Fortschreiten des Workflows: ${errorMessage}`);
       
       // Revert UI state if something went wrong before the agent even started
-      setIsStepRunning(false);
       onStepRunningChange?.(false);
     } finally {
       // Don't set isStepRunning to false here, as it's now a background task.
@@ -673,7 +677,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         return newState;
       });
 
-      setIsStepRunning(false);
       onStepRunningChange?.(false);
       appendActivity("error", `Schritt "${inProgressNode.title}" hat das Zeitlimit überschritten.`);
       toast.error(`Schritt "${inProgressNode.title}" hat das Zeitlimit überschritten.`);
@@ -705,7 +708,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         return previousBoard;
       });
 
-      setIsStepRunning(false);
       onStepRunningChange?.(false);
       appendActivity("error", `Schritt "${inProgressNode.title}" hat das Zeitlimit überschritten.`);
       toast.error(`Schritt "${inProgressNode.title}" hat das Zeitlimit überschritten.`);

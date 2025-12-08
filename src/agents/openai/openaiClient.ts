@@ -4,11 +4,16 @@ const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
 const OPENAI_ASSISTANTS_HEADER = "assistants=v2";
 
 export const resolveOpenAiConfig = () => {
-  const apiKey = import.meta.env.VITE_OPENAI_API_KEY?.trim();
+  const isServer = typeof window === 'undefined';
+  // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+  // @ts-ignore
+  const env = isServer ? process.env : import.meta.env;
+
+  const apiKey = env.VITE_OPENAI_API_KEY?.trim();
   if (!apiKey) throw new Error("VITE_OPENAI_API_KEY fehlt");
 
-  const baseUrl = (import.meta.env.VITE_OPENAI_API_BASE_URL?.trim() || DEFAULT_OPENAI_BASE_URL).replace(/\/$/, "");
-  const projectId = import.meta.env.VITE_OPENAI_PROJECT_ID?.trim();
+  const baseUrl = (env.VITE_OPENAI_API_BASE_URL?.trim() || DEFAULT_OPENAI_BASE_URL).replace(/\/$/, "");
+  const projectId = env.VITE_OPENAI_PROJECT_ID?.trim();
 
   return { apiKey, baseUrl, projectId };
 };

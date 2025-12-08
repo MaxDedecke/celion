@@ -117,6 +117,7 @@ const Dashboard = () => {
   const loaderVisible = useMinimumLoader(loading || transitioning, 1000);
   const migrationDetailsRef = useRef<MigrationDetailsRef>(null);
   const [processingMigrationId, setProcessingMigrationId] = useState<string | null>(null);
+  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
   
   // Lazy loading state for standalone migrations
   const [hasMoreMigrations, setHasMoreMigrations] = useState(true);
@@ -219,19 +220,15 @@ const Dashboard = () => {
           projectId: projectId,
           activities,
           notes: migration.notes ?? "",
-          status: deriveMigrationStatus(migration),
+          status: migration.status || deriveMigrationStatus(migration),
           workflowState,
         };
       }),
     );
   }, []);
 
-  const handleStepRunningChange = (migrationId: string, isRunning: boolean) => {
-    setProcessingMigrationId(isRunning ? migrationId : null);
-  };
-
   // Optimized refresh for only the current migration
-  const refreshCurrentMigration = async () => {
+  const refreshCurrentMigration = useCallback(async () => {
     if (!selectedMigration) return;
     
     try {
@@ -256,7 +253,30 @@ const Dashboard = () => {
     } catch (error: any) {
       console.error("Fehler beim Aktualisieren der Migration:", error);
     }
+  }, [selectedMigration, loadMigrationDetails]);
+
+  const handleStepRunningChange = (migrationId: string, isRunning: boolean) => {
+    setProcessingMigrationId(isRunning ? migrationId : null);
   };
+
+  useEffect(() => {
+    const stopPolling = () => {
+      if (pollingIntervalRef.current) {
+        clearInterval(pollingIntervalRef.current);
+        pollingIntervalRef.current = null;
+      }
+    };
+
+    if (processingMigrationId) {
+      pollingIntervalRef.current = setInterval(() => {
+        refreshCurrentMigration();
+      }, 3000);
+    } else {
+      stopPolling();
+    }
+
+    return stopPolling;
+  }, [processingMigrationId, refreshCurrentMigration]);
 
   // Load more migrations (infinite scroll)
   const handleLoadMoreMigrations = useCallback(async () => {

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import sys
 from datetime import datetime, timezone
 from typing import Any, Dict, Optional, Union
@@ -878,7 +879,10 @@ async def update_migration(id: str, payload: UpdateMigrationPayload) -> Migratio
             payload_dict = payload.model_dump(exclude_none=True)
             for field, value in payload_dict.items():
                 updates.append(f"{field} = %s")
-                params.append(value)
+                if isinstance(value, dict):
+                    params.append(json.dumps(value))
+                else:
+                    params.append(value)
             
             if not updates:
                 raise HTTPException(status_code=400, detail="No fields to update.")
@@ -1116,7 +1120,6 @@ async def create_connectors(payloads: list[CreateConnectorPayload]) -> list[Conn
         connectors: list[Connector] = []
         with _get_db_connection() as conn, conn.cursor() as cur:
             for payload in payloads:
-                import json
                 additional_config_json = json.dumps(payload.additional_config) if payload.additional_config else None
                 
                 cur.execute(
@@ -1219,8 +1222,7 @@ async def update_connector(
             if payload:
                 payload_dict = payload.model_dump(exclude_none=True)
                 for field, value in payload_dict.items():
-                    if field == "additional_config" and value is not None:
-                        import json
+                    if isinstance(value, dict):
                         updates.append(f"{field} = %s")
                         params.append(json.dumps(value))
                     else:
@@ -1692,7 +1694,7 @@ async def enqueue_migration_step(payload: RunStepRequest) -> dict[str, Any]:
                 VALUES (%s, %s, 'pending')
                 RETURNING id
                 """,
-                (step_row["id"], payload.model_dump()),
+                (step_row["id"], json.dumps(payload.model_dump())),
             )
             job_row = cur.fetchone()
 

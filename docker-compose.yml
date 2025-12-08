@@ -25,6 +25,7 @@ services:
       - .env.local
     environment:
       DATABASE_URL: "postgresql://celion:celion@postgres-db:5432/celion"
+      INTERNAL_BACKEND_URL: "http://backend:8000"
     volumes:
       - .:/app
       - worker_node_modules:/app/node_modules
