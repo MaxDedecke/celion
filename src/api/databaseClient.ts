@@ -205,6 +205,8 @@ export const databaseClient = {
 
   fetchMigrationActivities: (migrationId: string) => fetchFromApi<Tables<"migration_activities">[]>(`/migration_activities?migration_id=eq.${migrationId}`),
 
+  fetchMigrationSteps: (migrationId: string) => fetchFromApi<any[]>(`/migration_steps?migration_id=${migrationId}`),
+
   fetchConnectorsByMigration: (migrationId: string) => fetchFromApi<Tables<"connectors">[]>(`/connectors?migration_id=eq.${migrationId}`),
 
   fetchConnectorByType: async (migrationId: string, connectorType: "in" | "out") => {

@@ -26,11 +26,40 @@ services:
     environment:
       DATABASE_URL: "postgresql://celion:celion@postgres-db:5432/celion"
       INTERNAL_BACKEND_URL: "http://backend:8000"
+      RABBITMQ_HOST: rabbitmq
     volumes:
       - .:/app
       - worker_node_modules:/app/node_modules
     depends_on:
-      - backend
+      backend:
+        condition: service_started
+      rabbitmq:
+        condition: service_healthy
+    
+    networks:
+      - celion-net
+
+  migration_worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.migration_worker
+    env_file:
+      - .env
+      - .env.local
+    environment:
+      POSTGRES_DB: celion
+      POSTGRES_USER: celion
+      POSTGRES_PASSWORD: celion
+      POSTGRES_HOST: postgres-db
+      POSTGRES_PORT: 5432
+      RABBITMQ_HOST: rabbitmq
+    volumes:
+      - .:/app
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
     networks:
       - celion-net
 
@@ -49,10 +78,13 @@ services:
       POSTGRES_PASSWORD: celion
       POSTGRES_HOST: postgres-db
       POSTGRES_PORT: 5432
+      RABBITMQ_HOST: rabbitmq
     volumes:
       - .:/app
     depends_on:
       postgres-db:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     networks:
       - celion-net
@@ -109,6 +141,24 @@ services:
       postgres-db:
         condition: service_healthy
 
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: celion
+      RABBITMQ_DEFAULT_PASS: celion
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq/
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "is_running"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - celion-net
+
   portainer:
     image: portainer/portainer-ce:latest
     ports:
@@ -130,3 +180,4 @@ volumes:
   celion_postgres_data:
   portainer_data:
   celion_neo4j_data:
+  rabbitmq_data:

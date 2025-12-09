@@ -6,3 +6,5 @@ uvicorn
 # Ensure psycopg is available even if optional extras are skipped during image builds.
 psycopg==3.1.19
 psycopg-binary==3.1.19
+# For RabbitMQ communication
+pika

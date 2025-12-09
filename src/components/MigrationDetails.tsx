@@ -549,7 +549,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
   const inProgressNode = useMemo(() => workflowBoard.nodes.find(node => node.status === 'in-progress'), [workflowBoard.nodes]);
 
   useEffect(() => {
-    if (!inProgressNode || !inProgressNode.databaseId) {
+    if (!inProgressNode) {
       return;
     }
 
@@ -558,36 +558,39 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
       if (isCancelled) return;
 
       try {
-        const statusResponse = await fetch(`/api/v2/migrations/step-status?stepId=${inProgressNode.databaseId}`);
+        const response = await databaseClient.fetchMigrationSteps(project.id);
         if (isCancelled) return;
 
-        if (statusResponse.ok) {
-          const stepResult = await statusResponse.json();
-          const isDone = stepResult.status === 'done' || stepResult.status === 'completed' || stepResult.status === 'failed';
+        if (response.data) {
+          const remoteStep = response.data.find(s => s.workflow_step_id === inProgressNode.id);
+          
+          if (remoteStep) {
+            const isDone = remoteStep.status === 'completed' || remoteStep.status === 'failed';
 
-          if (isDone) {
-            setWorkflowBoard(prev => {
-              const newNodes = prev.nodes.map(node => {
-                if (node.id === inProgressNode.id) {
-                  return {
-                    ...node,
-                    status: 'done',
-                    agentResult: stepResult.result || { error: stepResult.status_message },
-                  };
-                }
-                return node;
+            if (isDone) {
+              setWorkflowBoard(prev => {
+                const newNodes = prev.nodes.map(node => {
+                  if (node.id === inProgressNode.id) {
+                    return {
+                      ...node,
+                      status: 'done',
+                      agentResult: remoteStep.result || { error: remoteStep.status_message },
+                    };
+                  }
+                  return node;
+                });
+                const newState = { ...prev, nodes: newNodes };
+                cacheWorkflowStateSnapshot(project.id, newState);
+                return newState;
               });
-              const newState = { ...prev, nodes: newNodes };
-              cacheWorkflowStateSnapshot(project.id, newState);
-              return newState;
-            });
+            }
           }
-        } else if (statusResponse.status !== 404) { // Don't log for 404s, which can happen before the step is ready
-          console.error(`Error polling for step ${inProgressNode.databaseId}. Status: ${statusResponse.status}`);
+        } else if (response.error) {
+          console.error(`Error polling for steps for migration ${project.id}.`, response.error);
         }
       } catch (error) {
         if (isCancelled) return;
-        console.error(`Error during polling for step ${inProgressNode.databaseId}:`, error);
+        console.error(`Error during polling for migration ${project.id}:`, error);
       }
     }, 3000); // Poll every 3 seconds
 
@@ -643,61 +646,49 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
   );
 
   useEffect(() => {
+    const loadInitialSteps = async () => {
+      try {
+        const { data: stepsData, error } = await databaseClient.fetchMigrationSteps(project.id);
+        if (error) throw error;
+
+        if (stepsData && stepsData.length > 0) {
+          const nodes = stepsData.map(step => ({
+            id: step.workflow_step_id,
+            databaseId: step.id,
+            title: step.name,
+            status: step.status === "completed" ? "done" : step.status,
+            agentResult: step.result || (step.status === 'failed' ? { error: step.status_message } : undefined),
+            // Sensible defaults for other properties
+            active: true,
+            priority: 0, 
+            description: AGENT_WORKFLOW_STEPS.find(s => s.id === step.workflow_step_id)?.description || "",
+            agentType: AGENT_WORKFLOW_STEPS.find(s => s.id === step.workflow_step_id)?.agentType || "",
+            color: AGENT_WORKFLOW_STEPS.find(s => s.id === step.workflow_step_id)?.color || "sky",
+          }));
+
+          const boardState: WorkflowBoardState = {
+            nodes: normalizeWorkflowState({ nodes, connections: [] }).nodes,
+            connections: [],
+          };
+          setWorkflowBoard(boardState);
+          cacheWorkflowStateSnapshot(project.id, boardState);
+        } else {
+          // Fallback to default if no steps are in the DB
+          setWorkflowBoard(createDefaultWorkflowBoard());
+        }
+      } catch (err) {
+        console.error("Failed to load migration steps from database, falling back to default.", err);
+        setWorkflowBoard(createDefaultWorkflowBoard());
+      }
+    };
+
     setNotes(project.notes ?? "");
     setStatus(project.status ?? "not_started");
     setActivityLog((project.activities ?? []).map(normalizeActivity));
+    loadInitialSteps();
 
-    if (!applyWorkflowState(project.workflowState)) {
-      const cachedState = loadCachedWorkflowState(project.id);
-      if (cachedState) {
-        setWorkflowBoard(normalizeWorkflowState(cachedState));
-      } else {
-        setWorkflowBoard(createDefaultWorkflowBoard());
-      }
-    }
-  }, [
-    project.activities,
-    project.id,
-    project.notes,
-    project.status,
-    project.workflowState,
-    normalizeActivity,
-    applyWorkflowState,
-    normalizeWorkflowState,
-  ]);
+  }, [project.id, project.notes, project.status, project.activities, normalizeActivity, normalizeWorkflowState]);
 
-  useEffect(() => {
-    let isCancelled = false;
-
-    const fetchWorkflowState = async () => {
-      try {
-        const { data, error } = await databaseClient.fetchMigrationById(project.id);
-
-        if (error) {
-          throw error;
-        }
-
-        if (!isCancelled) {
-          if (data?.workflow_state && applyWorkflowState(data.workflow_state)) {
-            return;
-          }
-
-          const cachedState = loadCachedWorkflowState(project.id);
-          if (cachedState) {
-            setWorkflowBoard(normalizeWorkflowState(cachedState));
-          }
-        }
-      } catch (error) {
-        console.error("Fehler beim Nachladen des Workflow-Status:", error);
-      }
-    };
-
-    void fetchWorkflowState();
-
-    return () => {
-      isCancelled = true;
-    };
-  }, [project.id, applyWorkflowState, normalizeWorkflowState]);
 
 
 

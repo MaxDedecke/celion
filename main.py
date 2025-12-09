@@ -18,6 +18,7 @@ from fastapi import FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl
 from starlette.concurrency import run_in_threadpool
+import pika
 
 
 LEGACY_MESSAGE = "The legacy Python-based agents have been removed in favor of the frontend implementation."
@@ -31,6 +32,32 @@ app.add_middleware(
     allow_headers=["*"],
     expose_headers=["X-Total-Count"],
 )
+
+
+def publish_to_rabbitmq(job_id: int):
+    """Publish a job ID to the RabbitMQ task queue."""
+    try:
+        rabbitmq_host = os.getenv("RABBITMQ_HOST", "localhost")
+        connection = pika.BlockingConnection(pika.ConnectionParameters(host=rabbitmq_host))
+        channel = connection.channel()
+
+        queue_name = 'migration_tasks'
+        channel.queue_declare(queue=queue_name, durable=True)
+
+        message = json.dumps({'job_id': job_id})
+        channel.basic_publish(
+            exchange='',
+            routing_key=queue_name,
+            body=message,
+            properties=pika.BasicProperties(
+                delivery_mode=2,  # make message persistent
+            ))
+        print(f" [x] Sent job '{job_id}' to RabbitMQ")
+        connection.close()
+    except Exception as e:
+        # If RabbitMQ fails, we don't want to fail the whole request,
+        # but we should log it. The DB-polling worker could still pick it up.
+        print(f" [!] Failed to send job '{job_id}' to RabbitMQ: {e}", file=sys.stderr)
 
 
 def _get_db_connection() -> psycopg.Connection:
@@ -522,6 +549,55 @@ class MigrationActivity(BaseModel):
     title: str
     timestamp: str
     created_at: Optional[str] = None
+
+
+class MigrationStep(BaseModel):
+    """Pydantic model for a migration step."""
+    id: str
+    migration_id: str
+    workflow_step_id: str
+    name: str
+    status: str
+    status_message: Optional[str] = None
+    result: Optional[dict] = None
+    created_at: str
+    updated_at: Optional[str] = None
+
+
+@app.get("/api/migration_steps", response_model=list[MigrationStep])
+async def get_migration_steps(
+    migration_id: str,
+) -> list[MigrationStep]:
+    """Fetch all steps for a given migration from the database."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            
+            cur.execute(
+                "SELECT id, migration_id, workflow_step_id, name, status, status_message, result, created_at, updated_at FROM public.migration_steps WHERE migration_id = %s ORDER BY created_at ASC",
+                (migration_id,),
+            )
+            step_rows = cur.fetchall()
+
+            steps = [
+                MigrationStep(
+                    id=str(row["id"]),
+                    migration_id=str(row["migration_id"]),
+                    workflow_step_id=row["workflow_step_id"],
+                    name=row["name"],
+                    status=row["status"],
+                    status_message=row["status_message"],
+                    result=row["result"],
+                    created_at=row["created_at"].isoformat(),
+                    updated_at=row["updated_at"].isoformat() if row["updated_at"] else None,
+                )
+                for row in step_rows
+            ]
+            
+            return steps
+            
+    except Exception as exc:
+        print(f"Error fetching migration steps: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to fetch migration steps.") from exc
 
 
 class CreateMigrationActivityPayload(BaseModel):
@@ -1700,6 +1776,9 @@ async def enqueue_migration_step(payload: RunStepRequest) -> dict[str, Any]:
                 (step_row["id"], json.dumps(payload.model_dump())),
             )
             job_row = cur.fetchone()
+
+            if job_row:
+                publish_to_rabbitmq(job_row["id"])
 
             conn.commit()
 
