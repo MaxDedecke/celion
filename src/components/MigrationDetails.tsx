@@ -10,7 +10,7 @@ import type {
   SystemDetectionStepResult,
 } from "@/types/agents";
 import type { MigrationStatus } from "@/types/migration";
-import type { WorkflowBoardState, WorkflowNode } from "@/types/workflow";
+import type { WorkflowBoardState, WorkflowNode, WorkflowNodeStatus } from "@/types/workflow";
 import WorkflowPanelDialog from "./dialogs/WorkflowPanelDialog";
 import type { Activity } from "./ActivityTimeline";
 import AgentResultDialog from "./migration/AgentResultDialog";
@@ -573,13 +573,13 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
                   if (node.id === inProgressNode.id) {
                     return {
                       ...node,
-                      status: 'done',
+                      status: 'done' as const,
                       agentResult: remoteStep.result || { error: remoteStep.status_message },
                     };
                   }
                   return node;
                 });
-                const newState = { ...prev, nodes: newNodes };
+                const newState: WorkflowBoardState = { ...prev, nodes: newNodes };
                 cacheWorkflowStateSnapshot(project.id, newState);
                 return newState;
               });
@@ -652,19 +652,25 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         if (error) throw error;
 
         if (stepsData && stepsData.length > 0) {
-          const nodes = stepsData.map(step => ({
-            id: step.workflow_step_id,
-            databaseId: step.id,
-            title: step.name,
-            status: step.status === "completed" ? "done" : step.status,
-            agentResult: step.result || (step.status === 'failed' ? { error: step.status_message } : undefined),
-            // Sensible defaults for other properties
-            active: true,
-            priority: 0, 
-            description: AGENT_WORKFLOW_STEPS.find(s => s.id === step.workflow_step_id)?.description || "",
-            agentType: AGENT_WORKFLOW_STEPS.find(s => s.id === step.workflow_step_id)?.agentType || "",
-            color: AGENT_WORKFLOW_STEPS.find(s => s.id === step.workflow_step_id)?.color || "sky",
-          }));
+          const nodes: WorkflowNode[] = stepsData.map(step => {
+            const stepConfig = AGENT_WORKFLOW_STEPS.find(s => s.id === step.workflow_step_id);
+            const mappedStatus: WorkflowNodeStatus = step.status === "completed" ? "done" : 
+              (step.status === "in_progress" ? "in-progress" : "pending");
+            return {
+              id: step.workflow_step_id,
+              databaseId: step.id,
+              title: step.name,
+              status: mappedStatus,
+              agentResult: step.result || (step.status === 'failed' ? { error: step.status_message } : undefined),
+              active: true,
+              priority: 0, 
+              description: stepConfig?.description || "",
+              agentType: stepConfig?.agentType || "",
+              color: stepConfig?.color || "sky",
+              x: 0,
+              y: 0,
+            };
+          });
 
           const boardState: WorkflowBoardState = {
             nodes: normalizeWorkflowState({ nodes, connections: [] }).nodes,

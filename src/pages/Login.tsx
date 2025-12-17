@@ -1,6 +1,7 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DataFlowLoader from "@/components/DataFlowLoader";
+import LoginBackground from "@/components/LoginBackground";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Logo from "@/components/Logo";
@@ -117,6 +118,9 @@ const Login = () => {
 
   return (
     <div className="app-shell relative flex items-center justify-center px-6 py-16">
+      {/* Animated migration background */}
+      <LoginBackground />
+      
       {loaderVisible && (
         <div className="absolute inset-0 z-20 flex items-center justify-center bg-background/85 backdrop-blur-md transition-opacity">
           <DataFlowLoader size="lg" />
