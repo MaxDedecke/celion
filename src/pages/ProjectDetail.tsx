@@ -325,7 +325,7 @@ const ProjectDetail = () => {
       toast.success(`Migration "${name}" erstellt`);
       setShowAddMigrationDialog(false);
 
-      await Promise.all([loadSidebarData(), loadProjectData(projectName)]);
+      await Promise.all([loadSidebarData(), loadProjectData(projectId!)]);
 
       if (projectIdForNewMigration) {
         navigate(`/projects/${projectIdForNewMigration}/migration/${migration.id}`);
@@ -353,7 +353,7 @@ const ProjectDetail = () => {
       toast.success("Migration gelöscht");
       setShowDeleteDialog(false);
       setMigrationToDelete(null);
-      await Promise.all([loadSidebarData(), loadProjectData(projectName)]);
+      await Promise.all([loadSidebarData(), loadProjectData(projectId!)]);
     } catch (error) {
       console.error(error);
       toast.error("Fehler beim Löschen der Migration");
@@ -372,7 +372,7 @@ const ProjectDetail = () => {
       const duplicated = await duplicateMigration(migrationId, { existingNames });
 
       toast.success(`Migration "${duplicated.name}" dupliziert`);
-      await Promise.all([loadSidebarData(), loadProjectData(projectName)]);
+      await Promise.all([loadSidebarData(), loadProjectData(projectId!)]);
 
       if (duplicated.project_id) {
         navigate(`/projects/${duplicated.project_id}/migration/${duplicated.id}`);
@@ -406,7 +406,7 @@ const ProjectDetail = () => {
       toast.success(`Migration aktualisiert auf "${name}"`);
       setShowEditMigrationDialog(false);
       setEditingMigration(null);
-      await Promise.all([loadSidebarData(), loadProjectData(projectName)]);
+      await Promise.all([loadSidebarData(), loadProjectData(projectId!)]);
     } catch (error) {
       console.error(error);
       toast.error("Fehler beim Aktualisieren der Migration");
