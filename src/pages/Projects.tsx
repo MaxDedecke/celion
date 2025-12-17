@@ -40,7 +40,7 @@ const Projects = () => {
   const [showAccountDialog, setShowAccountDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [showAddMigrationDialog, setShowAddMigrationDialog] = useState(false);
-  const [activeDialogTab, setActiveDialogTab] = useState<"account" | "settings">("account");
+  
   const [projects, setProjects] = useState<any[]>([]);
   const [migrations, setMigrations] = useState<any[]>([]);
   const [standaloneMigrations, setStandaloneMigrations] = useState<any[]>([]);
@@ -414,14 +414,7 @@ const Projects = () => {
               </div>
             </div>
             <UserMenu
-              onAccountClick={() => {
-                setActiveDialogTab("account");
-                setShowAccountDialog(true);
-              }}
-              onSettingsClick={() => {
-                setActiveDialogTab("settings");
-                setShowAccountDialog(true);
-              }}
+              onSettingsClick={() => setShowAccountDialog(true)}
               onLogout={handleLogout}
             />
           </header>
@@ -520,7 +513,6 @@ const Projects = () => {
       <AccountDialog
         open={showAccountDialog}
         onOpenChange={setShowAccountDialog}
-        activeTab={activeDialogTab}
       />
 
       <AddProjectDialog

@@ -98,7 +98,7 @@ const Dashboard = () => {
   const [selectedMigration, setSelectedMigration] = useState<string | null>(migrationId || null);
   const [showAccountDialog, setShowAccountDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
-  const [activeDialogTab, setActiveDialogTab] = useState<"account" | "settings">("account");
+  
   const [migrations, setMigrations] = useState<any[]>([]);
   const [standaloneMigrations, setStandaloneMigrations] = useState<any[]>([]);
   const [allProjects, setAllProjects] = useState<any[]>([]);
@@ -771,14 +771,7 @@ const Dashboard = () => {
                     </PopoverContent>
                   </Popover>
                   <UserMenu
-                    onAccountClick={() => {
-                      setActiveDialogTab("account");
-                      setShowAccountDialog(true);
-                    }}
-                    onSettingsClick={() => {
-                      setActiveDialogTab("settings");
-                      setShowAccountDialog(true);
-                    }}
+                    onSettingsClick={() => setShowAccountDialog(true)}
                     onLogout={handleLogout}
                   />
                 </div>
@@ -790,14 +783,7 @@ const Dashboard = () => {
                   <p className="text-sm text-muted-foreground">Eine kompakte Übersicht deiner Migrationen.</p>
                 </div>
                 <UserMenu
-                  onAccountClick={() => {
-                    setActiveDialogTab("account");
-                    setShowAccountDialog(true);
-                  }}
-                  onSettingsClick={() => {
-                    setActiveDialogTab("settings");
-                    setShowAccountDialog(true);
-                  }}
+                  onSettingsClick={() => setShowAccountDialog(true)}
                   onLogout={handleLogout}
                 />
               </>
@@ -1060,7 +1046,6 @@ const Dashboard = () => {
       <AccountDialog
         open={showAccountDialog}
         onOpenChange={setShowAccountDialog}
-        activeTab={activeDialogTab}
       />
       <AddMigrationDialog
         open={showAddDialog}
