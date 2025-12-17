@@ -1,182 +1,121 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import {
   Dialog,
   DialogContent,
-  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/hooks/use-toast";
-import { Moon, Sun, Bell, Globe, Pencil } from "lucide-react";
+import { Moon, Sun, Bell, Globe } from "lucide-react";
 import { useTheme } from "next-themes";
 
 interface AccountDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  activeTab?: "account" | "settings";
 }
 
-const AccountDialog = ({ open, onOpenChange, activeTab = "account" }: AccountDialogProps) => {
-  const [name, setName] = useState("Max Musterman");
-  const [role, setRole] = useState("Consultant");
+const AccountDialog = ({ open, onOpenChange }: AccountDialogProps) => {
+  const [name] = useState("Max Musterman");
+  const [role] = useState("Consultant");
   const [notifications, setNotifications] = useState(true);
   const [emailUpdates, setEmailUpdates] = useState(false);
-  const [currentTab, setCurrentTab] = useState(activeTab);
   const { theme, setTheme } = useTheme();
-
-  // Update tab when activeTab prop changes
-  useEffect(() => {
-    setCurrentTab(activeTab);
-  }, [activeTab]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-popover border-border max-w-xl min-h-[520px]">
+      <DialogContent className="bg-popover border-border max-w-md">
         <DialogHeader>
-          <DialogTitle>Account & Settings</DialogTitle>
-          <DialogDescription>
-            Manage your account settings, preferences, and more.
-          </DialogDescription>
+          <DialogTitle className="sr-only">Account & Einstellungen</DialogTitle>
         </DialogHeader>
-        <Tabs
-          value={currentTab}
-          onValueChange={(value) => setCurrentTab(value as "account" | "settings")}
-          className="w-full"
-        >
-          <TabsList className="inline-flex items-center gap-2 rounded-full bg-foreground/5 p-1 text-sm">
-            <TabsTrigger
-              value="account"
-              className="rounded-full px-4 py-2 text-sm font-medium text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[state=active]:bg-background data-[state=active]:text-accent"
-            >
-              Account
-            </TabsTrigger>
-            <TabsTrigger
-              value="settings"
-              className="rounded-full px-4 py-2 text-sm font-medium text-muted-foreground transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background data-[state=active]:bg-background data-[state=active]:text-accent"
-            >
-              Settings
-            </TabsTrigger>
-          </TabsList>
-          <TabsContent value="account" className="space-y-6 py-6">
-            <div className="flex flex-col items-center gap-4">
-              <Avatar className="h-24 w-24">
-                <AvatarFallback className="bg-primary text-primary-foreground text-3xl">
-                  {name.split(" ").map(n => n[0]).join("")}
-                </AvatarFallback>
-              </Avatar>
-              
-              <div className="w-full space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="name">Name</Label>
-                  <div className="relative">
-                    <Input
-                      id="name"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      disabled
-                      className="pr-10"
-                    />
-                    <Pencil className="pointer-events-none absolute inset-y-0 right-3 my-auto h-4 w-4 text-muted-foreground/50" />
-                  </div>
-                </div>
+        
+        {/* Profile Section */}
+        <div className="flex items-center gap-4 pb-6 border-b border-border">
+          <Avatar className="h-16 w-16">
+            <AvatarFallback className="bg-primary text-primary-foreground text-xl">
+              {name.split(" ").map(n => n[0]).join("")}
+            </AvatarFallback>
+          </Avatar>
+          <div>
+            <h3 className="font-medium text-foreground">{name}</h3>
+            <p className="text-sm text-muted-foreground">{role}</p>
+          </div>
+        </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="role">Rolle</Label>
-                  <div className="relative">
-                    <Input
-                      id="role"
-                      value={role}
-                      onChange={(e) => setRole(e.target.value)}
-                      disabled
-                      className="pr-10"
-                    />
-                    <Pencil className="pointer-events-none absolute inset-y-0 right-3 my-auto h-4 w-4 text-muted-foreground/50" />
-                  </div>
-                </div>
-              </div>
+        {/* Settings Section */}
+        <div className="space-y-4 pt-2">
+          {/* Theme Toggle */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              {theme === "dark" ? (
+                <Moon className="h-4 w-4 text-muted-foreground" />
+              ) : (
+                <Sun className="h-4 w-4 text-muted-foreground" />
+              )}
+              <Label htmlFor="theme" className="cursor-pointer font-normal">
+                Dark Mode
+              </Label>
             </div>
-          </TabsContent>
-          <TabsContent value="settings" className="py-6 space-y-6">
-            <div className="space-y-6">
-              <div className="space-y-4">
-                <h3 className="text-sm font-medium">Darstellung</h3>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    {theme === "dark" ? (
-                      <Moon className="h-4 w-4" />
-                    ) : (
-                      <Sun className="h-4 w-4" />
-                    )}
-                    <Label htmlFor="theme" className="cursor-pointer">
-                      Dark Mode
-                    </Label>
-                  </div>
-                  <Switch
-                    id="theme"
-                    checked={theme === "dark"}
-                    onCheckedChange={(checked) => {
-                      setTheme(checked ? "dark" : "light");
-                      toast({
-                        title: "Theme geändert",
-                        description: `${checked ? "Dark" : "Light"} Mode aktiviert.`,
-                      });
-                    }}
-                  />
-                </div>
-              </div>
+            <Switch
+              id="theme"
+              checked={theme === "dark"}
+              onCheckedChange={(checked) => {
+                setTheme(checked ? "dark" : "light");
+                toast({
+                  title: `${checked ? "Dark" : "Light"} Mode aktiviert`,
+                });
+              }}
+            />
+          </div>
 
-              <div className="space-y-4">
-                <h3 className="text-sm font-medium">Benachrichtigungen</h3>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Bell className="h-4 w-4" />
-                    <Label htmlFor="notifications" className="cursor-pointer">
-                      Push-Benachrichtigungen
-                    </Label>
-                  </div>
-                  <Switch
-                    id="notifications"
-                    checked={notifications}
-                    onCheckedChange={(checked) => {
-                      setNotifications(checked);
-                      toast({
-                        title: checked ? "Benachrichtigungen aktiviert" : "Benachrichtigungen deaktiviert",
-                      });
-                    }}
-                  />
-                </div>
-                <div className="flex items-center justify-between">
-                  <Label htmlFor="email-updates" className="cursor-pointer">
-                    E-Mail Updates
-                  </Label>
-                  <Switch
-                    id="email-updates"
-                    checked={emailUpdates}
-                    onCheckedChange={(checked) => {
-                      setEmailUpdates(checked);
-                      toast({
-                        title: checked ? "E-Mail Updates aktiviert" : "E-Mail Updates deaktiviert",
-                      });
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <h3 className="text-sm font-medium">Sprache & Region</h3>
-                <div className="flex items-center gap-2">
-                  <Globe className="h-4 w-4" />
-                  <span className="text-sm text-muted-foreground">Deutsch (Deutschland)</span>
-                </div>
-              </div>
+          {/* Notifications Toggle */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Bell className="h-4 w-4 text-muted-foreground" />
+              <Label htmlFor="notifications" className="cursor-pointer font-normal">
+                Push-Benachrichtigungen
+              </Label>
             </div>
-          </TabsContent>
-        </Tabs>
+            <Switch
+              id="notifications"
+              checked={notifications}
+              onCheckedChange={(checked) => {
+                setNotifications(checked);
+                toast({
+                  title: checked ? "Benachrichtigungen aktiviert" : "Benachrichtigungen deaktiviert",
+                });
+              }}
+            />
+          </div>
+
+          {/* Email Updates Toggle */}
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <span className="w-4" /> {/* Spacer for alignment */}
+              <Label htmlFor="email-updates" className="cursor-pointer font-normal text-muted-foreground">
+                E-Mail Updates
+              </Label>
+            </div>
+            <Switch
+              id="email-updates"
+              checked={emailUpdates}
+              onCheckedChange={(checked) => {
+                setEmailUpdates(checked);
+                toast({
+                  title: checked ? "E-Mail Updates aktiviert" : "E-Mail Updates deaktiviert",
+                });
+              }}
+            />
+          </div>
+
+          {/* Language Info */}
+          <div className="flex items-center gap-3 pt-2 border-t border-border">
+            <Globe className="h-4 w-4 text-muted-foreground" />
+            <span className="text-sm text-muted-foreground">Deutsch (Deutschland)</span>
+          </div>
+        </div>
       </DialogContent>
     </Dialog>
   );

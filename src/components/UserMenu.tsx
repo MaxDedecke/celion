@@ -1,4 +1,4 @@
-import { User, Settings, LogOut } from "lucide-react";
+import { Settings, LogOut } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,12 +9,11 @@ import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 
 interface UserMenuProps {
-  onAccountClick: () => void;
   onSettingsClick: () => void;
   onLogout: () => void;
 }
 
-const UserMenu = ({ onAccountClick, onSettingsClick, onLogout }: UserMenuProps) => {
+const UserMenu = ({ onSettingsClick, onLogout }: UserMenuProps) => {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
@@ -28,13 +27,9 @@ const UserMenu = ({ onAccountClick, onSettingsClick, onLogout }: UserMenuProps) 
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-48 bg-popover border-border">
-        <DropdownMenuItem onClick={onAccountClick} className="cursor-pointer">
-          <User className="mr-2 h-4 w-4" />
-          Account
-        </DropdownMenuItem>
         <DropdownMenuItem onClick={onSettingsClick} className="cursor-pointer">
           <Settings className="mr-2 h-4 w-4" />
-          Settings
+          Einstellungen
         </DropdownMenuItem>
         <DropdownMenuItem onClick={onLogout} className="cursor-pointer">
           <LogOut className="mr-2 h-4 w-4" />

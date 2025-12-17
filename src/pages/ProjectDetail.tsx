@@ -68,7 +68,7 @@ const ProjectDetail = () => {
   const loaderVisible = useMinimumLoader(loading || transitioning, 900);
 
   const [showAccountDialog, setShowAccountDialog] = useState(false);
-  const [activeDialogTab, setActiveDialogTab] = useState<"account" | "settings">("account");
+  
   const [showAddMigrationDialog, setShowAddMigrationDialog] = useState(false);
   const [showEditMigrationDialog, setShowEditMigrationDialog] = useState(false);
   const [editingMigration, setEditingMigration] = useState<SidebarMigration | null>(null);
@@ -486,14 +486,7 @@ const ProjectDetail = () => {
                 Neue Migration
               </Button>
               <UserMenu
-                onAccountClick={() => {
-                  setActiveDialogTab("account");
-                  setShowAccountDialog(true);
-                }}
-                onSettingsClick={() => {
-                  setActiveDialogTab("settings");
-                  setShowAccountDialog(true);
-                }}
+                onSettingsClick={() => setShowAccountDialog(true)}
                 onLogout={handleLogout}
               />
             </div>
@@ -609,7 +602,7 @@ const ProjectDetail = () => {
         </div>
       </div>
 
-      <AccountDialog open={showAccountDialog} onOpenChange={setShowAccountDialog} activeTab={activeDialogTab} />
+      <AccountDialog open={showAccountDialog} onOpenChange={setShowAccountDialog} />
 
       <AddMigrationDialog
         open={showAddMigrationDialog}
