@@ -6,10 +6,13 @@ import json
 def get_rabbitmq_connection():
     """Establishes a connection to RabbitMQ, retrying if necessary."""
     rabbitmq_host = os.getenv("RABBITMQ_HOST", "localhost")
+    rabbitmq_user = os.getenv("RABBITMQ_DEFAULT_USER", "guest")
+    rabbitmq_pass = os.getenv("RABBITMQ_DEFAULT_PASS", "guest")
+    credentials = pika.PlainCredentials(rabbitmq_user, rabbitmq_pass)
     connection_attempts = 10
     for i in range(connection_attempts):
         try:
-            connection = pika.BlockingConnection(pika.ConnectionParameters(host=rabbitmq_host))
+            connection = pika.BlockingConnection(pika.ConnectionParameters(host=rabbitmq_host, credentials=credentials))
             print("Successfully connected to RabbitMQ.")
             return connection
         except pika.exceptions.AMQPConnectionError as e:

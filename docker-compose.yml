@@ -1,3 +1,10 @@
+x-postgres-config: &postgres-config
+  POSTGRES_DB: celion
+  POSTGRES_USER: celion
+  POSTGRES_PASSWORD: celion
+  POSTGRES_HOST: postgres-db
+  POSTGRES_PORT: 5432
+
 services:
   frontend:
     build:
@@ -40,6 +47,8 @@ services:
       - celion-net
 
   migration_worker:
+    # Startet nur explizit mit: docker compose --profile tools up migration_worker
+    profiles: ["tools"]
     build:
       context: .
       dockerfile: Dockerfile.migration_worker
@@ -47,12 +56,10 @@ services:
       - .env
       - .env.local
     environment:
-      POSTGRES_DB: celion
-      POSTGRES_USER: celion
-      POSTGRES_PASSWORD: celion
-      POSTGRES_HOST: postgres-db
-      POSTGRES_PORT: 5432
+      <<: *postgres-config
       RABBITMQ_HOST: rabbitmq
+      RABBITMQ_DEFAULT_USER: celion
+      RABBITMQ_DEFAULT_PASS: celion
     volumes:
       - .:/app
     depends_on:
@@ -73,11 +80,7 @@ services:
       - .env
       - .env.local
     environment:
-      POSTGRES_DB: celion
-      POSTGRES_USER: celion
-      POSTGRES_PASSWORD: celion
-      POSTGRES_HOST: postgres-db
-      POSTGRES_PORT: 5432
+      <<: *postgres-config
       RABBITMQ_HOST: rabbitmq
     volumes:
       - .:/app
@@ -127,7 +130,8 @@ services:
       KEYCLOAK_ADMIN_PASSWORD: admin
       KC_DB: postgres
       KC_DB_URL_HOST: postgres-db
-      KC_DB_URL_DATABASE: celion
+      # Empfehlung: Eigene DB für Keycloak nutzen, um Konflikte mit App-Tabellen zu vermeiden
+      KC_DB_URL_DATABASE: keycloak
       KC_DB_USERNAME: celion
       KC_DB_PASSWORD: celion
     ports:

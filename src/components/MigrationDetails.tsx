@@ -568,22 +568,29 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
             const isDone = remoteStep.status === 'completed' || remoteStep.status === 'failed';
 
             if (isDone) {
-              setWorkflowBoard(prev => {
-                const newNodes = prev.nodes.map(node => {
-                  if (node.id === inProgressNode.id) {
-                    return {
-                      ...node,
-                      status: 'done' as const,
-                      agentResult: remoteStep.result || { error: remoteStep.status_message },
-                    };
-                  }
-                  return node;
+                isCancelled = true;
+                clearInterval(pollInterval);
+                
+                setWorkflowBoard(prev => {
+                  const newNodes = prev.nodes.map(node => {
+                    if (node.id === inProgressNode.id) {
+                      return {
+                        ...node,
+                        status: 'done' as const,
+                        agentResult: remoteStep.result || { error: remoteStep.status_message },
+                      };
+                    }
+                    return node;
+                  });
+                  const newState: WorkflowBoardState = { ...prev, nodes: newNodes };
+                  cacheWorkflowStateSnapshot(project.id, newState);
+                  return newState;
                 });
-                const newState: WorkflowBoardState = { ...prev, nodes: newNodes };
-                cacheWorkflowStateSnapshot(project.id, newState);
-                return newState;
-              });
-            }
+
+                // Create result activity & refresh data to show updates in UI
+                await createViewResultActivity(inProgressNode, remoteStep.status === 'failed');
+                await onRefresh();
+              }
           }
         } else if (response.error) {
           console.error(`Error polling for steps for migration ${project.id}.`, response.error);
@@ -598,7 +605,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
       isCancelled = true;
       clearInterval(pollInterval);
     };
-  }, [inProgressNode, project.id, setWorkflowBoard]);
+  }, [inProgressNode, project.id, setWorkflowBoard, onRefresh, createViewResultActivity]);
 
   const handleAgentResultDialogOpenChange = useCallback((open: boolean) => {
     if (!open) {
@@ -646,6 +653,8 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
   );
 
   useEffect(() => {
+    if (isStepRunning) return;
+
     const loadInitialSteps = async () => {
       try {
         const { data: stepsData, error } = await databaseClient.fetchMigrationSteps(project.id);
@@ -693,7 +702,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
     setActivityLog((project.activities ?? []).map(normalizeActivity));
     loadInitialSteps();
 
-  }, [project.id, project.notes, project.status, project.activities, normalizeActivity, normalizeWorkflowState]);
+  }, [project.id, project.notes, project.status, project.activities, normalizeActivity, normalizeWorkflowState, isStepRunning]);
 
 
 
