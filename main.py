@@ -564,6 +564,23 @@ class MigrationStep(BaseModel):
     updated_at: Optional[str] = None
 
 
+class MigrationChatMessage(BaseModel):
+    """Pydantic model for a migration chat message."""
+    id: str
+    migration_id: str
+    role: str
+    content: str
+    step_number: Optional[int] = None
+    created_at: str
+
+
+class CreateMigrationChatMessagePayload(BaseModel):
+    """Pydantic model for creating a migration chat message."""
+    role: str
+    content: str
+    step_number: Optional[int] = None
+
+
 @app.get("/api/migration_steps", response_model=list[MigrationStep])
 async def get_migration_steps(
     migration_id: str,
@@ -598,6 +615,146 @@ async def get_migration_steps(
     except Exception as exc:
         print(f"Error fetching migration steps: {exc}")
         raise HTTPException(status_code=500, detail="Failed to fetch migration steps.") from exc
+
+
+@app.get("/api/migrations/{id}/chat", response_model=list[MigrationChatMessage])
+async def get_migration_chat_messages(id: str) -> list[MigrationChatMessage]:
+    """Fetch all chat messages for a given migration."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, migration_id, role, content, step_number, created_at FROM public.migration_chat_messages WHERE migration_id = %s ORDER BY created_at ASC",
+                (id,),
+            )
+            chat_rows = cur.fetchall()
+
+            messages = [
+                MigrationChatMessage(
+                    id=str(row["id"]),
+                    migration_id=str(row["migration_id"]),
+                    role=row["role"],
+                    content=row["content"],
+                    step_number=row["step_number"],
+                    created_at=row["created_at"].isoformat(),
+                )
+                for row in chat_rows
+            ]
+            return messages
+    except Exception as exc:
+        print(f"Error fetching migration chat messages: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to fetch migration chat messages.") from exc
+
+
+@app.post("/api/migrations/{id}/chat", response_model=MigrationChatMessage)
+async def create_migration_chat_message(id: str, payload: CreateMigrationChatMessagePayload) -> MigrationChatMessage:
+    """Create a new chat message for a given migration."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO public.migration_chat_messages (migration_id, role, content, step_number)
+                VALUES (%s, %s, %s, %s)
+                RETURNING id, migration_id, role, content, step_number, created_at
+                """,
+                (id, payload.role, payload.content, payload.step_number),
+            )
+            row = cur.fetchone()
+            conn.commit()
+
+            if not row:
+                raise HTTPException(status_code=500, detail="Failed to create chat message.")
+
+            return MigrationChatMessage(
+                id=str(row["id"]),
+                migration_id=str(row["migration_id"]),
+                role=row["role"],
+                content=row["content"],
+                step_number=row["step_number"],
+                created_at=row["created_at"].isoformat(),
+            )
+    except Exception as exc:
+        print(f"Error creating migration chat message: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to create migration chat message.") from exc
+
+
+@app.post("/api/migrations/{id}/action/{step}")
+async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
+    """Trigger a specific step in the migration process."""
+    if not 1 <= step <= 10:
+        raise HTTPException(status_code=400, detail="Step number must be between 1 and 10.")
+
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            # 1. Update migration status
+            cur.execute(
+                """
+                UPDATE public.migrations
+                SET current_step = %s, step_status = 'running', status = 'processing'
+                WHERE id = %s
+                RETURNING id
+                """,
+                (step, id),
+            )
+            migration_row = cur.fetchone()
+            if not migration_row:
+                raise HTTPException(status_code=404, detail="Migration not found")
+
+            # 2. Create a migration_step record
+            step_name = f"Step {step}"
+            workflow_step_id = f"step-{step}"
+            cur.execute(
+                """
+                INSERT INTO public.migration_steps (migration_id, workflow_step_id, name, status)
+                VALUES (%s, %s, %s, 'pending')
+                ON CONFLICT (migration_id, workflow_step_id) DO UPDATE
+                SET status = 'pending', status_message = NULL, result = NULL, updated_at = now()
+                RETURNING id
+                """,
+                (id, workflow_step_id, step_name),
+            )
+            step_row = cur.fetchone()
+            if not step_row:
+                raise HTTPException(status_code=500, detail="Failed to create migration step.")
+            
+            step_id = step_row["id"]
+
+            # 3. Enqueue job for the worker
+            payload = {"migrationId": id, "stepId": str(step_id), "stepNumber": step, "agentName": "migration-worker"}
+            cur.execute(
+                """
+                INSERT INTO public.jobs (step_id, payload, status)
+                VALUES (%s, %s, 'pending')
+                RETURNING id
+                """,
+                (step_id, json.dumps(payload)),
+            )
+            job_row = cur.fetchone()
+
+            if job_row:
+                publish_to_rabbitmq(job_row["id"])
+            
+            conn.commit()
+
+            return {
+                "jobId": job_row["id"] if job_row else None,
+                "stepId": step_id,
+                "message": f"Step {step} has been enqueued for migration {id}",
+            }
+    except HTTPException:
+        raise
+    except Exception as exc:
+        # Rollback in case of error
+        with _get_db_connection() as conn:
+            conn.rollback()
+        # Revert status
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "UPDATE public.migrations SET step_status = 'failed', status = 'paused' WHERE id = %s",
+                (id,),
+            )
+            conn.commit()
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
 
 
 class CreateMigrationActivityPayload(BaseModel):
