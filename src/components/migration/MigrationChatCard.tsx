@@ -10,7 +10,7 @@ import type { ChatMessage } from "./ChatMessage";
 import { AGENT_WORKFLOW_STEPS } from "@/constants/agentWorkflow";
 import StepperDots from "./StepperDots";
 import { Progress } from "@/components/ui/progress";
-import type { Migration } from "@/types/migration";
+import type { MigrationProject as Migration } from "./types";
 
 interface MigrationChatCardProps {
   migration: Migration;
