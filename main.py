@@ -38,7 +38,10 @@ def publish_to_rabbitmq(job_id: int):
     """Publish a job ID to the RabbitMQ task queue."""
     try:
         rabbitmq_host = os.getenv("RABBITMQ_HOST", "localhost")
-        connection = pika.BlockingConnection(pika.ConnectionParameters(host=rabbitmq_host))
+        rabbitmq_user = os.getenv("RABBITMQ_DEFAULT_USER", "guest")
+        rabbitmq_pass = os.getenv("RABBITMQ_DEFAULT_PASS", "guest")
+        credentials = pika.PlainCredentials(rabbitmq_user, rabbitmq_pass)
+        connection = pika.BlockingConnection(pika.ConnectionParameters(host=rabbitmq_host, credentials=credentials))
         channel = connection.channel()
 
         queue_name = 'migration_tasks'

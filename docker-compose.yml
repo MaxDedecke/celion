@@ -82,6 +82,8 @@ services:
     environment:
       <<: *postgres-config
       RABBITMQ_HOST: rabbitmq
+      RABBITMQ_DEFAULT_USER: celion
+      RABBITMQ_DEFAULT_PASS: celion
     volumes:
       - .:/app
     depends_on:
