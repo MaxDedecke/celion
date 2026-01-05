@@ -537,6 +537,8 @@ class Migration(BaseModel):
     notes: Optional[str] = None
     workflow_state: Optional[dict] = None
     progress: Optional[int] = 0
+    current_step: int = 0
+    step_status: str = "idle"
     created_at: str
     updated_at: Optional[str] = None
 
@@ -795,7 +797,7 @@ async def create_migration(payload: CreateMigrationPayload) -> Migration:
                     out_connector, out_connector_detail, status
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, created_at, updated_at
+                RETURNING id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, current_step, step_status, created_at, updated_at
                 """,
                 (
                     payload.name,
@@ -835,6 +837,8 @@ async def create_migration(payload: CreateMigrationPayload) -> Migration:
                 notes=row["notes"],
                 workflow_state=row["workflow_state"],
                 progress=row["progress"],
+                current_step=row["current_step"],
+                step_status=row["step_status"],
                 created_at=row["created_at"].isoformat(),
                 updated_at=row["updated_at"].isoformat() if row["updated_at"] else None,
             )
@@ -967,7 +971,7 @@ async def get_migrations(
     try:
         with _get_db_connection() as conn, conn.cursor() as cur:
             
-            base_select = "SELECT m.id, m.name, m.source_system, m.target_system, m.source_url, m.target_url, m.in_connector, m.in_connector_detail, m.out_connector, m.out_connector_detail, m.objects_transferred, m.mapped_objects, m.project_id, m.notes, m.workflow_state, m.progress, m.created_at, m.updated_at FROM public.migrations m"
+            base_select = "SELECT m.id, m.name, m.source_system, m.target_system, m.source_url, m.target_url, m.in_connector, m.in_connector_detail, m.out_connector, m.out_connector_detail, m.objects_transferred, m.mapped_objects, m.project_id, m.notes, m.workflow_state, m.progress, m.current_step, m.step_status, m.created_at, m.updated_at FROM public.migrations m"
             
             conditions = []
             params = []
@@ -1029,6 +1033,8 @@ async def get_migrations(
                     notes=row["notes"],
                     workflow_state=row["workflow_state"],
                     progress=row["progress"],
+                    current_step=row["current_step"],
+                    step_status=row["step_status"],
                     created_at=row["created_at"].isoformat(),
                     updated_at=row["updated_at"].isoformat() if row["updated_at"] else None,
                 )
@@ -1050,7 +1056,7 @@ async def get_migration(id: str) -> Migration:
     try:
         with _get_db_connection() as conn, conn.cursor() as cur:
             cur.execute(
-                "SELECT id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, created_at, updated_at FROM public.migrations WHERE id = %s",
+                "SELECT id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, current_step, step_status, created_at, updated_at FROM public.migrations WHERE id = %s",
                 (id,),
             )
             row = cur.fetchone()
@@ -1074,6 +1080,8 @@ async def get_migration(id: str) -> Migration:
                 notes=row["notes"],
                 workflow_state=row["workflow_state"],
                 progress=row["progress"],
+                current_step=row["current_step"],
+                step_status=row["step_status"],
                 created_at=row["created_at"].isoformat(),
                 updated_at=row["updated_at"].isoformat() if row["updated_at"] else None,
             )
@@ -1127,7 +1135,7 @@ async def update_migration(id: str, payload: UpdateMigrationPayload) -> Migratio
                 UPDATE public.migrations
                 SET {", ".join(updates)}
                 WHERE id = %s
-                RETURNING id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, created_at, updated_at
+                RETURNING id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, current_step, step_status, created_at, updated_at
             """
             
             cur.execute(query, tuple(params))
@@ -1154,6 +1162,8 @@ async def update_migration(id: str, payload: UpdateMigrationPayload) -> Migratio
                 notes=row["notes"],
                 workflow_state=row["workflow_state"],
                 progress=row["progress"],
+                current_step=row["current_step"],
+                step_status=row["step_status"],
                 created_at=row["created_at"].isoformat(),
                 updated_at=row["updated_at"].isoformat() if row["updated_at"] else None,
             )
@@ -1187,7 +1197,7 @@ async def duplicate_migration(id: str, user_id: str) -> Migration:
                     out_connector, out_connector_detail, status
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'not_started')
-                RETURNING id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, created_at, updated_at
+                RETURNING id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, current_step, step_status, created_at, updated_at
                 """,
                 (
                     new_name,
@@ -1226,6 +1236,8 @@ async def duplicate_migration(id: str, user_id: str) -> Migration:
                 notes=row["notes"],
                 workflow_state=row["workflow_state"],
                 progress=row["progress"],
+                current_step=row["current_step"],
+                step_status=row["step_status"],
                 created_at=row["created_at"].isoformat(),
                 updated_at=row["updated_at"].isoformat() if row["updated_at"] else None,
             )
