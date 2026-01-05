@@ -19,6 +19,8 @@ export interface MigrationProject {
   workflowState?: any;
   inConnectorDetail?: string | null;
   outConnectorDetail?: string | null;
+  current_step?: number;
+  step_status?: 'idle' | 'pending' | 'running' | 'completed' | 'failed';
 }
 
 export interface MigrationStatusMeta {

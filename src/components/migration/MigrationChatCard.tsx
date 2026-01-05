@@ -3,7 +3,6 @@ import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ChevronDown } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { Activity } from "@/components/ActivityTimeline";
 import type { AgentWorkflowStepState } from "./types";
 import ChatMessageList from "./ChatMessageList";
 import ChatInput from "./ChatInput";
@@ -11,103 +10,58 @@ import type { ChatMessage } from "./ChatMessage";
 import { AGENT_WORKFLOW_STEPS } from "@/constants/agentWorkflow";
 import StepperDots from "./StepperDots";
 import { Progress } from "@/components/ui/progress";
+import type { Migration } from "@/types/migration";
 
 interface MigrationChatCardProps {
-  activities: Activity[];
-  isStepRunning: boolean;
-  stepProgress: number;
-  activeStep: AgentWorkflowStepState | null;
-  completedCount: number;
-  totalSteps: number;
-  overallProgress: number;
-  status: "not_started" | "running" | "paused" | "completed" | "processing";
-  sourceSystem: string;
-  targetSystem: string;
-  sourceObjectsDisplay: string;
-  targetObjectsDisplay: string;
-  hasCurrentStepFailed?: boolean;
+  migration: Migration;
   onSendMessage: (message: string) => void;
   onContinue: () => void;
   onOpenAgentOutput: (stepId: string) => void;
 }
 
-const extractStepFromTitle = (title: string) => {
-  const titleLower = title.toLowerCase();
-  const step = AGENT_WORKFLOW_STEPS.find(s => {
-    const phaseLower = s.phase.toLowerCase();
-    const titleStepLower = s.title.toLowerCase();
-    return titleLower.includes(phaseLower) || titleLower.includes(titleStepLower);
-  });
-  if (step) {
-    return {
-      title: step.title,
-      phase: step.phase
-    };
-  }
-  return null;
-};
-
-const activityToChatMessage = (activity: Activity): ChatMessage => {
-  const isUserMessage = activity.title.startsWith("[user]");
-  const stepInfo = extractStepFromTitle(activity.title);
-  const isSystemActivity = activity.title.toLowerCase().includes("migration") || activity.title.toLowerCase().includes("erstellt") || activity.title.toLowerCase().includes("dupliziert") || activity.title.toLowerCase().includes("status");
-  
-  const mapActivityTypeToStatus = (type: Activity["type"]): ChatMessage["status"] => {
-    if (type === "success" || type === "error" || type === "info") {
-      return type;
-    }
-    return "info";
-  };
-
-  const stepIdMatch = activity.title.match(/\[step:([^\]]+)\]/);
-  const extractedStepId = stepIdMatch ? stepIdMatch[1] : null;
-
-  const isResultMessage = activity.title.includes("Hier gehts zum Agenten Output");
-  const actionButton = isResultMessage && extractedStepId ? {
-    label: "Ergebnis anzeigen",
-    stepId: extractedStepId
-  } : undefined;
-
-  let displayTitle = activity.title.replace(/\s*\[step:[^\]]+\]/, '');
-  if (isUserMessage) {
-    displayTitle = displayTitle.replace("[user] ", "");
-  }
-  
-  return {
-    id: activity.id,
-    role: isUserMessage ? "user" : isSystemActivity ? "system" : "agent",
-    content: displayTitle,
-    timestamp: activity.timestamp,
-    status: mapActivityTypeToStatus(activity.type),
-    stepInfo: !isSystemActivity && !isUserMessage ? stepInfo || undefined : undefined,
-    actionButton
-  };
-};
 
 const MigrationChatCard = ({
-  activities,
-  isStepRunning,
-  stepProgress,
-  activeStep,
-  completedCount,
-  totalSteps,
-  overallProgress,
-  status,
-  sourceSystem,
-  targetSystem,
-  sourceObjectsDisplay,
-  targetObjectsDisplay,
-  hasCurrentStepFailed,
+  migration,
   onSendMessage,
   onContinue,
   onOpenAgentOutput
 }: MigrationChatCardProps) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [isNearBottom, setIsNearBottom] = useState(true);
-  
-  const chatMessages = useMemo(() => {
-    return activities.map(activityToChatMessage).reverse();
-  }, [activities]);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [migrationData, setMigrationData] = useState<Migration>(migration);
+
+  useEffect(() => {
+    const fetchChatMessages = async () => {
+      try {
+        const response = await fetch(`/api/migrations/${migration.id}/chat`);
+        const data = await response.json();
+        setChatMessages(data);
+      } catch (error) {
+        console.error("Failed to fetch chat messages:", error);
+      }
+    };
+
+    const fetchMigration = async () => {
+      try {
+        const response = await fetch(`/api/migrations/${migration.id}`);
+        const data = await response.json();
+        setMigrationData(data);
+      } catch (error) {
+        console.error("Failed to fetch migration data:", error);
+      }
+    };
+
+    fetchChatMessages();
+    fetchMigration();
+
+    const interval = setInterval(() => {
+      fetchChatMessages();
+      fetchMigration();
+    }, 3000); // Poll every 3 seconds
+
+    return () => clearInterval(interval);
+  }, [migration.id]);
 
   const handleScroll = () => {
     if (scrollContainerRef.current) {
@@ -129,10 +83,15 @@ const MigrationChatCard = ({
     if (scrollContainerRef.current && isNearBottom) {
       scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
     }
-  }, [chatMessages, isStepRunning, isNearBottom]);
+  }, [chatMessages, migrationData.step_status, isNearBottom]);
 
-  // Determine current step number (1-indexed for display)
-  const currentStepNumber = isStepRunning ? completedCount + 1 : completedCount;
+  const totalSteps = 10;
+  const completedCount = migrationData.current_step || 0;
+  const isStepRunning = migrationData.step_status === 'running';
+  const hasCurrentStepFailed = migrationData.step_status === 'failed';
+  const overallProgress = (completedCount / totalSteps) * 100;
+  const currentStepNumber = completedCount + 1 > totalSteps ? totalSteps : completedCount + 1;
+  const activeStep = AGENT_WORKFLOW_STEPS.find(s => s.step === currentStepNumber);
   const currentStepTitle = activeStep?.title || (completedCount === totalSteps ? "Abgeschlossen" : "Bereit");
 
   return (
@@ -191,10 +150,10 @@ const MigrationChatCard = ({
               messages={chatMessages} 
               isAgentRunning={isStepRunning} 
               onOpenAgentOutput={onOpenAgentOutput}
-              showContinueButton={(status === "not_started" || status === "running") && overallProgress < 100 && !isStepRunning}
+              showContinueButton={(migrationData.status === "not_started" || migrationData.status === "running") && overallProgress < 100 && !isStepRunning}
               onContinue={onContinue}
               continueButtonText={
-                status === "not_started" 
+                migrationData.status === "not_started" 
                   ? "Starten" 
                   : hasCurrentStepFailed 
                     ? `↻ Schritt wiederholen: ${activeStep?.title}` 
@@ -227,5 +186,6 @@ const MigrationChatCard = ({
     </Card>
   );
 };
+
 
 export default MigrationChatCard;
