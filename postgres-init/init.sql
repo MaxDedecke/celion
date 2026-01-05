@@ -461,3 +461,24 @@ CREATE TABLE IF NOT EXISTS public.project_members (
 
 CREATE INDEX IF NOT EXISTS idx_project_members_user_id ON public.project_members(user_id);
 CREATE INDEX IF NOT EXISTS idx_project_members_project_id ON public.project_members(project_id);
+
+-- -------------------------
+-- Migration chat feature
+-- -------------------------
+
+-- Create migration_chat_messages table
+CREATE TABLE IF NOT EXISTS public.migration_chat_messages (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  migration_id uuid NOT NULL REFERENCES public.migrations(id) ON DELETE CASCADE,
+  role text NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+  content text NOT NULL,
+  step_number integer,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_migration_chat_messages_migration_id ON public.migration_chat_messages(migration_id);
+
+-- Add step tracking to migrations table
+ALTER TABLE public.migrations
+ADD COLUMN IF NOT EXISTS current_step integer NOT NULL DEFAULT 0,
+ADD COLUMN IF NOT EXISTS step_status text NOT NULL DEFAULT 'idle' CHECK (step_status IN ('idle', 'pending', 'running', 'completed', 'failed'));
