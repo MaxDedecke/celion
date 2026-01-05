@@ -86,8 +86,12 @@ const MigrationChatCard = ({
   }, [chatMessages, migrationData.step_status, isNearBottom]);
 
   const totalSteps = 10;
-  const completedCount = migrationData.current_step || 0;
-  const isStepRunning = migrationData.step_status === 'running';
+  const rawStep = migrationData.current_step || 0;
+  // Auch 'pending' als laufend betrachten, damit die UI sofort reagiert
+  const isStepRunning = migrationData.step_status === 'running' || migrationData.step_status === 'pending';
+  
+  // Wenn Schritt X läuft, sind erst X-1 Schritte komplett fertig
+  const completedCount = isStepRunning ? Math.max(0, rawStep - 1) : rawStep;
   const hasCurrentStepFailed = migrationData.step_status === 'failed';
   const overallProgress = (completedCount / totalSteps) * 100;
   const currentStepNumber = completedCount + 1 > totalSteps ? totalSteps : completedCount + 1;

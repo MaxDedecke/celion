@@ -159,8 +159,7 @@ def process_migration_step(job_payload: Dict[str, Any]):
         
         step_function(db_conn, migration_id, job_payload)
         
-        next_step = step_number + 1 if step_number < 10 else step_number
-        _update_migration_step_status(db_conn, migration_id, next_step, 'completed')
+        _update_migration_step_status(db_conn, migration_id, step_number, 'completed')
 
         print(f" [{migration_id}] Step {step_number} completed successfully.")
 
