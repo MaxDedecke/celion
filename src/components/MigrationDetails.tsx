@@ -1,7 +1,6 @@
-import { useCallback, useEffect, useMemo, useRef, useState, useId, forwardRef, useImperativeHandle } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, forwardRef, useImperativeHandle } from "react";
 import { AGENT_WORKFLOW_STEPS } from "@/constants/agentWorkflow";
 import { databaseClient } from "@/api/databaseClient";
-import { runAuthFlowAgent, runCapabilityDiscoveryAgent, runSystemDetectionAgent } from "@/agents/agentService";
 import type {
   AuthFlowResult,
   AuthFlowStepResult,
@@ -15,30 +14,25 @@ import WorkflowPanelDialog from "./dialogs/WorkflowPanelDialog";
 import type { Activity } from "./ActivityTimeline";
 import AgentResultDialog from "./migration/AgentResultDialog";
 import MigrationChatCard from "./migration/MigrationChatCard";
-import type { AgentWorkflowStepState, MigrationProject } from "./migration/types";
+import type { AgentWorkflowStepState } from "./migration/types";
 import { getWorkflowTheme } from "./migration/workflowThemes";
 import { nodeHasAgentResult } from "./migration/workflowUtils";
 import { toast } from "sonner";
-import { AgentExecutionError } from "./migration/errors";
 import {
   MIGRATION_STATUS_META,
 } from "./migration/migrationDetails.constants";
 import type {
-  AuthContext,
   ConnectorRecord,
   MigrationDetailsProps,
   RawActivityRecord,
 } from "./migration/migrationDetails.types";
 import {
   cacheWorkflowStateSnapshot,
-  clampProgressValue,
-  confidenceToPercent,
   createDefaultWorkflowBoard,
   deserializeWorkflowState,
   formatProgressPair,
   hasSuccessfulSystemDetectionResult,
   isStepStructuredResult,
-  loadCachedWorkflowState,
   normalizeAuthFlowResult,
   normalizeAuthFlowStepResult,
   normalizeCapabilityDiscoveryResult,
@@ -50,64 +44,6 @@ import {
   simulateTargetObjects,
 } from "./migration/migrationDetails.helpers";
 
-/**
- * Extracts a human-readable output from agent results for display in chat.
- * Prioritizes explanation/summary fields over raw output.
- */
-const extractAgentReadableOutput = (
-  result: SystemDetectionStepResult | AuthFlowStepResult | CapabilityDiscoveryResult | undefined
-): string | null => {
-  if (!result) return null;
-
-  // AuthFlowStepResult - has source/target with explanation
-  if ('source' in result && result.source && 'explanation' in result.source) {
-    const authResult = result as AuthFlowStepResult;
-    const sourceExpl = (authResult.source as AuthFlowResult)?.explanation;
-    const targetExpl = (authResult.target as AuthFlowResult)?.explanation;
-    const combined = [sourceExpl, targetExpl].filter(Boolean).join(' ');
-    if (combined.trim()) return combined.trim();
-    
-    // Fallback to summary
-    const sourceSummary = (authResult.source as AuthFlowResult)?.summary;
-    const targetSummary = (authResult.target as AuthFlowResult)?.summary;
-    const summaryText = [sourceSummary, targetSummary].filter(Boolean).join(' ');
-    if (summaryText.trim()) return summaryText.trim();
-  }
-
-  // CapabilityDiscoveryResult - summarize object counts
-  if ('objects' in result && result.objects && typeof result.objects === 'object') {
-    const capability = result as CapabilityDiscoveryResult;
-    const entries = Object.entries(capability.objects || {})
-      .map(([key, value]) => {
-        const info = value as { count?: number; error?: string | null };
-        const countText = typeof info.count === 'number' ? info.count : 0;
-        const errorText = info.error ? ` (Fehler: ${info.error})` : '';
-        return `${key}: ${countText}${errorText}`;
-      })
-      .filter(Boolean);
-
-    if (entries.length > 0) {
-      return entries.join('; ');
-    }
-  }
-
-  // SystemDetectionStepResult - has source/target with rawOutput
-  // For system detection, we use rawOutput but keep it brief
-  if ('source' in result && result.source && 'rawOutput' in result.source) {
-    const sysResult = result as SystemDetectionStepResult;
-    const sourceRaw = (sysResult.source as SystemDetectionResult)?.rawOutput;
-    const targetRaw = (sysResult.target as SystemDetectionResult)?.rawOutput;
-    // Only use rawOutput if it's reasonably short (under 500 chars)
-    const combined = [sourceRaw, targetRaw]
-      .filter(Boolean)
-      .filter(text => text && text.length < 500)
-      .join('\n\n');
-    if (combined.trim()) return combined.trim();
-  }
-
-  return null;
-};
-
 export interface MigrationDetailsRef {
   openWorkflowPanel: () => void;
 }
@@ -115,9 +51,6 @@ export interface MigrationDetailsRef {
 const STEP_TIMEOUT = 5 * 60 * 1000; // 5 minutes
 
 const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(({ project, onRefresh, onStepRunningChange }, ref) => {
-  const [notes, setNotes] = useState(project.notes ?? "");
-  const [isSavingNotes, setIsSavingNotes] = useState(false);
-  const [isUpdatingStatus, setIsUpdatingStatus] = useState(false);
   const [status, setStatus] = useState<MigrationStatus>(project.status ?? "not_started");
   const [activityLog, setActivityLog] = useState<Activity[]>(project.activities ?? []);
   const [isWorkflowPanelOpen, setIsWorkflowPanelOpen] = useState(false);
@@ -233,108 +166,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
     openWorkflowPanel: () => handleOpenWorkflowPanel()
   }), [handleOpenWorkflowPanel]);
 
-  const handleDeleteWorkflowNode = useCallback(
-    (nodeId: string) => {
-      handleWorkflowChange((previous) => ({
-        ...previous,
-        nodes: previous.nodes.filter((node) => node.id !== nodeId),
-        connections: previous.connections.filter(
-          (connection) => connection.sourceId !== nodeId && connection.targetId !== nodeId,
-        ),
-      }));
-    },
-    [handleWorkflowChange],
-  );
 
-  const handleToggleWorkflowNodeActive = useCallback(
-    (nodeId: string) => {
-      handleWorkflowChange((previous) => ({
-        ...previous,
-        nodes: previous.nodes.map((node) => {
-          if (node.id !== nodeId) {
-            return node;
-          }
-
-          const nextActive = !node.active;
-          return {
-            ...node,
-            active: nextActive,
-            status: nextActive ? node.status : "pending",
-          };
-        }),
-      }));
-    },
-    [handleWorkflowChange],
-  );
-
-  const handleUpdateStatus = useCallback(
-    async (nextStatus: MigrationStatus) => {
-      if (nextStatus === status) {
-        return;
-      }
-
-      const eventTimestamp = new Date();
-      const timestampIso = eventTimestamp.toISOString();
-
-      try {
-        setIsUpdatingStatus(true);
-        await new Promise((resolve) => setTimeout(resolve, 400));
-
-        setStatus(nextStatus);
-
-        const activityTitle =
-          nextStatus === "running"
-            ? "Migration gestartet"
-            : nextStatus === "completed"
-              ? "Migration abgeschlossen"
-              : nextStatus === "paused"
-                ? "Migration pausiert"
-                : "Migrationsstatus aktualisiert";
-
-        const activityType =
-          nextStatus === "completed"
-            ? "success"
-            : nextStatus === "paused"
-              ? "warning"
-              : "info";
-
-        const { error: activityError } = await databaseClient.insertMigrationActivity({
-          migration_id: project.id,
-          type: activityType,
-          title: activityTitle,
-          timestamp: timestampIso,
-        });
-
-        if (activityError) throw activityError;
-
-        setActivityLog((previous) => [
-          {
-            id: `status-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            type: activityType,
-            title: activityTitle,
-            timestamp: timestampIso,
-          },
-          ...previous,
-        ]);
-
-        if (nextStatus === "running") {
-          toast.success("Migration erfolgreich gestartet");
-        } else if (nextStatus === "completed") {
-          toast.success("Migration abgeschlossen");
-        } else if (nextStatus === "paused") {
-          toast.info("Migration pausiert");
-        } else {
-          toast.success("Status aktualisiert");
-        }
-      } catch (error) {
-        console.error("Fehler beim Aktualisieren des Migrationsstatus:", error);
-        await appendActivity("error", "Status konnte nicht aktualisiert werden");
-      } finally {
-        setIsUpdatingStatus(false);
-      }
-    },
-    [status, project.id],
-  );
 
   const ensureSystemDetectionRetryable = useCallback(
     async (board: WorkflowBoardState): Promise<WorkflowBoardState> => {
@@ -637,20 +469,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
     };
   }, []);
 
-  const applyWorkflowState = useCallback(
-    (rawState: unknown): boolean => {
-      const parsedState = deserializeWorkflowState(rawState);
-      if (!parsedState) {
-        return false;
-      }
 
-      const normalized = normalizeWorkflowState(parsedState);
-      setWorkflowBoard(normalized);
-      cacheWorkflowStateSnapshot(project.id, normalized);
-      return true;
-    },
-    [normalizeWorkflowState, project.id],
-  );
 
   useEffect(() => {
     if (isStepRunning) return;
@@ -697,12 +516,11 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
       }
     };
 
-    setNotes(project.notes ?? "");
     setStatus(project.status ?? "not_started");
     setActivityLog((project.activities ?? []).map(normalizeActivity));
     loadInitialSteps();
 
-  }, [project.id, project.notes, project.status, project.activities, normalizeActivity, normalizeWorkflowState, isStepRunning]);
+  }, [project.id, project.status, project.activities, normalizeActivity, normalizeWorkflowState, isStepRunning]);
 
 
 
@@ -829,8 +647,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
     }
   }, [isWorkflowPanelOpen]);
 
-  const isNotesDirty = useMemo(() => (project.notes ?? "") !== notes, [project.notes, notes]);
-
   const transferInfo = useMemo(() => parseProgressPair(project.objectsTransferred), [project.objectsTransferred]);
   const mappedInfo = useMemo(() => parseProgressPair(project.mappedObjects), [project.mappedObjects]);
 
@@ -854,7 +670,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
   }, [sourceObjectEstimate, targetSeed, transferInfo]);
 
   const overallProgress = Math.min(100, Math.max(0, Math.round(Number(project.progress) || 0)));
-  const statusMeta = MIGRATION_STATUS_META[status];
 
   const agentWorkflowProgress = useMemo(() => {
     const nodes = workflowBoard.nodes;
@@ -1333,25 +1148,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
 
   const sourceObjectsDisplay = computeDisplayPair(sourceTotalsVisible, finalCountsVisible, sourceObjectEstimate);
   const targetObjectsDisplay = computeDisplayPair(targetTotalsVisible, finalCountsVisible, targetObjectEstimate);
-
-  const handleSaveNotes = async () => {
-    if (!isNotesDirty) return;
-
-    try {
-      setIsSavingNotes(true);
-      const { error } = await databaseClient.updateMigration(project.id, { notes });
-
-      if (error) throw error;
-
-      toast.success("Anmerkungen gespeichert");
-      await onRefresh();
-    } catch (error) {
-      console.error("Fehler beim Speichern der Anmerkungen:", error);
-      await appendActivity("error", "Anmerkungen konnten nicht gespeichert werden");
-    } finally {
-      setIsSavingNotes(false);
-    }
-  };
 
   const handleSendChatMessage = useCallback(
     async (message: string) => {
