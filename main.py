@@ -687,13 +687,13 @@ async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
 
     try:
         with _get_db_connection() as conn, conn.cursor() as cur:
-            # 1. Update migration status
+            # 1. Update migration status and fetch details
             cur.execute(
                 """
                 UPDATE public.migrations
                 SET current_step = %s, step_status = 'running', status = 'processing'
                 WHERE id = %s
-                RETURNING id
+                RETURNING id, source_url, source_system
                 """,
                 (step, id),
             )
@@ -721,7 +721,33 @@ async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
             step_id = step_row["id"]
 
             # 3. Enqueue job for the worker
-            payload = {"migrationId": id, "stepId": str(step_id), "stepNumber": step, "agentName": "migration-worker"}
+            step_agent_mapping = {
+                1: "runSystemDetection",
+                2: "runAuthFlow",
+                3: "runCapabilityDiscovery",
+                4: "runTargetSchema",
+                5: "runModelMapping",
+                6: "runMappingSuggestion",
+                7: "runQualityEnhancement",
+                8: "runDataTransfer",
+                9: "runVerification",
+                10: "runReport",
+            }
+            agent_name = step_agent_mapping.get(step, "runSystemDetection")
+
+            agent_params = {
+                "sourceUrl": migration_row["source_url"],
+                "sourceExpectedSystem": migration_row["source_system"],
+            }
+
+            payload = {
+                "migrationId": id,
+                "stepId": str(step_id),
+                "stepNumber": step,
+                "agentName": agent_name,
+                "agentParams": agent_params,
+            }
+            
             cur.execute(
                 """
                 INSERT INTO public.jobs (step_id, payload, status)

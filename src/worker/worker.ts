@@ -22,8 +22,9 @@ async function logActivity(migrationId: string, type: 'success' | 'error' | 'inf
 }
 
 const ensureWorkflowState = (state: any = {}) => {
-  const nodes = Array.isArray(state.nodes) ? [...state.nodes] : [];
-  const connections = Array.isArray(state.connections) ? [...state.connections] : [];
+  const safeState = state || {};
+  const nodes = Array.isArray(safeState.nodes) ? [...safeState.nodes] : [];
+  const connections = Array.isArray(safeState.connections) ? [...safeState.connections] : [];
   return { nodes, connections };
 };
 
