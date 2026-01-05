@@ -117,7 +117,7 @@ def run_step_10_cleanup(conn: psycopg.Connection, migration_id: str, payload: Di
     _write_chat_message(conn, migration_id, 'system', 'Starting Cleanup...', 10)
     print(f"[{migration_id}] Running step 10: Cleanup")
     time.sleep(2)
-    result_message = "Cleanup complete. Migration finished."
+    result_message = "Cleanup complete. Migration finished. [Download Report](/reports/migration_report_123.pdf)"
     _write_chat_message(conn, migration_id, 'assistant', result_message, 10)
 
 

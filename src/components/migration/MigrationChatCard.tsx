@@ -157,7 +157,7 @@ const MigrationChatCard = ({
                   ? "Starten" 
                   : hasCurrentStepFailed 
                     ? `↻ Schritt wiederholen: ${activeStep?.title}` 
-                    : "Fortsetzen"
+                    : `Fortsetzen: ${AGENT_WORKFLOW_STEPS.find(s => s.step === currentStepNumber)?.title}`
               }
               currentStepTitle={activeStep?.title}
             />

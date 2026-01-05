@@ -85,6 +85,42 @@ const ChatMessage = ({ message, onOpenAgentOutput, enableTypewriter = false, onT
     });
   };
 
+  const renderContentWithLinks = (text: string) => {
+    const linkRegex = /\[(.*?)\]\((.*?)\)/g;
+    const parts = [];
+    let lastIndex = 0;
+    let match;
+
+    while ((match = linkRegex.exec(text)) !== null) {
+      const [fullMatch, linkText, url] = match;
+      const index = match.index;
+
+      if (index > lastIndex) {
+        parts.push(text.substring(lastIndex, index));
+      }
+
+      parts.push(
+        <a
+          key={url}
+          href={url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-primary underline hover:text-primary/80"
+        >
+          {linkText}
+        </a>
+      );
+
+      lastIndex = index + fullMatch.length;
+    }
+
+    if (lastIndex < text.length) {
+      parts.push(text.substring(lastIndex));
+    }
+
+    return parts;
+  };
+
   return (
     <div
       className={cn(
@@ -115,7 +151,7 @@ const ChatMessage = ({ message, onOpenAgentOutput, enableTypewriter = false, onT
           {enableTypewriter && message.role === "agent" ? (
             <TypewriterText text={message.content} speed={150} onComplete={onTypewriterComplete} />
           ) : (
-            message.content
+            renderContentWithLinks(message.content)
           )}
           {message.actionButton && onOpenAgentOutput && (
             <span

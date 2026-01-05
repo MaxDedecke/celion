@@ -62,7 +62,7 @@ const ChatMessageList = ({
   return (
     <div className="flex flex-col gap-2 pb-4 pr-3">
       {visibleMessages.map((message, index) => {
-        // Typewriter nur für die aktuell animierende Nachricht
+        const isLastMessage = index === visibleMessages.length - 1;
         const shouldAnimate = animatingId === message.id && !completedAnimations.has(message.id);
         
         return (
@@ -79,24 +79,23 @@ const ChatMessageList = ({
               enableTypewriter={shouldAnimate}
               onTypewriterComplete={() => onAnimationComplete(message.id)}
             />
+            {isLastMessage && showContinueButton && !isAgentRunning && !hasQueuedMessages && (
+              <div className="flex items-center gap-2 animate-fade-in pt-4 pl-11">
+                <button 
+                  onClick={onContinue}
+                  className="text-sm text-primary hover:text-primary/80 flex items-center gap-1.5 transition-all group"
+                >
+                  <ArrowRight className="h-3.5 w-3.5 group-hover:translate-x-0.5 transition-transform" />
+                  {continueButtonText}
+                </button>
+              </div>
+            )}
           </div>
         );
       })}
       
       {(isAgentRunning || hasQueuedMessages) && (
         <ThinkingIndicator stepTitle={currentStepTitle} />
-      )}
-      
-      {showContinueButton && !isAgentRunning && !hasQueuedMessages && (
-        <div className="flex items-center gap-2 animate-fade-in pt-4 pl-11">
-          <button 
-            onClick={onContinue}
-            className="text-sm text-primary hover:text-primary/80 flex items-center gap-1.5 transition-all group"
-          >
-            <ArrowRight className="h-3.5 w-3.5 group-hover:translate-x-0.5 transition-transform" />
-            {continueButtonText}
-          </button>
-        </div>
       )}
     </div>
   );
