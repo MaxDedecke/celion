@@ -1,7 +1,7 @@
 // src/agents/openai/openaiClient.ts
 
 const DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1";
-const OPENAI_ASSISTANTS_HEADER = "assistants=v2";
+
 
 export const resolveOpenAiConfig = () => {
   const isServer = typeof window === 'undefined';
@@ -22,7 +22,6 @@ export const buildOpenAiHeaders = (apiKey: string, projectId?: string) => {
   const headers: Record<string, string> = {
     Authorization: `Bearer ${apiKey}`,
     "Content-Type": "application/json",
-    "OpenAI-Beta": OPENAI_ASSISTANTS_HEADER,
   };
   if (projectId) headers["OpenAI-Project"] = projectId;
   return headers;

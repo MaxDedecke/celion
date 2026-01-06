@@ -34,3 +34,24 @@ export type OpenAiMessage = {
   role: string;
   content: OpenAiMessageContent[];
 };
+
+export interface OpenAiResponse {
+  output: OpenAiOutputItem[];
+}
+
+export type OpenAiOutputItem = OpenAiResponseMessage | OpenAiResponseToolCall;
+
+export interface OpenAiResponseMessage {
+  type: 'message';
+  content: OpenAiMessageContent[];
+  role: 'assistant';
+}
+
+export interface OpenAiResponseToolCall {
+  type: 'tool_call';
+  id: string;
+  function: {
+    name: string;
+    arguments: string;
+  };
+}

@@ -1,60 +1,30 @@
 // src/agents/openai/run.ts
 
-import { OpenAiRun } from "./types";
+import { OpenAiResponse } from './types';
 
-export const createRun = async (
+export const createResponse = async (
   baseUrl: string,
   headers: Record<string, string>,
-  threadId: string,
-  assistantId: string,
-): Promise<OpenAiRun> => {
-  const r = await fetch(`${baseUrl}/threads/${threadId}/runs`, {
-    method: "POST",
+  conversationId: string,
+  params: { input: any[]; tools?: any[]; model?: string },
+): Promise<OpenAiResponse> => {
+  const body = {
+    conversation_id: conversationId,
+    input: params.input,
+    tools: params.tools,
+    model: params.model,
+  };
+
+  const r = await fetch(`${baseUrl}/responses`, {
+    method: 'POST',
     headers,
-    body: JSON.stringify({ assistant_id: assistantId }),
+    body: JSON.stringify(body),
   });
 
-  const json = await r.json();
-  if (!json.id) throw new Error("Run creation failed");
-  return json as OpenAiRun;
-};
-
-export const waitForRun = async (
-  baseUrl: string,
-  headers: Record<string, string>,
-  threadId: string,
-  runId: string,
-): Promise<OpenAiRun> => {
-  let attempts = 0;
-  while (attempts < 90) {
-    const r = await fetch(`${baseUrl}/threads/${threadId}/runs/${runId}`, { headers });
-    const json = (await r.json()) as OpenAiRun;
-
-    if (json.status === "completed" || json.status === "requires_action") return json;
-    if (["failed", "cancelled", "expired"].includes(json.status)) {
-      throw new Error(json.last_error?.message || `Run failed: ${json.status}`);
-    }
-
-    await new Promise(r => setTimeout(r, 1000));
-    attempts++;
+  if (!r.ok) {
+    const errorText = await r.text();
+    throw new Error(`Create response failed: ${r.status} ${r.statusText} ${errorText}`);
   }
-  throw new Error("Run timed out");
-};
 
-export const submitToolOutputs = async (
-  baseUrl: string,
-  headers: Record<string, string>,
-  threadId: string,
-  runId: string,
-  toolOutputs: Array<{ tool_call_id: string; output: string }>,
-): Promise<OpenAiRun> => {
-  const r = await fetch(`${baseUrl}/threads/${threadId}/runs/${runId}/submit_tool_outputs`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({ tool_outputs: toolOutputs }),
-  });
-
-  const json = await r.json();
-  if (!json.id) throw new Error("Tool output submission failed");
-  return json as OpenAiRun;
+  return (await r.json()) as OpenAiResponse;
 };
