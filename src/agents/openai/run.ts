@@ -5,13 +5,28 @@ export const createResponse = async (
   headers: Record<string, string>,
   params: {
     conversationId: string;
-    items?: any[];
+    inputs?: any[];
+    promptOptions?: {
+      promptId: string;
+      variables: Record<string, any>;
+    };
   }
 ): Promise<OpenAiResponse> => {
+  const body = {
+    conversation: params.conversationId,
+    input: params.inputs ?? [],
+    prompt: params.promptOptions
+      ? {
+          id: params.promptOptions.promptId,
+          variables: params.promptOptions.variables,
+        }
+      : undefined,
+  };
+
   const r = await fetch(`${baseUrl}/responses`, {
     method: 'POST',
     headers,
-    body: JSON.stringify(params),
+    body: JSON.stringify(body),
   });
 
   if (!r.ok) {

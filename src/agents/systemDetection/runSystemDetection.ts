@@ -1,8 +1,8 @@
-import { Conversation, createConversation } from 'src/agents/openai/conversation';
+import { createConversation } from 'src/agents/openai/conversation';
 import { createResponse } from 'src/agents/openai/run';
 import { curlHeadProbe } from 'src/tools/curlHeadProbe';
-import { httpRequest } from 'src/tools/httpRequest';
-import { Message, ToolCall } from '../openai/types';
+import { httpClient } from 'src/tools/httpRequest';
+import { Conversation, Message, ToolCall } from '../openai/types';
 import { buildOpenAiHeaders, resolveOpenAiConfig } from '../openai/openaiClient';
 
 const PROMPT_ID = 'system-detection-v1';
@@ -18,15 +18,18 @@ export async function* runSystemDetection(url: string, system: string): AsyncGen
   const { apiKey, baseUrl, projectId } = resolveOpenAiConfig();
   const headers = buildOpenAiHeaders(apiKey, projectId);
 
-  const conversation: Conversation = await createConversation(baseUrl, headers, {
-    promptId: PROMPT_ID,
-    promptParameters: {
-      URL: url,
-      SYSTEM: system,
+  const conversation: Conversation = await createConversation(baseUrl, headers);
+
+  let response = await createResponse(baseUrl, headers, {
+    conversationId: conversation.id,
+    promptOptions: {
+      promptId: PROMPT_ID,
+      variables: {
+        URL: url,
+        SYSTEM: system,
+      },
     },
   });
-
-  let response = await createResponse(baseUrl, headers, { conversationId: conversation.id });
 
   while (response.output.some((item) => item.type === 'tool_call')) {
     const toolCalls = response.output.filter((item) => item.type === 'tool_call') as ToolCall[];
@@ -44,7 +47,7 @@ export async function* runSystemDetection(url: string, system: string): AsyncGen
         } else if (tool_name === 'http_probe') {
           const { headers = [], body, method } = parameters;
           const headersRecord = arrayToRecord(headers);
-          result = await httpRequest({
+          result = await httpClient({
             url,
             method,
             headers: headersRecord,
@@ -68,7 +71,7 @@ export async function* runSystemDetection(url: string, system: string): AsyncGen
 
     response = await createResponse(baseUrl, headers, {
       conversationId: conversation.id,
-      items: toolResults.map((result) => ({
+      inputs: toolResults.map((result) => ({
         type: 'tool_result',
         tool_result: {
           id: result.tool_call_id,

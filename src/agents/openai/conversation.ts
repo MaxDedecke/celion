@@ -2,16 +2,12 @@ import { Conversation } from './types';
 
 export const createConversation = async (
   baseUrl: string,
-  headers: Record<string, string>,
-  params: {
-    promptId: string;
-    promptParameters: Record<string, string>;
-  }
+  headers: Record<string, string>
 ): Promise<Conversation> => {
   const r = await fetch(`${baseUrl}/conversations`, {
     method: 'POST',
     headers,
-    body: JSON.stringify(params),
+    body: JSON.stringify({}),
   });
 
   if (!r.ok) {
