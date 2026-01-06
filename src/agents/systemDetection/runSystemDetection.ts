@@ -5,7 +5,7 @@ import { httpClient } from 'src/tools/httpRequest';
 import { Conversation, Message, ToolCall } from '../openai/types';
 import { buildOpenAiHeaders, resolveOpenAiConfig } from '../openai/openaiClient';
 
-const PROMPT_ID = 'system-detection-v1';
+const PROMPT_ID = 'pmpt_695d2ee1881c8193a303f787274959d906011a1106b1c53d';
 
 function arrayToRecord(arr: { key: string; value: string }[]): Record<string, string> {
   return arr.reduce((acc, { key, value }) => {

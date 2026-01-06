@@ -10,7 +10,7 @@ const POLL_INTERVAL = 5000; // 5 seconds
 
 async function logActivity(migrationId: string, type: 'success' | 'error' | 'info' | 'warning', title: string) {
   const timestamp = new Date().toISOString();
-  await pool.query('INSERT INTO migration_activities (migration_id, type, title, timestamp) VALUES (, $2, $3, $4)', [
+  await pool.query('INSERT INTO migration_activities (migration_id, type, title, timestamp) VALUES ($1, $2, $3, $4)', [
     migrationId,
     type,
     title,
@@ -59,20 +59,20 @@ async function processJob(job: any) {
 
   const client = await pool.connect();
   try {
-    const { rows: stepRows } = await client.query('SELECT id, migration_id, workflow_step_id, name FROM migration_steps WHERE id = ', [step_id]);
+    const { rows: stepRows } = await client.query('SELECT id, migration_id, workflow_step_id, name FROM migration_steps WHERE id = $1', [step_id]);
     const stepRecord = stepRows[0];
 
     if (!stepRecord) {
       console.error('Unable to find migration step for job', job.id);
-      await client.query('UPDATE jobs SET status = , last_error = $2 WHERE id = $3', ['failed', 'Step not found', job.id]);
+      await client.query('UPDATE jobs SET status = $1, last_error = $2 WHERE id = $3', ['failed', 'Step not found', job.id]);
       return;
     }
 
     const migrationId = stepRecord.migration_id;
 
     await client.query('BEGIN');
-    await client.query('UPDATE migration_steps SET status =  WHERE id = $2', ['running', step_id]);
-    await client.query('UPDATE migrations SET status =  WHERE id = $2', ['processing', migrationId]);
+    await client.query('UPDATE migration_steps SET status = $1 WHERE id = $2', ['running', step_id]);
+    await client.query('UPDATE migrations SET status = $1 WHERE id = $2', ['processing', migrationId]);
 
     try {
       let result: any;
@@ -84,7 +84,7 @@ async function processJob(job: any) {
         let lastMessageText: string | undefined;
 
         for await (const message of messageGenerator) {
-          if (message.message.content.text) {
+          if (message.message?.content?.text) {
             lastMessageText = message.message.content.text;
           }
         }
@@ -102,14 +102,14 @@ async function processJob(job: any) {
         throw new Error(`Agent ${agentName} is not yet implemented in the worker.`);
       }
 
-      await client.query('UPDATE migration_steps SET status = , result = $2, status_message = $3 WHERE id = $4', [
+      await client.query('UPDATE migration_steps SET status = $1, result = $2, status_message = $3 WHERE id = $4', [
         'completed',
         result,
         'Agent run completed successfully.',
         step_id,
       ]);
 
-      const { rows: migrationRows } = await client.query('SELECT workflow_state FROM migrations WHERE id = ', [migrationId]);
+      const { rows: migrationRows } = await client.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
       const migrationData = migrationRows[0];
 
       const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(
@@ -121,7 +121,7 @@ async function processJob(job: any) {
 
       const migrationStatus = completedCount >= totalSteps ? 'completed' : 'running';
 
-      await client.query('UPDATE migrations SET workflow_state = , progress = $2, status = $3 WHERE id = $4', [
+      await client.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3 WHERE id = $4', [
         nextState,
         progress,
         migrationStatus,
@@ -130,7 +130,7 @@ async function processJob(job: any) {
 
       await logActivity(migrationId, 'success', `Schritt abgeschlossen: ${stepRecord.name}`);
 
-      await client.query('UPDATE jobs SET status =  WHERE id = $2', ['completed', job.id]);
+      await client.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
 
       console.log(`Job ${job.id} completed successfully.`);
       await client.query('COMMIT');
@@ -142,9 +142,9 @@ async function processJob(job: any) {
       const client2 = await pool.connect();
       try {
         await client2.query('BEGIN');
-        await client2.query('UPDATE migration_steps SET status = , status_message = $2 WHERE id = $3', ['failed', errorMessage, step_id]);
+        await client2.query('UPDATE migration_steps SET status = $1, status_message = $2 WHERE id = $3', ['failed', errorMessage, step_id]);
 
-        const { rows: migrationRows } = await client2.query('SELECT workflow_state FROM migrations WHERE id = ', [migrationId]);
+        const { rows: migrationRows } = await client2.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
         const migrationData = migrationRows[0];
 
         const { nextState, progress } = updateWorkflowForStep(
@@ -154,7 +154,7 @@ async function processJob(job: any) {
           true
         );
 
-        await client2.query('UPDATE migrations SET workflow_state = , progress = $2, status = $3 WHERE id = $4', [
+        await client2.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3 WHERE id = $4', [
           nextState,
           progress,
           'paused',
@@ -163,7 +163,7 @@ async function processJob(job: any) {
 
         await logActivity(migrationId, 'error', `Schritt fehlgeschlagen: ${errorMessage}`);
 
-        await client2.query('UPDATE jobs SET status = , last_error = $2 WHERE id = $3', ['failed', errorMessage, job.id]);
+        await client2.query('UPDATE jobs SET status = $1, last_error = $2 WHERE id = $3', ['failed', errorMessage, job.id]);
         await client2.query('COMMIT');
       } catch (e2) {
         await client2.query('ROLLBACK');
@@ -189,7 +189,7 @@ async function pollForJobs() {
     return; // No pending jobs
   }
 
-  await pool.query('UPDATE jobs SET status = , attempts = $2 WHERE id = $3', ['running', (job.attempts || 0) + 1, job.id]);
+  await pool.query('UPDATE jobs SET status = $1, attempts = $2 WHERE id = $3', ['running', (job.attempts || 0) + 1, job.id]);
 
   await processJob(job);
 }
