@@ -5,11 +5,9 @@ import { OpenAiResponse } from './types';
 export const createResponse = async (
   baseUrl: string,
   headers: Record<string, string>,
-  conversationId: string,
   params: { input: any[]; tools?: any[]; model?: string },
 ): Promise<OpenAiResponse> => {
   const body = {
-    conversation_id: conversationId,
     input: params.input,
     tools: params.tools,
     model: params.model,

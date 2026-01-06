@@ -1,6 +1,6 @@
 // src/agents/capabilityDiscovery/runCapabilityDiscovery.ts
 
-import { httpRequestTool as httpClient } from "../openai/httpTool";
+import { httpRequestTool as httpClient } from '../openai/httpTool';
 import {
   buildAuthHeaders,
   getCapabilityDiscoveryConfig,
@@ -8,18 +8,17 @@ import {
   normalizeSystemName,
   resolveApiBaseUrl,
   resolveSchemePath,
-} from "./assistant";
-import { buildUrlWithQuery, hasPathPlaceholders } from "./prompt";
-import { extractFirstArray, extractHasMoreFlag, extractNextCursor, normalizeResponseBody } from "./parser";
-import { createConversation } from "../openai/conversation";
-import { createResponse } from "../openai/run";
-import { extractJson, extractMessageText } from "../openai/message";
-import { resolveOpenAiConfig, buildOpenAiHeaders } from "../openai/openaiClient";
-import type { CapabilityDiscoveryCredentials } from "./assistant";
-import type { CapabilityDiscoveryResult, HttpResponse } from "../../types/agents";
-import type { DiscoveryPaginationConfig, SchemeDefinition } from "../../types/schemes";
-import type { OpenAiResponseToolCall, OpenAiResponseMessage } from "../openai/types";
-import { readJsonFile } from "../../tools/fileReader";
+} from './assistant';
+import { buildUrlWithQuery, hasPathPlaceholders } from './prompt';
+import { extractFirstArray, extractHasMoreFlag, extractNextCursor, normalizeResponseBody } from './parser';
+import { createResponse } from '../openai/run';
+import { extractJson, extractMessageText } from '../openai/message';
+import { resolveOpenAiConfig, buildOpenAiHeaders } from '../openai/openaiClient';
+import type { CapabilityDiscoveryCredentials } from './assistant';
+import type { CapabilityDiscoveryResult, HttpResponse } from '../../types/agents';
+import type { DiscoveryPaginationConfig, SchemeDefinition } from '../../types/schemes';
+import type { OpenAiResponseToolCall, OpenAiResponseMessage } from '../openai/types';
+import { readJsonFile } from '../../tools/fileReader';
 
 const _internalRunCapabilityDiscovery = async (
   baseUrl: string,
@@ -463,7 +462,6 @@ export const runCapabilityDiscovery = async (
 ): Promise<CapabilityDiscoveryResult> => {
   const { apiKey, baseUrl: openAiBaseUrl, projectId } = resolveOpenAiConfig();
   const headers = buildOpenAiHeaders(apiKey, projectId);
-  const conversationId = await createConversation(openAiBaseUrl, headers);
   const { instructions, tools } = getCapabilityDiscoveryConfig();
 
   const prompt = `Führe die Fähigkeitserkennung für das System "${system}" unter der URL "${baseUrl}" durch.`;
@@ -472,7 +470,7 @@ export const runCapabilityDiscovery = async (
     { role: "user", content: prompt },
   ];
 
-  let response = await createResponse(openAiBaseUrl, headers, conversationId, {
+  let response = await createResponse(openAiBaseUrl, headers, {
     model: "gpt-4.1-mini",
     input: initialInput,
     tools,
@@ -494,7 +492,7 @@ export const runCapabilityDiscovery = async (
       }),
     );
 
-    response = await createResponse(openAiBaseUrl, headers, conversationId, {
+    response = await createResponse(openAiBaseUrl, headers, {
       model: "gpt-4.1-mini",
       input: toolOutputs,
     });

@@ -1,20 +1,19 @@
-import { btoa } from "buffer";
-import { getAuthFlowConfig } from "./assistant";
-import { resolveOpenAiConfig, buildOpenAiHeaders } from "../openai/openaiClient";
-import { createConversation } from "../openai/conversation";
-import { createResponse } from "../openai/run";
-import { extractMessageText, extractJson } from "../openai/message";
-import { parseAuthFlowResponse } from "./parser";
-import { readSchemeFile } from "../../tools/readSchemeFile";
-import { httpRequestTool } from "../openai/httpTool";
-import type { HttpRequestParams } from "../../types/agents";
+import { btoa } from 'buffer';
+import { getAuthFlowConfig } from './assistant';
+import { resolveOpenAiConfig, buildOpenAiHeaders } from '../openai/openaiClient';
+import { createResponse } from '../openai/run';
+import { extractMessageText, extractJson } from '../openai/message';
+import { parseAuthFlowResponse } from './parser';
+import { readSchemeFile } from '../../tools/readSchemeFile';
+import { httpRequestTool } from '../openai/httpTool';
+import type { HttpRequestParams } from '../../types/agents';
 import type {
   OpenAiOutputItem,
   OpenAiResponse,
   OpenAiResponseMessage,
   OpenAiResponseToolCall,
-} from "../openai/types";
-import type { AuthFlowResult, AuthSchemeDefinition } from "./types";
+} from '../openai/types';
+import type { AuthFlowResult, AuthSchemeDefinition } from './types';
 
 export type RunAuthFlowParams = {
   system: string;
@@ -29,10 +28,10 @@ export type RunAuthFlowParams = {
 const executeToolCall = async (call: OpenAiResponseToolCall): Promise<{ tool_call_id: string; output: string }> => {
   const { id, function: fn } = call;
 
-  if (fn.name === "read_scheme") {
-    let args: { system: string } = { system: "" };
+  if (fn.name === 'read_scheme') {
+    let args: { system: string } = { system: '' };
     try {
-      args = JSON.parse(fn.arguments ?? "{}");
+      args = JSON.parse(fn.arguments ?? '{}');
     } catch {
       /* ignore parsing error */
     }
@@ -41,7 +40,7 @@ const executeToolCall = async (call: OpenAiResponseToolCall): Promise<{ tool_cal
       const scheme = await readSchemeFile<AuthSchemeDefinition>({ path: schemePath });
       return { tool_call_id: id, output: JSON.stringify(scheme) };
     } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : "Schema nicht gefunden";
+      const errorMessage = error instanceof Error ? error.message : 'Schema nicht gefunden';
       return {
         tool_call_id: id,
         output: JSON.stringify({ error: errorMessage }),
@@ -49,50 +48,50 @@ const executeToolCall = async (call: OpenAiResponseToolCall): Promise<{ tool_cal
     }
   }
 
-  if (fn.name === "construct_auth_header") {
+  if (fn.name === 'construct_auth_header') {
     let args: {
       auth_type: string;
       email?: string;
       api_token?: string;
       additional_headers?: Record<string, string>;
-    } = { auth_type: "" };
+    } = { auth_type: '' };
     try {
-      args = JSON.parse(fn.arguments ?? "{}");
+      args = JSON.parse(fn.arguments ?? '{}');
     } catch {
       /* ignore parsing error */
     }
 
     let constructedHeaders: Record<string, string> = {};
-    if (args.auth_type === "basic" && args.email && args.api_token) {
+    if (args.auth_type === 'basic' && args.email && args.api_token) {
       const credentials = `${args.email}:${args.api_token}`;
       const base64Encoded = btoa(credentials);
-      constructedHeaders["Authorization"] = `Basic ${base64Encoded}`;
-    } else if (["bearer", "bearer_token"].includes(args.auth_type) && args.api_token) {
-      constructedHeaders["Authorization"] = `Bearer ${args.api_token}`;
-    } else if (args.auth_type === "api_key_header" && args.api_token) {
-      constructedHeaders["X-Api-Key"] = args.api_token;
+      constructedHeaders['Authorization'] = `Basic ${base64Encoded}`;
+    } else if (['bearer', 'bearer_token'].includes(args.auth_type) && args.api_token) {
+      constructedHeaders['Authorization'] = `Bearer ${args.api_token}`;
+    } else if (args.auth_type === 'api_key_header' && args.api_token) {
+      constructedHeaders['X-Api-Key'] = args.api_token;
     }
 
     if (args.additional_headers) {
       for (const [key, value] of Object.entries(args.additional_headers)) {
-        if (key.toLowerCase() === "contenttype") constructedHeaders["Content-Type"] = value;
-        else if (key.toLowerCase() === "accept") constructedHeaders["Accept"] = value;
+        if (key.toLowerCase() === 'contenttype') constructedHeaders['Content-Type'] = value;
+        else if (key.toLowerCase() === 'accept') constructedHeaders['Accept'] = value;
         else constructedHeaders[key] = value;
       }
     }
     return { tool_call_id: id, output: JSON.stringify(constructedHeaders) };
   }
 
-  if (fn.name === "http_request") {
-    let args: HttpRequestParams & { body?: string } = { url: "", method: "GET", headers: {} };
+  if (fn.name === 'http_request') {
+    let args: HttpRequestParams & { body?: string } = { url: '', method: 'GET', headers: {} };
     try {
-      args = JSON.parse(fn.arguments ?? "{}");
+      args = JSON.parse(fn.arguments ?? '{}');
     } catch {
       /* ignore parsing error */
     }
 
     let bodyPayload: unknown = null;
-    if (args.body && typeof args.body === "string") {
+    if (args.body && typeof args.body === 'string') {
       try {
         bodyPayload = JSON.parse(args.body);
       } catch {
@@ -117,7 +116,7 @@ const executeToolCall = async (call: OpenAiResponseToolCall): Promise<{ tool_cal
 const normalizeSystemName = (systemName: string): string =>
   systemName
     .toLowerCase()
-    .replace(/[^a-z0-9]/g, "")
+    .replace(/[^a-z0-9]/g, '')
     .trim();
 
 const buildAuthFlowPrompt = (params: RunAuthFlowParams): string => {
@@ -135,7 +134,7 @@ Normalisierter System-Name für Schema: ${normalizedSystem}
 Base URL: ${params.baseUrl}
 
 Credentials:
-${credentialParts.join("\n")}
+${credentialParts.join('\n')}
 
 Schritte:
 1. Lies das Schema mit read_scheme für "${normalizedSystem}"
@@ -149,47 +148,46 @@ WICHTIG: Verwende IMMER construct_auth_header für die Header-Konstruktion!`;
 export const runAuthFlow = async (params: RunAuthFlowParams): Promise<AuthFlowResult> => {
   const { apiKey, baseUrl, projectId } = resolveOpenAiConfig();
   const headers = buildOpenAiHeaders(apiKey, projectId);
-  const conversationId = await createConversation(baseUrl, headers);
   const { instructions, tools } = getAuthFlowConfig();
 
   const prompt = buildAuthFlowPrompt(params);
   const initialInput = [
-    { role: "system", content: instructions },
-    { role: "user", content: prompt },
+    { role: 'system', content: instructions },
+    { role: 'user', content: prompt },
   ];
 
-  let response = await createResponse(baseUrl, headers, conversationId, {
-    model: "gpt-4.1-mini",
+  let response = await createResponse(baseUrl, headers, {
+    model: 'gpt-4.1-mini',
     input: initialInput,
     tools,
   });
 
-  while (response.output.some(o => o.type === "tool_call")) {
+  while (response.output.some(o => o.type === 'tool_call')) {
     const toolCalls = response.output.filter(
-      (o): o is OpenAiResponseToolCall => o.type === "tool_call",
+      (o): o is OpenAiResponseToolCall => o.type === 'tool_call',
     );
 
     const toolOutputs = await Promise.all(
       toolCalls.map(async call => {
         const output = await executeToolCall(call);
         return {
-          type: "function_call_output" as const,
+          type: 'function_call_output' as const,
           tool_call_id: output.tool_call_id,
           output: output.output,
         };
       }),
     );
 
-    response = await createResponse(baseUrl, headers, conversationId, {
-      model: "gpt-4.1-mini",
+    response = await createResponse(baseUrl, headers, {
+      model: 'gpt-4.1-mini',
       input: toolOutputs,
     });
   }
 
-  const message = response.output.find((o): o is OpenAiResponseMessage => o.type === "message");
+  const message = response.output.find((o): o is OpenAiResponseMessage => o.type === 'message');
 
   if (message) {
-    const rawText = extractMessageText({ ...message, id: "", role: "assistant" });
+    const rawText = extractMessageText({ ...message, id: '', role: 'assistant' });
     const jsonText = extractJson(rawText);
     const parsed = parseAuthFlowResponse(jsonText);
 
@@ -204,5 +202,5 @@ export const runAuthFlow = async (params: RunAuthFlowParams): Promise<AuthFlowRe
     };
   }
 
-  throw new Error("Auth Flow returned no message.");
+  throw new Error('Auth Flow returned no message.');
 };
