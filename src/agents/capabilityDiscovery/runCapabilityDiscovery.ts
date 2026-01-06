@@ -1,13 +1,71 @@
 // src/agents/capabilityDiscovery/runCapabilityDiscovery.ts
 
 import { httpRequestTool as httpClient } from "../openai/httpTool";
-import { buildAuthHeaders, mergeSchemeHeaders, normalizeSystemName, resolveApiBaseUrl, resolveSchemePath } from "./assistant";
+import {
+  buildAuthHeaders,
+  getCapabilityDiscoveryConfig,
+  mergeSchemeHeaders,
+  normalizeSystemName,
+  resolveApiBaseUrl,
+  resolveSchemePath,
+} from "./assistant";
 import { buildUrlWithQuery, hasPathPlaceholders } from "./prompt";
 import { extractFirstArray, extractHasMoreFlag, extractNextCursor, normalizeResponseBody } from "./parser";
+import { createConversation } from "../openai/conversation";
+import { createResponse } from "../openai/run";
+import { extractJson, extractMessageText } from "../openai/message";
+import { resolveOpenAiConfig, buildOpenAiHeaders } from "../openai/openaiClient";
 import type { CapabilityDiscoveryCredentials } from "./assistant";
 import type { CapabilityDiscoveryResult, HttpResponse } from "../../types/agents";
 import type { DiscoveryPaginationConfig, SchemeDefinition } from "../../types/schemes";
+import type { OpenAiResponseToolCall, OpenAiResponseMessage } from "../openai/types";
 import { readJsonFile } from "../../tools/fileReader";
+
+const _internalRunCapabilityDiscovery = async (
+  baseUrl: string,
+  system: string,
+  apiToken: string,
+  email?: string,
+  password?: string,
+): Promise<CapabilityDiscoveryResult> => {
+  if (!baseUrl?.trim()) {
+    throw new Error("Capability Agent benötigt eine Base-URL");
+  }
+
+  const normalizedSystem = normalizeSystemName(system);
+  const schemePath = resolveSchemePath(normalizedSystem);
+  const scheme = await readJsonFile<SchemeDefinition>({ path: schemePath });
+
+  const credentials: CapabilityDiscoveryCredentials = {
+    apiToken,
+    email,
+    password,
+  };
+
+  const authHeaders = buildAuthHeaders(scheme, credentials);
+  const headers = mergeSchemeHeaders(scheme, authHeaders);
+  const resolvedBaseUrl = resolveApiBaseUrl(scheme, baseUrl);
+
+  if (scheme.apiType?.toUpperCase() === "GRAPHQL" || scheme.discovery?.graphqlQueryObjects) {
+    return runGraphqlDiscovery(scheme, resolvedBaseUrl, headers);
+  }
+
+  const endpoints = scheme.discovery?.endpoints ?? {};
+  const pagination = scheme.discovery?.pagination ?? undefined;
+
+  const objects: CapabilityDiscoveryResult["objects"] = {};
+
+  for (const [resourceName, endpoint] of Object.entries(endpoints)) {
+    const { count, error } = await fetchRestResource(resolvedBaseUrl, endpoint, headers, pagination);
+    objects[resourceName] = { count, ...(error ? { error } : {}) };
+  }
+
+  return {
+    system: scheme.system || system,
+    objects,
+    raw_output: null,
+  };
+};
 
 const MAX_PAGES = 50;
 const DEFAULT_LIMIT = 50;
@@ -364,6 +422,38 @@ const runGraphqlDiscovery = async (
   };
 };
 
+const executeToolCall = async (
+  call: OpenAiResponseToolCall,
+): Promise<{ tool_call_id: string; output: string }> => {
+  const { id, function: fn } = call;
+
+  if (fn.name === "discover_capabilities_from_scheme") {
+    let args: {
+      baseUrl: string;
+      system: string;
+      apiToken: string;
+      email?: string;
+      password?: string;
+    } = { baseUrl: "", system: "", apiToken: "" };
+    try {
+      args = JSON.parse(fn.arguments ?? "{}");
+    } catch {
+      /* ignore */
+    }
+
+    const output = await _internalRunCapabilityDiscovery(
+      args.baseUrl,
+      args.system,
+      args.apiToken,
+      args.email,
+      args.password,
+    );
+    return { tool_call_id: id, output: JSON.stringify(output) };
+  }
+
+  return { tool_call_id: id, output: JSON.stringify({ error: `Unknown tool: ${fn.name}` }) };
+};
+
 export const runCapabilityDiscovery = async (
   baseUrl: string,
   system: string,
@@ -371,41 +461,61 @@ export const runCapabilityDiscovery = async (
   email?: string,
   password?: string,
 ): Promise<CapabilityDiscoveryResult> => {
-  if (!baseUrl?.trim()) {
-    throw new Error("Capability Agent benötigt eine Base-URL");
+  const { apiKey, baseUrl: openAiBaseUrl, projectId } = resolveOpenAiConfig();
+  const headers = buildOpenAiHeaders(apiKey, projectId);
+  const conversationId = await createConversation(openAiBaseUrl, headers);
+  const { instructions, tools } = getCapabilityDiscoveryConfig();
+
+  const prompt = `Führe die Fähigkeitserkennung für das System "${system}" unter der URL "${baseUrl}" durch.`;
+  const initialInput = [
+    { role: "system", content: instructions },
+    { role: "user", content: prompt },
+  ];
+
+  let response = await createResponse(openAiBaseUrl, headers, conversationId, {
+    model: "gpt-4.1-mini",
+    input: initialInput,
+    tools,
+  });
+
+  while (response.output.some(o => o.type === "tool_call")) {
+    const toolCalls = response.output.filter(
+      (o): o is OpenAiResponseToolCall => o.type === "tool_call",
+    );
+
+    const toolOutputs = await Promise.all(
+      toolCalls.map(async call => {
+        const output = await executeToolCall(call);
+        return {
+          type: "function_call_output" as const,
+          tool_call_id: output.tool_call_id,
+          output: output.output,
+        };
+      }),
+    );
+
+    response = await createResponse(openAiBaseUrl, headers, conversationId, {
+      model: "gpt-4.1-mini",
+      input: toolOutputs,
+    });
   }
 
-  const normalizedSystem = normalizeSystemName(system);
-  const schemePath = resolveSchemePath(normalizedSystem);
-  const scheme = await readJsonFile<SchemeDefinition>({ path: schemePath });
+  const message = response.output.find((o): o is OpenAiResponseMessage => o.type === "message");
 
-  const credentials: CapabilityDiscoveryCredentials = {
-    apiToken,
-    email,
-    password,
-  };
-
-  const authHeaders = buildAuthHeaders(scheme, credentials);
-  const headers = mergeSchemeHeaders(scheme, authHeaders);
-  const resolvedBaseUrl = resolveApiBaseUrl(scheme, baseUrl);
-
-  if (scheme.apiType?.toUpperCase() === "GRAPHQL" || scheme.discovery?.graphqlQueryObjects) {
-    return runGraphqlDiscovery(scheme, resolvedBaseUrl, headers);
+  if (message) {
+    const rawText = extractMessageText({ ...message, id: "", role: "assistant" });
+    const jsonText = extractJson(rawText);
+    try {
+      return JSON.parse(jsonText) as CapabilityDiscoveryResult;
+    } catch {
+      // If parsing fails, it might be a text response. We can wrap it.
+      return {
+        system,
+        objects: {},
+        raw_output: rawText,
+      };
+    }
   }
 
-  const endpoints = scheme.discovery?.endpoints ?? {};
-  const pagination = scheme.discovery?.pagination ?? undefined;
-
-  const objects: CapabilityDiscoveryResult["objects"] = {};
-
-  for (const [resourceName, endpoint] of Object.entries(endpoints)) {
-    const { count, error } = await fetchRestResource(resolvedBaseUrl, endpoint, headers, pagination);
-    objects[resourceName] = { count, ...(error ? { error } : {}) };
-  }
-
-  return {
-    system: scheme.system || system,
-    objects,
-    raw_output: null,
-  };
+  throw new Error("Capability Discovery returned no message.");
 };

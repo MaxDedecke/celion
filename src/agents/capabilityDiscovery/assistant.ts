@@ -1,7 +1,54 @@
 // src/agents/capabilityDiscovery/assistant.ts
 
 import { btoa } from "buffer";
+import type { OpenAiTool } from "../openai/types";
 import type { SchemeDefinition } from "../../types/schemes";
+
+export const getCapabilityDiscoveryConfig = (): { instructions: string; tools: OpenAiTool[] } => {
+  const instructions = `You are an expert at discovering the capabilities of a system based on its API.
+Your task is to determine how many objects of different types exist in the system.
+You must call the 'discover_capabilities_from_scheme' tool to perform the actual discovery.
+Do not try to do it yourself.
+After the tool returns the data, format the output as a JSON object and return it.`;
+
+  const tools: OpenAiTool[] = [
+    {
+      type: "function",
+      function: {
+        name: "discover_capabilities_from_scheme",
+        description: "Discovers resources and their counts for a given system by reading a scheme and calling the system's API endpoints.",
+        parameters: {
+          type: "object",
+          properties: {
+            baseUrl: {
+              type: "string",
+              description: "The base URL of the API.",
+            },
+            system: {
+              type: "string",
+              description: "The name of the system.",
+            },
+            apiToken: {
+              type: "string",
+              description: "The API token for authentication.",
+            },
+            email: {
+              type: "string",
+              description: "The email for authentication, if applicable.",
+            },
+            password: {
+              type: "string",
+              description: "The password for authentication, if applicable.",
+            },
+          },
+          required: ["baseUrl", "system", "apiToken"],
+        },
+      },
+    },
+  ];
+
+  return { instructions, tools };
+};
 
 
 

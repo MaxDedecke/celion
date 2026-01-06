@@ -59,49 +59,46 @@ export const runSystemDetection = async (
   const { instructions, tools } = getSystemDetectionConfig(expectedSystem);
   const prompt = buildSystemDetectionPrompt(url, expectedSystem);
 
-  const systemMessage = { role: "system", content: instructions };
-  const userMessage = { role: "user", content: prompt };
-  let inputMessages: any[] = [systemMessage, userMessage];
-  let response: OpenAiResponse | undefined;
+  const initialInput = [
+    { role: "system", content: instructions },
+    { role: "user", content: prompt },
+  ];
 
-  for (let i = 0; i < 5; i++) {
-    response = await createResponse(baseUrl, headers, conversationId, {
-      model: "gpt-4.1-mini",
-      input: inputMessages,
-      tools,
-    });
+  let response = await createResponse(baseUrl, headers, conversationId, {
+    model: "gpt-4.1-mini",
+    input: initialInput,
+    tools,
+  });
 
+  while (response.output.some(o => o.type === "tool_call")) {
     const toolCalls = response.output.filter(
       (o): o is OpenAiResponseToolCall => o.type === "tool_call",
     );
-    const messages = response.output.filter(
-      (o): o is OpenAiResponseMessage => o.type === "message",
+
+    const toolOutputs = await Promise.all(
+      toolCalls.map(async call => {
+        const output = await executeToolCall(call);
+        return {
+          type: "function_call_output" as const,
+          tool_call_id: output.tool_call_id,
+          output: output.output,
+        };
+      }),
     );
 
-    if (messages.length > 0) {
-      const lastMessage = messages[messages.length - 1];
-      const rawText = extractMessageText({ ...lastMessage, id: "", role: "assistant" });
-      const jsonText = extractJson(rawText);
-      return parseSystemDetectionResponse(jsonText);
-    }
-
-    if (toolCalls.length > 0) {
-      const assistantResponse = {
-        role: "assistant",
-        content: null,
-        tool_calls: toolCalls,
-      };
-      const toolOutputs = await Promise.all(toolCalls.map(executeToolCall));
-      const toolResponseMessages = toolOutputs.map(t => ({
-        role: "tool",
-        tool_call_id: t.tool_call_id,
-        content: t.output,
-      }));
-      inputMessages = [...inputMessages, assistantResponse, ...toolResponseMessages];
-    } else {
-      throw new Error("System Detection returned no message or tool calls.");
-    }
+    response = await createResponse(baseUrl, headers, conversationId, {
+      model: "gpt-4.1-mini",
+      input: toolOutputs,
+    });
   }
 
-  throw new Error("System Detection did not complete within 5 iterations.");
+  const message = response.output.find((o): o is OpenAiResponseMessage => o.type === "message");
+
+  if (message) {
+    const rawText = extractMessageText({ ...message, id: "", role: "assistant" });
+    const jsonText = extractJson(rawText);
+    return parseSystemDetectionResponse(jsonText);
+  }
+
+  throw new Error("System Detection returned no message.");
 };
