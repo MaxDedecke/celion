@@ -1,7 +1,7 @@
-import { Conversation, createConversation } from 'src/agents/openai/conversation';
+import { createConversation } from 'src/agents/openai/conversation';
 import { createResponse } from 'src/agents/openai/run';
-import { httpRequest } from 'src/tools/httpRequest';
-import { Message, ToolCall } from '../openai/types';
+import { httpClient } from 'src/tools/httpRequest';
+import { Conversation, Message, ToolCall } from '../openai/types';
 import { buildOpenAiHeaders, resolveOpenAiConfig } from '../openai/openaiClient';
 
 const PROMPT_ID = 'auth-flow-v1';
@@ -21,16 +21,19 @@ export async function* runAuthFlow(
   const { apiKey, baseUrl, projectId } = resolveOpenAiConfig();
   const headers = buildOpenAiHeaders(apiKey, projectId);
 
-  const conversation: Conversation = await createConversation(baseUrl, headers, {
-    promptId: PROMPT_ID,
-    promptParameters: {
-      URL: url,
-      AUTH_METHOD: authMethod,
-      CREDENTIALS: JSON.stringify(credentials),
+  const conversation: Conversation = await createConversation(baseUrl, headers);
+
+  let response = await createResponse(baseUrl, headers, {
+    conversationId: conversation.id,
+    promptOptions: {
+      promptId: PROMPT_ID,
+      variables: {
+        URL: url,
+        AUTH_METHOD: authMethod,
+        CREDENTIALS: JSON.stringify(credentials),
+      },
     },
   });
-
-  let response = await createResponse(baseUrl, headers, { conversationId: conversation.id });
 
   while (response.output.some((item) => item.type === 'tool_call')) {
     const toolCalls = response.output.filter((item) => item.type === 'tool_call') as ToolCall[];
@@ -44,7 +47,7 @@ export async function* runAuthFlow(
         if (tool_name === 'httpClient') {
           const { headers = [], body, method, url: toolUrl } = parameters;
           const headersRecord = arrayToRecord(headers);
-          result = await httpRequest({
+          result = await httpClient({
             url: toolUrl,
             method,
             headers: headersRecord,
@@ -68,7 +71,7 @@ export async function* runAuthFlow(
 
     response = await createResponse(baseUrl, headers, {
       conversationId: conversation.id,
-      items: toolResults.map((result) => ({
+      inputs: toolResults.map((result) => ({
         type: 'tool_result',
         tool_result: {
           id: result.tool_call_id,
