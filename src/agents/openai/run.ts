@@ -1,22 +1,17 @@
-// src/agents/openai/run.ts
-
 import { OpenAiResponse } from './types';
 
 export const createResponse = async (
   baseUrl: string,
   headers: Record<string, string>,
-  params: { input: any[]; tools?: any[]; model?: string },
+  params: {
+    conversationId: string;
+    items?: any[];
+  }
 ): Promise<OpenAiResponse> => {
-  const body = {
-    input: params.input,
-    tools: params.tools,
-    model: params.model,
-  };
-
   const r = await fetch(`${baseUrl}/responses`, {
     method: 'POST',
     headers,
-    body: JSON.stringify(body),
+    body: JSON.stringify(params),
   });
 
   if (!r.ok) {

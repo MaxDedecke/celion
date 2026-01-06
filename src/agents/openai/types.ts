@@ -1,53 +1,28 @@
 // src/agents/openai/types.ts
 
-export type OpenAiRun = {
+export interface Conversation {
   id: string;
-  status: string;
-  last_error?: { message?: string } | null;
-  required_action?: {
-    type?: string;
-    submit_tool_outputs?: {
-      tool_calls: Array<{
-        id: string;
-        type: string;
-        function?: {
-          name?: string;
-          arguments?: string;
-        };
-      }>;
+}
+
+export interface Message {
+  type: 'message';
+  message: {
+    role: 'assistant';
+    content: {
+      text: string;
     };
-  } | null;
-};
+  };
+}
 
-export type OpenAiMessageContent = {
-  type: string;
-  text?: { value?: string } | string;
-  input_text?: string;
-};
-
-export type OpenAiMessage = {
-  id: string;
-  role: string;
-  content: OpenAiMessageContent[];
-};
+export interface ToolCall {
+  type: 'tool_call';
+  tool_call: {
+    id: string;
+    tool_name: string;
+    parameters: any;
+  };
+}
 
 export interface OpenAiResponse {
-  output: OpenAiOutputItem[];
-}
-
-export type OpenAiOutputItem = OpenAiResponseMessage | OpenAiResponseToolCall;
-
-export interface OpenAiResponseMessage {
-  type: 'message';
-  content: OpenAiMessageContent[];
-  role: 'assistant';
-}
-
-export interface OpenAiResponseToolCall {
-  type: 'tool_call';
-  id: string;
-  function: {
-    name: string;
-    arguments: string;
-  };
+  output: (Message | ToolCall)[];
 }
