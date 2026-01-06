@@ -35,14 +35,24 @@ def _write_chat_message(conn: psycopg.Connection, migration_id: str, role: str, 
 
 def _update_migration_step_status(conn: psycopg.Connection, migration_id: str, step_number: int, status: str, message: str | None = None):
     """Updates the status of a migration and its current step."""
+    
+    # Determine the overall migration status based on step_status
+    overall_migration_status: str
+    if step_status == 'completed':
+        overall_migration_status = 'completed'
+    elif step_status == 'failed':
+        overall_migration_status = 'paused' # Or 'failed', depending on desired behavior
+    else: # 'running', 'pending', 'idle'
+        overall_migration_status = 'processing'
+
     with conn.cursor() as cur:
         cur.execute(
             """
             UPDATE public.migrations
-            SET current_step = %s, step_status = %s
+            SET current_step = %s, step_status = %s, status = %s
             WHERE id = %s
             """,
-            (step_number, status, migration_id),
+            (step_number, step_status, overall_migration_status, migration_id),
         )
         conn.commit()
 
