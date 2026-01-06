@@ -18,6 +18,14 @@ async function logActivity(migrationId: string, type: 'success' | 'error' | 'inf
   ]);
 }
 
+// Hilfsfunktion zum Schreiben von Chat-Nachrichten
+async function writeChatMessage(client: any, migrationId: string, role: string, content: string, stepNumber?: number) {
+  await client.query(
+    'INSERT INTO migration_chat_messages (migration_id, role, content, step_number) VALUES ($1, $2, $3, $4)',
+    [migrationId, role, content, stepNumber]
+  );
+}
+
 const ensureWorkflowState = (state: any = {}) => {
   const safeState = state || {};
   const nodes = Array.isArray(safeState.nodes) ? [...safeState.nodes] : [];
@@ -59,7 +67,11 @@ async function processJob(job: any) {
 
   const client = await pool.connect();
   try {
-    const { rows: stepRows } = await client.query('SELECT id, migration_id, workflow_step_id, name FROM migration_steps WHERE id = $1', [step_id]);
+    // KORREKTUR: 'step_number' aus dem SELECT entfernt
+    const { rows: stepRows } = await client.query(
+      'SELECT id, migration_id, workflow_step_id, name FROM migration_steps WHERE id = $1', 
+      [step_id]
+    );
     const stepRecord = stepRows[0];
 
     if (!stepRecord) {
@@ -69,13 +81,24 @@ async function processJob(job: any) {
     }
 
     const migrationId = stepRecord.migration_id;
+    // KORREKTUR: step_number kommt jetzt sicher aus dem payload (Fallback auf 1)
+    const currentStepNumber = payload.stepNumber || 1;
 
     await client.query('BEGIN');
+    
+    // Status Updates beim Start
     await client.query('UPDATE migration_steps SET status = $1 WHERE id = $2', ['running', step_id]);
-    await client.query('UPDATE migrations SET status = $1 WHERE id = $2', ['processing', migrationId]);
+    
+    // WICHTIG: step_status auch auf 'running' setzen
+    await client.query('UPDATE migrations SET status = $1, step_status = $2 WHERE id = $3', ['processing', 'running', migrationId]);
+
+    // Start-Nachricht im Chat
+    await writeChatMessage(client, migrationId, 'system', `Starting ${stepRecord.name || 'step'}...`, currentStepNumber);
 
     try {
       let result: any;
+      let resultMessageText = "Step completed."; 
+
       if (agentName === 'runSystemDetection') {
         const url = agentParams?.sourceUrl || agentParams?.url;
         const expected = agentParams?.sourceExpectedSystem || agentParams?.expectedSystem;
@@ -92,16 +115,20 @@ async function processJob(job: any) {
         if (lastMessageText) {
           try {
             result = JSON.parse(lastMessageText);
+            resultMessageText = "System detected successfully."; 
           } catch (e) {
             result = { text: lastMessageText };
+            resultMessageText = lastMessageText;
           }
         } else {
           result = { error: 'Agent produced no output' };
+          resultMessageText = "Agent finished with no output.";
         }
       } else {
         throw new Error(`Agent ${agentName} is not yet implemented in the worker.`);
       }
 
+      // 1. Update migration_steps
       await client.query('UPDATE migration_steps SET status = $1, result = $2, status_message = $3 WHERE id = $4', [
         'completed',
         result,
@@ -119,14 +146,20 @@ async function processJob(job: any) {
         false
       );
 
-      const migrationStatus = completedCount >= totalSteps ? 'completed' : 'running';
+      const migrationStatus = completedCount >= totalSteps ? 'completed' : 'processing'; 
 
-      await client.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3 WHERE id = $4', [
+      // 2. WICHTIG: update migrations mit step_status = 'completed'
+      await client.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
         nextState,
         progress,
         migrationStatus,
+        'completed',        
+        currentStepNumber,  
         migrationId,
       ]);
+
+      // 3. WICHTIG: Chat Nachricht schreiben
+      await writeChatMessage(client, migrationId, 'assistant', resultMessageText, currentStepNumber);
 
       await logActivity(migrationId, 'success', `Schritt abgeschlossen: ${stepRecord.name}`);
 
@@ -154,12 +187,16 @@ async function processJob(job: any) {
           true
         );
 
-        await client2.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3 WHERE id = $4', [
+        // Auch im Fehlerfall step_status updaten
+        await client2.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4 WHERE id = $5', [
           nextState,
           progress,
           'paused',
+          'failed',
           migrationId,
         ]);
+        
+        await writeChatMessage(client2, migrationId, 'system', `Error: ${errorMessage}`, currentStepNumber);
 
         await logActivity(migrationId, 'error', `Schritt fehlgeschlagen: ${errorMessage}`);
 
