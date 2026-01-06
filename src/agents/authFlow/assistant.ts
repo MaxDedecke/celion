@@ -1,12 +1,8 @@
 // src/agents/authFlow/assistant.ts
 
-import type { OpenAiAssistant } from "../openai/types";
+import type { AgentConfig } from "./types";
 
-export const createAuthFlowAssistant = async (
-  baseUrl: string,
-  headers: Record<string, string>,
-  model: string,
-): Promise<OpenAiAssistant> => {
+export const getAuthFlowConfig = (): AgentConfig => {
   const instructions = `Du bist der Celion Auth Flow Agent. Deine Aufgabe ist es, API-Credentials zu validieren.
 
 ABLAUF:
@@ -132,25 +128,8 @@ Antworte NUR mit dem JSON-Objekt, ohne Markdown-Codeblöcke oder anderen Text.`;
     },
   ];
 
-  const response = await fetch(`${baseUrl}/assistants`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify({
-      model,
-      name: "Celion Auth Flow Agent",
-      description: "Validiert API-Credentials für Celion Migrationen mittels Schema-basierter Authentifizierung.",
-      instructions,
-      tools,
-    }),
-  });
-
-  if (!response.ok) {
-    const msg = await response.text().catch(() => response.statusText);
-    throw new Error(`OpenAI Auth Flow Agent konnte nicht erstellt werden: ${msg}`);
-  }
-
-  const payload = await response.json();
-  if (!payload.id) throw new Error("OpenAI Auth Flow Agent-Antwort enthielt keine ID.");
-
-  return { id: payload.id };
+  return {
+    instructions,
+    tools,
+  };
 };

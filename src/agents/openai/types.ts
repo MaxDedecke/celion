@@ -1,9 +1,5 @@
 // src/agents/openai/types.ts
 
-export type OpenAiAssistant = {
-  id: string;
-};
-
 export type OpenAiRun = {
   id: string;
   status: string;

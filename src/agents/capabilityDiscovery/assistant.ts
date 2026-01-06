@@ -1,6 +1,9 @@
 // src/agents/capabilityDiscovery/assistant.ts
 
+import { btoa } from "buffer";
 import type { SchemeDefinition } from "../../types/schemes";
+
+
 
 export type CapabilityDiscoveryCredentials = {
   apiToken?: string;

@@ -1,5 +1,10 @@
 // src/agents/authFlow/types.ts
 
+export type AgentConfig = {
+  instructions: string;
+  tools: any[];
+};
+
 export type AuthHeaders = Record<string, string>;
 
 export type AuthProbeConfig = {
