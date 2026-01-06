@@ -47,7 +47,7 @@ def publish_to_rabbitmq(job_id: int):
         queue_name = 'migration_tasks'
         channel.queue_declare(queue=queue_name, durable=True)
 
-        message = json.dumps({'job_id': job_id})
+        message = json.dumps({'job_id': str(job_id)})
         channel.basic_publish(
             exchange='',
             routing_key=queue_name,
