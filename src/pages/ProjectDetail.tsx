@@ -74,7 +74,7 @@ const ProjectDetail = () => {
   const [editingMigration, setEditingMigration] = useState<SidebarMigration | null>(null);
   const [projectIdForNewMigration, setProjectIdForNewMigration] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [migrationToDelete, setMigrationToDelete] = useState<string | null>(null);
+  const [migrationToDelete, setMigrationToDelete] = useState<{ id: string; name: string } | null>(null);
 
   // Lazy loading state for standalone migrations
   const [hasMoreMigrations, setHasMoreMigrations] = useState(true);
@@ -346,7 +346,7 @@ const ProjectDetail = () => {
     if (!migrationToDelete) return;
 
     try {
-      const { error } = await databaseClient.deleteMigration(migrationToDelete);
+      const { error } = await databaseClient.deleteMigration(migrationToDelete.id);
 
       if (error) throw error;
 
@@ -442,8 +442,13 @@ const ProjectDetail = () => {
             setShowAddMigrationDialog(true);
           }}
           onDeleteMigration={(migrationId) => {
-            setMigrationToDelete(migrationId);
-            setShowDeleteDialog(true);
+            const migration = [...sidebarMigrations, ...standaloneMigrations].find(
+              (m) => m.id === migrationId
+            );
+            if (migration) {
+              setMigrationToDelete({ id: migration.id, name: migration.name });
+              setShowDeleteDialog(true);
+            }
           }}
           onEditMigration={handleEditMigration}
           onDuplicateMigration={handleDuplicateMigration}
@@ -550,7 +555,7 @@ const ProjectDetail = () => {
                             <button
                               onClick={(event) => {
                                 event.stopPropagation();
-                                setMigrationToDelete(migration.id);
+                                setMigrationToDelete({ id: migration.id, name: migration.name });
                                 setShowDeleteDialog(true);
                               }}
                               className="rounded-full bg-background/80 p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
@@ -635,7 +640,7 @@ const ProjectDetail = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Migration löschen</AlertDialogTitle>
             <AlertDialogDescription>
-              Möchtest du diese Migration wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.
+              Möchtest du die Migration "{migrationToDelete?.name}" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>

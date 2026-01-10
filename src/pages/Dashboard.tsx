@@ -108,7 +108,7 @@ const Dashboard = () => {
   const [showEditConfigDialog, setShowEditConfigDialog] = useState(false);
   const [editConfigData, setEditConfigData] = useState<NewMigrationInput | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [migrationToDelete, setMigrationToDelete] = useState<string | null>(null);
+  const [migrationToDelete, setMigrationToDelete] = useState<{ id: string; name: string } | null>(null);
   const [isNotesPopoverOpen, setIsNotesPopoverOpen] = useState(false);
   const [migrationNotes, setMigrationNotes] = useState("");
   const [isSavingNotes, setIsSavingNotes] = useState(false);
@@ -417,25 +417,28 @@ const Dashboard = () => {
   };
 
   const handleDeleteMigration = (migrationId: string) => {
-    setMigrationToDelete(migrationId);
-    setShowDeleteDialog(true);
+    const migration = [...migrations, ...standaloneMigrations].find((m) => m.id === migrationId);
+    if (migration) {
+      setMigrationToDelete({ id: migration.id, name: migration.name });
+      setShowDeleteDialog(true);
+    } else {
+      toast.error("Zu löschende Migration nicht gefunden.");
+    }
   };
 
   const confirmDeleteMigration = async () => {
     if (!migrationToDelete) return;
 
     try {
-      const migrationToDeleteData = migrations.find((m) => m.id === migrationToDelete);
-      
-      const { error } = await databaseClient.deleteMigration(migrationToDelete);
+      const { error } = await databaseClient.deleteMigration(migrationToDelete.id);
 
       if (error) throw error;
 
-      if (selectedMigration === migrationToDelete) {
+      if (selectedMigration === migrationToDelete.id) {
         setSelectedMigration(null);
       }
       
-      toast.success(`Migration "${migrationToDeleteData?.name}" gelöscht`);
+      toast.success(`Migration "${migrationToDelete.name}" gelöscht`);
       loadAllData();
     } catch (error: any) {
       toast.error("Fehler beim Löschen der Migration");
@@ -1075,7 +1078,7 @@ const Dashboard = () => {
           <AlertDialogHeader>
             <AlertDialogTitle>Sind Sie sicher?</AlertDialogTitle>
             <AlertDialogDescription>
-              Diese Aktion kann nicht rückgängig gemacht werden. Die Migration "{migrations.find(m => m.id === migrationToDelete)?.name}" wird permanent gelöscht.
+              Diese Aktion kann nicht rückgängig gemacht werden. Die Migration "{migrationToDelete?.name}" wird permanent gelöscht.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
