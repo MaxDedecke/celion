@@ -55,12 +55,12 @@ export const useMessageQueue = <T extends { id: string; role?: string }>(
     // Ab hier: Nur einzelne neue Nachrichten während der Session animieren
     if (newIds.length > 0) {
       newIds.forEach(m => {
-        // Non-agent messages sofort anzeigen und als completed markieren
-        if (m.role !== "agent") {
+        // User messages sofort anzeigen und als completed markieren
+        if (m.role === "user") {
           setVisibleIds(prev => new Set([...prev, m.id]));
           setCompletedAnimations(prev => new Set([...prev, m.id]));
         } else {
-          // Agent messages in Queue
+          // Agent/System/Assistant messages in Queue
           queueRef.current.push(m.id);
         }
       });

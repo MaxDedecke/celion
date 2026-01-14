@@ -32,6 +32,10 @@ const MigrationChatCard = ({
   const [migrationData, setMigrationData] = useState<Migration>(migration);
 
   useEffect(() => {
+    setMigrationData(migration);
+  }, [migration]);
+
+  useEffect(() => {
     const fetchChatMessages = async () => {
       try {
         const response = await fetch(`/api/migrations/${migration.id}/chat`);

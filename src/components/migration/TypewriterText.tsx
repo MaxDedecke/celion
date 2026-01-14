@@ -1,43 +1,53 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { cn } from "@/lib/utils";
 
 interface TypewriterTextProps {
   text: string;
-  speed?: number; // ms per word
+  speed?: number; // ms per character
   onComplete?: () => void;
   className?: string;
 }
 
 const TypewriterText = ({ 
   text, 
-  speed = 150, 
+  speed = 30, 
   onComplete,
   className 
 }: TypewriterTextProps) => {
-  const [displayedWords, setDisplayedWords] = useState<string[]>([]);
+  const [displayedText, setDisplayedText] = useState("");
+  const [currentIndex, setCurrentIndex] = useState(0);
   const [isComplete, setIsComplete] = useState(false);
-  
-  const words = text.split(" ");
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    if (displayedWords.length >= words.length) {
-      setIsComplete(true);
-      onComplete?.();
+    // Reset if text changes significantly (optional, depending on use case)
+    if (text.length > 0 && currentIndex === 0 && displayedText === "") {
+        // Initial start
+    }
+  }, [text]);
+
+  useEffect(() => {
+    if (currentIndex >= text.length) {
+      if (!isComplete) {
+        setIsComplete(true);
+        onComplete?.();
+      }
       return;
     }
 
     const timer = setTimeout(() => {
-      setDisplayedWords(prev => [...prev, words[prev.length]]);
+      setDisplayedText((prev) => prev + text[currentIndex]);
+      setCurrentIndex((prev) => prev + 1);
     }, speed);
 
     return () => clearTimeout(timer);
-  }, [displayedWords, words, speed, onComplete]);
+  }, [currentIndex, text, speed, isComplete, onComplete]);
 
   return (
-    <span className={cn("", className)}>
-      {displayedWords.join(" ")}
+    <span className={cn("whitespace-pre-wrap", className)}>
+      {displayedText}
       {!isComplete && (
-        <span className="inline-block w-0.5 h-4 ml-0.5 bg-primary/60 animate-pulse align-middle" />
+        <span className="inline-block w-1.5 h-4 ml-0.5 bg-primary animate-pulse align-middle" />
       )}
     </span>
   );

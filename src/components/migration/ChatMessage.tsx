@@ -4,7 +4,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import TypewriterText from "./TypewriterText";
 
-export type ChatMessageRole = "system" | "agent" | "user";
+export type ChatMessageRole = "system" | "agent" | "user" | "assistant";
 export type ChatMessageStatus = "success" | "error" | "pending" | "info";
 
 export interface ChatMessage {
@@ -34,7 +34,7 @@ interface ChatMessageProps {
 
 const ChatMessage = ({ message, onOpenAgentOutput, enableTypewriter = false, onTypewriterComplete }: ChatMessageProps) => {
   useEffect(() => {
-    if (enableTypewriter && message.role !== "agent" && onTypewriterComplete) {
+    if (enableTypewriter && message.role === "user" && onTypewriterComplete) {
       onTypewriterComplete();
     }
   }, [enableTypewriter, message.role, onTypewriterComplete]);
@@ -148,8 +148,8 @@ const ChatMessage = ({ message, onOpenAgentOutput, enableTypewriter = false, onT
           <span className="text-[10px] text-muted-foreground">{formatTimestamp(displayTime)}</span>
         </div>
         <p className={cn("text-sm leading-relaxed", getTextColor())}>
-          {enableTypewriter && message.role === "agent" ? (
-            <TypewriterText text={message.content} speed={150} onComplete={onTypewriterComplete} />
+          {enableTypewriter && message.role !== "user" ? (
+            <TypewriterText text={message.content} speed={15} onComplete={onTypewriterComplete} />
           ) : (
             renderContentWithLinks(message.content)
           )}

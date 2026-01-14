@@ -79,20 +79,21 @@ const ChatMessageList = ({
               enableTypewriter={shouldAnimate}
               onTypewriterComplete={() => onAnimationComplete(message.id)}
             />
-            {isLastMessage && showContinueButton && !isAgentRunning && !hasQueuedMessages && (
-              <div className="flex items-center gap-2 animate-fade-in pt-4 pl-11">
-                <button 
-                  onClick={onContinue}
-                  className="text-sm text-primary hover:text-primary/80 flex items-center gap-1.5 transition-all group"
-                >
-                  <ArrowRight className="h-3.5 w-3.5 group-hover:translate-x-0.5 transition-transform" />
-                  {continueButtonText}
-                </button>
-              </div>
-            )}
           </div>
         );
       })}
+      
+      {showContinueButton && !isAgentRunning && (!hasQueuedMessages || messages.length === 0) && (
+        <div className="flex items-center gap-2 animate-fade-in pt-4 pl-11">
+          <button 
+            onClick={onContinue}
+            className="text-sm text-primary hover:text-primary/80 flex items-center gap-1.5 transition-all group"
+          >
+            <ArrowRight className="h-3.5 w-3.5 group-hover:translate-x-0.5 transition-transform" />
+            {continueButtonText}
+          </button>
+        </div>
+      )}
       
       {(isAgentRunning || hasQueuedMessages) && (
         <ThinkingIndicator stepTitle={currentStepTitle} />
