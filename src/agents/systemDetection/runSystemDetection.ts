@@ -14,7 +14,7 @@ function arrayToRecord(arr: { key: string; value: string }[]): Record<string, st
   }, {} as Record<string, string>);
 }
 
-export async function* runSystemDetection(url: string, system: string): AsyncGenerator<Message> {
+export async function* runSystemDetection(url: string, system: string, instructions?: string): AsyncGenerator<Message> {
   const { apiKey, baseUrl, projectId } = resolveOpenAiConfig();
   const headers = buildOpenAiHeaders(apiKey, projectId);
 
@@ -27,6 +27,7 @@ export async function* runSystemDetection(url: string, system: string): AsyncGen
       variables: {
         URL: url,
         SYSTEM: system,
+        INSTRUCTIONS: instructions || '',
       },
     },
   });
@@ -80,6 +81,8 @@ export async function* runSystemDetection(url: string, system: string): AsyncGen
       })),
     });
   }
+
+  console.log("SystemDetection response output:", JSON.stringify(response.output, null, 2));
 
   for (const item of response.output) {
     if (item.type === 'message') {

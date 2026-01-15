@@ -697,7 +697,7 @@ async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
                 UPDATE public.migrations
                 SET current_step = %s, step_status = 'running', status = 'processing'
                 WHERE id = %s
-                RETURNING id, source_url, source_system
+                RETURNING id, source_url, source_system, notes
                 """,
                 (step, id),
             )
@@ -742,6 +742,7 @@ async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
             agent_params = {
                 "sourceUrl": migration_row["source_url"],
                 "sourceExpectedSystem": migration_row["source_system"],
+                "instructions": migration_row["notes"],
             }
 
             payload = {

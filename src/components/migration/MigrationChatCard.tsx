@@ -158,7 +158,7 @@ const MigrationChatCard = ({
               messages={chatMessages} 
               isAgentRunning={isStepRunning} 
               onOpenAgentOutput={onOpenAgentOutput}
-              showContinueButton={(migrationData.status === "not_started" || migrationData.status === "running") && overallProgress < 100 && !isStepRunning}
+              showContinueButton={(migrationData.status === "not_started" || migrationData.status === "running" || migrationData.status === "paused") && overallProgress < 100 && !isStepRunning}
               onContinue={onContinue}
               continueButtonText={
                 migrationData.status === "not_started" 

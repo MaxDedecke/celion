@@ -95,6 +95,8 @@ async function processJob(job: any) {
     // Start-Nachricht im Chat
     await writeChatMessage(client, migrationId, 'system', `Starting ${stepRecord.name || 'step'}...`, currentStepNumber);
 
+    console.log("Agent params:", JSON.stringify(agentParams, null, 2));
+
     try {
       let result: any;
       let resultMessageText = "Step completed."; 
@@ -102,20 +104,22 @@ async function processJob(job: any) {
       if (agentName === 'runSystemDetection') {
         const url = agentParams?.sourceUrl || agentParams?.url;
         const expected = agentParams?.sourceExpectedSystem || agentParams?.expectedSystem;
+        const instructions = agentParams?.instructions;
 
-        const messageGenerator = runSystemDetection(url, expected);
+        const messageGenerator = runSystemDetection(url, expected, instructions);
         let lastMessageText: string | undefined;
 
         for await (const message of messageGenerator) {
-          if (message.message?.content?.text) {
-            lastMessageText = message.message.content.text;
+          console.log("Received message from generator:", JSON.stringify(message, null, 2));
+          if (message.content && message.content.length > 0 && message.content[0].text) {
+            lastMessageText = message.content[0].text;
           }
         }
 
         if (lastMessageText) {
           try {
             result = JSON.parse(lastMessageText);
-            resultMessageText = "System detected successfully."; 
+            resultMessageText = lastMessageText; 
           } catch (e) {
             result = { text: lastMessageText };
             resultMessageText = lastMessageText;

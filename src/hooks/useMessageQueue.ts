@@ -4,7 +4,7 @@ interface UseMessageQueueOptions {
   delayMs?: number;
 }
 
-export const useMessageQueue = <T extends { id: string; role?: string }>(
+export const useMessageQueue = <T extends { id: string; role?: string; created_at?: string }>(
   allMessages: T[],
   options: UseMessageQueueOptions = {}
 ) => {
@@ -55,8 +55,10 @@ export const useMessageQueue = <T extends { id: string; role?: string }>(
     // Ab hier: Nur einzelne neue Nachrichten während der Session animieren
     if (newIds.length > 0) {
       newIds.forEach(m => {
-        // User messages sofort anzeigen und als completed markieren
-        if (m.role === "user") {
+        const isOld = m.created_at ? (Date.now() - new Date(m.created_at).getTime() > 20000) : false;
+
+        // User messages oder alte Nachrichten sofort anzeigen und als completed markieren
+        if (m.role === "user" || isOld) {
           setVisibleIds(prev => new Set([...prev, m.id]));
           setCompletedAnimations(prev => new Set([...prev, m.id]));
         } else {

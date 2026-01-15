@@ -6,12 +6,12 @@ export interface Conversation {
 
 export interface Message {
   type: 'message';
-  message: {
-    role: 'assistant';
-    content: {
-      text: string;
-    };
-  };
+  id?: string;
+  role: string;
+  content: Array<{
+    type: 'output_text';
+    text: string;
+  }>;
 }
 
 export interface ToolCall {

@@ -20,13 +20,18 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
     if (isStepRunning) return;
 
     try {
-      const nextStep = (project.current_step || 0) + 1;
-      if (nextStep > 10) {
+      // If the last step failed, we retry it (current_step). 
+      // Otherwise we move to the next step (current_step + 1).
+      const stepToRun = project.step_status === 'failed' 
+        ? (project.current_step || 1) 
+        : (project.current_step || 0) + 1;
+
+      if (stepToRun > 10) {
         toast.info("Migration bereits abgeschlossen.");
         return;
       }
 
-      const response = await fetch(`/api/migrations/${project.id}/action/${nextStep}`, {
+      const response = await fetch(`/api/migrations/${project.id}/action/${stepToRun}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
       });
@@ -35,7 +40,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         const errorText = await response.text();
         throw new Error(`Failed to start step: ${errorText}`);
       }
-      toast.success(`Schritt ${nextStep} gestartet.`);
+      toast.success(`Schritt ${stepToRun} gestartet.`);
       await onRefresh();
 
     } catch (error) {
@@ -43,7 +48,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
       const errorMessage = error instanceof Error ? error.message : "Ein unbekannter Fehler ist aufgetreten";
       toast.error(`Fehler beim Fortschreiten des Workflows: ${errorMessage}`);
     }
-  }, [project.id, project.current_step, isStepRunning, onRefresh]);
+  }, [project.id, project.current_step, project.step_status, isStepRunning, onRefresh]);
 
   const handleSendChatMessage = useCallback(
     async (message: string) => {

@@ -221,7 +221,9 @@ const Dashboard = () => {
           activities,
           notes: migration.notes ?? "",
           status: migration.status || deriveMigrationStatus(migration),
-          workflowState,
+          workflowState: migration.workflow_state,
+          current_step: migration.current_step,
+          step_status: migration.step_status,
         };
       }),
     );
