@@ -99,7 +99,9 @@ async function processJob(job: any) {
 
     try {
       let result: any;
-      let resultMessageText = "Step completed."; 
+      let resultMessageText = "Step completed.";
+      let isLogicalFailure = false;
+      let failureMessage = "";
 
       if (agentName === 'runSystemDetection') {
         const url = agentParams?.sourceUrl || agentParams?.url;
@@ -120,6 +122,13 @@ async function processJob(job: any) {
           try {
             result = JSON.parse(lastMessageText);
             resultMessageText = lastMessageText; 
+            
+            // Explicitly check for logical failure in System Detection
+            if (agentName === 'runSystemDetection' && result && result.systemMatchesUrl === false) {
+               isLogicalFailure = true;
+               failureMessage = "System detection failed: URL does not match expected system.";
+            }
+
           } catch (e) {
             result = { text: lastMessageText };
             resultMessageText = lastMessageText;
@@ -134,9 +143,9 @@ async function processJob(job: any) {
 
       // 1. Update migration_steps
       await client.query('UPDATE migration_steps SET status = $1, result = $2, status_message = $3 WHERE id = $4', [
-        'completed',
+        isLogicalFailure ? 'failed' : 'completed',
         result,
-        'Agent run completed successfully.',
+        isLogicalFailure ? failureMessage : 'Agent run completed successfully.',
         step_id,
       ]);
 
@@ -147,17 +156,18 @@ async function processJob(job: any) {
         migrationData?.workflow_state,
         stepRecord.workflow_step_id || stepId,
         result,
-        false
+        isLogicalFailure
       );
 
-      const migrationStatus = completedCount >= totalSteps ? 'completed' : 'processing'; 
+      const migrationStatus = isLogicalFailure ? 'paused' : (completedCount >= totalSteps ? 'completed' : 'processing');
+      const stepStatus = isLogicalFailure ? 'failed' : 'completed';
 
-      // 2. WICHTIG: update migrations mit step_status = 'completed'
+      // 2. WICHTIG: update migrations mit step_status
       await client.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
         nextState,
         progress,
         migrationStatus,
-        'completed',        
+        stepStatus,        
         currentStepNumber,  
         migrationId,
       ]);
@@ -165,11 +175,16 @@ async function processJob(job: any) {
       // 3. WICHTIG: Chat Nachricht schreiben
       await writeChatMessage(client, migrationId, 'assistant', resultMessageText, currentStepNumber);
 
-      await logActivity(migrationId, 'success', `Schritt abgeschlossen: ${stepRecord.name}`);
+      if (isLogicalFailure) {
+        await writeChatMessage(client, migrationId, 'system', `Schritt ${currentStepNumber} fehlgeschlagen.`, currentStepNumber);
+        await logActivity(migrationId, 'warning', `Schritt fehlgeschlagen: ${stepRecord.name}`);
+      } else {
+        await logActivity(migrationId, 'success', `Schritt abgeschlossen: ${stepRecord.name}`);
+      }
 
       await client.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
 
-      console.log(`Job ${job.id} completed successfully.`);
+      console.log(`Job ${job.id} completed successfully (Logical Failure: ${isLogicalFailure}).`);
       await client.query('COMMIT');
     } catch (error) {
       await client.query('ROLLBACK');

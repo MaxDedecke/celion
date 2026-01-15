@@ -65,20 +65,39 @@ const ChatMessageList = ({
         const isLastMessage = index === visibleMessages.length - 1;
         const shouldAnimate = animatingId === message.id && !completedAnimations.has(message.id);
         
+        // Determine if we should show a divider
+        const previousMessage = index > 0 ? visibleMessages[index - 1] : null;
+        const isStepStart = message.content.startsWith("Starting Step") || message.content.startsWith("Starting System Detection"); // Add specific starts if needed
+        
+        const showDivider = previousMessage && (
+          (message.step_number && previousMessage.step_number !== message.step_number) ||
+          (isStepStart && message.role === 'system')
+        );
+
         return (
-          <div
-            key={message.id}
-            className="animate-fade-in"
-            style={{
-              animationDelay: `${Math.min(index * 30, 150)}ms`,
-            }}
-          >
-            <ChatMessage 
-              message={message} 
-              onOpenAgentOutput={onOpenAgentOutput}
-              enableTypewriter={shouldAnimate}
-              onTypewriterComplete={() => onAnimationComplete(message.id)}
-            />
+          <div key={message.id}>
+            {showDivider && (
+              <div className="flex items-center gap-4 my-4">
+                <div className="h-px bg-border flex-1" />
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium">
+                  Schritt {message.step_number}
+                </span>
+                <div className="h-px bg-border flex-1" />
+              </div>
+            )}
+            <div
+              className="animate-fade-in"
+              style={{
+                animationDelay: `${Math.min(index * 30, 150)}ms`,
+              }}
+            >
+              <ChatMessage 
+                message={message} 
+                onOpenAgentOutput={onOpenAgentOutput}
+                enableTypewriter={shouldAnimate}
+                onTypewriterComplete={() => onAnimationComplete(message.id)}
+              />
+            </div>
           </div>
         );
       })}

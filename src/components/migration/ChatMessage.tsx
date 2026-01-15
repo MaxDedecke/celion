@@ -15,6 +15,7 @@ export interface ChatMessage {
   created_at: string; 
   timestamp?: string; // Optional für Kompatibilität
   status?: ChatMessageStatus;
+  step_number?: number;
   stepInfo?: {
     title: string;
     phase: string;

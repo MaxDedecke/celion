@@ -25,9 +25,9 @@ export async function* runSystemDetection(url: string, system: string, instructi
     promptOptions: {
       promptId: PROMPT_ID,
       variables: {
-        URL: url,
-        SYSTEM: system,
-        INSTRUCTIONS: instructions || '',
+        url: url,
+        expectedSystemLabel: system,
+        apiVersionHint: instructions || '',
       },
     },
   });

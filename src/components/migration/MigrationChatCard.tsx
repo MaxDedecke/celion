@@ -94,12 +94,15 @@ const MigrationChatCard = ({
   // Auch 'pending' als laufend betrachten, damit die UI sofort reagiert
   const isStepRunning = migrationData.step_status === 'running' || migrationData.step_status === 'pending';
   
-  // Wenn Schritt X läuft, sind erst X-1 Schritte komplett fertig
-  const completedCount = isStepRunning ? Math.max(0, rawStep - 1) : rawStep;
   const hasCurrentStepFailed = migrationData.step_status === 'failed';
+  
+  // Wenn Schritt X läuft oder fehlgeschlagen ist, sind erst X-1 Schritte komplett fertig
+  const completedCount = (isStepRunning || hasCurrentStepFailed) ? Math.max(0, rawStep - 1) : rawStep;
+  
   const overallProgress = (completedCount / totalSteps) * 100;
   const currentStepNumber = completedCount + 1 > totalSteps ? totalSteps : completedCount + 1;
-  const activeStep = AGENT_WORKFLOW_STEPS.find(s => s.step === currentStepNumber);
+  // Fix: Access by index (0-based) using currentStepNumber (1-based)
+  const activeStep = AGENT_WORKFLOW_STEPS[currentStepNumber - 1];
   const currentStepTitle = activeStep?.title || (completedCount === totalSteps ? "Abgeschlossen" : "Bereit");
 
   return (
@@ -165,7 +168,7 @@ const MigrationChatCard = ({
                   ? "Starten" 
                   : hasCurrentStepFailed 
                     ? `↻ Schritt wiederholen: ${activeStep?.title}` 
-                    : `Fortsetzen: ${AGENT_WORKFLOW_STEPS.find(s => s.step === currentStepNumber)?.title}`
+                    : `Fortsetzen: ${AGENT_WORKFLOW_STEPS[currentStepNumber - 1]?.title}`
               }
               currentStepTitle={activeStep?.title}
             />
