@@ -18,9 +18,9 @@ async function logActivity(migrationId: string, type: 'success' | 'error' | 'inf
   ]);
 }
 
-// Hilfsfunktion zum Schreiben von Chat-Nachrichten
-async function writeChatMessage(client: any, migrationId: string, role: string, content: string, stepNumber?: number) {
-  await client.query(
+// Hilfsfunktion zum Schreiben von Chat-Nachrichten (Verwendet eigene Connection für Sofort-Commit)
+async function writeChatMessage(migrationId: string, role: string, content: string, stepNumber?: number) {
+  await pool.query(
     'INSERT INTO migration_chat_messages (migration_id, role, content, step_number) VALUES ($1, $2, $3, $4)',
     [migrationId, role, content, stepNumber]
   );
@@ -65,117 +65,141 @@ async function processJob(job: any) {
   const { step_id, payload } = job;
   const { agentName, agentParams, stepId } = payload;
 
-  const client = await pool.connect();
+  // 1. Step Record laden (Read-only)
+  const { rows: stepRows } = await pool.query(
+    'SELECT id, migration_id, workflow_step_id, name FROM migration_steps WHERE id = $1', 
+    [step_id]
+  );
+  const stepRecord = stepRows[0];
+
+  if (!stepRecord) {
+    console.error('Unable to find migration step for job', job.id);
+    await pool.query('UPDATE jobs SET status = $1, last_error = $2 WHERE id = $3', ['failed', 'Step not found', job.id]);
+    return;
+  }
+
+  const migrationId = stepRecord.migration_id;
+  const currentStepNumber = payload.stepNumber || 1;
+
+  // 2. Start-Status setzen (Transaction 1 - Sofort committen)
+  const startClient = await pool.connect();
   try {
-    // KORREKTUR: 'step_number' aus dem SELECT entfernt
-    const { rows: stepRows } = await client.query(
-      'SELECT id, migration_id, workflow_step_id, name FROM migration_steps WHERE id = $1', 
-      [step_id]
-    );
-    const stepRecord = stepRows[0];
+    await startClient.query('BEGIN');
+    await startClient.query('UPDATE migration_steps SET status = $1 WHERE id = $2', ['running', step_id]);
+    await startClient.query('UPDATE migrations SET status = $1, step_status = $2 WHERE id = $3', ['processing', 'running', migrationId]);
+    await startClient.query('COMMIT');
+  } catch (e) {
+    await startClient.query('ROLLBACK');
+    throw e;
+  } finally {
+    startClient.release();
+  }
 
-    if (!stepRecord) {
-      console.error('Unable to find migration step for job', job.id);
-      await client.query('UPDATE jobs SET status = $1, last_error = $2 WHERE id = $3', ['failed', 'Step not found', job.id]);
-      return;
-    }
+  // Start-Nachricht im Chat (Sofort sichtbar)
+  if (agentName !== 'runSystemDetection' || (agentParams?.mode || 'source') === 'source') {
+    await writeChatMessage(migrationId, 'system', `Starting ${stepRecord.name || 'step'}...`, currentStepNumber);
+  }
 
-    const migrationId = stepRecord.migration_id;
-    // KORREKTUR: step_number kommt jetzt sicher aus dem payload (Fallback auf 1)
-    const currentStepNumber = payload.stepNumber || 1;
+  console.log("Agent params:", JSON.stringify(agentParams, null, 2));
 
-    await client.query('BEGIN');
+  try {
+    let result: any;
+    let resultMessageText = "Step completed.";
+    let isLogicalFailure = false;
+    let failureMessage = "";
+
+          if (agentName === 'runSystemDetection') {
+
+            const url = agentParams?.url;
+
+            const expected = agentParams?.expectedSystem;
+
+            const instructions = agentParams?.instructions;
+
+            const mode = agentParams?.mode || 'source';
+
     
-    // Status Updates beim Start
-    await client.query('UPDATE migration_steps SET status = $1 WHERE id = $2', ['running', step_id]);
-    
-    // WICHTIG: step_status auch auf 'running' setzen
-    await client.query('UPDATE migrations SET status = $1, step_status = $2 WHERE id = $3', ['processing', 'running', migrationId]);
 
-    // Start-Nachricht im Chat
-    // MODIFIED: Only show for non-split agents or the first part of split agents (source)
-    if (agentName !== 'runSystemDetection' || (agentParams?.mode || 'source') === 'source') {
-      await writeChatMessage(client, migrationId, 'system', `Starting ${stepRecord.name || 'step'}...`, currentStepNumber);
-    }
+            const headerMsg = mode === 'source' ? "Analysiere **Quellsystem**" : "Analysiere **Zielsystem**";
 
-    console.log("Agent params:", JSON.stringify(agentParams, null, 2));
+            await writeChatMessage(migrationId, 'assistant', headerMsg, currentStepNumber);
 
-    try {
-      let result: any;
-      let resultMessageText = "Step completed.";
-      let isLogicalFailure = false;
-      let failureMessage = "";
-
-      if (agentName === 'runSystemDetection') {
-        const url = agentParams?.url;
-        const expected = agentParams?.expectedSystem;
-        const instructions = agentParams?.instructions;
-        const mode = agentParams?.mode || 'source';
-
-        const headerMsg = mode === 'source' ? "Analysiere Quellsystem" : "Analysiere Zielsystem";
-        await writeChatMessage(client, migrationId, 'assistant', headerMsg, currentStepNumber);
-        
-        const detailMsg = `Ich überprüfe, ob ${expected} zu der URL ${url} passt.`;
-        await writeChatMessage(client, migrationId, 'assistant', detailMsg, currentStepNumber);
-        
-        const messageGenerator = runSystemDetection(url, expected, instructions);
-        let lastMessageText: string | undefined;
-
-        for await (const message of messageGenerator) {
-          if (message.content && message.content.length > 0 && message.content[0].text) {
-            lastMessageText = message.content[0].text;
-          }
-        }
-
-        if (lastMessageText) {
-          try {
-            result = JSON.parse(lastMessageText);
-            resultMessageText = lastMessageText; 
             
-            // Explicitly check for logical failure in System Detection
-            if (result && result.systemMatchesUrl === false) {
-               isLogicalFailure = true;
-               failureMessage = `${mode === 'source' ? 'Source' : 'Target'} system detection failed: URL does not match expected system.`;
-            }
 
-          } catch (e) {
-            result = { text: lastMessageText };
-            resultMessageText = lastMessageText;
-          }
-        } else {
-          result = { error: 'Agent produced no output' };
-          resultMessageText = "Agent finished with no output.";
-          isLogicalFailure = true;
-          failureMessage = "Agent produced no output.";
+            const detailMsg = `Ich überprüfe, ob **${expected}** zu der URL **${url}** passt.`;
+
+            await writeChatMessage(migrationId, 'assistant', detailMsg, currentStepNumber);
+
+            
+
+            const messageGenerator = runSystemDetection(url, expected, instructions);
+
+    
+      let lastMessageText: string | undefined;
+
+      // Agent läuft... Nachrichten werden hier nicht live gestreamt (könnte man aber theoretisch)
+      for await (const message of messageGenerator) {
+        if (message.content && message.content.length > 0 && message.content[0].text) {
+          lastMessageText = message.content[0].text;
         }
+      }
 
-        // Check if this is the last job for this step
-        const { rows: otherJobs } = await client.query(
+      if (lastMessageText) {
+        try {
+          const parsed = JSON.parse(lastMessageText);
+          // Enrich JSON with mode info for UI labeling
+          parsed.system_mode = mode;
+          result = parsed;
+          resultMessageText = JSON.stringify(parsed);
+          
+          if (result && result.systemMatchesUrl === false) {
+             isLogicalFailure = true;
+             failureMessage = `${mode === 'source' ? 'Source' : 'Target'} system detection failed: URL does not match expected system.`;
+          }
+
+        } catch (e) {
+          result = { text: lastMessageText, system_mode: mode };
+          resultMessageText = JSON.stringify(result);
+        }
+      } else {
+        result = { error: 'Agent produced no output', system_mode: mode };
+        resultMessageText = JSON.stringify(result);
+        isLogicalFailure = true;
+        failureMessage = "Agent produced no output.";
+      }
+
+      // Ergebnis-Nachricht senden bevor wir den Status finalisieren (Interaktivität)
+      await writeChatMessage(migrationId, 'assistant', resultMessageText, currentStepNumber);
+
+      // 3. Abschluss-Status setzen (Transaction 2)
+      const finishClient = await pool.connect();
+      try {
+        await finishClient.query('BEGIN');
+
+        // Check if this is the last job
+        const { rows: otherJobs } = await finishClient.query(
           "SELECT id FROM jobs WHERE step_id = $1 AND id != $2 AND status IN ('pending', 'running')",
           [step_id, job.id]
         );
         const isLastJob = otherJobs.length === 0;
 
-        // Fetch current step state to merge results
-        const { rows: currentStepRows } = await client.query('SELECT result, status FROM migration_steps WHERE id = $1', [step_id]);
+        const { rows: currentStepRows } = await finishClient.query('SELECT result, status FROM migration_steps WHERE id = $1', [step_id]);
         const existingResult = currentStepRows[0]?.result || {};
         const stepHadFailure = currentStepRows[0]?.status === 'failed';
         
         const combinedStepResult = { ...existingResult, [mode]: result };
         const finalStepStatus = (isLogicalFailure || stepHadFailure) ? 'failed' : (isLastJob ? 'completed' : 'running');
 
-        // 1. Update migration_steps
-        await client.query('UPDATE migration_steps SET status = $1, result = $2, status_message = $3 WHERE id = $4', [
+        await finishClient.query('UPDATE migration_steps SET status = $1, result = $2, status_message = $3 WHERE id = $4', [
           finalStepStatus,
           combinedStepResult,
           isLogicalFailure ? failureMessage : (isLastJob ? 'All detections completed successfully.' : `Detection for ${mode} completed.`),
           step_id,
         ]);
 
-        const { rows: migrationRows } = await client.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
+        const { rows: migrationRows } = await finishClient.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
         const migrationData = migrationRows[0];
 
-        // We only update the workflow node status to 'done' if the WHOLE step is done
         const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(
           migrationData?.workflow_state,
           stepRecord.workflow_step_id || stepId,
@@ -183,12 +207,10 @@ async function processJob(job: any) {
           (isLogicalFailure || stepHadFailure)
         );
 
-        // If not last job and not failed, we keep status as 'processing' / 'running'
         const migrationStatus = (isLogicalFailure || stepHadFailure) ? 'paused' : (isLastJob && completedCount >= totalSteps ? 'completed' : 'processing');
         const stepStatusForMigration = (isLogicalFailure || stepHadFailure) ? 'failed' : (isLastJob ? 'completed' : 'running');
 
-        // 2. Update migrations
-        await client.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
+        await finishClient.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
           nextState,
           progress,
           migrationStatus,
@@ -197,75 +219,78 @@ async function processJob(job: any) {
           migrationId,
         ]);
 
-        // 3. Chat Nachricht schreiben
-        await writeChatMessage(client, migrationId, 'assistant', resultMessageText, currentStepNumber);
+        await finishClient.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+        await finishClient.query('COMMIT');
 
+        // Abschluss-Nachrichten (Sofort)
         if (isLogicalFailure) {
-          await writeChatMessage(client, migrationId, 'system', `Schritt 1 System Detection fehlgeschlagen (${mode === 'source' ? 'Quellsystem' : 'Zielsystem'} passt nicht).`, currentStepNumber);
+          await writeChatMessage(migrationId, 'system', `Schritt 1 System Detection fehlgeschlagen (**${mode === 'source' ? 'Quellsystem' : 'Zielsystem'}** passt nicht).`, currentStepNumber);
           await logActivity(migrationId, 'warning', `Schritt ${mode}-Erkennung fehlgeschlagen.`);
         } else {
+          // Explicitly state success for the current part
+          await writeChatMessage(migrationId, 'system', `**${mode === 'source' ? 'Quellsystem' : 'Zielsystem'}**-Analyse erfolgreich.`, currentStepNumber);
+
           if (isLastJob) {
-             await writeChatMessage(client, migrationId, 'system', `Schritt 1 System Detection erfolgreich.`, currentStepNumber);
-          } else {
-             await writeChatMessage(client, migrationId, 'system', `Quellsystem-Analyse erfolgreich.`, currentStepNumber);
+             await writeChatMessage(migrationId, 'system', `Schritt 1 **System Detection** erfolgreich.`, currentStepNumber);
           }
           await logActivity(migrationId, 'success', `Schritt ${mode}-Erkennung abgeschlossen.`);
         }
 
-      } else {
-        // Generic handling for other agents (non-split)
-        // ... (the rest of the implementation for non-system-detection agents)
-        throw new Error(`Agent ${agentName} is not yet implemented in the worker.`);
-      }
-
-      await client.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
-
-      console.log(`Job ${job.id} completed successfully (Logical Failure: ${isLogicalFailure}).`);
-      await client.query('COMMIT');
-    } catch (error) {
-      await client.query('ROLLBACK');
-      console.error(`Error processing job ${job.id}:`, error);
-      const errorMessage = (error as Error).message;
-
-      const client2 = await pool.connect();
-      try {
-        await client2.query('BEGIN');
-        await client2.query('UPDATE migration_steps SET status = $1, status_message = $2 WHERE id = $3', ['failed', errorMessage, step_id]);
-
-        const { rows: migrationRows } = await client2.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
-        const migrationData = migrationRows[0];
-
-        const { nextState, progress } = updateWorkflowForStep(
-          migrationData?.workflow_state,
-          stepRecord.workflow_step_id || stepId,
-          errorMessage,
-          true
-        );
-
-        // Auch im Fehlerfall step_status updaten
-        await client2.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4 WHERE id = $5', [
-          nextState,
-          progress,
-          'paused',
-          'failed',
-          migrationId,
-        ]);
-        
-        await writeChatMessage(client2, migrationId, 'system', `Error: ${errorMessage}`, currentStepNumber);
-
-        await logActivity(migrationId, 'error', `Schritt fehlgeschlagen: ${errorMessage}`);
-
-        await client2.query('UPDATE jobs SET status = $1, last_error = $2 WHERE id = $3', ['failed', errorMessage, job.id]);
-        await client2.query('COMMIT');
-      } catch (e2) {
-        await client2.query('ROLLBACK');
-        console.error('Error in error handling:', e2);
+      } catch (e) {
+        await finishClient.query('ROLLBACK');
+        throw e;
       } finally {
-        client2.release();
+        finishClient.release();
       }
+
+    } else {
+      // Fallback für andere Agenten (noch nicht implementiert im Detail)
+      throw new Error(`Agent ${agentName} is not yet implemented in the worker.`);
     }
-  } finally {
-    client.release();
+
+    console.log(`Job ${job.id} completed successfully.`);
+
+  } catch (error) {
+    console.error(`Error processing job ${job.id}:`, error);
+    const errorMessage = (error as Error).message;
+
+    // Error Handling Transaction
+    const errorClient = await pool.connect();
+    try {
+      await errorClient.query('BEGIN');
+      await errorClient.query('UPDATE migration_steps SET status = $1, status_message = $2 WHERE id = $3', ['failed', errorMessage, step_id]);
+
+      const { rows: migrationRows } = await errorClient.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
+      const migrationData = migrationRows[0];
+
+      const { nextState, progress } = updateWorkflowForStep(
+        migrationData?.workflow_state,
+        stepRecord.workflow_step_id || stepId,
+        errorMessage,
+        true
+      );
+
+      await errorClient.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4 WHERE id = $5', [
+        nextState,
+        progress,
+        'paused',
+        'failed',
+        migrationId,
+      ]);
+      
+      await errorClient.query('UPDATE jobs SET status = $1, last_error = $2 WHERE id = $3', ['failed', errorMessage, job.id]);
+      await errorClient.query('COMMIT');
+      
+      // Fehler-Nachricht (Sofort)
+      await writeChatMessage(migrationId, 'system', `Error: ${errorMessage}`, currentStepNumber);
+      await logActivity(migrationId, 'error', `Schritt fehlgeschlagen: ${errorMessage}`);
+
+    } catch (e2) {
+      await errorClient.query('ROLLBACK');
+      console.error('Error in error handling:', e2);
+    } finally {
+      errorClient.release();
+    }
   }
 }
 

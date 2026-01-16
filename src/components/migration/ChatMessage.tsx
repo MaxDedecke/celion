@@ -51,18 +51,17 @@ const ChatMessage = ({ message, onOpenAgentOutput, enableTypewriter = false, onT
     return null;
   }, [message.content]);
 
-  useEffect(() => {
-    // If it's JSON, we skip typewriter effect essentially, so just complete it immediately
-    if (jsonContent && onTypewriterComplete) {
-      onTypewriterComplete();
-    } else if (enableTypewriter && message.role === "user" && onTypewriterComplete) {
-      onTypewriterComplete();
-    }
-  }, [enableTypewriter, message.role, onTypewriterComplete, jsonContent]);
+  const derivedStatus = useMemo(() => {
+    if (message.status) return message.status;
+    const lower = message.content.toLowerCase();
+    if (lower.includes("erfolgreich") || lower.includes("abgeschlossen") || lower.includes("success")) return "success";
+    if (lower.includes("fehlgeschlagen") || lower.includes("failed") || lower.includes("error:")) return "error";
+    return undefined;
+  }, [message.status, message.content]);
 
   const getIcon = () => {
-    if (message.status === "success") return CheckCircle2;
-    if (message.status === "error") return XCircle;
+    if (derivedStatus === "success") return CheckCircle2;
+    if (derivedStatus === "error") return XCircle;
     
     const content = message.content.toLowerCase();
     if (content.includes("gestartet") || content.includes("erstellt") || content.includes("neue migration")) return Rocket;
@@ -76,14 +75,14 @@ const ChatMessage = ({ message, onOpenAgentOutput, enableTypewriter = false, onT
   const Icon = getIcon();
 
   const getIconColor = () => {
-    if (message.status === "success") return "text-emerald-500";
-    if (message.status === "error") return "text-red-500";
+    if (derivedStatus === "success") return "text-emerald-500";
+    if (derivedStatus === "error") return "text-red-500";
     if (message.role === "user") return "text-primary";
     return "text-primary";
   };
 
   const getTextColor = () => {
-    switch (message.status) {
+    switch (derivedStatus) {
       case "success": return "text-emerald-700 dark:text-emerald-300";
       case "error": return "text-red-700 dark:text-red-300";
       case "pending": return "text-amber-700 dark:text-amber-300";
@@ -103,40 +102,61 @@ const ChatMessage = ({ message, onOpenAgentOutput, enableTypewriter = false, onT
     });
   };
 
-  const renderContentWithLinks = (text: string) => {
+  const processLinks = (text: string) => {
     const linkRegex = /\[(.*?)\]\((.*?)\)/g;
+    // Also match raw URLs that aren't already in markdown links
+    const urlRegex = /(?<!\]\()(\bhttps?:\/\/[^\s\)]+)/g;
+    
+    // Simplification: Just handle raw URLs for now if not mixed, but to be safe use split logic
     const parts = [];
     let lastIndex = 0;
+    
+    // We can use a simpler approach: split by space and check if url? 
+    // Or just use the original logic but enhanced
+    
+    const combinedRegex = /\[(.*?)\]\((.*?)\)|(\bhttps?:\/\/[^\s\)]+)/g;
     let match;
 
-    while ((match = linkRegex.exec(text)) !== null) {
-      const [fullMatch, linkText, url] = match;
+    while ((match = combinedRegex.exec(text)) !== null) {
       const index = match.index;
-
       if (index > lastIndex) {
         parts.push(text.substring(lastIndex, index));
       }
 
-      parts.push(
-        <a
-          key={url}
-          href={url}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="text-primary underline hover:text-primary/80"
-        >
-          {linkText}
-        </a>
-      );
-
-      lastIndex = index + fullMatch.length;
+      if (match[1] && match[2]) {
+        // Markdown link [text](url)
+        parts.push(
+          <a key={index} href={match[2]} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">{match[1]}</a>
+        );
+      } else if (match[3]) {
+        // Raw URL
+        parts.push(
+          <a key={index} href={match[3]} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">{match[3]}</a>
+        );
+      }
+      lastIndex = index + match[0].length;
     }
 
     if (lastIndex < text.length) {
       parts.push(text.substring(lastIndex));
     }
+    return parts.length > 0 ? parts : [text];
+  };
 
-    return parts;
+  const renderFormattedContent = (text: string) => {
+    // Split by **text** markers
+    const parts = text.split(/(\*\*.*?\*\*)/g);
+    return parts.map((part, i) => {
+      if (part.startsWith("**") && part.endsWith("**")) {
+        const content = part.slice(2, -2);
+        // Check if content is a URL
+        if (content.match(/^https?:\/\//)) {
+             return <a key={i} href={content} target="_blank" rel="noopener noreferrer" className="font-bold text-primary underline hover:text-primary/80">{content}</a>;
+        }
+        return <span key={i} className="font-bold text-primary">{content}</span>;
+      }
+      return <span key={i}>{processLinks(part)}</span>;
+    });
   };
 
   // Hilfsvariable für den Zeitstempel: API sendet created_at
@@ -172,7 +192,12 @@ const ChatMessage = ({ message, onOpenAgentOutput, enableTypewriter = false, onT
           {jsonContent ? (
             <div className="flex flex-col gap-2 items-start mt-1">
               <div className="prose prose-sm dark:prose-invert max-w-none text-foreground">
-                {renderContentWithLinks(jsonContent.rawOutput || "Ergebnis der Analyse:")}
+                {renderFormattedContent(
+                  jsonContent.rawOutput || 
+                  (jsonContent.system_mode === 'source' ? "Ergebnis der Analyse des Quellsystems:" : 
+                   jsonContent.system_mode === 'target' ? "Ergebnis der Analyse des Zielsystems:" : 
+                   "Ergebnis der Analyse:")
+                )}
               </div>
               <Button 
                 variant="outline" 
@@ -201,7 +226,7 @@ const ChatMessage = ({ message, onOpenAgentOutput, enableTypewriter = false, onT
               {enableTypewriter && message.role !== "user" ? (
                 <TypewriterText text={message.content} speed={15} onComplete={onTypewriterComplete} />
               ) : (
-                renderContentWithLinks(message.content)
+                renderFormattedContent(message.content)
               )}
               {message.actionButton && onOpenAgentOutput && (
                 <span
