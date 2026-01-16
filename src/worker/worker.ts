@@ -109,7 +109,11 @@ async function processJob(job: any) {
         const instructions = agentParams?.instructions;
         const mode = agentParams?.mode || 'source';
 
-        await writeChatMessage(client, migrationId, 'assistant', `Verifying ${mode === 'source' ? 'Source' : 'Target'} System: ${url}...`, currentStepNumber);
+        const headerMsg = mode === 'source' ? "Analysiere Quellsystem" : "Analysiere Zielsystem";
+        await writeChatMessage(client, migrationId, 'assistant', headerMsg, currentStepNumber);
+        
+        const detailMsg = `Ich überprüfe, ob ${expected} zu der URL ${url} passt.`;
+        await writeChatMessage(client, migrationId, 'assistant', detailMsg, currentStepNumber);
         
         const messageGenerator = runSystemDetection(url, expected, instructions);
         let lastMessageText: string | undefined;
@@ -194,9 +198,14 @@ async function processJob(job: any) {
         await writeChatMessage(client, migrationId, 'assistant', resultMessageText, currentStepNumber);
 
         if (isLogicalFailure) {
-          await writeChatMessage(client, migrationId, 'system', `Schritt ${currentStepNumber} (${mode}) fehlgeschlagen.`, currentStepNumber);
+          await writeChatMessage(client, migrationId, 'system', `Schritt 1 System Detection fehlgeschlagen (${mode === 'source' ? 'Quellsystem' : 'Zielsystem'} passt nicht).`, currentStepNumber);
           await logActivity(migrationId, 'warning', `Schritt ${mode}-Erkennung fehlgeschlagen.`);
         } else {
+          if (isLastJob) {
+             await writeChatMessage(client, migrationId, 'system', `Schritt 1 System Detection erfolgreich.`, currentStepNumber);
+          } else {
+             await writeChatMessage(client, migrationId, 'system', `Quellsystem-Analyse erfolgreich.`, currentStepNumber);
+          }
           await logActivity(migrationId, 'success', `Schritt ${mode}-Erkennung abgeschlossen.`);
         }
 
