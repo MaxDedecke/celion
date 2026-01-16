@@ -192,11 +192,17 @@ const ChatMessage = ({ message, onOpenAgentOutput, enableTypewriter = false, onT
           {jsonContent ? (
             <div className="flex flex-col gap-2 items-start mt-1">
               <div className="prose prose-sm dark:prose-invert max-w-none text-foreground">
-                {renderFormattedContent(
-                  jsonContent.rawOutput || 
-                  (jsonContent.system_mode === 'source' ? "Ergebnis der Analyse des Quellsystems:" : 
-                   jsonContent.system_mode === 'target' ? "Ergebnis der Analyse des Zielsystems:" : 
-                   "Ergebnis der Analyse:")
+                <p className="mb-1">
+                  {renderFormattedContent(
+                    jsonContent.system_mode === 'source' ? "**Ergebnis der Analyse des Quellsystems:**" : 
+                    jsonContent.system_mode === 'target' ? "**Ergebnis der Analyse des Zielsystems:**" : 
+                    "**Ergebnis der Analyse:**"
+                  )}
+                </p>
+                {jsonContent.rawOutput && (
+                  <p className="mt-0 opacity-90">
+                    {renderFormattedContent(jsonContent.rawOutput)}
+                  </p>
                 )}
               </div>
               <Button 
