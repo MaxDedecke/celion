@@ -1,6 +1,9 @@
-import { useEffect } from "react";
-import { User, SquareArrowOutUpRight, CheckCircle2, XCircle, Play, Copy, Rocket } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { User, SquareArrowOutUpRight, CheckCircle2, XCircle, Play, Copy, Rocket, FileJson } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import TypewriterText from "./TypewriterText";
 
@@ -34,11 +37,28 @@ interface ChatMessageProps {
 }
 
 const ChatMessage = ({ message, onOpenAgentOutput, enableTypewriter = false, onTypewriterComplete }: ChatMessageProps) => {
+  const [showJsonDialog, setShowJsonDialog] = useState(false);
+
+  const jsonContent = useMemo(() => {
+    try {
+      const trimmed = message.content.trim();
+      if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
+        return JSON.parse(trimmed);
+      }
+    } catch {
+      return null;
+    }
+    return null;
+  }, [message.content]);
+
   useEffect(() => {
-    if (enableTypewriter && message.role === "user" && onTypewriterComplete) {
+    // If it's JSON, we skip typewriter effect essentially, so just complete it immediately
+    if (jsonContent && onTypewriterComplete) {
+      onTypewriterComplete();
+    } else if (enableTypewriter && message.role === "user" && onTypewriterComplete) {
       onTypewriterComplete();
     }
-  }, [enableTypewriter, message.role, onTypewriterComplete]);
+  }, [enableTypewriter, message.role, onTypewriterComplete, jsonContent]);
 
   const getIcon = () => {
     if (message.status === "success") return CheckCircle2;
@@ -148,22 +168,53 @@ const ChatMessage = ({ message, onOpenAgentOutput, enableTypewriter = false, onT
           {/* ÄNDERUNG: Nutzung der neuen displayTime Variable */}
           <span className="text-[10px] text-muted-foreground">{formatTimestamp(displayTime)}</span>
         </div>
-        <p className={cn("text-sm leading-relaxed", getTextColor())}>
-          {enableTypewriter && message.role !== "user" ? (
-            <TypewriterText text={message.content} speed={15} onComplete={onTypewriterComplete} />
+        <div className={cn("text-sm leading-relaxed", getTextColor())}>
+          {jsonContent ? (
+            <div className="flex flex-col gap-2 items-start mt-1">
+              <div className="prose prose-sm dark:prose-invert max-w-none text-foreground">
+                {renderContentWithLinks(jsonContent.rawOutput || "Ergebnis der Analyse:")}
+              </div>
+              <Button 
+                variant="outline" 
+                size="sm" 
+                onClick={() => setShowJsonDialog(true)} 
+                className="h-7 text-xs bg-background/50 hover:bg-background"
+              >
+                <FileJson className="w-3 h-3 mr-2" />
+                Details anzeigen
+              </Button>
+              <Dialog open={showJsonDialog} onOpenChange={setShowJsonDialog}>
+                <DialogContent className="max-w-3xl">
+                  <DialogHeader>
+                    <DialogTitle>Agent Output Details</DialogTitle>
+                  </DialogHeader>
+                  <ScrollArea className="max-h-[60vh] w-full rounded-md border p-4 bg-muted/30">
+                    <pre className="text-xs font-mono whitespace-pre-wrap break-all">
+                      {JSON.stringify(jsonContent, null, 2)}
+                    </pre>
+                  </ScrollArea>
+                </DialogContent>
+              </Dialog>
+            </div>
           ) : (
-            renderContentWithLinks(message.content)
+            <>
+              {enableTypewriter && message.role !== "user" ? (
+                <TypewriterText text={message.content} speed={15} onComplete={onTypewriterComplete} />
+              ) : (
+                renderContentWithLinks(message.content)
+              )}
+              {message.actionButton && onOpenAgentOutput && (
+                <span
+                  onClick={() => onOpenAgentOutput(message.actionButton!.stepId)}
+                  className="inline-flex items-center ml-1 text-primary hover:text-primary/80 hover:scale-110 cursor-pointer transition-all duration-200"
+                  title="Agenten Output öffnen"
+                >
+                  <SquareArrowOutUpRight className="h-4 w-4" />
+                </span>
+              )}
+            </>
           )}
-          {message.actionButton && onOpenAgentOutput && (
-            <span
-              onClick={() => onOpenAgentOutput(message.actionButton!.stepId)}
-              className="inline-flex items-center ml-1 text-primary hover:text-primary/80 hover:scale-110 cursor-pointer transition-all duration-200"
-              title="Agenten Output öffnen"
-            >
-              <SquareArrowOutUpRight className="h-4 w-4" />
-            </span>
-          )}
-        </p>
+        </div>
       </div>
     </div>
   );
