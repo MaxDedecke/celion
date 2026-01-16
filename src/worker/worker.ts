@@ -80,6 +80,8 @@ async function processJob(job: any) {
 
   const migrationId = stepRecord.migration_id;
   const currentStepNumber = payload.stepNumber || 1;
+  const activeStep = AGENT_WORKFLOW_STEPS[currentStepNumber - 1];
+  const stepTitle = activeStep?.title || stepRecord.name || 'Schritt';
 
   // 2. Start-Status setzen (Transaction 1 - Sofort committen)
   const startClient = await pool.connect();
@@ -97,7 +99,7 @@ async function processJob(job: any) {
 
   // Start-Nachricht im Chat (Sofort sichtbar)
   if (agentName !== 'runSystemDetection' || (agentParams?.mode || 'source') === 'source') {
-    await writeChatMessage(migrationId, 'system', `Starting ${stepRecord.name || 'step'}...`, currentStepNumber);
+    await writeChatMessage(migrationId, 'system', `Starte Schritt ${currentStepNumber} ${stepTitle}...`, currentStepNumber);
   }
 
   console.log("Agent params:", JSON.stringify(agentParams, null, 2));

@@ -1249,7 +1249,7 @@ async def duplicate_migration(id: str, user_id: str) -> Migration:
         with _get_db_connection() as conn, conn.cursor() as cur:
             # Fetch the original migration
             cur.execute(
-                "SELECT name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, project_id FROM public.migrations WHERE id = %s",
+                "SELECT name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, project_id, notes FROM public.migrations WHERE id = %s",
                 (id,),
             )
             original = cur.fetchone()
@@ -1263,9 +1263,9 @@ async def duplicate_migration(id: str, user_id: str) -> Migration:
                 INSERT INTO public.migrations (
                     name, source_system, target_system, source_url, target_url, 
                     project_id, user_id, in_connector, in_connector_detail, 
-                    out_connector, out_connector_detail, status
+                    out_connector, out_connector_detail, notes, status
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'not_started')
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'not_started')
                 RETURNING id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, current_step, step_status, status, created_at, updated_at
                 """,
                 (
@@ -1280,13 +1280,142 @@ async def duplicate_migration(id: str, user_id: str) -> Migration:
                     original["in_connector_detail"],
                     original["out_connector"],
                     original["out_connector_detail"],
+                    original["notes"],
                 ),
             )
             row = cur.fetchone()
-            conn.commit()
+            new_migration_id = row["id"]
 
-            if not row:
-                raise HTTPException(status_code=500, detail="Failed to duplicate migration.")
+            # Duplicate connectors
+            cur.execute(
+                """
+                SELECT connector_type, api_url, api_key, username, password, endpoint, additional_config, auth_type, is_tested
+                FROM public.connectors WHERE migration_id = %s
+                """,
+                (id,),
+            )
+            connectors = cur.fetchall()
+            for c in connectors:
+                cur.execute(
+                    """
+                    INSERT INTO public.connectors (
+                        migration_id, connector_type, api_url, api_key, username, 
+                        password, endpoint, additional_config, auth_type, is_tested
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    """,
+                    (
+                        new_migration_id,
+                        c["connector_type"],
+                        c["api_url"],
+                        c["api_key"],
+                        c["username"],
+                        c["password"],
+                        c["endpoint"],
+                        json.dumps(c["additional_config"]) if c["additional_config"] else None,
+                        c["auth_type"],
+                        c["is_tested"],
+                    ),
+                )
+
+            # Duplicate pipelines and their field mappings
+            cur.execute(
+                """
+                SELECT id, name, description, source_data_source_id, target_data_source_id, 
+                       source_system, target_system, execution_order, is_active, 
+                       progress, objects_transferred, mapped_objects, workflow_type
+                FROM public.pipelines WHERE migration_id = %s
+                """,
+                (id,),
+            )
+            pipelines = cur.fetchall()
+            for p in pipelines:
+                old_pipeline_id = p["id"]
+                cur.execute(
+                    """
+                    INSERT INTO public.pipelines (
+                        migration_id, name, description, source_data_source_id, target_data_source_id, 
+                        source_system, target_system, execution_order, is_active, 
+                        progress, objects_transferred, mapped_objects, workflow_type
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                    RETURNING id
+                    """,
+                    (
+                        new_migration_id,
+                        p["name"],
+                        p["description"],
+                        p["source_data_source_id"],
+                        p["target_data_source_id"],
+                        p["source_system"],
+                        p["target_system"],
+                        p["execution_order"],
+                        p["is_active"],
+                        p["progress"],
+                        p["objects_transferred"],
+                        p["mapped_objects"],
+                        p["workflow_type"],
+                    ),
+                )
+                new_pipeline_row = cur.fetchone()
+                new_pipeline_id = new_pipeline_row["id"]
+
+                # Duplicate field mappings for this pipeline
+                cur.execute(
+                    """
+                    SELECT target_field_id, source_field_id, mapping_type, 
+                           collection_item_field_id, join_with, description, 
+                           source_object_type, target_object_type
+                    FROM public.field_mappings WHERE pipeline_id = %s
+                    """,
+                    (old_pipeline_id,),
+                )
+                mappings = cur.fetchall()
+                for m in mappings:
+                    cur.execute(
+                        """
+                        INSERT INTO public.field_mappings (
+                            pipeline_id, target_field_id, source_field_id, mapping_type, 
+                            collection_item_field_id, join_with, description, 
+                            source_object_type, target_object_type
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                        """,
+                        (
+                            new_pipeline_id,
+                            m["target_field_id"],
+                            m["source_field_id"],
+                            m["mapping_type"],
+                            m["collection_item_field_id"],
+                            m["join_with"],
+                            m["description"],
+                            m["source_object_type"],
+                            m["target_object_type"],
+                        ),
+                    )
+
+                # Duplicate agent workflow state for this pipeline
+                cur.execute(
+                    "SELECT briefing, plan FROM public.agent_workflow_states WHERE pipeline_id = %s",
+                    (old_pipeline_id,),
+                )
+                wf_state = cur.fetchone()
+                if wf_state:
+                    cur.execute(
+                        """
+                        INSERT INTO public.agent_workflow_states (
+                            pipeline_id, briefing, plan, completed_steps, logs, is_running
+                        )
+                        VALUES (%s, %s, %s, '{}'::jsonb, '[]'::jsonb, false)
+                        """,
+                        (
+                            new_pipeline_id,
+                            wf_state["briefing"],
+                            json.dumps(wf_state["plan"]) if wf_state["plan"] else '[]',
+                        ),
+                    )
+
+            conn.commit()
 
             return Migration(
                 id=str(row["id"]),
