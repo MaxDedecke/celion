@@ -102,7 +102,7 @@ const ChatMessageList = ({
         );
       })}
       
-      {showContinueButton && !isAgentRunning && (!hasQueuedMessages || messages.length === 0) && (
+      {showContinueButton && !isAgentRunning && (
         <div className="flex items-center gap-2 animate-fade-in pt-4 pl-11">
           <button 
             onClick={onContinue}

@@ -103,6 +103,11 @@ const MigrationChatCard = ({
   const currentStepNumber = completedCount + 1 > totalSteps ? totalSteps : completedCount + 1;
   // Fix: Access by index (0-based) using currentStepNumber (1-based)
   const activeStep = AGENT_WORKFLOW_STEPS[currentStepNumber - 1];
+  
+  // Der Titel für den Indicator/Laufenden Schritt sollte sich auf den *tatsächlichen* Schritt beziehen (rawStep)
+  // Wenn rawStep 1 ist (System Detection), wollen wir "Analysiere System Detection", auch wenn completedCount schon 1 ist.
+  const runningStepIndex = Math.max(0, (rawStep || 1) - 1);
+  const runningStep = AGENT_WORKFLOW_STEPS[runningStepIndex];
   const currentStepTitle = activeStep?.title || (completedCount === totalSteps ? "Abgeschlossen" : "Bereit");
 
   return (
@@ -161,16 +166,16 @@ const MigrationChatCard = ({
               messages={chatMessages} 
               isAgentRunning={isStepRunning} 
               onOpenAgentOutput={onOpenAgentOutput}
-              showContinueButton={(migrationData.status === "not_started" || migrationData.status === "running" || migrationData.status === "paused") && overallProgress < 100 && !isStepRunning}
+              showContinueButton={(migrationData.status === "not_started" || migrationData.status === "running" || migrationData.status === "paused" || migrationData.status === "processing") && overallProgress < 100 && !isStepRunning}
               onContinue={onContinue}
               continueButtonText={
                 migrationData.status === "not_started" 
                   ? "Starten" 
                   : hasCurrentStepFailed 
-                    ? `↻ Schritt wiederholen: ${activeStep?.title}` 
-                    : `Fortsetzen: ${AGENT_WORKFLOW_STEPS[currentStepNumber - 1]?.title}`
+                    ? `↻ Schritt wiederholen: ${runningStep?.title}` 
+                    : `Weiter zu Schritt ${currentStepNumber} ${activeStep?.title}`
               }
-              currentStepTitle={activeStep?.title}
+              currentStepTitle={runningStep?.title}
             />
           </div>
           

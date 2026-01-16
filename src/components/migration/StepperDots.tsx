@@ -14,17 +14,19 @@ const StepperDots = ({ totalSteps, completedSteps, isCurrentStepRunning, hasCurr
         const isCompleted = index < completedSteps;
         const isActive = index === completedSteps && isCurrentStepRunning;
         const isFailed = index === completedSteps && hasCurrentStepFailed && !isCurrentStepRunning;
-        const isPending = index > completedSteps || (index === completedSteps && !isCurrentStepRunning && !hasCurrentStepFailed);
+        const isNext = index === completedSteps && !isCurrentStepRunning && !hasCurrentStepFailed;
+        const isFuture = index > completedSteps;
 
         return (
           <div
             key={index}
             className={cn(
               "h-2 w-2 rounded-full transition-all duration-300",
-              isCompleted && "bg-primary",
-              isActive && "bg-primary animate-pulse scale-125",
+              isCompleted && "bg-emerald-500",
+              isActive && "bg-blue-500 animate-pulse scale-125",
+              isNext && "bg-blue-500",
               isFailed && "bg-destructive scale-110",
-              isPending && "bg-muted-foreground/30"
+              isFuture && "bg-muted-foreground/30"
             )}
           />
         );
