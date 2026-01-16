@@ -3,13 +3,14 @@
   "apiType": "REST",
   "baseUrlPattern": "*.notion.so",
   "apiBaseUrl": "https://api.notion.com",
-  "auth": {
-    "type": "bearer_token",
-    "headerTemplate": "Authorization: Bearer <TOKEN>",
-    "requiresApiToken": true,
-    "requiresEmail": false,
-    "probeEndpoint": "/v1/users/me",
-    "successStatus": 200
+  "authentication": {
+    "type": "bearer",
+    "tokenPrefix": "Bearer ",
+    "emailRequired": false,
+    "whoami": {
+      "endpoint": "/v1/users/me",
+      "method": "GET"
+    }
   },
   "discovery": {
     "endpoints": {

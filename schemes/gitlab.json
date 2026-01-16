@@ -2,13 +2,16 @@
   "system": "GitLab",
   "apiType": "REST",
   "baseUrlPattern": "gitlab.com/*",
-  "auth": {
-    "type": "bearer_token",
-    "headerTemplate": "Authorization: Bearer <TOKEN>",
-    "requiresApiToken": true,
-    "requiresEmail": false,
-    "probeEndpoint": "/api/v4/user",
-    "successStatus": 200
+  "authentication": {
+    "type": "header",
+    "headerName": "PRIVATE-TOKEN",
+    "tokenPrefix": "",
+    "emailRequired": false,
+    "whoami": {
+      "endpoint": "/api/v4/user",
+      "method": "GET",
+      "usernamePath": "name"
+    }
   },
   "discovery": {
     "endpoints": {

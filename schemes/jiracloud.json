@@ -2,13 +2,14 @@
   "system": "Jira Cloud",
   "apiType": "REST",
   "baseUrlPattern": "*.atlassian.net",
-  "auth": {
+  "authentication": {
     "type": "basic",
-    "headerTemplate": "Authorization: Basic <BASE64(email:apiToken)>",
-    "requiresEmail": true,
-    "requiresApiToken": true,
-    "probeEndpoint": "/rest/api/3/myself",
-    "successStatus": 200
+    "emailRequired": true,
+    "whoami": {
+      "endpoint": "/rest/api/3/myself",
+      "method": "GET",
+      "usernamePath": "displayName"
+    }
   },
   "discovery": {
     "endpoints": {

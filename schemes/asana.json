@@ -3,12 +3,15 @@
   "apiType": "REST",
   "baseUrlPattern": "*.asana.com",
   "apiBaseUrl": "https://app.asana.com",
-  "auth": {
+  "authentication": {
     "type": "bearer",
-    "headerTemplate": "Authorization: Bearer <TOKEN>",
-    "requiresToken": true,
-    "probeEndpoint": "/api/1.0/users/me",
-    "successStatus": 200
+    "tokenPrefix": "Bearer ",
+    "emailRequired": false,
+    "whoami": {
+      "endpoint": "/api/1.0/users/me",
+      "method": "GET",
+      "usernamePath": "data.name"
+    }
   },
   "discovery": {
     "endpoints": {

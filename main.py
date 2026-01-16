@@ -746,8 +746,8 @@ async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
                 "agentName": agent_name,
             }
 
-            if step == 1:
-                # Enqueue Source Verification Job
+            if step in [1, 2]:
+                # Enqueue Source Verification/Auth Job
                 payload_source = {
                     **payload_base,
                     "agentParams": {
@@ -762,7 +762,7 @@ async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
                     (step_id, json.dumps(payload_source)),
                 )
                 
-                # Enqueue Target Verification Job
+                # Enqueue Target Verification/Auth Job
                 payload_target = {
                     **payload_base,
                     "agentParams": {
@@ -1244,28 +1244,41 @@ async def update_migration(id: str, payload: UpdateMigrationPayload) -> Migratio
 
 @app.post("/api/migrations/{id}/duplicate", response_model=Migration)
 async def duplicate_migration(id: str, user_id: str) -> Migration:
-    """Duplicate a migration, creating a new one with copied data."""
+    """Duplicate a migration, creating a new one with copied data and full state."""
     try:
         with _get_db_connection() as conn, conn.cursor() as cur:
-            # Fetch the original migration
+            # 1. Fetch original with all state fields
             cur.execute(
-                "SELECT name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, project_id, notes FROM public.migrations WHERE id = %s",
+                """
+                SELECT name, source_system, target_system, source_url, target_url, 
+                       in_connector, in_connector_detail, out_connector, out_connector_detail, 
+                       project_id, notes,
+                       current_step, step_status, status, progress, workflow_state,
+                       objects_transferred, mapped_objects
+                FROM public.migrations WHERE id = %s
+                """,
                 (id,),
             )
             original = cur.fetchone()
             if not original:
                 raise HTTPException(status_code=404, detail="Migration not found.")
 
-            # Create the new migration
+            # 2. Create new migration with preserved state
             new_name = f"{original['name']} (copy)"
+            
+            # Handle JSON fields serialization
+            workflow_state_json = json.dumps(original["workflow_state"]) if original["workflow_state"] else None
+
             cur.execute(
                 """
                 INSERT INTO public.migrations (
                     name, source_system, target_system, source_url, target_url, 
                     project_id, user_id, in_connector, in_connector_detail, 
-                    out_connector, out_connector_detail, notes, status
+                    out_connector, out_connector_detail, notes,
+                    current_step, step_status, status, progress, workflow_state,
+                    objects_transferred, mapped_objects
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'not_started')
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, current_step, step_status, status, created_at, updated_at
                 """,
                 (
@@ -1281,44 +1294,33 @@ async def duplicate_migration(id: str, user_id: str) -> Migration:
                     original["out_connector"],
                     original["out_connector_detail"],
                     original["notes"],
+                    original["current_step"],
+                    original["step_status"],
+                    original["status"],
+                    original["progress"],
+                    workflow_state_json,
+                    original["objects_transferred"],
+                    original["mapped_objects"],
                 ),
             )
             row = cur.fetchone()
             new_migration_id = row["id"]
 
-            # Duplicate connectors
+            # 3. Duplicate connectors
             cur.execute(
                 """
-                SELECT connector_type, api_url, api_key, username, password, endpoint, additional_config, auth_type, is_tested
+                INSERT INTO public.connectors (
+                    migration_id, connector_type, api_url, api_key, username, 
+                    password, endpoint, additional_config, auth_type, is_tested
+                )
+                SELECT %s, connector_type, api_url, api_key, username, 
+                       password, endpoint, additional_config, auth_type, is_tested
                 FROM public.connectors WHERE migration_id = %s
                 """,
-                (id,),
+                (new_migration_id, id)
             )
-            connectors = cur.fetchall()
-            for c in connectors:
-                cur.execute(
-                    """
-                    INSERT INTO public.connectors (
-                        migration_id, connector_type, api_url, api_key, username, 
-                        password, endpoint, additional_config, auth_type, is_tested
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    """,
-                    (
-                        new_migration_id,
-                        c["connector_type"],
-                        c["api_url"],
-                        c["api_key"],
-                        c["username"],
-                        c["password"],
-                        c["endpoint"],
-                        json.dumps(c["additional_config"]) if c["additional_config"] else None,
-                        c["auth_type"],
-                        c["is_tested"],
-                    ),
-                )
 
-            # Duplicate pipelines and their field mappings
+            # 4. Duplicate pipelines, mappings, and agent states
             cur.execute(
                 """
                 SELECT id, name, description, source_data_source_id, target_data_source_id, 
@@ -1360,60 +1362,69 @@ async def duplicate_migration(id: str, user_id: str) -> Migration:
                 new_pipeline_row = cur.fetchone()
                 new_pipeline_id = new_pipeline_row["id"]
 
-                # Duplicate field mappings for this pipeline
+                # Duplicate field mappings
                 cur.execute(
                     """
-                    SELECT target_field_id, source_field_id, mapping_type, 
+                    INSERT INTO public.field_mappings (
+                        pipeline_id, target_field_id, source_field_id, mapping_type, 
+                        collection_item_field_id, join_with, description, 
+                        source_object_type, target_object_type
+                    )
+                    SELECT %s, target_field_id, source_field_id, mapping_type, 
                            collection_item_field_id, join_with, description, 
                            source_object_type, target_object_type
                     FROM public.field_mappings WHERE pipeline_id = %s
                     """,
-                    (old_pipeline_id,),
+                    (new_pipeline_id, old_pipeline_id)
                 )
-                mappings = cur.fetchall()
-                for m in mappings:
-                    cur.execute(
-                        """
-                        INSERT INTO public.field_mappings (
-                            pipeline_id, target_field_id, source_field_id, mapping_type, 
-                            collection_item_field_id, join_with, description, 
-                            source_object_type, target_object_type
-                        )
-                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
-                        """,
-                        (
-                            new_pipeline_id,
-                            m["target_field_id"],
-                            m["source_field_id"],
-                            m["mapping_type"],
-                            m["collection_item_field_id"],
-                            m["join_with"],
-                            m["description"],
-                            m["source_object_type"],
-                            m["target_object_type"],
-                        ),
-                    )
 
-                # Duplicate agent workflow state for this pipeline
+                # Duplicate agent workflow state
                 cur.execute(
-                    "SELECT briefing, plan FROM public.agent_workflow_states WHERE pipeline_id = %s",
-                    (old_pipeline_id,),
-                )
-                wf_state = cur.fetchone()
-                if wf_state:
-                    cur.execute(
-                        """
-                        INSERT INTO public.agent_workflow_states (
-                            pipeline_id, briefing, plan, completed_steps, logs, is_running
-                        )
-                        VALUES (%s, %s, %s, '{}'::jsonb, '[]'::jsonb, false)
-                        """,
-                        (
-                            new_pipeline_id,
-                            wf_state["briefing"],
-                            json.dumps(wf_state["plan"]) if wf_state["plan"] else '[]',
-                        ),
+                    """
+                    INSERT INTO public.agent_workflow_states (
+                        pipeline_id, briefing, plan, completed_steps, logs, is_running
                     )
+                    SELECT %s, briefing, plan, completed_steps, logs, false
+                    FROM public.agent_workflow_states WHERE pipeline_id = %s
+                    """,
+                    (new_pipeline_id, old_pipeline_id)
+                )
+
+            # 5. Duplicate migration_steps (History)
+            cur.execute(
+                """
+                INSERT INTO public.migration_steps (
+                    migration_id, workflow_step_id, name, status, status_message, result, created_at, updated_at
+                )
+                SELECT %s, workflow_step_id, name, status, status_message, result, created_at, updated_at
+                FROM public.migration_steps WHERE migration_id = %s
+                """,
+                (new_migration_id, id)
+            )
+
+            # 6. Duplicate migration_chat_messages (History)
+            cur.execute(
+                """
+                INSERT INTO public.migration_chat_messages (
+                    migration_id, role, content, step_number, created_at
+                )
+                SELECT %s, role, content, step_number, created_at
+                FROM public.migration_chat_messages WHERE migration_id = %s
+                """,
+                (new_migration_id, id)
+            )
+
+            # 7. Duplicate migration_activities (Timeline)
+            cur.execute(
+                """
+                INSERT INTO public.migration_activities (
+                    migration_id, type, title, timestamp, created_at
+                )
+                SELECT %s, type, title, timestamp, created_at
+                FROM public.migration_activities WHERE migration_id = %s
+                """,
+                (new_migration_id, id)
+            )
 
             conn.commit()
 

@@ -2,13 +2,14 @@
   "system": "Azure DevOps",
   "apiType": "REST",
   "baseUrlPattern": "dev.azure.com/*",
-  "auth": {
+  "authentication": {
     "type": "basic",
-    "headerTemplate": "Authorization: Basic <BASE64(:personalAccessToken)>",
-    "requiresApiToken": true,
-    "requiresEmail": false,
-    "probeEndpoint": "/_apis/projects?api-version=7.1-preview.1",
-    "successStatus": 200
+    "emailRequired": false,
+    "whoami": {
+      "endpoint": "/_apis/profile/profiles/me?api-version=6.0",
+      "method": "GET",
+      "usernamePath": "displayName"
+    }
   },
   "discovery": {
     "endpoints": {

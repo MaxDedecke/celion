@@ -1,6 +1,7 @@
 import { Pool } from 'pg';
-import { runSystemDetection } from '../agents/agentService';
+import { runSystemDetection, runAuthFlow } from '../agents/agentService';
 import { AGENT_WORKFLOW_STEPS } from '../constants/agentWorkflow';
+import { loadScheme } from '../lib/scheme-loader';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -257,6 +258,151 @@ async function processJob(job: any) {
         finishClient.release();
       }
 
+          } else if (agentName === 'runAuthFlow') {
+            const url = agentParams?.url;
+            const systemName = agentParams?.expectedSystem;
+            const mode = agentParams?.mode || 'source';
+    
+            const headerMsg = mode === 'source' ? "Verifiziere **Quellsystem-Authentifizierung**" : "Verifiziere **Zielsystem-Authentifizierung**";
+            await writeChatMessage(migrationId, 'assistant', headerMsg, currentStepNumber);
+            
+            // 1. Fetch credentials
+            const { rows: connectorRows } = await pool.query(
+              'SELECT api_url, api_key, username FROM connectors WHERE migration_id = $1 AND connector_type = $2',
+              [migrationId, mode === 'source' ? 'in' : 'out']
+            );
+            const connector = connectorRows[0];
+    
+            if (!connector || (!connector.api_key && !connector.username)) {
+              isLogicalFailure = true;
+              failureMessage = `Keine Zugangsdaten für **${mode === 'source' ? 'Quellsystem' : 'Zielsystem'}** gefunden.`;
+              result = { success: false, error: failureMessage };
+              resultMessageText = failureMessage;
+            } else {
+              // 2. Load Auth Scheme
+              const fullScheme = await loadScheme(systemName);
+              const authScheme = fullScheme?.authentication || {};
+    
+              const detailMsg = `Ich teste die Verbindung zu **${systemName}** (**${url}**) mit den hinterlegten Zugangsdaten basierend auf der Konfiguration für **${fullScheme?.system || systemName}**.`;
+              await writeChatMessage(migrationId, 'assistant', detailMsg, currentStepNumber);
+    
+              const messageGenerator = runAuthFlow(url, authScheme, {
+                email: connector.username,
+                apiToken: connector.api_key
+              });
+    
+              let lastMessageText: string | undefined;
+              for await (const message of messageGenerator) {
+                if (message.content && message.content.length > 0 && message.content[0].text) {
+                  lastMessageText = message.content[0].text;
+                }
+              }
+            if (lastMessageText) {
+          try {
+            const parsed = JSON.parse(lastMessageText);
+            parsed.system_mode = mode;
+            result = parsed;
+            resultMessageText = JSON.stringify(parsed);
+            
+            if (result && result.success === false) {
+               isLogicalFailure = true;
+               failureMessage = `${mode === 'source' ? 'Source' : 'Target'} authentication failed: ${result.error || 'Unknown error'}`;
+            }
+          } catch (e) {
+            result = { text: lastMessageText, system_mode: mode };
+            resultMessageText = JSON.stringify(result);
+          }
+        } else {
+          result = { error: 'Agent produced no output', system_mode: mode };
+          resultMessageText = JSON.stringify(result);
+          isLogicalFailure = true;
+          failureMessage = "Agent produced no output.";
+        }
+      }
+
+      // Ergebnis-Nachricht senden
+      await writeChatMessage(migrationId, 'assistant', resultMessageText, currentStepNumber);
+
+      // 3. Abschluss-Status setzen (Transaction 2)
+      const finishClient = await pool.connect();
+      try {
+        await finishClient.query('BEGIN');
+
+        const { rows: otherJobs } = await finishClient.query(
+          "SELECT id FROM jobs WHERE step_id = $1 AND id != $2 AND status IN ('pending', 'running')",
+          [step_id, job.id]
+        );
+        const isLastJob = otherJobs.length === 0;
+
+        const { rows: currentStepRows } = await finishClient.query('SELECT result, status FROM migration_steps WHERE id = $1', [step_id]);
+        const existingResult = currentStepRows[0]?.result || {};
+        const stepHadFailure = currentStepRows[0]?.status === 'failed';
+        
+        const combinedStepResult = { ...existingResult, [mode]: result };
+        const finalStepStatus = (isLogicalFailure || stepHadFailure) ? 'failed' : (isLastJob ? 'completed' : 'running');
+
+        await finishClient.query('UPDATE migration_steps SET status = $1, result = $2, status_message = $3 WHERE id = $4', [
+          finalStepStatus,
+          combinedStepResult,
+          isLogicalFailure ? failureMessage : (isLastJob ? 'Authentication successful for all systems.' : `Authentication for ${mode} completed.`),
+          step_id,
+        ]);
+
+        const { rows: migrationRows } = await finishClient.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
+        const migrationData = migrationRows[0];
+
+        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(
+          migrationData?.workflow_state,
+          stepRecord.workflow_step_id || stepId,
+          combinedStepResult,
+          (isLogicalFailure || stepHadFailure)
+        );
+
+        const migrationStatus = (isLogicalFailure || stepHadFailure) ? 'paused' : (isLastJob && completedCount >= totalSteps ? 'completed' : 'processing');
+        const stepStatusForMigration = (isLogicalFailure || stepHadFailure) ? 'failed' : (isLastJob ? 'completed' : 'running');
+
+        await finishClient.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
+          nextState,
+          progress,
+          migrationStatus,
+          stepStatusForMigration,        
+          currentStepNumber,  
+          migrationId,
+        ]);
+
+        await finishClient.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+        await finishClient.query('COMMIT');
+
+        // Abschluss-Nachrichten
+        if (isLogicalFailure) {
+          await writeChatMessage(migrationId, 'system', `Schritt 2 Authentication fehlgeschlagen (**${mode === 'source' ? 'Quellsystem' : 'Zielsystem'}** konnte nicht authentifiziert werden).`, currentStepNumber);
+          await logActivity(migrationId, 'warning', `Schritt ${mode}-Authentifizierung fehlgeschlagen.`);
+        } else {
+          await writeChatMessage(migrationId, 'system', `**${mode === 'source' ? 'Quellsystem' : 'Zielsystem'}** erfolgreich authentifiziert.`, currentStepNumber);
+
+          if (isLastJob) {
+             await writeChatMessage(migrationId, 'system', `Schritt 2 **Authentication** erfolgreich.`, currentStepNumber);
+             
+             const nextStepIndex = currentStepNumber;
+             if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
+                 const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
+                 const actionContent = JSON.stringify({
+                     type: "action",
+                     action: "continue",
+                     label: `Weiter zu Schritt ${nextStepIndex + 1} ${nextStep.title}`
+                 });
+                 await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
+             }
+          }
+          await logActivity(migrationId, 'success', `Schritt ${mode}-Authentifizierung abgeschlossen.`);
+        }
+
+      } catch (e) {
+        await finishClient.query('ROLLBACK');
+        throw e;
+      } finally {
+        finishClient.release();
+      }
     } else {
       // Fallback für andere Agenten (noch nicht implementiert im Detail)
       throw new Error(`Agent ${agentName} is not yet implemented in the worker.`);

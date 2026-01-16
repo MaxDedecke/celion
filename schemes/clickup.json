@@ -2,13 +2,16 @@
   "system": "ClickUp",
   "apiType": "REST",
   "baseUrlPattern": "api.clickup.com",
-  "auth": {
-    "type": "bearer_token",
-    "headerTemplate": "Authorization: Bearer <TOKEN>",
-    "requiresApiToken": true,
-    "requiresEmail": false,
-    "probeEndpoint": "/api/v2/user",
-    "successStatus": 200
+  "authentication": {
+    "type": "header",
+    "headerName": "Authorization",
+    "tokenPrefix": "",
+    "emailRequired": false,
+    "whoami": {
+      "endpoint": "/api/v2/user",
+      "method": "GET",
+      "usernamePath": "user.username"
+    }
   },
   "discovery": {
     "endpoints": {
