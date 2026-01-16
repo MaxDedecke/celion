@@ -93,7 +93,10 @@ async function processJob(job: any) {
     await client.query('UPDATE migrations SET status = $1, step_status = $2 WHERE id = $3', ['processing', 'running', migrationId]);
 
     // Start-Nachricht im Chat
-    await writeChatMessage(client, migrationId, 'system', `Starting ${stepRecord.name || 'step'}...`, currentStepNumber);
+    // MODIFIED: Only show for non-split agents or the first part of split agents (source)
+    if (agentName !== 'runSystemDetection' || (agentParams?.mode || 'source') === 'source') {
+      await writeChatMessage(client, migrationId, 'system', `Starting ${stepRecord.name || 'step'}...`, currentStepNumber);
+    }
 
     console.log("Agent params:", JSON.stringify(agentParams, null, 2));
 

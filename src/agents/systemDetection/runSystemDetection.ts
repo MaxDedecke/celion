@@ -120,11 +120,11 @@ export async function* runSystemDetection(url: string, system: string, instructi
             result = await curlHeadProbe(args);
           } else if (functionName === 'http_probe') {
             result = await httpClient(args);
-            // Truncate large bodies to prevent context length errors
+            // Aggressive truncation to prevent context length errors
             if (result.body) {
               const bodyStr = typeof result.body === 'string' ? result.body : JSON.stringify(result.body);
-              if (bodyStr.length > 20000) {
-                result.body = bodyStr.slice(0, 20000) + '...[TRUNCATED]';
+              if (bodyStr.length > 10000) {
+                result.body = bodyStr.slice(0, 10000) + '...[TRUNCATED BY AGENT]';
               }
             }
           } else {
