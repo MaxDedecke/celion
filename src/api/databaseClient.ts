@@ -246,23 +246,52 @@ export const databaseClient = {
 
   updateConnector: (id: string, payload: TablesUpdate<"connectors">) => fetchFromApi<Tables<"connectors">>(`/connectors?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
 
-  updateConnectorByType: (
+  updateConnectorByType: async (
     migrationId: string,
     connectorType: "in" | "out",
     payload: TablesUpdate<"connectors">,
   ) => {
-    const fullPayload = { ...payload, migration_id: migrationId, connector_type: connectorType };
-    return fetchFromApi<Tables<"connectors">>(
-      "/connectors?on_conflict=migration_id,connector_type",
-      {
-        method: "POST",
-        body: JSON.stringify(fullPayload),
-        headers: {
-          "Content-Type": "application/json",
-          "Prefer": "resolution=merge-duplicates, return=representation"
-        }
-      }
-    );
+    // Try to update first (PATCH)
+    const updateResponse = await fetchFromApi<Tables<"connectors">>(`/connectors?migration_id=eq.${migrationId}&connector_type=eq.${connectorType}`, { 
+      method: "PATCH", 
+      body: JSON.stringify(payload), 
+      headers: { "Content-Type": "application/json" } 
+    });
+
+    // If successful, or if error is NOT a 404/Not Found, return the result
+    if (!updateResponse.error) {
+      return updateResponse;
+    }
+    
+    const errorMsg = updateResponse.error.message;
+    // Check for various 404 indicators
+    const isNotFound = errorMsg.includes("404") || errorMsg.includes("not found") || errorMsg.includes("Not Found");
+
+    if (!isNotFound) {
+      return updateResponse;
+    }
+
+    // If 404, it means the connector doesn't exist, so we create it (POST)
+    const createPayload = {
+      migration_id: migrationId,
+      connector_type: connectorType,
+      ...payload
+    };
+
+    // The backend POST endpoint expects an array of connectors and returns an array
+    const createResponse = await fetchFromApi<Tables<"connectors">[]>("/connectors", {
+      method: "POST",
+      body: JSON.stringify([createPayload]),
+      headers: { "Content-Type": "application/json" }
+    });
+    
+    // Unwrap the list to return a single connector object to match the expected return type
+    if (createResponse.data && createResponse.data.length > 0) {
+      return { ...createResponse, data: createResponse.data[0] };
+    }
+    
+    // If creation returned empty list or error, return that (casted)
+    return { ...createResponse, data: null };
   },
 
   insertMigrationActivity: (payload: TablesInsert<"migration_activities">) => fetchFromApi<Tables<"migration_activities">>("/migration_activities", { method: "POST", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
