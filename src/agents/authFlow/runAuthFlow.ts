@@ -13,13 +13,23 @@ You will be provided with:
 
 Your goal:
 - STRICTLY follow the 'authentication' section in the Auth Scheme.
-- Construct the correct authentication headers as defined in the scheme.
+- **CRITICAL:** If the Auth Scheme contains an 'apiBaseUrl' (e.g. "https://api.notion.com"), USE IT as the base for your requests instead of the provided 'Target URL'.
+- Include any global 'headers' defined in the Auth Scheme (e.g. 'Notion-Version') in your requests.
+- Construct the correct authentication headers based on 'type':
+  - **type: "bearer"**: Header "Authorization" = "<tokenPrefix><API_TOKEN>" (usually "Bearer <API_TOKEN>")
+  - **type: "header"**: Header "<headerName>" = "<tokenPrefix><API_TOKEN>"
+  - **type: "basic"**: Header "Authorization" = "Basic <CREDENTIALS_BASE64>"
 - Use the 'http_probe' tool to call the 'whoami' endpoint defined in the scheme.
-- Verify if the response is successful (usually 200 OK).
-- Extract the user's display name or username if possible (using 'usernamePath' from scheme if available).
+- **MANDATORY:** You MUST provide the 'headers' object in the 'http_probe' tool call, containing the auth headers.
 
-IMPORTANT:
-- If 'tokenPrefix' is an empty string in the scheme, DO NOT add "Bearer " or any other prefix. Use the token exactly as is.
+IMPORTANT SECURITY INSTRUCTIONS:
+- Do NOT use real credential values in your tool calls.
+- Use the placeholder "<API_TOKEN>" where the API Token is required (e.g. in Bearer or Private-Token headers).
+- Use the placeholder "<EMAIL>" where the Email is required.
+- For Basic Auth, use the placeholder "<CREDENTIALS_BASE64>" which represents 'base64(email:apiToken)'.
+  Example: "Authorization": "Basic <CREDENTIALS_BASE64>"
+
+- If 'tokenPrefix' is an empty string in the scheme, DO NOT add "Bearer " or any other prefix. Use the token placeholder directly.
 - If 'headerName' is specified (e.g. 'PRIVATE-TOKEN'), use that exact header name.
 
 Return the result in the following JSON format:
@@ -46,7 +56,7 @@ const TOOLS = [
           headers: { type: "object", description: "Authentication and other headers." },
           body: { type: "string", description: "Optional body." }
         },
-        required: ["url"]
+        required: ["url", "headers"]
       }
     }
   }
@@ -59,6 +69,11 @@ export async function* runAuthFlow(
 ): AsyncGenerator<Message> {
   const { apiKey, baseUrl, projectId } = resolveOpenAiConfig();
   const headers = buildOpenAiHeaders(apiKey, projectId);
+
+  // Pre-calculate Base64 credentials for Basic Auth injection
+  const email = credentials.email || "";
+  const token = credentials.apiToken || "";
+  const base64Credentials = btoa(`${email}:${token}`);
 
   const userContext = `
 Target URL: ${url}
@@ -111,6 +126,57 @@ Auth Scheme: ${JSON.stringify(authScheme, null, 2)}
 
         try {
           if (functionName === 'http_probe') {
+            console.log(`[AuthAgent] Requesting probe for ${args.url}`);
+            console.log(`[AuthAgent] Proposed Headers (Placeholder):`, JSON.stringify(args.headers, null, 2));
+
+            // Forcefully inject headers if missing or empty, based on authScheme
+            if (!args.headers || Object.keys(args.headers).length === 0) {
+                console.log("[AuthAgent] Headers missing/empty. Constructing from scheme fallback...");
+                args.headers = args.headers || {};
+                
+                // authScheme IS the authentication object + extras (from worker.ts)
+                const auth = authScheme; 
+                
+                if (auth) {
+                    if (auth.type === 'bearer') {
+                        // Default to Bearer if tokenPrefix is undefined, else use it (even if empty)
+                        const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : 'Bearer ';
+                        args.headers['Authorization'] = `${prefix}<API_TOKEN>`;
+                    } else if (auth.type === 'header') {
+                        const name = auth.headerName || 'Authorization';
+                        const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : '';
+                        args.headers[name] = `${prefix}<API_TOKEN>`;
+                    } else if (auth.type === 'basic') {
+                        args.headers['Authorization'] = 'Basic <CREDENTIALS_BASE64>';
+                    }
+                }
+                
+                // Also inject global headers if present
+                if (auth.headers) {
+                    args.headers = { ...args.headers, ...auth.headers };
+                }
+            }
+
+            // Inject actual credentials into headers
+            if (args.headers) {
+              for (const [key, value] of Object.entries(args.headers)) {
+                if (typeof value === 'string') {
+                  // Cast to string to satisfy TS
+                  const strValue = value as string;
+                  args.headers[key] = strValue
+                    .replace('<API_TOKEN>', token)
+                    .replace('<EMAIL>', email)
+                    .replace('<CREDENTIALS_BASE64>', base64Credentials);
+                }
+              }
+            }
+            
+            // Log masked headers for debugging
+            const maskedHeaders = { ...args.headers };
+            if (maskedHeaders.Authorization) maskedHeaders.Authorization = "[MASKED]";
+            if (maskedHeaders['PRIVATE-TOKEN']) maskedHeaders['PRIVATE-TOKEN'] = "[MASKED]";
+            console.log(`[AuthAgent] Sending Headers:`, JSON.stringify(maskedHeaders, null, 2));
+
             result = await httpClient(args);
             // Truncate large bodies
             if (result.body) {

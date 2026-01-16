@@ -235,7 +235,14 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
                 </p>
                 {jsonContent.rawOutput && (
                   <p className="mt-0 opacity-90">
-                    {renderFormattedContent(jsonContent.rawOutput)}
+                    {jsonContent.rawOutput.trim().startsWith("<") 
+                        ? "[Raw Content / HTML detected - see details]"
+                        : renderFormattedContent(
+                            jsonContent.rawOutput.length > 300 
+                            ? jsonContent.rawOutput.substring(0, 300) + "..." 
+                            : jsonContent.rawOutput
+                        )
+                    }
                   </p>
                 )}
               </div>

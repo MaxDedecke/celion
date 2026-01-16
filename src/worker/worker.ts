@@ -279,11 +279,16 @@ async function processJob(job: any) {
               result = { success: false, error: failureMessage };
               resultMessageText = failureMessage;
             } else {
-              // 2. Load Auth Scheme
-              const fullScheme = await loadScheme(systemName);
-              const authScheme = fullScheme?.authentication || {};
-    
-              const detailMsg = `Ich teste die Verbindung zu **${systemName}** (**${url}**) mit den hinterlegten Zugangsdaten basierend auf der Konfiguration für **${fullScheme?.system || systemName}**.`;
+                        // 2. Load Auth Scheme
+                        const fullScheme = await loadScheme(systemName);
+                        const authScheme = {
+                            ...(fullScheme?.authentication || {}),
+                            apiBaseUrl: fullScheme?.apiBaseUrl, // Inject API Base URL if defined
+                            headers: fullScheme?.headers // Inject global headers (e.g. Notion-Version)
+                        };
+              
+                        const detailMsg = `Ich teste die Verbindung zu **${systemName}** (**${url}**) mit den hinterlegten Zugangsdaten basierend auf der Konfiguration für **${fullScheme?.system || systemName}**.`;
+              
               await writeChatMessage(migrationId, 'assistant', detailMsg, currentStepNumber);
     
               const messageGenerator = runAuthFlow(url, authScheme, {
