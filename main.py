@@ -697,7 +697,7 @@ async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
                 UPDATE public.migrations
                 SET current_step = %s, step_status = 'running', status = 'processing'
                 WHERE id = %s
-                RETURNING id, source_url, source_system, notes
+                RETURNING id, source_url, source_system, target_url, target_system, notes
                 """,
                 (step, id),
             )
@@ -739,39 +739,73 @@ async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
             }
             agent_name = step_agent_mapping.get(step, "runSystemDetection")
 
-            agent_params = {
-                "sourceUrl": migration_row["source_url"],
-                "sourceExpectedSystem": migration_row["source_system"],
-                "instructions": migration_row["notes"],
-            }
-
-            payload = {
+            payload_base = {
                 "migrationId": id,
                 "stepId": str(step_id),
                 "stepNumber": step,
                 "agentName": agent_name,
-                "agentParams": agent_params,
             }
-            
-            cur.execute(
-                """
-                INSERT INTO public.jobs (step_id, payload, status)
-                VALUES (%s, %s, 'pending')
-                RETURNING id
-                """,
-                (step_id, json.dumps(payload)),
-            )
-            job_row = cur.fetchone()
 
-            if job_row:
+            if step == 1:
+                # Enqueue Source Verification Job
+                payload_source = {
+                    **payload_base,
+                    "agentParams": {
+                        "url": migration_row["source_url"],
+                        "expectedSystem": migration_row["source_system"],
+                        "instructions": migration_row["notes"],
+                        "mode": "source"
+                    }
+                }
+                cur.execute(
+                    "INSERT INTO public.jobs (step_id, payload, status) VALUES (%s, %s, 'pending')",
+                    (step_id, json.dumps(payload_source)),
+                )
+                
+                # Enqueue Target Verification Job
+                payload_target = {
+                    **payload_base,
+                    "agentParams": {
+                        "url": migration_row["target_url"],
+                        "expectedSystem": migration_row["target_system"],
+                        "instructions": migration_row["notes"],
+                        "mode": "target"
+                    }
+                }
+                cur.execute(
+                    "INSERT INTO public.jobs (step_id, payload, status) VALUES (%s, %s, 'pending')",
+                    (step_id, json.dumps(payload_target)),
+                )
+            else:
+                agent_params = {
+                    "sourceUrl": migration_row["source_url"],
+                    "sourceExpectedSystem": migration_row["source_system"],
+                    "targetUrl": migration_row["target_url"],
+                    "targetExpectedSystem": migration_row["target_system"],
+                    "instructions": migration_row["notes"],
+                }
+                payload = {
+                    **payload_base,
+                    "agentParams": agent_params,
+                }
+                cur.execute(
+                    "INSERT INTO public.jobs (step_id, payload, status) VALUES (%s, %s, 'pending')",
+                    (step_id, json.dumps(payload)),
+                )
+
+            # We need to publish to RabbitMQ for EACH job created in this turn
+            # But the 'job_row' logic below only handles the last one.
+            # I'll change it to fetch all pending jobs for this step and publish them.
+            cur.execute("SELECT id FROM public.jobs WHERE step_id = %s AND status = 'pending'", (step_id,))
+            job_rows = cur.fetchall()
+            for job_row in job_rows:
                 publish_to_rabbitmq(job_row["id"])
             
             conn.commit()
 
             return {
-                "jobId": job_row["id"] if job_row else None,
                 "stepId": step_id,
-                "message": f"Step {step} has been enqueued for migration {id}",
+                "message": f"Step {step} has been enqueued with {len(job_rows)} jobs",
             }
     except HTTPException:
         raise
