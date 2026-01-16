@@ -38,7 +38,7 @@ const MigrationChatCard = ({
   useEffect(() => {
     const fetchChatMessages = async () => {
       try {
-        const response = await fetch(`/api/migrations/${migration.id}/chat`);
+        const response = await fetch(`/api/migrations/${migration.id}/chat?t=${Date.now()}`);
         const data = await response.json();
         setChatMessages(data);
       } catch (error) {
@@ -48,7 +48,7 @@ const MigrationChatCard = ({
 
     const fetchMigration = async () => {
       try {
-        const response = await fetch(`/api/migrations/${migration.id}`);
+        const response = await fetch(`/api/migrations/${migration.id}?t=${Date.now()}`);
         const data = await response.json();
         setMigrationData(data);
       } catch (error) {
@@ -166,7 +166,7 @@ const MigrationChatCard = ({
               messages={chatMessages} 
               isAgentRunning={isStepRunning} 
               onOpenAgentOutput={onOpenAgentOutput}
-              showContinueButton={(migrationData.status === "not_started" || migrationData.status === "running" || migrationData.status === "paused" || migrationData.status === "processing") && overallProgress < 100 && !isStepRunning}
+              showContinueButton={migrationData.status !== "completed" && !isStepRunning}
               onContinue={onContinue}
               continueButtonText={
                 migrationData.status === "not_started" 

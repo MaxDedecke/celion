@@ -59,6 +59,12 @@ const ChatMessageList = ({
     delayMs: 400,
   });
 
+  const handleAction = (action: string) => {
+    if (action === 'continue' && onContinue) {
+      onContinue();
+    }
+  };
+
   return (
     <div className="flex flex-col gap-2 pb-4 pr-3">
       {visibleMessages.map((message, index) => {
@@ -94,6 +100,7 @@ const ChatMessageList = ({
               <ChatMessage 
                 message={message} 
                 onOpenAgentOutput={onOpenAgentOutput}
+                onAction={handleAction}
                 enableTypewriter={shouldAnimate}
                 onTypewriterComplete={() => onAnimationComplete(message.id)}
               />

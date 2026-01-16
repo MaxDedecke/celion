@@ -234,6 +234,18 @@ async function processJob(job: any) {
 
           if (isLastJob) {
              await writeChatMessage(migrationId, 'system', `Schritt 1 **System Detection** erfolgreich.`, currentStepNumber);
+             
+             // Inject Action Button for Next Step
+             const nextStepIndex = currentStepNumber; // currentStepNumber is 1-based, so for Step 1, next index is 1 (Step 2)
+             if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
+                 const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
+                 const actionContent = JSON.stringify({
+                     type: "action",
+                     action: "continue",
+                     label: `Weiter zu Schritt ${nextStepIndex + 1} ${nextStep.title}`
+                 });
+                 await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
+             }
           }
           await logActivity(migrationId, 'success', `Schritt ${mode}-Erkennung abgeschlossen.`);
         }

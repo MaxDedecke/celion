@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { User, SquareArrowOutUpRight, CheckCircle2, XCircle, Play, Copy, Rocket, FileJson } from "lucide-react";
+import { User, SquareArrowOutUpRight, CheckCircle2, XCircle, Play, Copy, Rocket, FileJson, ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -32,11 +32,12 @@ export interface ChatMessage {
 interface ChatMessageProps {
   message: ChatMessage;
   onOpenAgentOutput?: (stepId: string) => void;
+  onAction?: (action: string) => void;
   enableTypewriter?: boolean;
   onTypewriterComplete?: () => void;
 }
 
-const ChatMessage = ({ message, onOpenAgentOutput, enableTypewriter = false, onTypewriterComplete }: ChatMessageProps) => {
+const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = false, onTypewriterComplete }: ChatMessageProps) => {
   const [showJsonDialog, setShowJsonDialog] = useState(false);
 
   const jsonContent = useMemo(() => {
@@ -51,6 +52,21 @@ const ChatMessage = ({ message, onOpenAgentOutput, enableTypewriter = false, onT
     return null;
   }, [message.content]);
 
+  useEffect(() => {
+    if (!onTypewriterComplete) return;
+
+    // Only attempt to complete if typewriter is enabled (meaning it's currently animating or queued)
+    if (!enableTypewriter) return;
+
+    if (jsonContent) {
+      // JSON messages skip animation
+      onTypewriterComplete();
+    } else if (message.role === "user") {
+      // User messages skip animation
+      onTypewriterComplete();
+    }
+  }, [enableTypewriter, message.role, onTypewriterComplete, jsonContent]);
+
   const derivedStatus = useMemo(() => {
     if (message.status) return message.status;
     const lower = message.content.toLowerCase();
@@ -59,9 +75,25 @@ const ChatMessage = ({ message, onOpenAgentOutput, enableTypewriter = false, onT
     return undefined;
   }, [message.status, message.content]);
 
+  // Special Action Message Rendering
+  if (jsonContent && jsonContent.type === 'action') {
+    return (
+      <div className="flex w-full justify-center py-4 animate-fade-in">
+        <Button 
+          onClick={() => onAction && onAction(jsonContent.action)} 
+          variant="outline" 
+          className="gap-2 border-primary/20 hover:bg-primary/5 text-primary"
+        >
+          {jsonContent.label}
+          <ArrowRight className="h-4 w-4" />
+        </Button>
+      </div>
+    );
+  }
+
   const getIcon = () => {
-    if (derivedStatus === "success") return CheckCircle2;
-    if (derivedStatus === "error") return XCircle;
+    if (message.status === "success") return CheckCircle2;
+    if (message.status === "error") return XCircle;
     
     const content = message.content.toLowerCase();
     if (content.includes("gestartet") || content.includes("erstellt") || content.includes("neue migration")) return Rocket;
@@ -144,8 +176,10 @@ const ChatMessage = ({ message, onOpenAgentOutput, enableTypewriter = false, onT
   };
 
   const renderFormattedContent = (text: string) => {
+    if (text === null || text === undefined) return null;
+    const safeText = String(text);
     // Split by **text** markers
-    const parts = text.split(/(\*\*.*?\*\*)/g);
+    const parts = safeText.split(/(\*\*.*?\*\*)/g);
     return parts.map((part, i) => {
       if (part.startsWith("**") && part.endsWith("**")) {
         const content = part.slice(2, -2);
