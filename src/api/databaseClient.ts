@@ -76,6 +76,11 @@ async function fetchFromApi<T>(
       const detail = await parseErrorDetail(response);
       return { data: null, error: new Error(detail ?? `Request failed with status ${response.status}`) };
     }
+
+    if (response.status === 204) {
+      return { data: null, error: null };
+    }
+
     const data = await response.json();
     const countHeader = response.headers.get('X-Total-Count');
     const count = countHeader ? parseInt(countHeader, 10) : undefined;
@@ -245,7 +250,20 @@ export const databaseClient = {
     migrationId: string,
     connectorType: "in" | "out",
     payload: TablesUpdate<"connectors">,
-  ) => fetchFromApi<Tables<"connectors">>(`/connectors?migration_id=eq.${migrationId}&connector_type=eq.${connectorType}`, { method: "PATCH", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
+  ) => {
+    const fullPayload = { ...payload, migration_id: migrationId, connector_type: connectorType };
+    return fetchFromApi<Tables<"connectors">>(
+      "/connectors?on_conflict=migration_id,connector_type",
+      {
+        method: "POST",
+        body: JSON.stringify(fullPayload),
+        headers: {
+          "Content-Type": "application/json",
+          "Prefer": "resolution=merge-duplicates, return=representation"
+        }
+      }
+    );
+  },
 
   insertMigrationActivity: (payload: TablesInsert<"migration_activities">) => fetchFromApi<Tables<"migration_activities">>("/migration_activities", { method: "POST", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
 
