@@ -14,6 +14,7 @@
   },
   "discovery": {
     "endpoints": {
+      "search": "/v1/search",
       "databasesList": "/v1/databases",
       "databaseQuery": "/v1/databases/{database_id}/query",
       "pages": "/v1/pages",

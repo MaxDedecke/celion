@@ -6,6 +6,68 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import TypewriterText from "./TypewriterText";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+
+const DiscoveryReport = ({ data }: { data: any }) => {
+  if (!data || !data.entities) return null;
+
+  return (
+    <div className="mt-2 space-y-4 w-full">
+      <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+        <h4 className="text-sm font-semibold text-primary mb-2 flex items-center gap-2">
+          <Rocket className="h-4 w-4" />
+          Source Discovery Ergebnis
+        </h4>
+        <p className="text-sm text-foreground/90 leading-relaxed italic">
+          "{data.summary}"
+        </p>
+        
+        {data.scope?.identified && (
+          <div className="mt-3 flex items-center gap-2">
+            <Badge variant="outline" className="bg-background/50 border-primary/30 text-primary text-[10px]">
+              Fokus: {data.scope.name || data.scope.id}
+            </Badge>
+          </div>
+        )}
+      </div>
+
+      <div className="rounded-xl border border-border bg-card overflow-hidden">
+        <Table>
+          <TableHeader className="bg-muted/50">
+            <TableRow>
+              <TableHead className="h-9 text-[11px] uppercase tracking-wider">Entität</TableHead>
+              <TableHead className="h-9 text-[11px] uppercase tracking-wider text-right">Anzahl</TableHead>
+              <TableHead className="h-9 text-[11px] uppercase tracking-wider text-center">Komplexität</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {data.entities.map((entity: any, i: number) => (
+              <TableRow key={i} className="hover:bg-muted/30 border-b last:border-0">
+                <TableCell className="py-2 text-sm font-medium">{entity.name}</TableCell>
+                <TableCell className="py-2 text-sm text-right tabular-nums">{entity.count?.toLocaleString('de-DE')}</TableCell>
+                <TableCell className="py-2 text-center">
+                  {entity.complexity && (
+                    <Badge 
+                      variant="secondary" 
+                      className={cn(
+                        "text-[10px] px-1.5 py-0",
+                        entity.complexity === 'low' && "bg-emerald-500/10 text-emerald-600 border-emerald-500/20",
+                        entity.complexity === 'medium' && "bg-amber-500/10 text-amber-600 border-amber-500/20",
+                        entity.complexity === 'high' && "bg-red-500/10 text-red-600 border-red-500/20"
+                      )}
+                    >
+                      {entity.complexity.toUpperCase()}
+                    </Badge>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </div>
+  );
+};
 
 export type ChatMessageRole = "system" | "agent" | "user" | "assistant";
 export type ChatMessageStatus = "success" | "error" | "pending" | "info";
@@ -231,27 +293,31 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
         <div className={cn("text-sm leading-relaxed", getTextColor())}>
           {jsonContent ? (
             <div className="flex flex-col gap-2 items-start mt-1">
-              <div className="prose prose-sm dark:prose-invert max-w-none text-foreground">
-                <p className="mb-1">
-                  {renderFormattedContent(
-                    jsonContent.system_mode === 'source' ? "**Ergebnis der Analyse des Quellsystems:**" : 
-                    jsonContent.system_mode === 'target' ? "**Ergebnis der Analyse des Zielsystems:**" : 
-                    "**Ergebnis der Analyse:**"
-                  )}
-                </p>
-                {jsonContent.rawOutput && (
-                  <p className="mt-0 opacity-90">
-                    {jsonContent.rawOutput.trim().startsWith("<") 
-                        ? "[Raw Content / HTML detected - see details]"
-                        : renderFormattedContent(
-                            jsonContent.rawOutput.length > 300 
-                            ? jsonContent.rawOutput.substring(0, 300) + "..." 
-                            : jsonContent.rawOutput
-                        )
-                    }
+              {jsonContent.entities ? (
+                <DiscoveryReport data={jsonContent} />
+              ) : (
+                <div className="prose prose-sm dark:prose-invert max-w-none text-foreground">
+                  <p className="mb-1">
+                    {renderFormattedContent(
+                      jsonContent.system_mode === 'source' ? "**Ergebnis der Analyse des Quellsystems:**" : 
+                      jsonContent.system_mode === 'target' ? "**Ergebnis der Analyse des Zielsystems:**" : 
+                      "**Ergebnis der Analyse:**"
+                    )}
                   </p>
-                )}
-              </div>
+                  {jsonContent.rawOutput && (
+                    <p className="mt-0 opacity-90">
+                      {jsonContent.rawOutput.trim().startsWith("<") 
+                          ? "[Raw Content / HTML detected - see details]"
+                          : renderFormattedContent(
+                              jsonContent.rawOutput.length > 300 
+                              ? jsonContent.rawOutput.substring(0, 300) + "..." 
+                              : jsonContent.rawOutput
+                          )
+                      }
+                    </p>
+                  )}
+                </div>
+              )}
               <Button 
                 variant="outline" 
                 size="sm" 

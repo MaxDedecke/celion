@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { runSystemDetection, runAuthFlow } from '../agents/agentService';
+import { runSystemDetection, runAuthFlow, runSourceDiscovery } from '../agents/agentService';
 import { AGENT_WORKFLOW_STEPS } from '../constants/agentWorkflow';
 import { loadScheme } from '../lib/scheme-loader';
 
@@ -259,6 +259,159 @@ async function processJob(job: any) {
         finishClient.release();
       }
 
+          } else if (agentName === 'runCapabilityDiscovery') {
+            const sourceUrl = agentParams?.sourceUrl;
+            const sourceSystem = agentParams?.sourceExpectedSystem;
+    
+            const headerMsg = "Starte **Source Discovery**";
+            await writeChatMessage(migrationId, 'assistant', headerMsg, currentStepNumber);
+            
+            // 1. Fetch migration details for scope_config
+            const { rows: migrationDetailRows } = await pool.query(
+              'SELECT scope_config FROM migrations WHERE id = $1',
+              [migrationId]
+            );
+            const scopeConfig = migrationDetailRows[0]?.scope_config || {};
+
+            // 2. Fetch credentials for source
+            const { rows: connectorRows } = await pool.query(
+              'SELECT api_url, api_key, username FROM connectors WHERE migration_id = $1 AND connector_type = $2',
+              [migrationId, 'in']
+            );
+            const connector = connectorRows[0];
+    
+            if (!connector || (!connector.api_key && !connector.username)) {
+              isLogicalFailure = true;
+              failureMessage = `Keine Zugangsdaten für das Quellsystem gefunden.`;
+              result = { success: false, error: failureMessage };
+              resultMessageText = failureMessage;
+            } else {
+              // 3. Load System Scheme
+              const fullScheme = await loadScheme(sourceSystem);
+              const discoveryScheme = {
+                  ...(fullScheme || {}),
+                  apiBaseUrl: fullScheme?.apiBaseUrl,
+                  headers: fullScheme?.headers
+              };
+              
+              const detailMsg = `Ich analysiere die Struktur von **${sourceSystem}** und ermittle die Datenmengen${scopeConfig?.sourceScope ? ` (Fokus: **${scopeConfig.sourceScope}**)` : ''}.`;
+              await writeChatMessage(migrationId, 'assistant', detailMsg, currentStepNumber);
+    
+              const messageGenerator = runSourceDiscovery(sourceUrl, discoveryScheme, {
+                email: connector.username,
+                apiToken: connector.api_key
+              }, scopeConfig);
+    
+              let lastMessageText: string | undefined;
+              for await (const message of messageGenerator) {
+                if (message.content && message.content.length > 0 && message.content[0].text) {
+                  lastMessageText = message.content[0].text;
+                  // If it's not the final JSON, write it as a progress message
+                  if (!lastMessageText.trim().startsWith('{')) {
+                    await writeChatMessage(migrationId, 'assistant', lastMessageText, currentStepNumber);
+                  }
+                }
+              }
+
+              if (lastMessageText) {
+                try {
+                  const parsed = JSON.parse(lastMessageText);
+                  result = parsed;
+                  resultMessageText = JSON.stringify(parsed);
+                  
+                  // Logical failure check for Discovery:
+                  // If there are no entities and it wasn't a scoped discovery that just didn't find anything,
+                  // or if there's an explicit error in the JSON.
+                  if (result.error || (!result.entities || result.entities.length === 0)) {
+                    isLogicalFailure = true;
+                    failureMessage = result.error || "Keine Daten zur Migration gefunden (Discovery leer).";
+                  }
+                } catch (e) {
+                  result = { text: lastMessageText };
+                  resultMessageText = JSON.stringify(result);
+                  isLogicalFailure = true;
+                  failureMessage = "Agent lieferte kein gültiges JSON Ergebnis.";
+                }
+              } else {
+                result = { error: 'Discovery agent produced no output' };
+                resultMessageText = JSON.stringify(result);
+                isLogicalFailure = true;
+                failureMessage = "Discovery agent produced no output.";
+              }
+            }
+
+            // Ergebnis-Nachricht senden
+            await writeChatMessage(migrationId, 'assistant', resultMessageText, currentStepNumber);
+
+            // 3. Abschluss-Status setzen
+            const finishClient = await pool.connect();
+            try {
+              await finishClient.query('BEGIN');
+
+              const { rows: currentStepRows } = await finishClient.query('SELECT result, status FROM migration_steps WHERE id = $1', [step_id]);
+              const existingResult = currentStepRows[0]?.result || {};
+              
+              const combinedStepResult = { ...existingResult, discovery: result };
+              const finalStepStatus = isLogicalFailure ? 'failed' : 'completed';
+
+              await finishClient.query('UPDATE migration_steps SET status = $1, result = $2, status_message = $3 WHERE id = $4', [
+                finalStepStatus,
+                combinedStepResult,
+                isLogicalFailure ? failureMessage : 'Source discovery completed successfully.',
+                step_id,
+              ]);
+
+              const { rows: migrationRows } = await finishClient.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
+              const migrationData = migrationRows[0];
+
+              const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(
+                migrationData?.workflow_state,
+                stepRecord.workflow_step_id || stepId,
+                combinedStepResult,
+                isLogicalFailure
+              );
+
+              // Use isLogicalFailure to set migration status to paused and step status to failed
+              const migrationStatus = isLogicalFailure ? 'paused' : (completedCount >= totalSteps ? 'completed' : 'processing');
+              const stepStatusForMigration = isLogicalFailure ? 'failed' : 'completed';
+
+              await finishClient.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
+                nextState,
+                progress,
+                migrationStatus,
+                stepStatusForMigration,        
+                currentStepNumber,  
+                migrationId,
+              ]);
+
+              await finishClient.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+              await finishClient.query('COMMIT');
+
+              if (isLogicalFailure) {
+                await writeChatMessage(migrationId, 'system', `Schritt 3 Source Discovery fehlgeschlagen.`, currentStepNumber);
+                await logActivity(migrationId, 'warning', `Schritt Source Discovery fehlgeschlagen.`);
+              } else {
+                await writeChatMessage(migrationId, 'system', `Schritt 3 **Source Discovery** erfolgreich abgeschlossen.`, currentStepNumber);
+                
+                const nextStepIndex = currentStepNumber;
+                if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
+                    const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
+                    const actionContent = JSON.stringify({
+                        type: "action",
+                        action: "continue",
+                        label: `Weiter zu Schritt ${nextStepIndex + 1} ${nextStep.title}`
+                    });
+                    await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
+                }
+                await logActivity(migrationId, 'success', `Schritt Source Discovery abgeschlossen.`);
+              }
+
+            } catch (e) {
+              await finishClient.query('ROLLBACK');
+              throw e;
+            } finally {
+              finishClient.release();
+            }
           } else if (agentName === 'runAuthFlow') {
             const url = agentParams?.url;
             const systemName = agentParams?.expectedSystem;
