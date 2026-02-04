@@ -176,6 +176,7 @@ const MigrationChatCard = ({
                     : `Weiter zu Schritt ${currentStepNumber} ${activeStep?.title}`
               }
               currentStepTitle={runningStep?.title}
+              currentStep={rawStep}
             />
           </div>
           

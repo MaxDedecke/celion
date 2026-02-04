@@ -35,9 +35,10 @@ interface ChatMessageProps {
   onAction?: (action: string) => void;
   enableTypewriter?: boolean;
   onTypewriterComplete?: () => void;
+  currentStep?: number;
 }
 
-const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = false, onTypewriterComplete }: ChatMessageProps) => {
+const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = false, onTypewriterComplete, currentStep }: ChatMessageProps) => {
   const [showJsonDialog, setShowJsonDialog] = useState(false);
 
   const jsonContent = useMemo(() => {
@@ -77,6 +78,11 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
 
   // Special Action Message Rendering
   if (jsonContent && jsonContent.type === 'action') {
+    // Hide action buttons if they are from an older step
+    if (currentStep !== undefined && message.step_number !== undefined && message.step_number < currentStep) {
+      return null;
+    }
+
     return (
       <div className="flex w-full justify-center py-4 animate-fade-in">
         <Button 

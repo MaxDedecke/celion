@@ -99,7 +99,8 @@ async function processJob(job: any) {
   }
 
   // Start-Nachricht im Chat (Sofort sichtbar)
-  if (agentName !== 'runSystemDetection' || (agentParams?.mode || 'source') === 'source') {
+  // MODIFIED: Only show for non-split agents or the first part of split agents (source)
+  if ((agentParams?.mode || 'source') === 'source') {
     await writeChatMessage(migrationId, 'system', `Starte Schritt ${currentStepNumber} ${stepTitle}...`, currentStepNumber);
   }
 

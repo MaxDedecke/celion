@@ -11,6 +11,7 @@ interface ChatMessageListProps {
   onContinue?: () => void;
   continueButtonText?: string;
   currentStepTitle?: string;
+  currentStep?: number;
 }
 
 const ThinkingIndicator = ({ stepTitle }: { stepTitle?: string }) => (
@@ -47,7 +48,8 @@ const ChatMessageList = ({
   showContinueButton = false,
   onContinue,
   continueButtonText = "Fortsetzen",
-  currentStepTitle
+  currentStepTitle,
+  currentStep
 }: ChatMessageListProps) => {
   const { 
     visibleMessages, 
@@ -73,7 +75,9 @@ const ChatMessageList = ({
         
         // Determine if we should show a divider
         const previousMessage = index > 0 ? visibleMessages[index - 1] : null;
-        const isStepStart = message.content.startsWith("Starting Step") || message.content.startsWith("Starting System Detection"); // Add specific starts if needed
+        const isStepStart = message.content.startsWith("Starting Step") || 
+                            message.content.startsWith("Starting System Detection") ||
+                            message.content.startsWith("Starte Schritt"); 
         
         const showDivider = previousMessage && (
           (message.step_number && previousMessage.step_number !== message.step_number) ||
@@ -103,6 +107,7 @@ const ChatMessageList = ({
                 onAction={handleAction}
                 enableTypewriter={shouldAnimate}
                 onTypewriterComplete={() => onAnimationComplete(message.id)}
+                currentStep={currentStep}
               />
             </div>
           </div>
