@@ -334,6 +334,9 @@ export type Database = {
           updated_at: string
           user_id: string
           workflow_state: Json | null
+          scope_config: Json | null
+          current_step: number
+          step_status: string
         }
         Insert: {
           created_at?: string
@@ -357,6 +360,9 @@ export type Database = {
           updated_at?: string
           user_id: string
           workflow_state?: Json | null
+          scope_config?: Json | null
+          current_step?: number
+          step_status?: string
         }
         Update: {
           created_at?: string
@@ -380,6 +386,9 @@ export type Database = {
           updated_at?: string
           user_id?: string
           workflow_state?: Json | null
+          scope_config?: Json | null
+          current_step?: number
+          step_status?: string
         }
         Relationships: [
           {

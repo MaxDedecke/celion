@@ -538,8 +538,9 @@ class Migration(BaseModel):
     mapped_objects: Optional[str] = None
     project_id: Optional[str] = None
     notes: Optional[str] = None
+    scope_config: Optional[dict] = None
     workflow_state: Optional[dict] = None
-    progress: Optional[int] = 0
+    progress: Optional[float] = 0.0
     current_step: int = 0
     step_status: str = "idle"
     status: Optional[str] = "not_started"
@@ -847,6 +848,7 @@ class CreateMigrationPayload(BaseModel):
     out_connector: str
     out_connector_detail: str
     status: Optional[str] = "not_started"
+    scope_config: Optional[dict] = None
 
 
 @app.post("/api/migrations", response_model=Migration)
@@ -859,10 +861,10 @@ async def create_migration(payload: CreateMigrationPayload) -> Migration:
                 INSERT INTO public.migrations (
                     name, source_system, target_system, source_url, target_url, 
                     project_id, user_id, in_connector, in_connector_detail, 
-                    out_connector, out_connector_detail, status
+                    out_connector, out_connector_detail, status, scope_config
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, current_step, step_status, status, created_at, updated_at
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, current_step, step_status, status, created_at, updated_at, scope_config
                 """,
                 (
                     payload.name,
@@ -877,6 +879,7 @@ async def create_migration(payload: CreateMigrationPayload) -> Migration:
                     payload.out_connector,
                     payload.out_connector_detail,
                     payload.status,
+                    json.dumps(payload.scope_config) if payload.scope_config else None,
                 ),
             )
             row = cur.fetchone()
@@ -900,6 +903,7 @@ async def create_migration(payload: CreateMigrationPayload) -> Migration:
                 mapped_objects=row["mapped_objects"],
                 project_id=str(row["project_id"]) if row["project_id"] else None,
                 notes=row["notes"],
+                scope_config=row["scope_config"],
                 workflow_state=row["workflow_state"],
                 progress=row["progress"],
                 current_step=row["current_step"],
@@ -1037,7 +1041,7 @@ async def get_migrations(
     try:
         with _get_db_connection() as conn, conn.cursor() as cur:
             
-            base_select = "SELECT m.id, m.name, m.source_system, m.target_system, m.source_url, m.target_url, m.in_connector, m.in_connector_detail, m.out_connector, m.out_connector_detail, m.objects_transferred, m.mapped_objects, m.project_id, m.notes, m.workflow_state, m.progress, m.current_step, m.step_status, m.status, m.created_at, m.updated_at FROM public.migrations m"
+            base_select = "SELECT m.id, m.name, m.source_system, m.target_system, m.source_url, m.target_url, m.in_connector, m.in_connector_detail, m.out_connector, m.out_connector_detail, m.objects_transferred, m.mapped_objects, m.project_id, m.notes, m.scope_config, m.workflow_state, m.progress, m.current_step, m.step_status, m.status, m.created_at, m.updated_at FROM public.migrations m"
             
             conditions = []
             params = []
@@ -1097,6 +1101,7 @@ async def get_migrations(
                     mapped_objects=row["mapped_objects"],
                     project_id=str(row["project_id"]) if row["project_id"] else None,
                     notes=row["notes"],
+                    scope_config=row["scope_config"],
                     workflow_state=row["workflow_state"],
                     progress=row["progress"],
                     current_step=row["current_step"],
@@ -1123,7 +1128,7 @@ async def get_migration(id: str) -> Migration:
     try:
         with _get_db_connection() as conn, conn.cursor() as cur:
             cur.execute(
-                "SELECT id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, current_step, step_status, status, created_at, updated_at FROM public.migrations WHERE id = %s",
+                "SELECT id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, scope_config, workflow_state, progress, current_step, step_status, status, created_at, updated_at FROM public.migrations WHERE id = %s",
                 (id,),
             )
             row = cur.fetchone()
@@ -1145,6 +1150,7 @@ async def get_migration(id: str) -> Migration:
                 mapped_objects=row["mapped_objects"],
                 project_id=str(row["project_id"]) if row["project_id"] else None,
                 notes=row["notes"],
+                scope_config=row["scope_config"],
                 workflow_state=row["workflow_state"],
                 progress=row["progress"],
                 current_step=row["current_step"],
@@ -1174,6 +1180,7 @@ class UpdateMigrationPayload(BaseModel):
     objects_transferred: Optional[str] = None
     mapped_objects: Optional[str] = None
     notes: Optional[str] = None
+    scope_config: Optional[dict] = None
     workflow_state: Optional[dict] = None
     progress: Optional[int] = None
 
@@ -1203,7 +1210,7 @@ async def update_migration(id: str, payload: UpdateMigrationPayload) -> Migratio
                 UPDATE public.migrations
                 SET {", ".join(updates)}
                 WHERE id = %s
-                RETURNING id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, current_step, step_status, status, created_at, updated_at
+                RETURNING id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, scope_config, workflow_state, progress, current_step, step_status, status, created_at, updated_at
             """
             
             cur.execute(query, tuple(params))
@@ -1228,6 +1235,7 @@ async def update_migration(id: str, payload: UpdateMigrationPayload) -> Migratio
                 mapped_objects=row["mapped_objects"],
                 project_id=str(row["project_id"]) if row["project_id"] else None,
                 notes=row["notes"],
+                scope_config=row["scope_config"],
                 workflow_state=row["workflow_state"],
                 progress=row["progress"],
                 current_step=row["current_step"],
@@ -1252,7 +1260,7 @@ async def duplicate_migration(id: str, user_id: str) -> Migration:
                 """
                 SELECT name, source_system, target_system, source_url, target_url, 
                        in_connector, in_connector_detail, out_connector, out_connector_detail, 
-                       project_id, notes,
+                       project_id, notes, scope_config,
                        current_step, step_status, status, progress, workflow_state,
                        objects_transferred, mapped_objects
                 FROM public.migrations WHERE id = %s
@@ -1268,41 +1276,40 @@ async def duplicate_migration(id: str, user_id: str) -> Migration:
             
             # Handle JSON fields serialization
             workflow_state_json = json.dumps(original["workflow_state"]) if original["workflow_state"] else None
+            scope_config_json = json.dumps(original["scope_config"]) if original["scope_config"] else None
 
-            cur.execute(
-                """
-                INSERT INTO public.migrations (
-                    name, source_system, target_system, source_url, target_url, 
-                    project_id, user_id, in_connector, in_connector_detail, 
-                    out_connector, out_connector_detail, notes,
-                    current_step, step_status, status, progress, workflow_state,
-                    objects_transferred, mapped_objects
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, current_step, step_status, status, created_at, updated_at
-                """,
-                (
-                    new_name,
-                    original["source_system"],
-                    original["target_system"],
-                    original["source_url"],
-                    original["target_url"],
-                    original["project_id"],
-                    user_id,
-                    original["in_connector"],
-                    original["in_connector_detail"],
-                    original["out_connector"],
-                    original["out_connector_detail"],
-                    original["notes"],
-                    original["current_step"],
-                    original["step_status"],
-                    original["status"],
-                    original["progress"],
-                    workflow_state_json,
-                    original["objects_transferred"],
-                    original["mapped_objects"],
-                ),
-            )
+            # Map all fields explicitly to avoid counting errors
+            fields = [
+                "name", "source_system", "target_system", "source_url", "target_url",
+                "project_id", "user_id", "in_connector", "in_connector_detail",
+                "out_connector", "out_connector_detail", "notes", "scope_config",
+                "current_step", "step_status", "status", "progress", "workflow_state",
+                "objects_transferred", "mapped_objects"
+            ]
+            
+            params = [
+                new_name, original["source_system"], original["target_system"], 
+                original["source_url"], original["target_url"], original["project_id"], 
+                user_id, original["in_connector"], original["in_connector_detail"], 
+                original["out_connector"], original["out_connector_detail"], 
+                original["notes"], scope_config_json, original["current_step"], 
+                original["step_status"], original["status"], original["progress"], 
+                workflow_state_json, original["objects_transferred"], original["mapped_objects"]
+            ]
+
+            placeholders = ", ".join(["%s"] * len(fields))
+            columns = ", ".join(fields)
+
+            query = f"""
+                INSERT INTO public.migrations ({columns})
+                VALUES ({placeholders})
+                RETURNING id, name, source_system, target_system, source_url, target_url, 
+                          in_connector, in_connector_detail, out_connector, out_connector_detail, 
+                          objects_transferred, mapped_objects, project_id, notes, scope_config, 
+                          workflow_state, progress, current_step, step_status, status, created_at, updated_at
+            """
+
+            cur.execute(query, tuple(params))
             row = cur.fetchone()
             new_migration_id = row["id"]
 
@@ -1443,6 +1450,7 @@ async def duplicate_migration(id: str, user_id: str) -> Migration:
                 mapped_objects=row["mapped_objects"],
                 project_id=str(row["project_id"]) if row["project_id"] else None,
                 notes=row["notes"],
+                scope_config=row["scope_config"],
                 workflow_state=row["workflow_state"],
                 progress=row["progress"],
                 current_step=row["current_step"],

@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS public.migrations (
   out_connector_detail text NOT NULL,
   objects_transferred text NOT NULL DEFAULT '0/0',
   mapped_objects text NOT NULL DEFAULT '0/0',
+  scope_config jsonb DEFAULT '{}'::jsonb,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   updated_at timestamp with time zone NOT NULL DEFAULT now()
 );

@@ -288,6 +288,7 @@ const ProjectDetail = () => {
         in_connector_detail: sourceUrl,
         out_connector: CONNECTOR_AUTH_LABEL,
         out_connector_detail: targetAuthDetail,
+        scope_config: migrationData.scopeConfig,
       });
 
       if (migrationError) throw migrationError;

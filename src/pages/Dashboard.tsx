@@ -1,4 +1,4 @@
-﻿import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Sidebar from "@/components/Sidebar";
 import UserMenu from "@/components/UserMenu";
@@ -366,6 +366,7 @@ const Dashboard = () => {
         out_connector: CONNECTOR_AUTH_LABEL,
         out_connector_detail: targetAuthDetail,
         status: "not_started",
+        scope_config: migrationData.scopeConfig,
       });
 
       if (migrationError) throw migrationError;
@@ -512,6 +513,7 @@ const Dashboard = () => {
           email: targetConnectorData?.username || "",
           password: targetConnectorData?.password || "",
         },
+        scopeConfig: migration.scope_config,
       });
       setShowEditConfigDialog(true);
     } catch (error: any) {
@@ -595,6 +597,7 @@ const Dashboard = () => {
         target_url: data.targetUrl,
         in_connector_detail: data.sourceUrl,
         out_connector_detail: AUTH_DETAIL_TOKEN,
+        scope_config: data.scopeConfig,
       });
 
       if (migrationError) throw migrationError;

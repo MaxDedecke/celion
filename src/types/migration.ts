@@ -17,4 +17,8 @@ export interface NewMigrationInput {
   targetSystem: string;
   sourceAuth: MigrationSystemAuthConfig;
   targetAuth: MigrationSystemAuthConfig;
+  scopeConfig?: {
+    sourceScope?: string;
+    targetName?: string;
+  };
 }
