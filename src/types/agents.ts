@@ -88,6 +88,19 @@ export interface HttpRequestParams {
   body?: unknown;
 }
 
+export interface SmartDiscoveryParams extends HttpRequestParams {
+  paginationConfig?: any | null; // Using any to avoid circular dependency or complex import if needed
+  discoveryBrake?: boolean;
+}
+
+export interface SmartDiscoveryResponse {
+  totalCount: number;
+  pagesFetched: number;
+  sampleData: any;
+  status: number | null;
+  error?: string | null;
+}
+
 export interface HttpResponse {
   status: number | null;
   headers: Record<string, string>;

@@ -22,6 +22,7 @@ export interface DiscoveryPaginationConfig {
   paramContinuation?: string;
   headerContinuation?: string;
   defaultLimit?: number;
+  firstPage?: number;
 }
 
 export interface DiscoveryConfig {

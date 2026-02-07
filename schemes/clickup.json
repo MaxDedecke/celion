@@ -14,36 +14,38 @@
     }
   },
   "discovery": {
-    "endpoints": {
-      "teams": "/api/v2/team",
-      "spaces": "/api/v2/team/{team_id}/space",
-      "folders": "/api/v2/space/{space_id}/folder",
-      "lists_in_folders": "/api/v2/folder/{folder_id}/list",
-      "lists_in_spaces": "/api/v2/space/{space_id}/list",
-      "list_details": "/api/v2/list/{list_id}",
-      "tasks": "/api/v2/list/{list_id}/task",
-      "users": "/api/v2/team/{team_id}/user",
-      "custom_roles": "/api/v2/team/{team_id}/custom_roles",
-      "custom_fields": "/api/v2/list/{list_id}/field",
-      "tags": "/api/v2/space/{space_id}/tag",
-      "goals": "/api/v2/team/{team_id}/goal",
-      "time_entries": "/api/v2/team/{team_id}/time_entries",
-      "shared_hierarchy": "/api/v2/team/{team_id}/shared_hierarchy",
-      "task_templates": "/api/v2/team/{team_id}/task_template",
-      "task_comments": "/api/v2/task/{task_id}/comment",
-      "task_attachments": "/api/v2/task/{task_id}/attachment",
-      "view_tasks": "/api/v2/view/{view_id}/task"
-    },
-    "pagination": {
-      "type": "page_limit",
-      "paramPage": "page",
-      "paramLimit": "limit",
-      "defaultLimit": 100
+        "endpoints": {
+          "teams": "/api/v2/team",
+          "spaces": "/api/v2/team/{team_id}/space",
+          "folders": "/api/v2/space/{space_id}/folder",
+          "lists_in_folders": "/api/v2/folder/{folder_id}/list",
+          "lists_in_spaces": "/api/v2/space/{space_id}/list",
+          "list_details": "/api/v2/list/{list_id}",
+          "tasks": "/api/v2/team/{team_id}/task?include_closed=true&subtasks=true",
+          "archived_tasks": "/api/v2/team/{team_id}/task?archived=true&subtasks=true",
+          "users": "/api/v2/team/{team_id}",
+          "custom_fields": "/api/v2/list/{list_id}/field",
+          "tags": "/api/v2/space/{space_id}/tag",
+          "goals": "/api/v2/team/{team_id}/goal",
+          "time_entries": "/api/v2/team/{team_id}/time_entries",
+          "shared_hierarchy": "/api/v2/team/{team_id}/shared_hierarchy",
+          "task_templates": "/api/v2/team/{team_id}/task_template",
+          "task_comments": "/api/v2/task/{task_id}/comment",
+          "task_attachments": "/api/v2/task/{task_id}/attachment",
+          "view_tasks": "/api/v2/view/{view_id}/task"
+        },
+        "pagination": {
+          "type": "page_limit",
+          "paramPage": "page",
+          "paramLimit": "limit",
+          "defaultLimit": 100,
+          "firstPage": 0
+        }
+      },
+      "headers": {
+        "accept": "application/json",
+        "contentType": "application/json"
+      },
+      "agentInstructions": "Führe die Task-Inventur GLOBAL auf Team-Ebene durch (Endpunkte 'tasks' und 'archived_tasks'). Nutze 'subtasks=true', um alle Aufgaben inklusive Unteraufgaben zu erfassen. Da dies auf Team-Ebene geschieht, erhältst du alle Aufgaben des Systems mit nur zwei Abfolgen (Aktiv/Archiviert), was eine Doppelzählung durch Listen-Überschneidungen verhindert."
     }
-  },
-  "headers": {
-    "accept": "application/json",
-    "contentType": "application/json"
-  },
-  "agentInstructions": "[REQ-1: Call 'list_details' to get all status names]. [REQ-2: MANDATORY: You must perform a separate API call for EVERY status found in REQ-1 using '?statuses[]={status_name}&include_closed=true']. [REQ-3: PAGINATION: If a status call returns exactly 100 tasks, you MUST call the next page with '&page=1' to ensure no tasks are missed]. [REQ-4: Encoding: Ensure status names with spaces are URL-encoded (e.g., 'In Progress' becomes 'In%20Progress')]."
-}
+    

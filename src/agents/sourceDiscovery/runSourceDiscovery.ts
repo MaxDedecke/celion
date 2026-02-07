@@ -1,20 +1,20 @@
 import { httpClient } from 'src/tools/httpRequest';
+import { smartDiscovery } from 'src/tools/smartDiscovery';
 import { Message } from '../openai/types';
 import { buildOpenAiHeaders, resolveOpenAiConfig } from '../openai/openaiClient';
 
 const SYSTEM_PROMPT = `
-You are a deterministic Data Discovery Engine. Your goal is a 100% accurate and COMPLETE inventory of the provided system structure.
+Du bist eine Data Discovery Engine. Dein Ziel ist eine vollständige Bestandsaufnahme der Systemstruktur.
 
 ### PHASE 1: EXPLORATION (Tool use)
-- **COMPLETENESS MANDATE:** You MUST traverse every level of the hierarchy as defined in the provided 'System Scheme'. An inventory is only complete when no branch or endpoint defined in the scheme remains unexplored.
-- **TOTAL COVERAGE:** Ensure you execute calls for all entity types listed in 'discovery.endpoints' (e.g., users, containers, work items).
-- **SYSTEM-SPECIFIC LOGIC:** Strictly follow all instructions provided in the 'agentInstructions' field and any [REQ-X] markers within the scheme. These contain the rules for navigating that specific system's quirks.
-- During exploration, respond ONLY with brief status updates in German in the 'content' field (e.g., "Analysiere Ebene X...", "Erfasse Metadaten...").
-- **ID INTEGRITY:** Use only IDs obtained from previous tool outputs.
+- **VOLLSTÄNDIGKEIT:** Durchlaufe alle Ebenen der Hierarchie gemäß dem 'System Scheme'.
+- **ABDECKUNG:** Nutze 'smart_discovery' für alle Entitätstypen in 'discovery.endpoints'.
+- **ORCHESTRIERUNG:** Du entscheidest, welche Endpunkte nacheinander aufgerufen werden. Nutze 'discoveryBrake: true', wenn du nur die Datenstruktur (Schema) verstehen willst, und 'discoveryBrake: false', wenn du die Gesamtanzahl der Objekte erfassen willst.
+- **HINWEIS:** Technische Details wie Pagination oder URL-Encoding werden automatisch vom Tool übernommen. Konzentriere dich auf die logische Abfolge.
+- Antworte während der Exploration nur mit kurzen Status-Updates auf Deutsch (z.B. "Analysiere Teams...", "Erfasse Tasks für Liste X...").
 
-### PHASE 2: FINAL REPORT (No more tool calls)
-- Once every part of the system has been explored, provide EXACTLY ONE valid JSON object. 
-- Do NOT include any 'content' text or additional JSON blocks in the final response.
+### PHASE 2: FINAL REPORT (Keine Tool-Calls mehr)
+- Erstelle ein valides JSON-Objekt mit der Zusammenfassung.
 
 ### FINAL JSON FORMAT:
 {
@@ -25,8 +25,8 @@ You are a deterministic Data Discovery Engine. Your goal is a 100% accurate and 
   "complexityScore": number,
   "executedCalls": ["string"],
   "scope": { "identified": boolean, "name": string | null, "id": string | null, "type": string | null },
-  "summary": "Short German summary.",
-  "rawOutput": "Technical coverage summary."
+  "summary": "Kurze deutsche Zusammenfassung.",
+  "rawOutput": "Technischer Bericht."
 }
 `;
 
@@ -34,17 +34,18 @@ const TOOLS = [
   {
     type: "function",
     function: {
-      name: "http_probe",
-      description: "Performs an HTTP request to explore the system.",
+      name: "smart_discovery",
+      description: "Führt eine intelligente Discovery-Anfrage durch, inklusive automatischer Pagination.",
       parameters: {
         type: "object",
         properties: {
-          url: { type: "string", description: "The full URL to probe." },
-          method: { type: "string", enum: ["GET", "POST"], description: "HTTP method." },
-          headers: { type: "object", description: "Authentication and other headers." },
-          body: { type: "string", description: "Optional body." }
+          url: { type: "string", description: "Die vollständige URL zum Endpunkt." },
+          method: { type: "string", enum: ["GET", "POST"], description: "HTTP Methode." },
+          headers: { type: "object", description: "Header (Authentifizierung wird automatisch ergänzt)." },
+          body: { type: "object", description: "Optionaler Body." },
+          discoveryBrake: { type: "boolean", description: "Wenn true, wird nur die erste Seite geladen (kostensparend für Struktur-Erkennung)." }
         },
-        required: ["url", "headers"]
+        required: ["url"]
       }
     }
   }
@@ -113,51 +114,42 @@ Scope Config: ${JSON.stringify(scopeConfig || {}, null, 2)}
         let result: any;
 
         try {
-          if (functionName === 'http_probe') {
-            // Forcefully inject headers if missing or empty, based on systemScheme
-            if (!args.headers || Object.keys(args.headers).length === 0) {
-                args.headers = args.headers || {};
-                const auth = systemScheme?.authentication;
-                
-                if (auth) {
-                    if (auth.type === 'bearer') {
-                        const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : 'Bearer ';
-                        args.headers['Authorization'] = `${prefix}<API_TOKEN>`;
-                    } else if (auth.type === 'header') {
-                        const name = auth.headerName || 'Authorization';
-                        const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : '';
-                        args.headers[name] = `${prefix}<API_TOKEN>`;
-                    } else if (auth.type === 'basic') {
-                        args.headers['Authorization'] = 'Basic <CREDENTIALS_BASE64>';
-                    }
-                }
-                
-                // Also inject global headers if present
-                if (systemScheme?.headers) {
-                    args.headers = { ...args.headers, ...systemScheme.headers };
-                }
-            }
-
-            // Inject Actual Credentials
-            if (args.headers) {
-              for (const [key, value] of Object.entries(args.headers)) {
-                if (typeof value === 'string') {
-                  const strValue = value as string;
-                  args.headers[key] = strValue
-                    .replace('<API_TOKEN>', token)
-                    .replace('<EMAIL>', email)
-                    .replace('<CREDENTIALS_BASE64>', base64Credentials);
-                }
-              }
-            }
-
-            result = await httpClient(args);
+          if (functionName === 'smart_discovery') {
+            // Header-Injektion (ähnlich wie vorher)
+            const requestHeaders: Record<string, string> = { ...args.headers };
+            const auth = systemScheme?.authentication;
             
-            // Truncate body if too large for LLM context
-            if (result.body) {
-              const bodyStr = typeof result.body === 'string' ? result.body : JSON.stringify(result.body);
-              if (bodyStr.length > 15000) {
-                result.body = bodyStr.slice(0, 15000) + '...[TRUNCATED BY AGENT]';
+            if (auth) {
+                if (auth.type === 'bearer') {
+                    const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : 'Bearer ';
+                    requestHeaders['Authorization'] = `${prefix}${token}`;
+                } else if (auth.type === 'header') {
+                    const name = auth.headerName || 'Authorization';
+                    const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : '';
+                    requestHeaders[name] = `${prefix}${token}`;
+                } else if (auth.type === 'basic') {
+                    requestHeaders['Authorization'] = `Basic ${base64Credentials}`;
+                }
+            }
+            
+            if (systemScheme?.headers) {
+                Object.assign(requestHeaders, systemScheme.headers);
+            }
+
+            result = await smartDiscovery({
+              url: args.url,
+              method: args.method || 'GET',
+              headers: requestHeaders,
+              body: args.body,
+              paginationConfig: systemScheme?.discovery?.pagination,
+              discoveryBrake: args.discoveryBrake ?? false
+            });
+            
+            // Truncate sampleData if too large
+            if (result.sampleData) {
+              const sampleStr = JSON.stringify(result.sampleData);
+              if (sampleStr.length > 10000) {
+                result.sampleData = sampleStr.slice(0, 10000) + '...[TRUNCATED]';
               }
             }
           } else {
