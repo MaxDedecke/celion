@@ -16,9 +16,12 @@
     "endpoints": {
       "search": "/v1/search",
       "databasesList": "/v1/databases",
+      "databaseRetrieve": "/v1/databases/{database_id}",
       "databaseQuery": "/v1/databases/{database_id}/query",
       "pages": "/v1/pages",
+      "pageRetrieve": "/v1/pages/{page_id}",
       "blocks": "/v1/blocks/{block_id}/children",
+      "comments": "/v1/comments",
       "users": "/v1/users"
     },
     "pagination": {
@@ -32,5 +35,6 @@
     "Accept": "application/json",
     "Content-Type": "application/json",
     "Notion-Version": "2022-06-28"
-  }
+  },
+  "agentInstructions": "[REQ-1: Use 'search' for workspace-wide database discovery]. [REQ-2: Deep Probe: For found databases, call 'databaseRetrieve' to analyze custom properties/fields]. [REQ-3: For comments, ALWAYS append the query parameter manually. Example: /v1/comments?block_id={id}]. [REQ-4: Count users via 'users' endpoint]."
 }

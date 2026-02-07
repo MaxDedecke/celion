@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { User, SquareArrowOutUpRight, CheckCircle2, XCircle, Play, Copy, Rocket, FileJson, ArrowRight } from "lucide-react";
+import { User, SquareArrowOutUpRight, CheckCircle2, XCircle, Play, Copy, Rocket, FileJson, ArrowRight, Clock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -14,21 +14,34 @@ const DiscoveryReport = ({ data }: { data: any }) => {
   return (
     <div className="mt-2 space-y-4 w-full">
       <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
-        <h4 className="text-sm font-semibold text-primary mb-2 flex items-center gap-2">
-          <Rocket className="h-4 w-4" />
-          Source Discovery Ergebnis
-        </h4>
-        <p className="text-sm text-foreground/90 leading-relaxed italic">
+        <div className="flex items-center justify-between mb-2">
+          <h4 className="text-sm font-semibold text-primary flex items-center gap-2">
+            <Rocket className="h-4 w-4" />
+            Source Discovery Ergebnis
+          </h4>
+          {data.complexityScore && (
+            <Badge variant="outline" className="border-primary/30 text-primary">
+              Komplexität: {data.complexityScore}/10
+            </Badge>
+          )}
+        </div>
+        <p className="text-sm text-foreground/90 leading-relaxed italic mb-3">
           "{data.summary}"
         </p>
         
-        {data.scope?.identified && (
-          <div className="mt-3 flex items-center gap-2">
+        <div className="flex flex-wrap gap-2">
+          {data.scope?.identified && (
             <Badge variant="outline" className="bg-background/50 border-primary/30 text-primary text-[10px]">
               Fokus: {data.scope.name || data.scope.id}
             </Badge>
-          </div>
-        )}
+          )}
+          {data.estimatedDurationMinutes && (
+            <Badge variant="outline" className="bg-background/50 border-amber-500/30 text-amber-600 text-[10px] flex items-center gap-1">
+              <Clock className="h-3 w-3" />
+              Est. Dauer: ~{data.estimatedDurationMinutes} Min.
+            </Badge>
+          )}
+        </div>
       </div>
 
       <div className="rounded-xl border border-border bg-card overflow-hidden">
@@ -44,7 +57,16 @@ const DiscoveryReport = ({ data }: { data: any }) => {
             {data.entities.map((entity: any, i: number) => (
               <TableRow key={i} className="hover:bg-muted/30 border-b last:border-0">
                 <TableCell className="py-2 text-sm font-medium">{entity.name}</TableCell>
-                <TableCell className="py-2 text-sm text-right tabular-nums">{entity.count?.toLocaleString('de-DE')}</TableCell>
+                <TableCell className="py-2 text-sm text-right tabular-nums">
+                  {entity.count?.toLocaleString('de-DE')}
+                  {entity.size_mb !== undefined && entity.size_mb !== null && (
+                    <span className="text-[10px] text-muted-foreground ml-1">
+                      ({entity.size_mb < 1024 
+                        ? `${entity.size_mb.toFixed(1)} MB` 
+                        : `${(entity.size_mb / 1024).toFixed(2)} GB`})
+                    </span>
+                  )}
+                </TableCell>
                 <TableCell className="py-2 text-center">
                   {entity.complexity && (
                     <Badge 
