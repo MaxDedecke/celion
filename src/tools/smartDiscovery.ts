@@ -148,8 +148,9 @@ function shouldContinue(response: HttpResponse, items: any[], config: DiscoveryP
 
 function extractNextCursor(response: HttpResponse, config: DiscoveryPaginationConfig): string | null {
     const body = response.body as any;
-    if (config.paramCursor && body && body[config.paramCursor]) {
-        return body[config.paramCursor];
+    const cursorKey = config.responseCursorKey || config.paramCursor;
+    if (cursorKey && body && body[cursorKey]) {
+        return body[cursorKey];
     }
     // Header based continuation?
     if (config.headerContinuation && response.headers[config.headerContinuation]) {

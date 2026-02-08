@@ -18,6 +18,7 @@ export interface DiscoveryPaginationConfig {
   paramLimit?: string;
   paramPage?: string;
   paramCursor?: string;
+  responseCursorKey?: string;
   paramOffset?: string;
   paramContinuation?: string;
   headerContinuation?: string;

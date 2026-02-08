@@ -2,7 +2,6 @@
   "system": "Notion",
   "apiType": "REST",
   "baseUrlPattern": "api.notion.com",
-  "apiBaseUrl": "https://api.notion.com",
   "authentication": {
     "type": "header",
     "headerName": "Authorization",
@@ -18,15 +17,15 @@
     "endpoints": {
       "search": "/v1/search",
       "users": "/v1/users",
-      "databases": "/v1/databases/{database_id}",
       "database_query": "/v1/databases/{database_id}/query",
-      "pages": "/v1/pages/{page_id}",
-      "blocks": "/v1/blocks/{block_id}/children",
+      "page_details": "/v1/pages/{page_id}",
+      "block_children": "/v1/blocks/{block_id}/children",
       "comments": "/v1/comments?block_id={block_id}"
     },
     "pagination": {
       "type": "cursor",
       "paramCursor": "start_cursor",
+      "responseCursorKey": "next_cursor",
       "paramLimit": "page_size",
       "defaultLimit": 100
     }
@@ -36,5 +35,5 @@
     "Accept": "application/json",
     "Content-Type": "application/json"
   },
-  "agentInstructions": "Konstruiere IMMER vollständige URLs unter Verwendung der 'apiBaseUrl'. WICHTIG: Der 'search' Endpunkt und 'database_query' MÜSSEN via POST aufgerufen werden. Sende für diese POST-Anfragen mindestens einen leeren Body ({}), falls keine Filter nötig sind. 'search' und 'users' sind Top-Level-Endpunkte und benötigen KEINE IDs von anderen Aufrufen – rufe sie immer direkt zu Beginn auf. Falls 'search' keine Ergebnisse liefert, bedeutet das nur, dass keine Seiten/Datenbanken für den Token freigegeben sind, du MUSST trotzdem 'users' und alle anderen verfügbaren Endpunkte prüfen."
+  "agentInstructions": "1. INITIAL DISCOVERY: Nutze zwingend den 'search' Endpunkt per POST mit einem leeren Body {}, um alle freigegebenen Seiten und Datenbanken zu finden. WICHTIG: Falls 'search' keine Ergebnisse liefert, weise den Nutzer darauf hin, dass die Integration in Notion manuell über '... -> Add connections' zur Seite hinzugefügt werden muss. 2. POST METHODE: 'search' und 'database_query' unterstützen nur POST. Sende immer mindestens einen leeren Body ({}), falls keine Filter aktiv sind. 3. HIERARCHIE: 'users' und 'search' sind Top-Level. Nutze die IDs aus 'search', um 'database_query' (für Datenbank-Inhalte) oder 'block_children' (für Seiten-Details) aufzurufen. 4. PAGINATION: Notion nutzt Cursors. Der Request-Parameter ist 'start_cursor', der Response-Key ist 'next_cursor'. Überprüfe im Code, ob smart_discovery diesen Response-Key korrekt ausliest."
 }
