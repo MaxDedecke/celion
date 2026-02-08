@@ -1370,6 +1370,59 @@ async def duplicate_migration(id: str, user_id: str) -> Migration:
                 (new_migration_id, id)
             )
 
+            # 3b. Duplicate Step 1-4 results
+            cur.execute(
+                """
+                INSERT INTO public.step_1_results (
+                    migration_id, system_mode, detected_system, confidence_score, 
+                    api_type, api_subtype, recommended_base_url, raw_json
+                )
+                SELECT %s, system_mode, detected_system, confidence_score, 
+                       api_type, api_subtype, recommended_base_url, raw_json
+                FROM public.step_1_results WHERE migration_id = %s
+                """,
+                (new_migration_id, id)
+            )
+
+            cur.execute(
+                """
+                INSERT INTO public.step_2_results (
+                    migration_id, system_mode, is_authenticated, auth_type, 
+                    error_message, raw_json
+                )
+                SELECT %s, system_mode, is_authenticated, auth_type, 
+                       error_message, raw_json
+                FROM public.step_2_results WHERE migration_id = %s
+                """,
+                (new_migration_id, id)
+            )
+
+            cur.execute(
+                """
+                INSERT INTO public.step_3_results (
+                    migration_id, entity_name, count, complexity, 
+                    error_message, raw_json
+                )
+                SELECT %s, entity_name, count, complexity, 
+                       error_message, raw_json
+                FROM public.step_3_results WHERE migration_id = %s
+                """,
+                (new_migration_id, id)
+            )
+
+            cur.execute(
+                """
+                INSERT INTO public.step_4_results (
+                    migration_id, target_scope_id, target_scope_name, target_status, 
+                    writable_entities, missing_permissions, summary, raw_json
+                )
+                SELECT %s, target_scope_id, target_scope_name, target_status, 
+                       writable_entities, missing_permissions, summary, raw_json
+                FROM public.step_4_results WHERE migration_id = %s
+                """,
+                (new_migration_id, id)
+            )
+
             # 4. Duplicate pipelines, mappings, and agent states
             cur.execute(
                 """
@@ -2247,9 +2300,9 @@ async def enqueue_migration_step(payload: RunStepRequest) -> dict[str, Any]:
 
 @app.get("/api/migrations/{id}/results")
 async def get_migration_results(id: str) -> dict[str, Any]:
-    """Fetch all structured results for steps 1, 2, and 3."""
+    """Fetch all structured results for steps 1, 2, 3 and 4."""
     try:
-        results = {"step_1": [], "step_2": [], "step_3": []}
+        results = {"step_1": [], "step_2": [], "step_3": [], "step_4": []}
         with _get_db_connection() as conn, conn.cursor() as cur:
             # Step 1
             cur.execute("SELECT * FROM public.step_1_results WHERE migration_id = %s", (id,))
@@ -2262,6 +2315,10 @@ async def get_migration_results(id: str) -> dict[str, Any]:
             # Step 3
             cur.execute("SELECT * FROM public.step_3_results WHERE migration_id = %s", (id,))
             results["step_3"] = [dict(row) for row in cur.fetchall()]
+
+            # Step 4
+            cur.execute("SELECT * FROM public.step_4_results WHERE migration_id = %s", (id,))
+            results["step_4"] = [dict(row) for row in cur.fetchall()]
             
         return results
     except Exception as exc:
@@ -2292,6 +2349,11 @@ async def update_migration_result(id: str, payload: UpdateResultPayload) -> dict
                 cur.execute(
                     "UPDATE public.step_3_results SET raw_json = %s, updated_at = now() WHERE migration_id = %s AND entity_name = %s",
                     (json.dumps(payload.new_json), id, payload.entity_name)
+                )
+            elif payload.step == 4:
+                cur.execute(
+                    "UPDATE public.step_4_results SET raw_json = %s, updated_at = now() WHERE migration_id = %s",
+                    (json.dumps(payload.new_json), id)
                 )
             conn.commit()
         return {"message": "Result updated successfully"}

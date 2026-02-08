@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { runSystemDetection, runAuthFlow, runSourceDiscovery } from '../agents/agentService';
+import { runSystemDetection, runAuthFlow, runSourceDiscovery, runTargetDiscovery } from '../agents/agentService';
 import { AGENT_WORKFLOW_STEPS } from '../constants/agentWorkflow';
 import { loadScheme } from '../lib/scheme-loader';
 
@@ -94,6 +94,35 @@ async function saveStep3Result(migrationId: string, result: any) {
       );
     }
   }
+}
+
+async function saveStep4Result(migrationId: string, result: any) {
+  await pool.query(
+    `INSERT INTO public.step_4_results (
+      migration_id, target_scope_id, target_scope_name, target_status, 
+      writable_entities, missing_permissions, summary, raw_json
+    )
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (migration_id) DO UPDATE SET
+       target_scope_id = EXCLUDED.target_scope_id,
+       target_scope_name = EXCLUDED.target_scope_name,
+       target_status = EXCLUDED.target_status,
+       writable_entities = EXCLUDED.writable_entities,
+       missing_permissions = EXCLUDED.missing_permissions,
+       summary = EXCLUDED.summary,
+       raw_json = EXCLUDED.raw_json,
+       created_at = now()`,
+    [
+      migrationId,
+      result.targetScope?.id,
+      result.targetScope?.name,
+      result.targetScope?.status,
+      result.compatibility?.writableEntities || [],
+      result.compatibility?.missingPermissions || [],
+      result.summary,
+      result
+    ]
+  );
 }
 
 const ensureWorkflowState = (state: any = {}) => {
@@ -505,6 +534,170 @@ async function processJob(job: any) {
                     await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
                 }
                 await logActivity(migrationId, 'success', `Schritt Source Discovery abgeschlossen.`);
+              }
+
+            } catch (e) {
+              await finishClient.query('ROLLBACK');
+              throw e;
+            } finally {
+              finishClient.release();
+            }
+          } else if (agentName === 'runTargetSchema') {
+            const targetUrl = agentParams?.targetUrl;
+            const targetSystem = agentParams?.targetExpectedSystem;
+    
+            const headerMsg = "Starte **Target Discovery**";
+            await writeChatMessage(migrationId, 'assistant', headerMsg, currentStepNumber);
+            
+            // 1. Fetch migration details for scope_config
+            const { rows: migrationDetailRows } = await pool.query(
+              'SELECT scope_config FROM migrations WHERE id = $1',
+              [migrationId]
+            );
+            const scopeConfig = migrationDetailRows[0]?.scope_config || {};
+
+            // 2. Fetch credentials for target
+            const { rows: connectorRows } = await pool.query(
+              'SELECT api_url, api_key, username FROM connectors WHERE migration_id = $1 AND connector_type = $2',
+              [migrationId, 'out']
+            );
+            const connector = connectorRows[0];
+    
+            if (!connector || (!connector.api_key && !connector.username)) {
+              isLogicalFailure = true;
+              failureMessage = `Keine Zugangsdaten für das Zielsystem gefunden.`;
+              result = { success: false, error: failureMessage };
+              resultMessageText = failureMessage;
+            } else {
+              // 3. Load System Scheme
+              const fullScheme = await loadScheme(targetSystem);
+              const discoveryScheme = {
+                  ...(fullScheme || {}),
+                  apiBaseUrl: fullScheme?.apiBaseUrl,
+                  headers: fullScheme?.headers
+              };
+              
+              const detailMsg = `Ich analysiere die Kompatibilität von **${targetSystem}**${scopeConfig?.targetName ? ` (Ziel-Scope: **${scopeConfig.targetName}**)` : ''}.`;
+              await writeChatMessage(migrationId, 'assistant', detailMsg, currentStepNumber);
+    
+              const messageGenerator = runTargetDiscovery(targetUrl, discoveryScheme, {
+                email: connector.username,
+                apiToken: connector.api_key
+              }, scopeConfig);
+    
+              let lastMessageText: string | undefined;
+              for await (const message of messageGenerator) {
+                if (message.content && message.content.length > 0 && message.content[0].text) {
+                  lastMessageText = message.content[0].text;
+                  if (!lastMessageText.trim().startsWith('{')) {
+                    await writeChatMessage(migrationId, 'assistant', lastMessageText, currentStepNumber);
+                  }
+                }
+              }
+
+              if (lastMessageText) {
+                try {
+                  const parsed = JSON.parse(lastMessageText);
+                  result = parsed;
+                  resultMessageText = JSON.stringify(parsed);
+                  
+                  if (result.targetScope?.status === 'not_found' || result.targetScope?.status === 'unauthorized') {
+                    isLogicalFailure = true;
+                    failureMessage = `Ziel-Scope '${scopeConfig.targetName}' wurde nicht gefunden oder Zugriff verweigert.`;
+                  }
+                } catch (e) {
+                  result = { text: lastMessageText };
+                  resultMessageText = JSON.stringify(result);
+                  isLogicalFailure = true;
+                  failureMessage = "Agent lieferte kein gültiges JSON Ergebnis.";
+                }
+              } else {
+                result = { error: 'Target agent produced no output' };
+                resultMessageText = JSON.stringify(result);
+                isLogicalFailure = true;
+                failureMessage = "Target agent produced no output.";
+              }
+            }
+
+            // Ergebnis-Nachricht senden
+            await writeChatMessage(migrationId, 'assistant', resultMessageText, currentStepNumber);
+
+            // Persistence
+            if (!isLogicalFailure) {
+              await saveStep4Result(migrationId, result);
+            }
+
+            // 3. Abschluss-Status setzen
+            const finishClient = await pool.connect();
+            try {
+              await finishClient.query('BEGIN');
+
+              const { rows: currentStepRows } = await finishClient.query('SELECT result, status FROM migration_steps WHERE id = $1', [step_id]);
+              const existingResult = currentStepRows[0]?.result || {};
+              
+              const combinedStepResult = { ...existingResult, targetDiscovery: result };
+              const finalStepStatus = isLogicalFailure ? 'failed' : 'completed';
+
+              await finishClient.query('UPDATE migration_steps SET status = $1, result = $2, status_message = $3 WHERE id = $4', [
+                finalStepStatus,
+                combinedStepResult,
+                isLogicalFailure ? failureMessage : 'Target discovery completed successfully.',
+                step_id,
+              ]);
+
+              const { rows: migrationRows } = await finishClient.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
+              const migrationData = migrationRows[0];
+
+              const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(
+                migrationData?.workflow_state,
+                stepRecord.workflow_step_id || stepId,
+                combinedStepResult,
+                isLogicalFailure
+              );
+
+              const migrationStatus = isLogicalFailure ? 'paused' : (completedCount >= totalSteps ? 'completed' : 'processing');
+              const stepStatusForMigration = isLogicalFailure ? 'failed' : 'completed';
+
+              await finishClient.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
+                nextState,
+                progress,
+                migrationStatus,
+                stepStatusForMigration,        
+                currentStepNumber,  
+                migrationId,
+              ]);
+
+              await finishClient.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+              await finishClient.query('COMMIT');
+
+              if (isLogicalFailure) {
+                await writeChatMessage(migrationId, 'system', `Schritt 4 Target Discovery fehlgeschlagen.`, currentStepNumber);
+                await logActivity(migrationId, 'warning', `Schritt Target Discovery fehlgeschlagen.`);
+              } else {
+                await writeChatMessage(migrationId, 'system', `Schritt 4 **Target Discovery** erfolgreich abgeschlossen.`, currentStepNumber);
+                
+                const nextStepIndex = currentStepNumber;
+                if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
+                    const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
+                    const actionContent = JSON.stringify({
+                        type: "action",
+                        actions: [
+                          {
+                            action: "continue",
+                            label: `Weiter zu Schritt ${nextStepIndex + 1} ${nextStep.title}`,
+                            variant: "primary"
+                          },
+                          {
+                            action: "retry",
+                            label: `Schritt ${currentStepNumber} wiederholen`,
+                            variant: "outline",
+                            stepNumber: currentStepNumber
+                          }
+                        ]
+                    });
+                    await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
+                }
+                await logActivity(migrationId, 'success', `Schritt Target Discovery abgeschlossen.`);
               }
 
             } catch (e) {

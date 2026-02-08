@@ -532,3 +532,18 @@ CREATE TABLE IF NOT EXISTS public.step_3_results (
 -- Add complexity score to migrations table
 ALTER TABLE public.migrations
 ADD COLUMN IF NOT EXISTS complexity_score integer DEFAULT 0;
+
+-- Step 4: Target Discovery Results
+CREATE TABLE IF NOT EXISTS public.step_4_results (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  migration_id uuid NOT NULL REFERENCES public.migrations(id) ON DELETE CASCADE,
+  target_scope_id text,
+  target_scope_name text,
+  target_status text,
+  writable_entities text[],
+  missing_permissions text[],
+  summary text,
+  raw_json jsonb DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  UNIQUE(migration_id)
+);

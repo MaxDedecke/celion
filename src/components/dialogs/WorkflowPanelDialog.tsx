@@ -79,6 +79,7 @@ const WorkflowPanelDialog = ({
     if (stepNum === 1) return results.step_1;
     if (stepNum === 2) return results.step_2;
     if (stepNum === 3) return results.step_3;
+    if (stepNum === 4) return results.step_4;
     return [];
   };
 
@@ -95,6 +96,7 @@ const WorkflowPanelDialog = ({
     if (stepNum === 1) targetList = newResults.step_1;
     else if (stepNum === 2) targetList = newResults.step_2;
     else if (stepNum === 3) targetList = newResults.step_3;
+    else if (stepNum === 4) targetList = newResults.step_4;
 
     if (targetList[selectedSubItemIndex]) {
       const updatedJson = { ...targetList[selectedSubItemIndex].raw_json };
