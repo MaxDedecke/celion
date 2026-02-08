@@ -174,21 +174,34 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
 
   // Special Action Message Rendering
   if (jsonContent && jsonContent.type === 'action') {
-    // Hide action buttons if they are from an older step
-    if (currentStep !== undefined && message.step_number !== undefined && message.step_number < currentStep) {
-      return null;
-    }
-
+    const actions = jsonContent.actions || (jsonContent.action ? [jsonContent] : []);
+    
     return (
-      <div className="flex w-full justify-center py-4 animate-fade-in">
-        <Button 
-          onClick={() => onAction && onAction(jsonContent.action)} 
-          variant="outline" 
-          className="gap-2 border-primary/20 hover:bg-primary/5 text-primary"
-        >
-          {jsonContent.label}
-          <ArrowRight className="h-4 w-4" />
-        </Button>
+      <div className="flex w-full justify-center gap-3 py-4 animate-fade-in flex-wrap">
+        {actions.map((action: any, idx: number) => {
+          // Logic for hiding 'continue' button if we are already in a later step
+          if (action.action === 'continue' && currentStep !== undefined && message.step_number !== undefined && message.step_number < currentStep) {
+            return null;
+          }
+          
+          // Retry buttons always stay visible
+          
+          return (
+            <Button 
+              key={idx}
+              onClick={() => onAction && onAction(action.action === 'retry' ? `retry:${action.stepNumber}` : action.action)} 
+              variant={action.variant || "outline"} 
+              size="sm"
+              className={cn(
+                "gap-2",
+                action.variant === "primary" ? "bg-primary text-primary-foreground hover:bg-primary/90" : "border-primary/20 hover:bg-primary/5 text-primary"
+              )}
+            >
+              {action.label}
+              {action.action === 'continue' ? <ArrowRight className="h-4 w-4" /> : <Play className="h-3 w-3" />}
+            </Button>
+          );
+        })}
       </div>
     );
   }

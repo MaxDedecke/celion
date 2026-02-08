@@ -7,6 +7,7 @@ interface ChatMessageListProps {
   messages: ChatMessageType[];
   isAgentRunning: boolean;
   onOpenAgentOutput?: (stepId: string) => void;
+  onAction?: (action: string) => void;
   showContinueButton?: boolean;
   onContinue?: () => void;
   continueButtonText?: string;
@@ -44,7 +45,8 @@ const ThinkingIndicator = ({ stepTitle }: { stepTitle?: string }) => (
 const ChatMessageList = ({ 
   messages, 
   isAgentRunning, 
-  onOpenAgentOutput, 
+  onOpenAgentOutput,
+  onAction,
   showContinueButton = false,
   onContinue,
   continueButtonText = "Fortsetzen",
@@ -62,7 +64,9 @@ const ChatMessageList = ({
   });
 
   const handleAction = (action: string) => {
-    if (action === 'continue' && onContinue) {
+    if (onAction) {
+      onAction(action);
+    } else if (action === 'continue' && onContinue) {
       onContinue();
     }
   };

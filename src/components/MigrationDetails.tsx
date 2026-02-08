@@ -16,15 +16,15 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
     onStepRunningChange?.(running);
   }, [project.step_status, onStepRunningChange]);
 
-  const handleNextWorkflowStep = useCallback(async () => {
-    if (isStepRunning) return;
+  const handleNextWorkflowStep = useCallback(async (explicitStep?: number) => {
+    if (isStepRunning && !explicitStep) return;
 
     try {
       // If the last step failed, we retry it (current_step). 
       // Otherwise we move to the next step (current_step + 1).
-      const stepToRun = project.step_status === 'failed' 
+      const stepToRun = explicitStep || (project.step_status === 'failed' 
         ? (project.current_step || 1) 
-        : (project.current_step || 0) + 1;
+        : (project.current_step || 0) + 1);
 
       if (stepToRun > 10) {
         toast.info("Migration bereits abgeschlossen.");
@@ -40,7 +40,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         const errorText = await response.text();
         throw new Error(`Failed to start step: ${errorText}`);
       }
-      toast.success(`Schritt ${stepToRun} gestartet.`);
+      toast.success(explicitStep ? `Schritt ${stepToRun} wird wiederholt.` : `Schritt ${stepToRun} gestartet.`);
       await onRefresh();
 
     } catch (error) {
@@ -49,6 +49,17 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
       toast.error(`Fehler beim Fortschreiten des Workflows: ${errorMessage}`);
     }
   }, [project.id, project.current_step, project.step_status, isStepRunning, onRefresh]);
+
+  const handleAction = useCallback((action: string) => {
+    if (action === 'continue') {
+      handleNextWorkflowStep();
+    } else if (action.startsWith('retry:')) {
+      const stepNum = parseInt(action.split(':')[1], 10);
+      if (!isNaN(stepNum)) {
+        handleNextWorkflowStep(stepNum);
+      }
+    }
+  }, [handleNextWorkflowStep]);
 
   const handleSendChatMessage = useCallback(
     async (message: string) => {
@@ -88,6 +99,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
           migration={project}
           onSendMessage={handleSendChatMessage}
           onContinue={handleNextWorkflowStep}
+          onAction={handleAction}
           onOpenAgentOutput={(stepId) => console.log("onOpenAgentOutput not implemented", stepId)}
         />
       </div>

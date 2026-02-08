@@ -16,6 +16,7 @@ interface MigrationChatCardProps {
   migration: Migration;
   onSendMessage: (message: string) => void;
   onContinue: () => void;
+  onAction?: (action: string) => void;
   onOpenAgentOutput: (stepId: string) => void;
 }
 
@@ -24,6 +25,7 @@ const MigrationChatCard = ({
   migration,
   onSendMessage,
   onContinue,
+  onAction,
   onOpenAgentOutput
 }: MigrationChatCardProps) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -166,6 +168,7 @@ const MigrationChatCard = ({
               messages={chatMessages} 
               isAgentRunning={isStepRunning} 
               onOpenAgentOutput={onOpenAgentOutput}
+              onAction={onAction}
               showContinueButton={migrationData.status !== "completed" && !isStepRunning}
               onContinue={onContinue}
               continueButtonText={

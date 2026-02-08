@@ -709,6 +709,34 @@ async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
             # 2. Create a migration_step record
             step_name = f"Step {step}"
             workflow_step_id = f"step-{step}"
+
+            # --- Consistency Rollback ---
+            # If we are re-running an earlier step, we must clear results of all subsequent steps
+            # to maintain data integrity.
+            
+            # Clear structured results
+            if step <= 1:
+                cur.execute("DELETE FROM public.step_1_results WHERE migration_id = %s", (id,))
+            if step <= 2:
+                cur.execute("DELETE FROM public.step_2_results WHERE migration_id = %s", (id,))
+            if step <= 3:
+                cur.execute("DELETE FROM public.step_3_results WHERE migration_id = %s", (id,))
+            
+            # Reset overall migration complexity if step 3 is retried
+            if step <= 3:
+                cur.execute("UPDATE public.migrations SET complexity_score = 0 WHERE id = %s", (id,))
+
+            # Clear/Reset migration_steps for all steps >= current retry step
+            # We identify steps by their numeric suffix in workflow_step_id 'step-X'
+            cur.execute(
+                """
+                DELETE FROM public.migration_steps 
+                WHERE migration_id = %s 
+                AND CAST(substring(workflow_step_id from 6) AS INTEGER) >= %s
+                """,
+                (id, step),
+            )
+
             cur.execute(
                 """
                 INSERT INTO public.migration_steps (migration_id, workflow_step_id, name, status)

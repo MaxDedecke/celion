@@ -317,8 +317,19 @@ async function processJob(job: any) {
                  const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
                  const actionContent = JSON.stringify({
                      type: "action",
-                     action: "continue",
-                     label: `Weiter zu Schritt ${nextStepIndex + 1} ${nextStep.title}`
+                     actions: [
+                       {
+                         action: "continue",
+                         label: `Weiter zu Schritt ${nextStepIndex + 1} ${nextStep.title}`,
+                         variant: "primary"
+                       },
+                       {
+                         action: "retry",
+                         label: `Schritt ${currentStepNumber} wiederholen`,
+                         variant: "outline",
+                         stepNumber: currentStepNumber
+                       }
+                     ]
                  });
                  await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
              }
@@ -477,8 +488,19 @@ async function processJob(job: any) {
                     const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
                     const actionContent = JSON.stringify({
                         type: "action",
-                        action: "continue",
-                        label: `Weiter zu Schritt ${nextStepIndex + 1} ${nextStep.title}`
+                        actions: [
+                          {
+                            action: "continue",
+                            label: `Weiter zu Schritt ${nextStepIndex + 1} ${nextStep.title}`,
+                            variant: "primary"
+                          },
+                          {
+                            action: "retry",
+                            label: `Schritt ${currentStepNumber} wiederholen`,
+                            variant: "outline",
+                            stepNumber: currentStepNumber
+                          }
+                        ]
                     });
                     await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
                 }
@@ -631,8 +653,19 @@ async function processJob(job: any) {
                  const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
                  const actionContent = JSON.stringify({
                      type: "action",
-                     action: "continue",
-                     label: `Weiter zu Schritt ${nextStepIndex + 1} ${nextStep.title}`
+                     actions: [
+                       {
+                         action: "continue",
+                         label: `Weiter zu Schritt ${nextStepIndex + 1} ${nextStep.title}`,
+                         variant: "primary"
+                       },
+                       {
+                         action: "retry",
+                         label: `Schritt ${currentStepNumber} wiederholen`,
+                         variant: "outline",
+                         stepNumber: currentStepNumber
+                       }
+                     ]
                  });
                  await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
              }
