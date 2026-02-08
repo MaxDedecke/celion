@@ -74,33 +74,39 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
 
   const handleSendChatMessage = useCallback(
     async (message: string) => {
+      const trimmed = message.trim();
+      const lower = trimmed.toLowerCase();
+      
+      // If it looks like a command, trigger workflow
+      if (
+        lower === "start" || 
+        lower === "weiter" || 
+        lower === "nächster schritt" || 
+        lower === "fortsetzen"
+      ) {
+        handleNextWorkflowStep();
+        return;
+      }
+
+      // Otherwise, ask the consultant (AnswerAgent)
       try {
-        await fetch(`/api/migrations/${project.id}/chat`, {
+        const response = await fetch(`/api/migrations/${project.id}/chat/answer`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            role: 'user',
-            content: message,
+            content: trimmed,
           }),
         });
+
+        if (!response.ok) throw new Error("Consultant request failed");
+        
+        await onRefresh(); // To show user message immediately
       } catch (error) {
-        console.error("Fehler beim Speichern der Benutzernachricht:", error);
-      }
-      
-      const trimmed = message.trim().toLowerCase();
-      
-      if (
-        trimmed.includes("start") ||
-        trimmed.includes("weiter") ||
-        trimmed.includes("nächst") ||
-        trimmed.includes("fortsetzen")
-      ) {
-        handleNextWorkflowStep();
-      } else {
-        toast.info("Verwende 'Fortsetzen' um den nächsten Schritt zu starten");
+        console.error("Fehler beim Senden der Consultant-Anfrage:", error);
+        toast.error("Fehler beim Senden der Nachricht.");
       }
     },
-    [handleNextWorkflowStep, project.id]
+    [handleNextWorkflowStep, project.id, onRefresh]
   );
 
   return (

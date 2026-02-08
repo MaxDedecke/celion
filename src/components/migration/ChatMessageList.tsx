@@ -6,6 +6,7 @@ import { Sparkles, ArrowRight } from "lucide-react";
 interface ChatMessageListProps {
   messages: ChatMessageType[];
   isAgentRunning: boolean;
+  isConsultantThinking?: boolean;
   onOpenAgentOutput?: (stepId: string) => void;
   onAction?: (action: string) => void;
   showContinueButton?: boolean;
@@ -15,14 +16,14 @@ interface ChatMessageListProps {
   currentStep?: number;
 }
 
-const ThinkingIndicator = ({ stepTitle }: { stepTitle?: string }) => (
+const ThinkingIndicator = ({ stepTitle, role = "agent" }: { stepTitle?: string, role?: "agent" | "consultant" }) => (
   <div className="flex items-start gap-3 py-3 animate-fade-in pl-2">
     <div className="h-8 w-8 flex items-center justify-center">
       <Sparkles className="h-4 w-4 text-primary animate-pulse" />
     </div>
     <div className="flex flex-col gap-1.5">
-      <span className="text-sm text-muted-foreground">
-        {stepTitle ? `Analysiere ${stepTitle}...` : "Denke nach..."}
+      <span className="text-sm text-muted-foreground font-medium">
+        {role === "consultant" ? "Consultant denkt nach..." : (stepTitle ? `Analysiere ${stepTitle}...` : "Agent denkt nach...")}
       </span>
       <div className="flex gap-1.5">
         <div 
@@ -45,6 +46,7 @@ const ThinkingIndicator = ({ stepTitle }: { stepTitle?: string }) => (
 const ChatMessageList = ({ 
   messages, 
   isAgentRunning, 
+  isConsultantThinking,
   onOpenAgentOutput,
   onAction,
   showContinueButton = false,
@@ -131,7 +133,11 @@ const ChatMessageList = ({
       )}
       
       {isAgentRunning && (
-        <ThinkingIndicator stepTitle={currentStepTitle} />
+        <ThinkingIndicator stepTitle={currentStepTitle} role="agent" />
+      )}
+
+      {isConsultantThinking && !isAgentRunning && (
+        <ThinkingIndicator role="consultant" />
       )}
     </div>
   );

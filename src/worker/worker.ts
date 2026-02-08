@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { runSystemDetection, runAuthFlow, runSourceDiscovery, runTargetDiscovery } from '../agents/agentService';
+import { runSystemDetection, runAuthFlow, runSourceDiscovery, runTargetDiscovery, runAnswerAgent } from '../agents/agentService';
 import { AGENT_WORKFLOW_STEPS } from '../constants/agentWorkflow';
 import { loadScheme } from '../lib/scheme-loader';
 
@@ -165,29 +165,41 @@ async function processJob(job: any) {
   const { agentName, agentParams, stepId } = payload;
 
   // 1. Step Record laden (Read-only)
-  const { rows: stepRows } = await pool.query(
-    'SELECT id, migration_id, workflow_step_id, name FROM migration_steps WHERE id = $1', 
-    [step_id]
-  );
-  const stepRecord = stepRows[0];
+  let migrationId = payload.migrationId;
+  let stepRecord: any = null;
 
-  if (!stepRecord) {
+  if (step_id) {
+    const { rows: stepRows } = await pool.query(
+      'SELECT id, migration_id, workflow_step_id, name FROM migration_steps WHERE id = $1', 
+      [step_id]
+    );
+    stepRecord = stepRows[0];
+    if (stepRecord) {
+      migrationId = stepRecord.migration_id;
+    }
+  }
+
+  if (!stepRecord && agentName !== 'runAnswerAgent') {
     console.error('Unable to find migration step for job', job.id);
     await pool.query('UPDATE jobs SET status = $1, last_error = $2 WHERE id = $3', ['failed', 'Step not found', job.id]);
     return;
   }
 
-  const migrationId = stepRecord.migration_id;
   const currentStepNumber = payload.stepNumber || 1;
   const activeStep = AGENT_WORKFLOW_STEPS[currentStepNumber - 1];
-  const stepTitle = activeStep?.title || stepRecord.name || 'Schritt';
+  const stepTitle = activeStep?.title || stepRecord?.name || 'Schritt';
 
   // 2. Start-Status setzen (Transaction 1 - Sofort committen)
   const startClient = await pool.connect();
   try {
     await startClient.query('BEGIN');
-    await startClient.query('UPDATE migration_steps SET status = $1 WHERE id = $2', ['running', step_id]);
-    await startClient.query('UPDATE migrations SET status = $1, step_status = $2 WHERE id = $3', ['processing', 'running', migrationId]);
+    if (step_id) {
+      await startClient.query('UPDATE migration_steps SET status = $1 WHERE id = $2', ['running', step_id]);
+    }
+    // Update migration status only for process-relevant agents (not for Consultant)
+    if (agentName !== 'runAnswerAgent') {
+      await startClient.query('UPDATE migrations SET status = $1, step_status = $2 WHERE id = $3', ['processing', 'running', migrationId]);
+    }
     await startClient.query('COMMIT');
   } catch (e) {
     await startClient.query('ROLLBACK');
@@ -198,7 +210,8 @@ async function processJob(job: any) {
 
   // Start-Nachricht im Chat (Sofort sichtbar)
   // MODIFIED: Only show for non-split agents or the first part of split agents (source)
-  if ((agentParams?.mode || 'source') === 'source') {
+  // Skip for Consultant
+  if (agentName !== 'runAnswerAgent' && (agentParams?.mode || 'source') === 'source') {
     await writeChatMessage(migrationId, 'system', `Starte Schritt ${currentStepNumber} ${stepTitle}...`, currentStepNumber);
   }
 
@@ -869,14 +882,34 @@ async function processJob(job: any) {
       } catch (e) {
         await finishClient.query('ROLLBACK');
         throw e;
-      } finally {
-        finishClient.release();
-      }
-    } else {
-      // Fallback für andere Agenten (noch nicht implementiert im Detail)
-      throw new Error(`Agent ${agentName} is not yet implemented in the worker.`);
-    }
-
+              } finally {
+                finishClient.release();
+              }
+            } else if (agentName === 'runAnswerAgent') {
+              const userMessage = agentParams?.userMessage;
+              const context = agentParams?.context;
+      
+              const messageGenerator = runAnswerAgent(userMessage, context);
+              let assistantResponse = "";
+      
+              for await (const message of messageGenerator) {
+                if (message.content && message.content.length > 0 && message.content[0].text) {
+                  assistantResponse = message.content[0].text;
+                }
+              }
+      
+                      if (assistantResponse) {
+                        await writeChatMessage(migrationId, 'assistant', assistantResponse);
+                      }
+              
+                      // Reset consultant status to idle
+                      await pool.query('UPDATE public.migrations SET consultant_status = $1 WHERE id = $2', ['idle', migrationId]);
+              
+                      await pool.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+                      return; // Early return for answer agent since it doesn't follow normal step logic            } else {
+              // Fallback für andere Agenten (noch nicht implementiert im Detail)
+              throw new Error(`Agent ${agentName} is not yet implemented in the worker.`);
+            }
     console.log(`Job ${job.id} completed successfully.`);
 
   } catch (error) {

@@ -97,6 +97,7 @@ const MigrationChatCard = ({
   const isStepRunning = migrationData.step_status === 'running' || migrationData.step_status === 'pending';
   
   const hasCurrentStepFailed = migrationData.step_status === 'failed';
+  const isConsultantThinking = migrationData.consultant_status === 'thinking';
   
   // Wenn Schritt X läuft oder fehlgeschlagen ist, sind erst X-1 Schritte komplett fertig
   const completedCount = (isStepRunning || hasCurrentStepFailed) ? Math.max(0, rawStep - 1) : rawStep;
@@ -167,6 +168,7 @@ const MigrationChatCard = ({
             <ChatMessageList 
               messages={chatMessages} 
               isAgentRunning={isStepRunning} 
+              isConsultantThinking={isConsultantThinking}
               onOpenAgentOutput={onOpenAgentOutput}
               onAction={onAction}
               showContinueButton={migrationData.status !== "completed" && !isStepRunning}
@@ -197,9 +199,9 @@ const MigrationChatCard = ({
 
         <div className="mt-4 pt-4">
           <ChatInput 
-            disabled={isStepRunning} 
+            disabled={isStepRunning || isConsultantThinking} 
             onSend={onSendMessage} 
-            placeholder={isStepRunning ? "Agent arbeitet..." : "Nächsten Schritt starten oder Befehl eingeben..."} 
+            placeholder={isStepRunning ? "Agent arbeitet..." : isConsultantThinking ? "Consultant denkt nach..." : "Nächsten Schritt starten oder Befehl eingeben..."} 
           />
         </div>
       </CardContent>

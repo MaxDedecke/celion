@@ -6,7 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 from typing import Any, Dict, Optional, Union
 
 import os
@@ -19,9 +19,27 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl
 from starlette.concurrency import run_in_threadpool
 import pika
+from uuid import UUID
+from decimal import Decimal
 
 
 LEGACY_MESSAGE = "The legacy Python-based agents have been removed in favor of the frontend implementation."
+
+class CustomEncoder(json.JSONEncoder):
+    """Custom JSON encoder to handle UUID and datetime objects."""
+    def default(self, obj):
+        if isinstance(obj, UUID):
+            return str(obj)
+        if isinstance(obj, (datetime, date)):
+            return obj.isoformat()
+        if isinstance(obj, Decimal):
+            return float(obj)
+        return super().default(obj)
+
+def json_dumps(data: Any) -> str:
+    """Helper to dump JSON using the CustomEncoder."""
+    return json.dumps(data, cls=CustomEncoder)
+
 
 app = FastAPI(title="Celion Agent Service", version="1.0.0")
 app.add_middleware(
@@ -650,6 +668,86 @@ async def get_migration_chat_messages(id: str) -> list[MigrationChatMessage]:
     except Exception as exc:
         print(f"Error fetching migration chat messages: {exc}")
         raise HTTPException(status_code=500, detail="Failed to fetch migration chat messages.") from exc
+
+
+class AnswerAgentRequest(BaseModel):
+    """Payload for asking the AI consultant a question."""
+    content: str
+
+@app.post("/api/migrations/{id}/chat/answer")
+async def ask_consultant(id: str, payload: AnswerAgentRequest) -> dict[str, Any]:
+    """Ask the AI consultant a question about the migration."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            # 1. Save user message and set consultant status to thinking
+            cur.execute(
+                """
+                UPDATE public.migrations SET consultant_status = 'thinking' WHERE id = %s
+                """,
+                (id,),
+            )
+            cur.execute(
+                """
+                INSERT INTO public.migration_chat_messages (migration_id, role, content)
+                VALUES (%s, 'user', %s)
+                RETURNING id
+                """,
+                (id, payload.content),
+            )
+            user_msg_id = cur.fetchone()["id"]
+
+            # 2. Fetch context (Step Results)
+            step_results = {"step_1": [], "step_2": [], "step_3": [], "step_4": []}
+            cur.execute("SELECT * FROM public.step_1_results WHERE migration_id = %s", (id,))
+            step_results["step_1"] = [dict(row) for row in cur.fetchall()]
+            cur.execute("SELECT * FROM public.step_2_results WHERE migration_id = %s", (id,))
+            step_results["step_2"] = [dict(row) for row in cur.fetchall()]
+            cur.execute("SELECT * FROM public.step_3_results WHERE migration_id = %s", (id,))
+            step_results["step_3"] = [dict(row) for row in cur.fetchall()]
+            cur.execute("SELECT * FROM public.step_4_results WHERE migration_id = %s", (id,))
+            step_results["step_4"] = [dict(row) for row in cur.fetchall()]
+
+            # 3. Fetch History (last 10 messages for follow-ups)
+            cur.execute(
+                """
+                SELECT role, content FROM public.migration_chat_messages 
+                WHERE migration_id = %s 
+                AND role IN ('user', 'assistant')
+                ORDER BY created_at DESC LIMIT 10
+                """,
+                (id,)
+            )
+            history = [{"role": row["role"], "content": row["content"]} for row in reversed(cur.fetchall())]
+
+            # 4. Enqueue Job
+            # For the AnswerAgent, we create a specialized job without a fixed step
+            cur.execute(
+                """
+                INSERT INTO public.jobs (payload, status)
+                VALUES (%s, 'pending')
+                RETURNING id
+                """,
+                (json_dumps({
+                    "migrationId": id,
+                    "agentName": "runAnswerAgent",
+                    "agentParams": {
+                        "userMessage": payload.content,
+                        "context": {
+                            "stepResults": step_results,
+                            "history": history
+                        }
+                    }
+                }),),
+            )
+            job_row = cur.fetchone()
+            publish_to_rabbitmq(job_row["id"])
+            
+            conn.commit()
+            return {"message": "Frage wurde an den Consultant übermittelt.", "jobId": job_row["id"]}
+
+    except Exception as exc:
+        print(f"Error enqueuing consultant question: {exc}")
+        raise HTTPException(status_code=500, detail="Fehler beim Senden der Anfrage.")
 
 
 @app.post("/api/migrations/{id}/chat", response_model=MigrationChatMessage)
