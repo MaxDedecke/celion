@@ -73,22 +73,39 @@ const ChatMessageList = ({
     }
   };
 
+  // Find the latest action message to pin it to the bottom
+  const actionMessages = visibleMessages.filter(m => {
+    try {
+      const parsed = JSON.parse(m.content);
+      return parsed.type === 'action';
+    } catch {
+      return false;
+    }
+  });
+  const lastActionMessage = actionMessages[actionMessages.length - 1];
+
   return (
     <div className="flex flex-col gap-2 pb-4 pr-3">
       {visibleMessages.map((message, index) => {
+        // Only skip the LATEST action message, keep older ones in the flow
+        if (lastActionMessage && message.id === lastActionMessage.id) {
+          return null;
+        }
+
         const isLastMessage = index === visibleMessages.length - 1;
         const shouldAnimate = animatingId === message.id && !completedAnimations.has(message.id);
         
         // Determine if we should show a divider
         const previousMessage = index > 0 ? visibleMessages[index - 1] : null;
-        const isStepStart = message.content.startsWith("Starting Step") || 
-                            message.content.startsWith("Starting System Detection") ||
-                            message.content.startsWith("Starte Schritt"); 
         
-        const showDivider = previousMessage && (
-          (message.step_number && previousMessage.step_number !== message.step_number) ||
-          (isStepStart && message.role === 'system')
-        );
+        // Divider logic: only for real step transitions where both have a valid step_number
+        const showDivider = previousMessage && 
+                            message.step_number !== undefined && 
+                            message.step_number !== null &&
+                            previousMessage.step_number !== undefined &&
+                            previousMessage.step_number !== null &&
+                            message.step_number !== previousMessage.step_number &&
+                            message.step_number > 0;
 
         return (
           <div key={message.id}>
@@ -120,7 +137,27 @@ const ChatMessageList = ({
         );
       })}
       
-      {showContinueButton && !isAgentRunning && (
+      {isAgentRunning && (
+        <ThinkingIndicator stepTitle={currentStepTitle} role="agent" />
+      )}
+
+      {isConsultantThinking && !isAgentRunning && (
+        <ThinkingIndicator role="consultant" />
+      )}
+
+      {/* Pinned Action Buttons */}
+      {lastActionMessage && !isAgentRunning && !isConsultantThinking && (
+        <div className="mt-4 border-t border-border/50 pt-4 px-2">
+          <ChatMessage 
+            message={lastActionMessage} 
+            onAction={handleAction}
+            currentStep={currentStep}
+          />
+        </div>
+      )}
+      
+      {/* Fallback Continue Button (if no explicit action message exists) */}
+      {showContinueButton && !isAgentRunning && !isConsultantThinking && !lastActionMessage && (
         <div className="flex items-center gap-2 animate-fade-in pt-4 pl-11">
           <button 
             onClick={() => onContinue?.()}
@@ -130,14 +167,6 @@ const ChatMessageList = ({
             {continueButtonText}
           </button>
         </div>
-      )}
-      
-      {isAgentRunning && (
-        <ThinkingIndicator stepTitle={currentStepTitle} role="agent" />
-      )}
-
-      {isConsultantThinking && !isAgentRunning && (
-        <ThinkingIndicator role="consultant" />
       )}
     </div>
   );

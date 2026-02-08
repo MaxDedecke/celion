@@ -812,20 +812,21 @@ async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
             # If we are re-running an earlier step, we must clear results of all subsequent steps
             # to maintain data integrity.
             
-            # Clear structured results
+            # 1. Clear structured results for steps >= this step
             if step <= 1:
                 cur.execute("DELETE FROM public.step_1_results WHERE migration_id = %s", (id,))
             if step <= 2:
                 cur.execute("DELETE FROM public.step_2_results WHERE migration_id = %s", (id,))
             if step <= 3:
                 cur.execute("DELETE FROM public.step_3_results WHERE migration_id = %s", (id,))
+            if step <= 4:
+                cur.execute("DELETE FROM public.step_4_results WHERE migration_id = %s", (id,))
             
-            # Reset overall migration complexity if step 3 is retried
+            # 2. Reset overall migration complexity if step 3 is retried
             if step <= 3:
                 cur.execute("UPDATE public.migrations SET complexity_score = 0 WHERE id = %s", (id,))
 
-            # Clear/Reset migration_steps for all steps >= current retry step
-            # We identify steps by their numeric suffix in workflow_step_id 'step-X'
+            # 3. Clear/Reset migration_steps for all steps >= current retry step
             cur.execute(
                 """
                 DELETE FROM public.migration_steps 
@@ -835,6 +836,24 @@ async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
                 (id, step),
             )
 
+            # 4. Clear chat messages from this step onwards
+            # We keep messages with step_number 0 (Welcome) and any messages strictly before this step.
+            cur.execute(
+                """
+                DELETE FROM public.migration_chat_messages 
+                WHERE migration_id = %s 
+                AND step_number >= %s
+                """,
+                (id, step),
+            )
+
+            # 5. Reset migration current_step if needed
+            cur.execute(
+                "UPDATE public.migrations SET current_step = %s WHERE id = %s",
+                (step, id)
+            )
+
+            # 6. Create new pending step record
             cur.execute(
                 """
                 INSERT INTO public.migration_steps (migration_id, workflow_step_id, name, status)
