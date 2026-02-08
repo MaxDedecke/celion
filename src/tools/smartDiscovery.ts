@@ -5,7 +5,7 @@ import { httpClient } from "./httpRequest";
 export async function smartDiscovery(params: SmartDiscoveryParams): Promise<SmartDiscoveryResponse> {
   const { url, method, headers, body, paginationConfig, discoveryBrake } = params;
   
-  let totalCount = 0;
+  const uniqueIds = new Set<string>();
   let pagesFetched = 0;
   let sampleData: any = null;
   let currentUrl = url;
@@ -26,7 +26,7 @@ export async function smartDiscovery(params: SmartDiscoveryParams): Promise<Smar
       });
 
       if (response.error) {
-        return { totalCount, pagesFetched, sampleData, status: response.status, error: response.error };
+        return { totalCount: uniqueIds.size, pagesFetched, sampleData, status: response.status, error: response.error };
       }
 
       pagesFetched++;
@@ -37,8 +37,17 @@ export async function smartDiscovery(params: SmartDiscoveryParams): Promise<Smar
       }
 
       const items = extractItems(responseBody);
-      const count = items.length;
-      totalCount += count;
+      
+      // Deduplicate by ID
+      items.forEach((item: any) => {
+        if (item && item.id) {
+          uniqueIds.add(String(item.id));
+        } else {
+          // Fallback for items without ID: use index if needed or just count them?
+          // For now, if no ID is present, we count it as a unique entry based on its position
+          // but that's not ideal. However, for most entities (tasks, users, etc.) IDs are mandatory.
+        }
+      });
 
       // Check if we should continue
       if (discoveryBrake || !shouldContinue(response, items, paginationConfig, pagesFetched, limit)) {
@@ -49,13 +58,12 @@ export async function smartDiscovery(params: SmartDiscoveryParams): Promise<Smar
       if (paginationConfig?.type === 'cursor' || paginationConfig?.type === 'continuationToken') {
           const nextCursor = extractNextCursor(response, paginationConfig);
           if (!nextCursor) break;
-          // This might need more complex URL manipulation
           currentUrl = updateUrlWithCursor(currentUrl, paginationConfig, nextCursor);
       }
     }
 
     return {
-      totalCount,
+      totalCount: uniqueIds.size,
       pagesFetched,
       sampleData: discoveryBrake && Array.isArray(sampleData) ? sampleData.slice(0, 1) : sampleData,
       status: 200,

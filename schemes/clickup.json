@@ -46,6 +46,6 @@
         "accept": "application/json",
         "contentType": "application/json"
       },
-      "agentInstructions": "Führe die Task-Inventur GLOBAL auf Team-Ebene durch (Endpunkte 'tasks' und 'archived_tasks'). Nutze 'subtasks=true', um alle Aufgaben inklusive Unteraufgaben zu erfassen. Da dies auf Team-Ebene geschieht, erhältst du alle Aufgaben des Systems mit nur zwei Abfolgen (Aktiv/Archiviert), was eine Doppelzählung durch Listen-Überschneidungen verhindert."
+      "agentInstructions": "Führe die Inventur auf Team-Ebene durch, um maximale Abdeckung zu erreichen. Beachte, dass die ClickUp-API Tasks in mehreren Listen mehrfach zurückgibt. Verlasse dich auf das Tool smart_discovery, welches eine ID-basierte Deduplizierung durchführt, um die reale Anzahl einzigartiger Tasks zu ermitteln. Falls bei 'archived_tasks' auf Team-Ebene 0 Ergebnisse zurückkommen, obwohl archivierte Tasks erwartet werden, führe Stichproben auf Listenebene ('/api/v2/list/{list_id}/task?archived=true&subtasks=true') für mindestens zwei verschiedene Listen durch, um die globale Abfrage zu validieren."
     }
     

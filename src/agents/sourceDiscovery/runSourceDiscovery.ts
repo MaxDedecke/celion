@@ -7,8 +7,9 @@ const SYSTEM_PROMPT = `
 Du bist eine Data Discovery Engine. Dein Ziel ist eine vollständige Bestandsaufnahme der Systemstruktur.
 
 ### PHASE 1: EXPLORATION (Tool use)
-- **VOLLSTÄNDIGKEIT:** Durchlaufe alle Ebenen der Hierarchie gemäß dem 'System Scheme'.
-- **ABDECKUNG:** Nutze 'smart_discovery' für alle Entitätstypen in 'discovery.endpoints'.
+- **STRIKTE VOLLSTÄNDIGKEIT:** Du musst JEDEN Endpunkt, der in 'discovery.endpoints' definiert ist, mindestens einmal aufrufen.
+- **HIERARCHIE:** Beginne mit Top-Level-Endpunkten (ohne Platzhalter), um IDs für verschachtelte Endpunkte (z.B. {team_id}, {project_id}) zu finden.
+- **ABDECKUNG:** Wenn ein Endpunkt IDs benötigt, finde diese zuerst in vorherigen Aufrufen und nutze sie. Dokumentiere explizit, wenn ein Endpunkt nicht aufgerufen werden konnte (z.B. "keine übergeordnete ID gefunden").
 - **ORCHESTRIERUNG:** Du entscheidest, welche Endpunkte nacheinander aufgerufen werden. Nutze 'discoveryBrake: true', wenn du nur die Datenstruktur (Schema) verstehen willst, und 'discoveryBrake: false', wenn du die Gesamtanzahl der Objekte erfassen willst.
 - **HINWEIS:** Technische Details wie Pagination oder URL-Encoding werden automatisch vom Tool übernommen. Konzentriere dich auf die logische Abfolge.
 - Antworte während der Exploration nur mit kurzen Status-Updates auf Deutsch (z.B. "Analysiere Teams...", "Erfasse Tasks für Liste X...").
@@ -21,6 +22,13 @@ Du bist eine Data Discovery Engine. Dein Ziel ist eine vollständige Bestandsauf
   "entities": [
     { "name": "string", "count": number, "complexity": "low" | "medium" | "high" }
   ],
+  "coverage": {
+    "totalEndpoints": number,
+    "checkedEndpoints": ["string"],
+    "missedEndpoints": [
+      { "name": "string", "reason": "string" }
+    ]
+  },
   "estimatedDurationMinutes": number,
   "complexityScore": number,
   "executedCalls": ["string"],
@@ -64,11 +72,17 @@ export async function* runSourceDiscovery(
   const token = credentials.apiToken || "";
   const base64Credentials = btoa(`${email}:${token}`);
 
+  const endpointKeys = Object.keys(systemScheme?.discovery?.endpoints || {});
   const userContext = `
 Source URL: ${url}
 Credentials: ${credentials.email ? 'Email provided' : 'No email'}, Token provided
 System Scheme: ${JSON.stringify(systemScheme, null, 2)}
 Scope Config: ${JSON.stringify(scopeConfig || {}, null, 2)}
+
+### REQUIRED ENDPOINTS TO CHECK:
+${endpointKeys.map(k => `- ${k}`).join('\n')}
+
+Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben, ob er geprüft wurde oder warum er übersprungen wurde.
   `;
 
   const messages: any[] = [
