@@ -180,7 +180,7 @@ const WorkflowPanelDialog = ({
                 Übersicht und manuelle Anpassung der erarbeiteten Agenten-Ergebnisse.
               </DialogDescription>
             </div>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
               <Button variant="outline" size="sm" onClick={handleCopyJson} disabled={!currentResult}>
                 <Copy className="h-4 w-4 mr-2" />
                 JSON Kopieren
@@ -189,9 +189,9 @@ const WorkflowPanelDialog = ({
                 {isSaving ? <Loader2 className="h-4 w-4 mr-2 animate-spin" /> : <Save className="h-4 w-4 mr-2" />}
                 Speichern
               </Button>
-              <div className="w-px h-8 bg-border mx-1" />
+              <div className="w-px h-8 bg-border mx-2" />
               <DialogClose asChild>
-                <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full">
+                <Button variant="ghost" size="icon" className="h-9 w-9 rounded-full ml-2">
                   <X className="h-5 w-5" />
                   <span className="sr-only">Schließen</span>
                 </Button>

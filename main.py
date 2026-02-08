@@ -911,10 +911,25 @@ async def create_migration(payload: CreateMigrationPayload) -> Migration:
                 ),
             )
             row = cur.fetchone()
-            conn.commit()
-
+            
             if not row:
                 raise HTTPException(status_code=500, detail="Failed to create migration.")
+
+            migration_id = str(row["id"])
+
+            # Add initial welcome messages to the chat
+            welcome_msg_1 = f"Neue Migration zwischen **{payload.source_system}** und **{payload.target_system}** wurde erfolgreich erstellt."
+            welcome_msg_2 = "Einfach auf **Starten** drücken und wir legen los!"
+            
+            cur.execute(
+                """
+                INSERT INTO public.migration_chat_messages (migration_id, role, content, step_number)
+                VALUES (%s, 'system', %s, 0), (%s, 'system', %s, 0)
+                """,
+                (migration_id, welcome_msg_1, migration_id, welcome_msg_2)
+            )
+
+            conn.commit()
 
             return Migration(
                 id=str(row["id"]),
@@ -1459,6 +1474,27 @@ async def duplicate_migration(id: str, user_id: str) -> Migration:
                 FROM public.migration_activities WHERE migration_id = %s
                 """,
                 (new_migration_id, id)
+            )
+
+            # 8. Add duplication welcome messages to the chat
+            welcome_msg_1 = f"Diese Migration wurde von **{original['name']}** dupliziert."
+            welcome_msg_2 = "Einfach auf **Starten** drücken und los geht's."
+            
+            cur.execute(
+                """
+                INSERT INTO public.migration_chat_messages (migration_id, role, content, step_number)
+                VALUES (%s, 'system', %s, 0), (%s, 'system', %s, 0)
+                """,
+                (new_migration_id, welcome_msg_1, new_migration_id, welcome_msg_2)
+            )
+
+            # 9. Add activity for duplication
+            cur.execute(
+                """
+                INSERT INTO public.migration_activities (migration_id, type, title, timestamp)
+                VALUES (%s, 'info', 'Migration dupliziert', %s)
+                """,
+                (new_migration_id, datetime.now(timezone.utc).isoformat())
             )
 
             conn.commit()

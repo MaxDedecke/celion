@@ -130,7 +130,7 @@ const ChatMessageList = ({
         </div>
       )}
       
-      {(isAgentRunning || hasQueuedMessages) && (
+      {isAgentRunning && (
         <ThinkingIndicator stepTitle={currentStepTitle} />
       )}
     </div>
