@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { cn } from "@/lib/utils";
 import { AGENT_WORKFLOW_STEPS } from "@/constants/agentWorkflow";
@@ -34,6 +35,7 @@ interface MigrationResults {
   step_1: WorkflowStepResult[];
   step_2: WorkflowStepResult[];
   step_3: WorkflowStepResult[];
+  step_4: WorkflowStepResult[];
 }
 
 const WorkflowPanelDialog = ({
@@ -158,14 +160,28 @@ const WorkflowPanelDialog = ({
         );
       }
 
+      const isLongText = key.toLowerCase().includes('summary') || 
+                         key.toLowerCase().includes('output') || 
+                         key.toLowerCase().includes('description') || 
+                         key.toLowerCase().includes('error') || 
+                         (typeof value === 'string' && value.length > 100);
+
       return (
         <div key={currentPath.join('.')} className="space-y-1.5">
           <Label className="text-xs text-muted-foreground">{key}</Label>
-          <Input
-            value={value === null ? "" : String(value)}
-            onChange={(e) => handleValueChange(currentPath, e.target.value)}
-            className="h-8 text-sm bg-background"
-          />
+          {isLongText ? (
+            <Textarea
+              value={value === null ? "" : String(value)}
+              onChange={(e) => handleValueChange(currentPath, e.target.value)}
+              className="text-sm bg-background min-h-[100px] resize-y"
+            />
+          ) : (
+            <Input
+              value={value === null ? "" : String(value)}
+              onChange={(e) => handleValueChange(currentPath, e.target.value)}
+              className="h-8 text-sm bg-background"
+            />
+          )}
         </div>
       );
     });
