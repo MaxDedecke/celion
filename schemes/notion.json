@@ -1,28 +1,28 @@
 {
   "system": "Notion",
   "apiType": "REST",
-  "baseUrlPattern": "*.notion.so",
+  "baseUrlPattern": "api.notion.com",
   "apiBaseUrl": "https://api.notion.com",
   "authentication": {
-    "type": "bearer",
+    "type": "header",
+    "headerName": "Authorization",
     "tokenPrefix": "Bearer ",
     "emailRequired": false,
     "whoami": {
       "endpoint": "/v1/users/me",
-      "method": "GET"
+      "method": "GET",
+      "usernamePath": "name"
     }
   },
   "discovery": {
     "endpoints": {
       "search": "/v1/search",
-      "databasesList": "/v1/databases",
-      "databaseRetrieve": "/v1/databases/{database_id}",
-      "databaseQuery": "/v1/databases/{database_id}/query",
-      "pages": "/v1/pages",
-      "pageRetrieve": "/v1/pages/{page_id}",
+      "users": "/v1/users",
+      "databases": "/v1/databases/{database_id}",
+      "database_query": "/v1/databases/{database_id}/query",
+      "pages": "/v1/pages/{page_id}",
       "blocks": "/v1/blocks/{block_id}/children",
-      "comments": "/v1/comments",
-      "users": "/v1/users"
+      "comments": "/v1/comments?block_id={block_id}"
     },
     "pagination": {
       "type": "cursor",
@@ -32,9 +32,9 @@
     }
   },
   "headers": {
+    "Notion-Version": "2022-06-28",
     "Accept": "application/json",
-    "Content-Type": "application/json",
-    "Notion-Version": "2022-06-28"
+    "Content-Type": "application/json"
   },
-  "agentInstructions": "[REQ-1: Use 'search' for workspace-wide database discovery]. [REQ-2: Deep Probe: For found databases, call 'databaseRetrieve' to analyze custom properties/fields]. [REQ-3: For comments, ALWAYS append the query parameter manually. Example: /v1/comments?block_id={id}]. [REQ-4: Count users via 'users' endpoint]."
+  "agentInstructions": "Konstruiere IMMER vollständige URLs unter Verwendung der 'apiBaseUrl'. WICHTIG: Der 'search' Endpunkt und 'database_query' MÜSSEN via POST aufgerufen werden. Sende für diese POST-Anfragen mindestens einen leeren Body ({}), falls keine Filter nötig sind. 'search' und 'users' sind Top-Level-Endpunkte und benötigen KEINE IDs von anderen Aufrufen – rufe sie immer direkt zu Beginn auf. Falls 'search' keine Ergebnisse liefert, bedeutet das nur, dass keine Seiten/Datenbanken für den Token freigegeben sind, du MUSST trotzdem 'users' und alle anderen verfügbaren Endpunkte prüfen."
 }

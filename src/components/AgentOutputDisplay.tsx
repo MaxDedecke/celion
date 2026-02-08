@@ -4,7 +4,8 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import type { SystemDetectionResult, AuthFlowResult, CapabilityDiscoveryResult } from "@/types/agents";
-import { AlertCircle, CheckCircle2, Download, XCircle } from "lucide-react";
+import { AlertCircle, CheckCircle2, Download, XCircle, Copy } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 
 interface AgentOutputDisplayProps {
   sourceResult?: SystemDetectionResult | AuthFlowResult | null;
@@ -13,6 +14,18 @@ interface AgentOutputDisplayProps {
 }
 
 const AgentOutputDisplay = ({ sourceResult, targetResult, schemaResult }: AgentOutputDisplayProps) => {
+  const { toast } = useToast();
+
+  const handleCopyResult = (result: any, title: string) => {
+    if (result) {
+      navigator.clipboard.writeText(JSON.stringify(result, null, 2));
+      toast({
+        title: "Kopiert",
+        description: `${title} Ergebnis wurde in die Zwischenablage kopiert.`,
+      });
+    }
+  };
+
   const getConfidenceColor = (confidence: number | null) => {
     if (confidence === null) return "text-muted-foreground";
     if (confidence >= 0.8) return "text-green-600 dark:text-green-400";
@@ -62,7 +75,16 @@ const AgentOutputDisplay = ({ sourceResult, targetResult, schemaResult }: AgentO
     return (
       <Card className="h-full">
         <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">Capability Discovery</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg flex items-center gap-2">Capability Discovery</CardTitle>
+            <button
+              onClick={() => handleCopyResult(result, "Capability Discovery")}
+              className="p-1 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+              title="JSON kopieren"
+            >
+              <Copy className="h-4 w-4" />
+            </button>
+          </div>
           <p className="text-sm text-muted-foreground">System: {result.system || "Unbekannt"}</p>
         </CardHeader>
         <CardContent className="space-y-4">
@@ -173,10 +195,19 @@ const AgentOutputDisplay = ({ sourceResult, targetResult, schemaResult }: AgentO
     return (
       <Card className="h-full">
         <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            {title}
-            {renderStatusIcon()}
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-lg flex items-center gap-2">
+              {title}
+              {renderStatusIcon()}
+            </CardTitle>
+            <button
+              onClick={() => handleCopyResult(result, title)}
+              className="p-1 rounded-md hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
+              title="JSON kopieren"
+            >
+              <Copy className="h-4 w-4" />
+            </button>
+          </div>
         </CardHeader>
         <CardContent className="space-y-5">
           {/* Raw Output Tooltip */}

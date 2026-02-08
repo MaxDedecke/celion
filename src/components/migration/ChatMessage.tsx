@@ -7,6 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import TypewriterText from "./TypewriterText";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useToast } from "@/hooks/use-toast";
 
 const DiscoveryReport = ({ data }: { data: any }) => {
   if (!data || !data.entities) return null;
@@ -124,6 +125,7 @@ interface ChatMessageProps {
 
 const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = false, onTypewriterComplete, currentStep }: ChatMessageProps) => {
   const [showJsonDialog, setShowJsonDialog] = useState(false);
+  const { toast } = useToast();
 
   const jsonContent = useMemo(() => {
     try {
@@ -136,6 +138,16 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
     }
     return null;
   }, [message.content]);
+
+  const handleCopyJson = () => {
+    if (jsonContent) {
+      navigator.clipboard.writeText(JSON.stringify(jsonContent, null, 2));
+      toast({
+        title: "Kopiert",
+        description: "JSON wurde in die Zwischenablage kopiert.",
+      });
+    }
+  };
 
   useEffect(() => {
     if (!onTypewriterComplete) return;
@@ -351,6 +363,15 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
               </Button>
               <Dialog open={showJsonDialog} onOpenChange={setShowJsonDialog}>
                 <DialogContent className="max-w-3xl">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="absolute right-10 top-3 h-6 w-6 rounded-sm opacity-70 transition-opacity hover:opacity-100"
+                    onClick={handleCopyJson}
+                    title="JSON kopieren"
+                  >
+                    <Copy className="h-3.5 w-3.5" />
+                  </Button>
                   <DialogHeader>
                     <DialogTitle>Agent Output Details</DialogTitle>
                   </DialogHeader>

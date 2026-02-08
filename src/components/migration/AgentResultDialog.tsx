@@ -1,6 +1,9 @@
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
+import { Copy } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import AgentOutputDisplay from "@/components/AgentOutputDisplay";
 import type { AgentWorkflowStepState } from "./types";
 import type {
@@ -38,6 +41,8 @@ const AgentResultDialog = ({
   targetResult,
   rawOutput,
 }: AgentResultDialogProps) => {
+  const { toast } = useToast();
+
   const isSchemaDiscoveryResult = (value: unknown): value is CapabilityDiscoveryResult => {
     return Boolean(
       value &&
@@ -50,15 +55,34 @@ const AgentResultDialog = ({
     ? structuredResult
     : null;
 
+  const handleCopy = () => {
+    const textToCopy = formattedResult || (structuredResult ? JSON.stringify(structuredResult, null, 2) : "");
+    if (textToCopy) {
+      navigator.clipboard.writeText(textToCopy);
+      toast({
+        title: "Kopiert",
+        description: "Ergebnis wurde in die Zwischenablage kopiert.",
+      });
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="w-full max-w-[98vw] sm:max-w-[92rem]">
-        <DialogHeader className="px-8">
-          <DialogTitle>Agenten-Output</DialogTitle>
-          {step && (
-            <DialogDescription>
-              Schritt {step.index + 1}: {step.title}
-            </DialogDescription>
+        <DialogHeader className="px-8 flex flex-row items-center justify-between">
+          <div className="space-y-1.5">
+            <DialogTitle>Agenten-Output</DialogTitle>
+            {step && (
+              <DialogDescription>
+                Schritt {step.index + 1}: {step.title}
+              </DialogDescription>
+            )}
+          </div>
+          {(formattedResult || structuredResult) && (
+            <Button variant="outline" size="sm" onClick={handleCopy} className="gap-2">
+              <Copy className="h-4 w-4" />
+              JSON kopieren
+            </Button>
           )}
         </DialogHeader>
         <ScrollArea className="max-h-[78vh] px-8 pb-2">
