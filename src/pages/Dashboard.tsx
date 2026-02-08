@@ -224,6 +224,7 @@ const Dashboard = () => {
           workflowState: migration.workflow_state,
           current_step: migration.current_step,
           step_status: migration.step_status,
+          scopeConfig: migration.scope_config,
         };
       }),
     );
@@ -507,16 +508,15 @@ const Dashboard = () => {
           email: sourceConnectorData?.username || "",
           password: sourceConnectorData?.password || "",
         },
-        targetAuth: {
-          authType: "token",
-          apiToken: targetConnectorData?.api_key || "",
-          email: targetConnectorData?.username || "",
-          password: targetConnectorData?.password || "",
-        },
-        scopeConfig: migration.scope_config,
-      });
-      setShowEditConfigDialog(true);
-    } catch (error: any) {
+                  targetAuth: {
+                  authType: "token",
+                  apiToken: targetConnectorData?.api_key || "",
+                  email: targetConnectorData?.username || "",
+                  password: targetConnectorData?.password || "",
+                },
+                scopeConfig: migration.scopeConfig || migration.scope_config,
+              });
+              setShowEditConfigDialog(true);    } catch (error: any) {
       toast.error("Fehler beim Laden der Konfigurationsdaten");
       console.error(error);
     }
@@ -575,6 +575,7 @@ const Dashboard = () => {
           email: targetConnectorData?.username || "",
           password: targetConnectorData?.password || "",
         },
+        scopeConfig: currentMigration.scopeConfig,
       });
       setShowEditConfigDialog(true);
     } catch (error: any) {

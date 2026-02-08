@@ -601,9 +601,9 @@ async function processJob(job: any) {
                   result = parsed;
                   resultMessageText = JSON.stringify(parsed);
                   
-                  if (result.targetScope?.status === 'not_found' || result.targetScope?.status === 'unauthorized') {
+                  if (result.targetScope?.status === 'not_found' || result.targetScope?.status === 'unauthorized' || result.targetScope?.status === 'conflict') {
                     isLogicalFailure = true;
-                    failureMessage = `Ziel-Scope '${scopeConfig.targetName}' wurde nicht gefunden oder Zugriff verweigert.`;
+                    failureMessage = result.summary || `Ziel-Konfiguration fehlerhaft: ${result.targetScope?.status}`;
                   }
                 } catch (e) {
                   result = { text: lastMessageText };

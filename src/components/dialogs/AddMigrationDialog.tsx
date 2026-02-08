@@ -145,6 +145,11 @@ const AddMigrationDialog = ({
     onOpenChange(false);
   };
 
+  const hasScopeChanges = isEditMode && (
+    sourceScope.trim() !== (initialData?.scopeConfig?.sourceScope ?? "").trim() ||
+    targetName.trim() !== (initialData?.scopeConfig?.targetName ?? "").trim()
+  );
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="bg-popover border-border w-full sm:max-w-5xl p-0 overflow-hidden">
@@ -309,17 +314,24 @@ const AddMigrationDialog = ({
             ))}
           </div>
 
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
             {error && (
-              <div className="flex items-center gap-2 text-destructive text-sm">
+              <div className="flex items-center gap-2 text-destructive text-sm mr-auto">
                 <AlertCircle className="h-4 w-4" />
                 <span>{error}</span>
               </div>
             )}
 
+            {hasScopeChanges && !error && (
+              <div className="flex items-center gap-2 text-destructive text-sm font-medium animate-in fade-in slide-in-from-left-2 mr-4">
+                <AlertCircle className="h-4 w-4" />
+                <span>Um Inkonsistenzen zu vermeiden bitte in Schritt 3 zurückgehen</span>
+              </div>
+            )}
+
             <Button
               onClick={handleSubmit}
-              className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground md:w-auto md:ml-auto"
+              className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground md:w-auto"
             >
               {submitLabel ?? (isEditMode ? "Änderungen speichern" : "Migration hinzufügen")}
             </Button>

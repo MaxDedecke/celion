@@ -7,15 +7,15 @@ Du bist die Target Validation Engine von Celion. Dein Ziel ist es, die Einsatzbe
 
 ### PHASE 1: TARGET EXPLORATION & SCOPE VALIDATION
 - Nutze 'smart_discovery', um die Top-Level-Strukturen (Workspaces, Projekte, Ordner) des Zielsystems aufzulisten.
-- FALLS eine 'targetName' in der 'Scope Config' angegeben ist:
-    * Suche nach einer Entität mit exakt diesem Namen.
-    * Falls gefunden: Setze 'targetScope.found' auf true und dokumentiere die ID.
-    * Falls NICHT gefunden: Dokumentiere dies als kritischen Fehler (Ziel-Scope existiert nicht).
-- FALLS KEIN 'targetName' angegeben ist:
-    * Dies bedeutet eine VOLL-MIGRATION. Das Zielsystem MUSS leer sein (keine User-Projekte/Daten).
-    * Dokumentiere alle vorhandenen Strukturen in 'rawOutput'.
-    * Falls das System NICHT leer ist: Setze 'targetScope.status' auf 'conflict' und warne in der 'summary' vor möglichen Daten-Überschneidungen.
+- FALLS KEIN 'sourceScope' (Quell-Projekt/ID) in der 'Scope Config' angegeben ist:
+    * Dies ist eine VOLL-MIGRATION. Das Zielsystem MUSS leer sein (keine User-Projekte/Daten).
+    * Falls das System NICHT leer ist: Setze 'targetScope.status' auf 'conflict' und warne in der 'summary'.
     * Falls das System leer ist: Setze 'targetScope.status' auf 'ready' und 'targetScope.isTargetEmpty' auf true.
+- FALLS EIN 'sourceScope' (Quell-Projekt/ID) angegeben ist:
+    * Dies ist eine BEREICHS-MIGRATION. Das Zielsystem DARF bereits Daten/Projekte enthalten.
+    * Falls ein 'targetName' angegeben ist: Suche nach einer Entität mit diesem Namen. Falls gefunden, dokumentiere die ID und prüfe auf Schreibrechte.
+    * Falls KEIN 'targetName' angegeben ist: Prüfe die allgemeine Erreichbarkeit für neue Projekte.
+    * Setze 'targetScope.status' auf 'ready', solange kein direkter Namenskonflikt für das neue Projekt besteht.
 
 ### PHASE 2: COMPATIBILITY & PERMISSIONS
 - Überprüfe Schreibrechte für die wichtigsten Entitäten (Tasks, Folders, etc.).
@@ -34,7 +34,7 @@ Du bist die Target Validation Engine von Celion. Dein Ziel ist es, die Einsatzbe
     "writableEntities": ["string"],
     "existingEntities": ["string"]
   },
-  "summary": "Deutsche Zusammenfassung: Ist das Ziel für den gewählten Modus (Voll vs. Scope) geeignet?",
+  "summary": "Deutsche Zusammenfassung: Ist das Ziel für den gewählten Modus (Voll vs. Bereich) geeignet?",
   "rawOutput": "Detaillierte Liste der gefundenen Strukturen im Zielsystem."
 }
 `;
@@ -64,7 +64,7 @@ export async function* runTargetDiscovery(
   url: string,
   systemScheme: any,
   credentials: { email?: string; apiToken?: string },
-  scopeConfig?: { targetName?: string }
+  scopeConfig?: { targetName?: string; sourceScope?: string }
 ): AsyncGenerator<Message> {
   const { apiKey, baseUrl, projectId } = resolveOpenAiConfig();
   const headers = buildOpenAiHeaders(apiKey, projectId);
@@ -81,7 +81,8 @@ Scope Config: ${JSON.stringify(scopeConfig || {}, null, 2)}
 
 ### TARGET VALIDATION TASK:
 Bitte prüfe, ob das Zielsystem bereit ist. 
-${scopeConfig?.targetName ? `Besonderer Fokus: Existiert das Ziel-Projekt/Workspace mit dem Namen "**${scopeConfig.targetName}**"?` : 'Prüfe die allgemeine Erreichbarkeit und Schreibrechte der Endpunkte.'}
+${scopeConfig?.sourceScope ? `Bereichs-Migration (Quelle: ${scopeConfig.sourceScope}). Vorhandene Daten im Ziel sind erlaubt.` : 'Voll-Migration geplant. Zielsystem sollte leer sein.'}
+${scopeConfig?.targetName ? `Besonderer Fokus: Ziel-Projekt/Workspace soll "**${scopeConfig.targetName}**" heißen.` : ''}
   `;
 
   const messages: any[] = [
