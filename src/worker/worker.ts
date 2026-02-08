@@ -27,6 +27,75 @@ async function writeChatMessage(migrationId: string, role: string, content: stri
   );
 }
 
+// Result Persistence Helpers
+async function saveStep1Result(migrationId: string, mode: string, result: any) {
+  await pool.query(
+    `INSERT INTO public.step_1_results (migration_id, system_mode, detected_system, confidence_score, api_type, api_subtype, recommended_base_url, raw_json)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+     ON CONFLICT (migration_id, system_mode) DO UPDATE SET
+       detected_system = EXCLUDED.detected_system,
+       confidence_score = EXCLUDED.confidence_score,
+       api_type = EXCLUDED.api_type,
+       api_subtype = EXCLUDED.api_subtype,
+       recommended_base_url = EXCLUDED.recommended_base_url,
+       raw_json = EXCLUDED.raw_json,
+       created_at = now()`,
+    [
+      migrationId, mode, 
+      result.detected_system || result.systemName, 
+      result.confidenceScore, 
+      result.apiTypeDetected, 
+      result.apiSubtype, 
+      result.recommendedBaseUrl, 
+      result
+    ]
+  );
+}
+
+async function saveStep2Result(migrationId: string, mode: string, result: any) {
+  await pool.query(
+    `INSERT INTO public.step_2_results (migration_id, system_mode, is_authenticated, auth_type, error_message, raw_json)
+     VALUES ($1, $2, $3, $4, $5, $6)
+     ON CONFLICT (migration_id, system_mode) DO UPDATE SET
+       is_authenticated = EXCLUDED.is_authenticated,
+       auth_type = EXCLUDED.auth_type,
+       error_message = EXCLUDED.error_message,
+       raw_json = EXCLUDED.raw_json,
+       created_at = now()`,
+    [
+      migrationId, mode, 
+      result.authenticated ?? result.success, 
+      result.authType || result.auth_method, 
+      result.error || result.error_message, 
+      result
+    ]
+  );
+}
+
+async function saveStep3Result(migrationId: string, result: any) {
+  // 1. Update overall complexity score
+  if (result.complexityScore !== undefined) {
+    await pool.query('UPDATE public.migrations SET complexity_score = $1 WHERE id = $2', [result.complexityScore, migrationId]);
+  }
+
+  // 2. Save entities (Inventory)
+  if (result.entities && Array.isArray(result.entities)) {
+    for (const entity of result.entities) {
+      await pool.query(
+        `INSERT INTO public.step_3_results (migration_id, entity_name, count, complexity, error_message, raw_json)
+         VALUES ($1, $2, $3, $4, $5, $6)
+         ON CONFLICT (migration_id, entity_name) DO UPDATE SET
+           count = EXCLUDED.count,
+           complexity = EXCLUDED.complexity,
+           error_message = EXCLUDED.error_message,
+           raw_json = EXCLUDED.raw_json,
+           created_at = now()`,
+        [migrationId, entity.name, entity.count || 0, entity.complexity, entity.error, entity]
+      );
+    }
+  }
+}
+
 const ensureWorkflowState = (state: any = {}) => {
   const safeState = state || {};
   const nodes = Array.isArray(safeState.nodes) ? [...safeState.nodes] : [];
@@ -174,6 +243,11 @@ async function processJob(job: any) {
 
       // Ergebnis-Nachricht senden bevor wir den Status finalisieren (Interaktivität)
       await writeChatMessage(migrationId, 'assistant', resultMessageText, currentStepNumber);
+
+      // Persistence: Save structured result
+      if (!isLogicalFailure) {
+        await saveStep1Result(migrationId, mode, result);
+      }
 
       // 3. Abschluss-Status setzen (Transaction 2)
       const finishClient = await pool.connect();
@@ -343,6 +417,11 @@ async function processJob(job: any) {
             // Ergebnis-Nachricht senden
             await writeChatMessage(migrationId, 'assistant', resultMessageText, currentStepNumber);
 
+            // Persistence: Save inventory
+            if (!isLogicalFailure) {
+              await saveStep3Result(migrationId, result);
+            }
+
             // 3. Abschluss-Status setzen
             const finishClient = await pool.connect();
             try {
@@ -481,6 +560,11 @@ async function processJob(job: any) {
 
       // Ergebnis-Nachricht senden
       await writeChatMessage(migrationId, 'assistant', resultMessageText, currentStepNumber);
+
+      // Persistence: Save structured result
+      if (!isLogicalFailure) {
+        await saveStep2Result(migrationId, mode, result);
+      }
 
       // 3. Abschluss-Status setzen (Transaction 2)
       const finishClient = await pool.connect();

@@ -483,3 +483,52 @@ CREATE INDEX IF NOT EXISTS idx_migration_chat_messages_migration_id ON public.mi
 ALTER TABLE public.migrations
 ADD COLUMN IF NOT EXISTS current_step integer NOT NULL DEFAULT 0,
 ADD COLUMN IF NOT EXISTS step_status text NOT NULL DEFAULT 'idle' CHECK (step_status IN ('idle', 'pending', 'running', 'completed', 'failed'));
+
+-- -------------------------
+-- Structured Agent Results
+-- -------------------------
+
+-- Step 1: System Detection Results
+CREATE TABLE IF NOT EXISTS public.step_1_results (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  migration_id uuid NOT NULL REFERENCES public.migrations(id) ON DELETE CASCADE,
+  system_mode text NOT NULL CHECK (system_mode IN ('source', 'target')),
+  detected_system text,
+  confidence_score numeric,
+  api_type text,
+  api_subtype text,
+  recommended_base_url text,
+  raw_json jsonb DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  UNIQUE(migration_id, system_mode)
+);
+
+-- Step 2: Authentication Results
+CREATE TABLE IF NOT EXISTS public.step_2_results (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  migration_id uuid NOT NULL REFERENCES public.migrations(id) ON DELETE CASCADE,
+  system_mode text NOT NULL CHECK (system_mode IN ('source', 'target')),
+  is_authenticated boolean NOT NULL DEFAULT false,
+  auth_type text,
+  error_message text,
+  raw_json jsonb DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  UNIQUE(migration_id, system_mode)
+);
+
+-- Step 3: Capability Discovery Results (Inventory)
+CREATE TABLE IF NOT EXISTS public.step_3_results (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  migration_id uuid NOT NULL REFERENCES public.migrations(id) ON DELETE CASCADE,
+  entity_name text NOT NULL,
+  count integer NOT NULL DEFAULT 0,
+  complexity text, -- 'low', 'medium', 'high'
+  error_message text,
+  raw_json jsonb DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  UNIQUE(migration_id, entity_name)
+);
+
+-- Add complexity score to migrations table
+ALTER TABLE public.migrations
+ADD COLUMN IF NOT EXISTS complexity_score integer DEFAULT 0;
