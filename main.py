@@ -2209,6 +2209,59 @@ async def enqueue_migration_step(payload: RunStepRequest) -> dict[str, Any]:
         raise HTTPException(status_code=500, detail=str(exc)) from exc
 
 
+@app.get("/api/migrations/{id}/results")
+async def get_migration_results(id: str) -> dict[str, Any]:
+    """Fetch all structured results for steps 1, 2, and 3."""
+    try:
+        results = {"step_1": [], "step_2": [], "step_3": []}
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            # Step 1
+            cur.execute("SELECT * FROM public.step_1_results WHERE migration_id = %s", (id,))
+            results["step_1"] = [dict(row) for row in cur.fetchall()]
+            
+            # Step 2
+            cur.execute("SELECT * FROM public.step_2_results WHERE migration_id = %s", (id,))
+            results["step_2"] = [dict(row) for row in cur.fetchall()]
+            
+            # Step 3
+            cur.execute("SELECT * FROM public.step_3_results WHERE migration_id = %s", (id,))
+            results["step_3"] = [dict(row) for row in cur.fetchall()]
+            
+        return results
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+class UpdateResultPayload(BaseModel):
+    step: int
+    system_mode: Optional[str] = None # For step 1 & 2
+    entity_name: Optional[str] = None # For step 3
+    new_json: Dict[str, Any]
+
+@app.patch("/api/migrations/{id}/results")
+async def update_migration_result(id: str, payload: UpdateResultPayload) -> dict[str, Any]:
+    """Update a specific agent result record."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            if payload.step == 1:
+                cur.execute(
+                    "UPDATE public.step_1_results SET raw_json = %s, updated_at = now() WHERE migration_id = %s AND system_mode = %s",
+                    (json.dumps(payload.new_json), id, payload.system_mode)
+                )
+            elif payload.step == 2:
+                cur.execute(
+                    "UPDATE public.step_2_results SET raw_json = %s, updated_at = now() WHERE migration_id = %s AND system_mode = %s",
+                    (json.dumps(payload.new_json), id, payload.system_mode)
+                )
+            elif payload.step == 3:
+                cur.execute(
+                    "UPDATE public.step_3_results SET raw_json = %s, updated_at = now() WHERE migration_id = %s AND entity_name = %s",
+                    (json.dumps(payload.new_json), id, payload.entity_name)
+                )
+            conn.commit()
+        return {"message": "Result updated successfully"}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
 def _cli(url: str) -> int:
     """Provide a clear CLI notice that legacy agents are no longer available."""
 

@@ -121,7 +121,7 @@ const ChatMessageList = ({
       {showContinueButton && !isAgentRunning && (
         <div className="flex items-center gap-2 animate-fade-in pt-4 pl-11">
           <button 
-            onClick={onContinue}
+            onClick={() => onContinue?.()}
             className="text-sm text-primary hover:text-primary/80 flex items-center gap-1.5 transition-all group"
           >
             <ArrowRight className="h-3.5 w-3.5 group-hover:translate-x-0.5 transition-transform" />

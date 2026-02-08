@@ -1,14 +1,22 @@
-import { useCallback, useEffect, useState, forwardRef } from "react";
+import { useCallback, useEffect, useState, forwardRef, useImperativeHandle } from "react";
 import MigrationChatCard from "./migration/MigrationChatCard";
 import { toast } from "sonner";
 import type { MigrationDetailsProps } from "./migration/migrationDetails.types";
+import WorkflowPanelDialog from "./dialogs/WorkflowPanelDialog";
 
 export interface MigrationDetailsRef {
-  // Kept for API compatibility, can be removed if not used elsewhere
+  openWorkflowPanel: () => void;
 }
 
 const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(({ project, onRefresh, onStepRunningChange }, ref) => {
   const [isStepRunning, setIsStepRunning] = useState(project.step_status === 'running');
+  const [isWorkflowPanelOpen, setIsWorkflowPanelOpen] = useState(false);
+
+  useImperativeHandle(ref, () => ({
+    openWorkflowPanel: () => {
+      setIsWorkflowPanelOpen(true);
+    }
+  }));
 
   useEffect(() => {
     const running = project.step_status === 'running';
@@ -17,12 +25,15 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
   }, [project.step_status, onStepRunningChange]);
 
   const handleNextWorkflowStep = useCallback(async (explicitStep?: number) => {
-    if (isStepRunning && !explicitStep) return;
+    // Safety: ensure explicitStep is a number and not a React event object
+    const validatedStep = typeof explicitStep === 'number' ? explicitStep : undefined;
+    
+    if (isStepRunning && !validatedStep) return;
 
     try {
       // If the last step failed, we retry it (current_step). 
       // Otherwise we move to the next step (current_step + 1).
-      const stepToRun = explicitStep || (project.step_status === 'failed' 
+      const stepToRun = validatedStep || (project.step_status === 'failed' 
         ? (project.current_step || 1) 
         : (project.current_step || 0) + 1);
 
@@ -103,6 +114,12 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
           onOpenAgentOutput={(stepId) => console.log("onOpenAgentOutput not implemented", stepId)}
         />
       </div>
+
+      <WorkflowPanelDialog 
+        open={isWorkflowPanelOpen} 
+        onOpenChange={setIsWorkflowPanelOpen} 
+        migrationId={project.id} 
+      />
     </div>
   );
 });
