@@ -315,11 +315,8 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
   return (
     <div
       className={cn(
-        "flex w-full gap-3 rounded-2xl p-2 transition-all duration-300",
-        "bg-transparent border-transparent",
-        message.role === "user" && "ml-auto",
-        message.role === "system" && "max-w-[85%]",
-        message.role !== "system" && "max-w-[90%]",
+        "flex w-full gap-3 py-2 transition-all duration-300 animate-fade-in",
+        message.role === "user" ? "flex-row-reverse" : "flex-row"
       )}
     >
       <div className="h-8 w-8 shrink-0 flex items-center justify-center">
@@ -328,29 +325,38 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
         )}
       </div>
       
-      <div className="min-w-0 flex-1">
-        <div className="mb-1 flex items-center gap-2">
+      <div className={cn(
+        "flex flex-col min-w-0",
+        message.role === "user" ? "items-end ml-auto" : "items-start mr-auto",
+        "max-w-[70%] sm:max-w-[60%] md:max-w-[50%]"
+      )}>
+        <div className={cn("mb-1 flex items-center gap-2", message.role === "user" && "flex-row-reverse")}>
           {message.stepInfo && (
             <Badge variant="outline" className="text-[10px] font-medium">
               {message.stepInfo.title}
             </Badge>
           )}
-          {/* ÄNDERUNG: Nutzung der neuen displayTime Variable */}
           <span className="text-[10px] text-muted-foreground">{formatTimestamp(displayTime)}</span>
         </div>
-        <div className={cn("text-sm leading-relaxed", getTextColor())}>
+        
+        <div className={cn(
+          "rounded-2xl px-4 py-2 text-sm leading-relaxed w-fit",
+          message.role === "user" 
+            ? "bg-primary/10 border border-primary/10 text-foreground text-left" 
+            : "bg-transparent text-foreground text-left",
+          derivedStatus === "success" && "bg-emerald-500/5 border-emerald-500/10",
+          derivedStatus === "error" && "bg-red-500/5 border-red-500/10",
+        )}>
           {jsonContent ? (
-            <div className="flex flex-col gap-2 items-start mt-1">
+            <div className="flex flex-col gap-2">
               {jsonContent.entities ? (
                 <DiscoveryReport data={jsonContent} />
               ) : (
                 <div className="prose prose-sm dark:prose-invert max-w-none text-foreground">
-                  <p className="mb-1">
-                    {renderFormattedContent(
-                      jsonContent.system_mode === 'source' ? "**Ergebnis der Analyse des Quellsystems:**" : 
-                      jsonContent.system_mode === 'target' ? "**Ergebnis der Analyse des Zielsystems:**" : 
-                      "**Ergebnis der Analyse:**"
-                    )}
+                  <p className="mb-1 font-semibold">
+                    {jsonContent.system_mode === 'source' ? "Analyse Quellsystem:" : 
+                     jsonContent.system_mode === 'target' ? "Analyse Zielsystem:" : 
+                     "Ergebnis:"}
                   </p>
                   {jsonContent.rawOutput && (
                     <p className="mt-0 opacity-90">
@@ -370,32 +376,11 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
                 variant="outline" 
                 size="sm" 
                 onClick={() => setShowJsonDialog(true)} 
-                className="h-7 text-xs bg-background/50 hover:bg-background"
+                className="h-7 text-xs bg-background/50 hover:bg-background mt-1"
               >
                 <FileJson className="w-3 h-3 mr-2" />
                 Details anzeigen
               </Button>
-              <Dialog open={showJsonDialog} onOpenChange={setShowJsonDialog}>
-                <DialogContent className="max-w-3xl">
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="absolute right-10 top-3 h-6 w-6 rounded-sm opacity-70 transition-opacity hover:opacity-100"
-                    onClick={handleCopyJson}
-                    title="JSON kopieren"
-                  >
-                    <Copy className="h-3.5 w-3.5" />
-                  </Button>
-                  <DialogHeader>
-                    <DialogTitle>Agent Output Details</DialogTitle>
-                  </DialogHeader>
-                  <ScrollArea className="max-h-[60vh] w-full rounded-md border p-4 bg-muted/30">
-                    <pre className="text-xs font-mono whitespace-pre-wrap break-all">
-                      {JSON.stringify(jsonContent, null, 2)}
-                    </pre>
-                  </ScrollArea>
-                </DialogContent>
-              </Dialog>
             </div>
           ) : (
             <>
@@ -417,6 +402,28 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
           )}
         </div>
       </div>
+
+      <Dialog open={showJsonDialog} onOpenChange={setShowJsonDialog}>
+        <DialogContent className="max-w-3xl">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="absolute right-10 top-3 h-6 w-6 rounded-sm opacity-70 transition-opacity hover:opacity-100"
+            onClick={handleCopyJson}
+            title="JSON kopieren"
+          >
+            <Copy className="h-3.5 w-3.5" />
+          </Button>
+          <DialogHeader>
+            <DialogTitle>Agent Output Details</DialogTitle>
+          </DialogHeader>
+          <ScrollArea className="max-h-[60vh] w-full rounded-md border p-4 bg-muted/30">
+            <pre className="text-xs font-mono whitespace-pre-wrap break-all">
+              {JSON.stringify(jsonContent, null, 2)}
+            </pre>
+          </ScrollArea>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
