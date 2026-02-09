@@ -18,9 +18,9 @@ const Logo = ({
       type="button"
     >
       <img
-        src="/placeholder.svg"
+        src="/logo_blank.png"
         alt="Celion logo"
-        className={cn("pt-2", imageClassName)}
+        className={imageClassName}
       />
       <span className={cn("font-bold text-foreground", textClassName)}>Celion</span>
     </button>

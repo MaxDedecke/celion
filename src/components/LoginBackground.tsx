@@ -45,10 +45,17 @@ const MigrationPath = ({
   );
 };
 
-const LoginBackground = () => {
+export const LoginBackground = () => {
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {/* Top left - large, slow */}
+      <div className="absolute inset-0 flex items-center justify-center pointer-events-none animate-drift-slow">
+        <img 
+          src="/logo_blank.png" 
+          alt="" 
+          className="w-[50vmin] h-[50vmin] object-contain opacity-[0.07] dark:opacity-[0.12] select-none pointer-events-none"
+        />
+      </div>
+
       <MigrationPath 
         className="absolute top-[12%] left-[3%]" 
         scale={1.1} 
@@ -58,7 +65,6 @@ const LoginBackground = () => {
         rotation={-8}
       />
       
-      {/* Bottom right - medium */}
       <MigrationPath 
         className="absolute bottom-[18%] right-[5%]" 
         scale={1.3} 
@@ -68,7 +74,6 @@ const LoginBackground = () => {
         rotation={5}
       />
       
-      {/* Top right - small, fast */}
       <MigrationPath 
         className="absolute top-[8%] right-[15%]" 
         scale={0.7} 
@@ -78,7 +83,6 @@ const LoginBackground = () => {
         rotation={15}
       />
       
-      {/* Bottom left - medium */}
       <MigrationPath 
         className="absolute bottom-[25%] left-[8%]" 
         scale={0.9} 
@@ -88,7 +92,6 @@ const LoginBackground = () => {
         rotation={-12}
       />
       
-      {/* Center left - subtle */}
       <MigrationPath 
         className="absolute top-[45%] left-[-2%]" 
         scale={0.6} 
@@ -98,7 +101,6 @@ const LoginBackground = () => {
         rotation={-3}
       />
       
-      {/* Center right - subtle */}
       <MigrationPath 
         className="absolute top-[55%] right-[-3%]" 
         scale={0.8} 

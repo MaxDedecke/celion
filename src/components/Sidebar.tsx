@@ -141,7 +141,7 @@ const Sidebar = ({
         "app-surface transition-all duration-300",
         isCollapsed
           ? "flex items-center justify-center self-start p-2"
-          : "flex h-full min-h-0 w-80 flex-col overflow-hidden p-4"
+          : "flex h-full min-h-0 w-80 flex-col overflow-hidden pt-1 px-4 pb-4"
       )}
     >
       {isCollapsed ? (
@@ -155,11 +155,12 @@ const Sidebar = ({
         </Button>
       ) : (
         <>
-          {/* Header - Fixed */}
           <div className="mb-6 flex w-full items-center justify-between gap-2 flex-shrink-0">
             <Logo
               onClick={() => navigate("/dashboard")}
               className="cursor-pointer transition-all"
+              imageClassName="h-14 w-14 pt-2"
+              textClassName="text-3xl ml-4"
             />
             <div className="flex items-center gap-1">
               <Button

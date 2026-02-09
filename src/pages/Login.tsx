@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import DataFlowLoader from "@/components/DataFlowLoader";
-import LoginBackground from "@/components/LoginBackground";
+import { LoginBackground } from "@/components/LoginBackground";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import Logo from "@/components/Logo";
@@ -130,8 +130,8 @@ const Login = () => {
         <div className="flex flex-col items-center gap-4 text-center">
           <Logo
             className="flex-col items-center gap-2 text-foreground"
-            textClassName="text-3xl tracking-[0.55em] text-foreground"
-            imageClassName="h-24 w-24"
+            textClassName="text-4xl tracking-[0.55em] pl-[0.55em] text-foreground"
+            imageClassName="h-[180px] w-[180px]"
           />
           <p className="text-sm text-muted-foreground">Melde dich an, um fortzufahren.</p>
         </div>
