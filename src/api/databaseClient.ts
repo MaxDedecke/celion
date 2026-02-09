@@ -324,6 +324,8 @@ export const databaseClient = {
 
   fetchMigrationResults: (migrationId: string) => fetchFromApi<any>(`/migrations/${migrationId}/results`),
 
+  fetchObjectSpecs: (systemName: string) => fetchFromApi<any>(`/schemes/objects/${systemName}`),
+
   updateMigrationResult: (migrationId: string, step: number, newJson: any, systemMode?: string, entityName?: string) => 
     fetchFromApi<any>(`/migrations/${migrationId}/results`, {
       method: "PATCH",

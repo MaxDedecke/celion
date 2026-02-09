@@ -2445,6 +2445,27 @@ async def get_migration_results(id: str) -> dict[str, Any]:
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
+@app.get("/api/schemes/objects/{system_name}")
+async def get_system_object_specs(system_name: str) -> dict[str, Any]:
+    """Fetch object specifications for a given system from the schemes/objects directory."""
+    try:
+        # Normalize system name to filename
+        import re
+        normalized = "".join(re.findall(r"[a-z0-9]", system_name.lower()))
+        filename = f"{normalized}_objects.json"
+        
+        scheme_path = os.path.join(os.getcwd(), "schemes", "objects", filename)
+        
+        if not os.path.exists(scheme_path):
+            raise HTTPException(status_code=404, detail=f"Object specs for system '{system_name}' not found at {scheme_path}")
+            
+        with open(scheme_path, "r", encoding="utf-8") as f:
+            return json.load(f)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
 @app.get("/api/migrations/{id}/pipelines")
 async def get_migration_pipelines(id: str) -> list[dict[str, Any]]:
     """Fetch all pipelines for a given migration."""
