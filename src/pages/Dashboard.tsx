@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Sidebar from "@/components/Sidebar";
 import UserMenu from "@/components/UserMenu";
@@ -652,6 +652,15 @@ const Dashboard = () => {
     ? [...migrations, ...standaloneMigrations].find((m) => m.id === selectedMigration)
     : null;
 
+  const isMappingEnabled = useMemo(() => {
+    if (!currentMigration) return false;
+    const rawStep = currentMigration.current_step || 0;
+    const isStepRunning = currentMigration.step_status === 'running' || currentMigration.step_status === 'pending';
+    const hasCurrentStepFailed = currentMigration.step_status === 'failed';
+    const completedCount = (isStepRunning || hasCurrentStepFailed) ? Math.max(0, rawStep - 1) : rawStep;
+    return completedCount >= 4;
+  }, [currentMigration]);
+
   // Load notes when current migration changes
   useEffect(() => {
     if (currentMigration) {
@@ -736,7 +745,7 @@ const Dashboard = () => {
                     size="icon"
                     onClick={() => migrationDetailsRef.current?.openWorkflowPanel()}
                     className="h-8 w-8"
-                    title="Workflow bearbeiten"
+                    title="Erkenntnisse"
                   >
                     <Workflow className="h-4 w-4" />
                   </Button>
@@ -745,7 +754,8 @@ const Dashboard = () => {
                     size="icon"
                     onClick={() => setShowMappingDialog(true)}
                     className="h-8 w-8"
-                    title="Model Mapping manuell bearbeiten"
+                    disabled={!isMappingEnabled}
+                    title={isMappingEnabled ? "Mappings" : "Mapping erst nach Abschluss von Schritt 4 verfügbar"}
                   >
                     <Network className="h-4 w-4" />
                   </Button>
