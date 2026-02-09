@@ -1,0 +1,184 @@
+{
+  "system": "ClickUp",
+  "objects": [
+    {
+      "key": "workspace",
+      "displayName": "Workspace / Arbeitsbereich",
+      "endpoint": "/api/v2/team",
+      "fields": [
+        { "id": "id", "name": "Workspace ID", "type": "text" },
+        { "id": "name", "name": "Workspace Name", "type": "text" },
+        { "id": "members", "name": "Members", "type": "array" }
+      ]
+    },
+    {
+      "key": "space",
+      "displayName": "Space",
+      "endpoint": "/api/v2/team/{team_id}/space",
+      "fields": [
+        { "id": "id", "name": "Space ID", "type": "text" },
+        { "id": "name", "name": "Space Name", "type": "text" },
+        { "id": "private", "name": "Is Private", "type": "boolean" },
+        { "id": "statuses", "name": "Statuses", "type": "array" }
+      ]
+    },
+    {
+      "key": "folder",
+      "displayName": "Folder / Ordner",
+      "endpoint": "/api/v2/space/{space_id}/folder",
+      "fields": [
+        { "id": "id", "name": "Folder ID", "type": "text" },
+        { "id": "name", "name": "Folder Name", "type": "text" }
+      ]
+    },
+    {
+      "key": "list",
+      "displayName": "List / Liste (in Folder)",
+      "endpoint": "/api/v2/folder/{folder_id}/list",
+      "fields": [
+        { "id": "id", "name": "List ID", "type": "text" },
+        { "id": "name", "name": "List Name", "type": "text" },
+        { "id": "content", "name": "Content / Description", "type": "text" },
+        { "id": "due_date", "name": "Due Date", "type": "date" }
+      ]
+    },
+    {
+      "key": "list_in_space",
+      "displayName": "List / Liste (direkt in Space)",
+      "endpoint": "/api/v2/space/{space_id}/list",
+      "fields": [
+        { "id": "id", "name": "List ID", "type": "text" },
+        { "id": "name", "name": "List Name", "type": "text" }
+      ]
+    },
+    {
+      "key": "task",
+      "displayName": "Task / Aufgabe (inkl. Subtasks)",
+      "endpoint": "/api/v2/team/{team_id}/task?include_closed=true&subtasks=true",
+      "fields": [
+        { "id": "id", "name": "ID", "type": "text" },
+        { "id": "name", "name": "Task Name", "type": "text" },
+        { "id": "description", "name": "Description", "type": "text" },
+        { "id": "status", "name": "Status", "type": "enum" },
+        { "id": "due_date", "name": "Due Date", "type": "date" },
+        { "id": "parent", "name": "Parent Task ID", "type": "text" },
+        { "id": "assignees", "name": "Assignees", "type": "array" },
+        { "id": "custom_fields", "name": "Custom Field Values", "type": "array" }
+      ]
+    },
+    {
+      "key": "archived_task",
+      "displayName": "Archivierte Aufgabe",
+      "endpoint": "/api/v2/team/{team_id}/task?archived=true&subtasks=true",
+      "fields": [
+        { "id": "id", "name": "ID", "type": "text" },
+        { "id": "name", "name": "Task Name", "type": "text" }
+      ]
+    },
+    {
+      "key": "custom_field_definition",
+      "displayName": "Custom Field Definition",
+      "endpoint": "/api/v2/list/{list_id}/field",
+      "fields": [
+        { "id": "id", "name": "Field ID", "type": "text" },
+        { "id": "name", "name": "Field Name", "type": "text" },
+        { "id": "type", "name": "Field Type", "type": "text" }
+      ]
+    },
+    {
+      "key": "member",
+      "displayName": "Member / Nutzer",
+      "endpoint": "/api/v2/team/{team_id}",
+      "fields": [
+        { "id": "id", "name": "User ID", "type": "number" },
+        { "id": "username", "name": "Username", "type": "text" },
+        { "id": "email", "name": "Email", "type": "text" }
+      ]
+    },
+    {
+      "key": "tag",
+      "displayName": "Tag / Schlagwort",
+      "endpoint": "/api/v2/space/{space_id}/tag",
+      "fields": [
+        { "id": "name", "name": "Tag Name", "type": "text" }
+      ]
+    },
+    {
+      "key": "goal",
+      "displayName": "Goal / Ziel",
+      "endpoint": "/api/v2/team/{team_id}/goal",
+      "fields": [
+        { "id": "id", "name": "Goal ID", "type": "text" },
+        { "id": "name", "name": "Goal Name", "type": "text" },
+        { "id": "percent_completed", "name": "Progress (%)", "type": "number" }
+      ]
+    },
+    {
+      "key": "time_entry",
+      "displayName": "Time Entry / Zeiterfassung",
+      "endpoint": "/api/v2/team/{team_id}/time_entries",
+      "fields": [
+        { "id": "id", "name": "Entry ID", "type": "text" },
+        { "id": "duration", "name": "Duration (ms)", "type": "number" },
+        { "id": "start", "name": "Start Time", "type": "date" }
+      ]
+    },
+    {
+      "key": "comment",
+      "displayName": "Comment / Kommentar",
+      "endpoint": "/api/v2/task/{task_id}/comment",
+      "fields": [
+        { "id": "id", "name": "Comment ID", "type": "text" },
+        { "id": "comment_text", "name": "Text", "type": "text" },
+        { "id": "date", "name": "Date", "type": "date" }
+      ]
+    },
+    {
+      "key": "attachment",
+      "displayName": "Attachment / Anhang",
+      "endpoint": "/api/v2/task/{task_id}/attachment",
+      "fields": [
+        { "id": "id", "name": "Attachment ID", "type": "text" },
+        { "id": "title", "name": "Filename", "type": "text" },
+        { "id": "url", "name": "Download URL", "type": "text" }
+      ]
+    },
+    {
+      "key": "checklist",
+      "displayName": "Checklist / Checkliste",
+      "endpoint": "/api/v2/task/{task_id}/checklist",
+      "fields": [
+        { "id": "id", "name": "Checklist ID", "type": "text" },
+        { "id": "name", "name": "Name", "type": "text" },
+        { "id": "items", "name": "Items", "type": "array" }
+      ]
+    },
+    {
+      "key": "task_template",
+      "displayName": "Task Template",
+      "endpoint": "/api/v2/team/{team_id}/task_template",
+      "fields": [
+        { "id": "id", "name": "Template ID", "type": "text" },
+        { "id": "name", "name": "Template Name", "type": "text" }
+      ]
+    },
+    {
+      "key": "shared_hierarchy",
+      "displayName": "Shared Hierarchy",
+      "endpoint": "/api/v2/team/{team_id}/shared_hierarchy",
+      "fields": [
+        { "id": "shared", "name": "Shared Objects", "type": "object" }
+      ]
+    },
+    {
+      "key": "view",
+      "displayName": "View / Ansicht",
+      "endpoint": "/api/v2/team/{team_id}/view",
+      "fields": [
+        { "id": "id", "name": "View ID", "type": "text" },
+        { "id": "name", "name": "View Name", "type": "text" },
+        { "id": "type", "name": "Type", "type": "text" }
+      ]
+    }
+  ]
+}

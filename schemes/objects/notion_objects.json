@@ -1,0 +1,74 @@
+{
+  "system": "Notion",
+  "objects": [
+    {
+      "key": "database",
+      "displayName": "Database / Datenbank",
+      "endpoint": "/v1/databases/{database_id}",
+      "fields": [
+        { "id": "id", "name": "Database ID", "type": "text" },
+        { "id": "title", "name": "Title", "type": "array" },
+        { "id": "properties", "name": "Property Definitions", "type": "object" },
+        { "id": "parent", "name": "Parent Location", "type": "object" },
+        { "id": "url", "name": "Notion URL", "type": "text" }
+      ]
+    },
+    {
+      "key": "page",
+      "displayName": "Page / Seite",
+      "endpoint": "/v1/pages/{page_id}",
+      "fields": [
+        { "id": "id", "name": "Page ID", "type": "text" },
+        { "id": "properties", "name": "Property Values", "type": "object" },
+        { "id": "parent", "name": "Parent (Database/Page)", "type": "object" },
+        { "id": "archived", "name": "Is Archived", "type": "boolean" },
+        { "id": "icon", "name": "Page Icon", "type": "object" },
+        { "id": "cover", "name": "Page Cover", "type": "object" }
+      ]
+    },
+    {
+      "key": "block",
+      "displayName": "Block / Inhaltselement",
+      "endpoint": "/v1/blocks/{block_id}/children",
+      "fields": [
+        { "id": "id", "name": "Block ID", "type": "text" },
+        { "id": "type", "name": "Block Type (paragraph, heading, etc.)", "type": "text" },
+        { "id": "has_children", "name": "Has Sub-Blocks", "type": "boolean" },
+        { "id": "content", "name": "Content Object", "type": "object" }
+      ]
+    },
+    {
+      "key": "user",
+      "displayName": "User / Nutzer",
+      "endpoint": "/v1/users/{user_id}",
+      "fields": [
+        { "id": "id", "name": "User ID", "type": "text" },
+        { "id": "name", "name": "Full Name", "type": "text" },
+        { "id": "type", "name": "User Type (person/bot)", "type": "text" },
+        { "id": "avatar_url", "name": "Avatar URL", "type": "text" },
+        { "id": "person", "name": "Email (if person)", "type": "object" }
+      ]
+    },
+    {
+      "key": "comment",
+      "displayName": "Comment / Kommentar",
+      "endpoint": "/v1/comments?block_id={block_id}",
+      "fields": [
+        { "id": "id", "name": "Comment ID", "type": "text" },
+        { "id": "parent", "name": "Parent Block/Page", "type": "object" },
+        { "id": "discussion_id", "name": "Discussion ID", "type": "text" },
+        { "id": "created_by", "name": "Author", "type": "object" },
+        { "id": "rich_text", "name": "Comment Content", "type": "array" }
+      ]
+    },
+    {
+      "key": "search",
+      "displayName": "Search / Suche (Global)",
+      "endpoint": "/v1/search",
+      "fields": [
+        { "id": "object", "name": "Object Type", "type": "text" },
+        { "id": "id", "name": "Result ID", "type": "text" }
+      ]
+    }
+  ]
+}
