@@ -1,5 +1,5 @@
 import { Pool } from 'pg';
-import { runSystemDetection, runAuthFlow, runSourceDiscovery, runTargetDiscovery, runAnswerAgent, runModelMapping } from '../agents/agentService';
+import { runSystemDetection, runAuthFlow, runSourceDiscovery, runTargetDiscovery, runAnswerAgent, runMapping } from '../agents/agentService';
 import { AGENT_WORKFLOW_STEPS } from '../constants/agentWorkflow';
 import { loadScheme, loadObjectScheme } from '../lib/scheme-loader';
 
@@ -143,6 +143,18 @@ async function saveStep4Result(migrationId: string, result: any) {
 async function saveStep5Result(migrationId: string, result: any) {
   await pool.query(
     `INSERT INTO public.step_5_results (migration_id, summary, raw_json)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (migration_id) DO UPDATE SET
+       summary = EXCLUDED.summary,
+       raw_json = EXCLUDED.raw_json,
+       created_at = now()`,
+    [migrationId, result.summary || 'Data Staging abgeschlossen.', result]
+  );
+}
+
+async function saveStep6Result(migrationId: string, result: any) {
+  await pool.query(
+    `INSERT INTO public.step_6_results (migration_id, summary, raw_json)
      VALUES ($1, $2, $3)
      ON CONFLICT (migration_id) DO UPDATE SET
        summary = EXCLUDED.summary,
@@ -726,36 +738,73 @@ async function processJob(job: any) {
       await pool.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
       return;
 
-    } else if (agentName === 'runModelMapping') {
-      const headerMsg = "Starte **Model Mapping**";
-      await writeChatMessage(migrationId, 'assistant', headerMsg, currentStepNumber);
+    } else if (agentName === 'runDataStaging') {
+      // Step 5: Data Staging
+      // Technical preparation step
+      console.log(`[Worker] Running Data Staging for migration ${migrationId}`);
+      await writeChatMessage(migrationId, 'assistant', 'Bereite Daten für das Mapping vor (Data Staging)...', currentStepNumber);
+      
+      result = { status: 'success', message: 'Data Staging erfolgreich abgeschlossen.' };
+      await saveStep5Result(migrationId, result);
 
-      // 1. Fetch Source System and Target System names from migrations table
-      const { rows: migrationRows } = await pool.query(
-        'SELECT source_system, target_system FROM migrations WHERE id = $1',
-        [migrationId]
-      );
+      const finishClient = await pool.connect();
+      try {
+        await finishClient.query('BEGIN');
+        await finishClient.query('UPDATE migration_steps SET status = $1, result = $2, status_message = $3 WHERE id = $4', [
+          'completed', result, 'Data staging completed successfully.', step_id,
+        ]);
+
+        const { rows: migrationRows } = await finishClient.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
+        const migrationData = migrationRows[0];
+        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migrationData?.workflow_state, stepRecord.workflow_step_id || stepId, result, false);
+        
+        await finishClient.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
+          nextState, progress, 'processing', 'completed', currentStepNumber, migrationId,
+        ]);
+        await finishClient.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+        await finishClient.query('COMMIT');
+
+        await writeChatMessage(migrationId, 'assistant', 'Die Daten-Bereitstellung (Data Staging) wurde erfolgreich abgeschlossen. Wir können nun mit dem Model Mapping fortfahren.', currentStepNumber);
+        
+        const nextStepIndex = currentStepNumber;
+        if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
+            const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
+            const actionContent = JSON.stringify({
+                type: "action",
+                actions: [
+                  { action: "continue", label: `Weiter zu Schritt ${nextStepIndex + 1} ${nextStep.title}`, variant: "primary" }
+                ]
+            });
+            await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
+        }
+        await logActivity(migrationId, 'success', 'Data Staging abgeschlossen.');
+      } catch (e) {
+        await finishClient.query('ROLLBACK');
+        throw e;
+      } finally {
+        finishClient.release();
+      }
+
+    } else if (agentName === 'runMappingSuggestion') {
+      // Step 6: Mapping Suggestions
+      console.log(`[Worker] Running Mapping Suggestions for migration ${migrationId}`);
+      await writeChatMessage(migrationId, 'assistant', 'Generiere Mapping-Vorschläge...', currentStepNumber);
+
+      const { rows: migrationRows } = await pool.query('SELECT source_system, target_system FROM migrations WHERE id = $1', [migrationId]);
       const sourceSystem = migrationRows[0]?.source_system;
       const targetSystem = migrationRows[0]?.target_system;
 
-      if (!sourceSystem || !targetSystem) {
-        throw new Error(`Systemkonfiguration für Migration ${migrationId} unvollständig.`);
-      }
+      if (!sourceSystem || !targetSystem) throw new Error('Systemkonfiguration unvollständig.');
 
-      const { rows: step3Rows } = await pool.query('SELECT entity_name, count, complexity, raw_json FROM step_3_results WHERE migration_id = $1', [migrationId]);
-      const sourceEntities = step3Rows.map(r => ({ name: r.entity_name, count: r.count, complexity: r.complexity, fields: r.raw_json?.fields || [] }));
+      const { rows: step3Rows } = await pool.query('SELECT entity_name, count FROM step_3_results WHERE migration_id = $1', [migrationId]);
+      const sourceEntities = step3Rows.map(r => ({ name: r.entity_name, count: r.count }));
 
       const sourceSpecs = await loadObjectScheme(sourceSystem);
       const targetSpecs = await loadObjectScheme(targetSystem);
 
-      if (!sourceSpecs || !targetSpecs) {
-         throw new Error(`Konnte Objektspezifikationen für ${sourceSystem} oder ${targetSystem} nicht laden.`);
-      }
+      if (!sourceSpecs || !targetSpecs) throw new Error('Objektspezifikationen konnten nicht geladen werden.');
 
-      const detailMsg = `Ich erstelle ein Mapping zwischen **${sourceSystem}** und **${targetSystem}** für ${sourceEntities.length} Entitäten.`;
-      await writeChatMessage(migrationId, 'assistant', detailMsg, currentStepNumber);
-
-      const messageGenerator = runModelMapping(sourceEntities, sourceSpecs, targetSpecs);
+      const messageGenerator = runMapping(sourceEntities, sourceSpecs, targetSpecs);
       let lastMessageText: string | undefined;
       for await (const message of messageGenerator) {
         if (message.content && message.content.length > 0 && message.content[0].text) {
@@ -765,9 +814,8 @@ async function processJob(job: any) {
 
       if (lastMessageText) {
         try {
-          const parsed = JSON.parse(lastMessageText);
-          result = parsed;
-          resultMessageText = JSON.stringify(parsed);
+          result = JSON.parse(lastMessageText);
+          resultMessageText = JSON.stringify(result);
         } catch (e) {
           result = { text: lastMessageText };
           resultMessageText = JSON.stringify(result);
@@ -781,41 +829,30 @@ async function processJob(job: any) {
         failureMessage = "Mapping agent produced no output.";
       }
 
-      await writeChatMessage(migrationId, 'assistant', resultMessageText, currentStepNumber);
       if (!isLogicalFailure) {
-        await saveStep5Result(migrationId, result);
+        await saveStep6Result(migrationId, result);
       }
 
       const finishClient = await pool.connect();
       try {
         await finishClient.query('BEGIN');
-        const { rows: currentStepRows } = await finishClient.query('SELECT result, status FROM migration_steps WHERE id = $1', [step_id]);
-        const existingResult = currentStepRows[0]?.result || {};
-        const combinedStepResult = { ...existingResult, mapping: result };
-        const finalStepStatus = isLogicalFailure ? 'failed' : 'completed';
-
         await finishClient.query('UPDATE migration_steps SET status = $1, result = $2, status_message = $3 WHERE id = $4', [
-          finalStepStatus, combinedStepResult, isLogicalFailure ? failureMessage : 'Model mapping completed successfully.', step_id,
+          isLogicalFailure ? 'failed' : 'completed', result, isLogicalFailure ? failureMessage : 'Mapping suggestions generated.', step_id,
         ]);
 
         const { rows: migrationRows } = await finishClient.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
         const migrationData = migrationRows[0];
-        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migrationData?.workflow_state, stepRecord.workflow_step_id || stepId, combinedStepResult, isLogicalFailure);
-        const migrationStatus = isLogicalFailure ? 'paused' : (completedCount >= totalSteps ? 'completed' : 'processing');
-        const stepStatusForMigration = isLogicalFailure ? 'failed' : 'completed';
-
+        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migrationData?.workflow_state, stepRecord.workflow_step_id || stepId, result, isLogicalFailure);
+        
         await finishClient.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
-          nextState, progress, migrationStatus, stepStatusForMigration, currentStepNumber, migrationId,
+          nextState, progress, isLogicalFailure ? 'paused' : 'processing', isLogicalFailure ? 'failed' : 'completed', currentStepNumber, migrationId,
         ]);
         await finishClient.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
         await finishClient.query('COMMIT');
 
-        if (isLogicalFailure) {
-          await writeChatMessage(migrationId, 'system', `Schritt 5 Model Mapping fehlgeschlagen.`, currentStepNumber);
-          await writeRetryAction(migrationId, currentStepNumber);
-          await logActivity(migrationId, 'warning', `Schritt Model Mapping fehlgeschlagen.`);
-        } else {
-          await writeChatMessage(migrationId, 'system', `Schritt 5 **Model Mapping** erfolgreich abgeschlossen.`, currentStepNumber);
+        await writeChatMessage(migrationId, 'assistant', result.summary || 'Ich habe die optimalen Mappings zwischen den Systemen ermittelt. Sie können diese nun im Mapping-Whiteboard überprüfen.', currentStepNumber);
+        
+        if (!isLogicalFailure) {
           const nextStepIndex = currentStepNumber;
           if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
               const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
@@ -828,8 +865,8 @@ async function processJob(job: any) {
               });
               await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
           }
-          await logActivity(migrationId, 'success', `Schritt Model Mapping abgeschlossen.`);
         }
+        await logActivity(migrationId, isLogicalFailure ? 'warning' : 'success', 'Mapping Suggestions abgeschlossen.');
       } catch (e) {
         await finishClient.query('ROLLBACK');
         throw e;

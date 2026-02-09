@@ -108,9 +108,12 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
           })));
         }
 
-        // 3. Fetch Existing Results (Step 5 Mapping)
+        // 3. Fetch Existing Results (Step 6 Mapping)
         const { data: results } = await databaseClient.fetchMigrationResults(migrationId);
-        if (results?.step_5?.[0]?.raw_json?.mappings) {
+        if (results?.step_6?.[0]?.raw_json?.mappings) {
+          setMappings(results.step_6[0].raw_json.mappings);
+        } else if (results?.step_5?.[0]?.raw_json?.mappings) {
+          // Fallback to step 5 if we just renamed everything
           setMappings(results.step_5[0].raw_json.mappings);
         }
       } catch (error) {
@@ -178,7 +181,7 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
   const handleSave = async () => {
     setIsSaving(true);
     try {
-      await databaseClient.updateMigrationResult(migrationId, 5, { mappings });
+      await databaseClient.updateMigrationResult(migrationId, 6, { mappings });
       toast.success("Mapping erfolgreich gespeichert");
     } catch (error) {
       console.error("Failed to save mappings:", error);
@@ -199,7 +202,7 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
                 Manual Model Mapping
               </DialogTitle>
               <DialogDescription>
-                Definieren Sie manuell die Relationen zwischen Quell- und Ziel-Entitäten für Schritt 5.
+                Definieren Sie manuell die Relationen zwischen Quell- und Ziel-Entitäten für Schritt 6.
               </DialogDescription>
             </div>
             <div className="flex items-center gap-4">

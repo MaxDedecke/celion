@@ -72,7 +72,7 @@ const ActivityTimeline = ({ activities }: ActivityTimelineProps) => {
       { key: "auth-flow", patterns: ["Authentifizierung", "Auth Flow", "Authenticated"] },
       { key: "schema-discovery", patterns: ["Capability Discovery", "Schema Discovery", "Source Discovery", "API-Spezifikation"] },
       { key: "target-schema", patterns: ["Target Schema", "Target Discovery", "Zielsystem analysiert"] },
-      { key: "model-mapping", patterns: ["Model Mapping", "Meta-Modell"] },
+      { key: "data-staging", patterns: ["Data Staging", "Staging"] },
       { key: "mapping-suggestion", patterns: ["Mapping Suggestion", "Mapping Suggestions", "Feld-Mapping"] },
       { key: "quality-enhancement", patterns: ["Quality Enhancement", "Consistency", "Validation", "Validierung"] },
       { key: "data-transfer", patterns: ["Data Transfer", "Migration", "Datenmigration"] },

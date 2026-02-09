@@ -32,11 +32,11 @@ export const AGENT_WORKFLOW_STEPS = [
     color: "amber",
   },
   {
-    id: "model-mapping",
-    title: "Model Mapping",
-    description: "Ordnet die erkannten Datenfelder des Quellsystems dem Celion-Meta-Modell zu, um eine standardisierte interne Repräsentation zu erzeugen.",
-    phase: "Model Mapping",
-    agentType: "model-mapping",
+    id: "data-staging",
+    title: "Data Staging",
+    description: "Ordnet die erkannten Datenfelder des Quellsystems dem Zielsystem zu und bereitet die Daten für den Transfer vor.",
+    phase: "Data Staging",
+    agentType: "data-staging",
     color: "rose",
   },
   {

@@ -658,7 +658,7 @@ const Dashboard = () => {
     const isStepRunning = currentMigration.step_status === 'running' || currentMigration.step_status === 'pending';
     const hasCurrentStepFailed = currentMigration.step_status === 'failed';
     const completedCount = (isStepRunning || hasCurrentStepFailed) ? Math.max(0, rawStep - 1) : rawStep;
-    return completedCount >= 4;
+    return completedCount >= 5;
   }, [currentMigration]);
 
   // Load notes when current migration changes

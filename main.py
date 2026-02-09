@@ -823,6 +823,8 @@ async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
                 cur.execute("DELETE FROM public.step_4_results WHERE migration_id = %s", (id,))
             if step <= 5:
                 cur.execute("DELETE FROM public.step_5_results WHERE migration_id = %s", (id,))
+            if step <= 6:
+                cur.execute("DELETE FROM public.step_6_results WHERE migration_id = %s", (id,))
             
             # 2. Reset overall migration complexity if step 3 is retried
             if step <= 3:
@@ -878,7 +880,7 @@ async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
                 2: "runAuthFlow",
                 3: "runCapabilityDiscovery",
                 4: "runTargetSchema",
-                5: "runModelMapping",
+                5: "runDataStaging",
                 6: "runMappingSuggestion",
                 7: "runQualityEnhancement",
                 8: "runDataTransfer",
@@ -1550,6 +1552,17 @@ async def duplicate_migration(id: str, user_id: str) -> Migration:
                 )
                 SELECT %s, summary, raw_json
                 FROM public.step_5_results WHERE migration_id = %s
+                """,
+                (new_migration_id, id)
+            )
+
+            cur.execute(
+                """
+                INSERT INTO public.step_6_results (
+                    migration_id, summary, raw_json
+                )
+                SELECT %s, summary, raw_json
+                FROM public.step_6_results WHERE migration_id = %s
                 """,
                 (new_migration_id, id)
             )
@@ -2431,9 +2444,9 @@ async def enqueue_migration_step(payload: RunStepRequest) -> dict[str, Any]:
 
 @app.get("/api/migrations/{id}/results")
 async def get_migration_results(id: str) -> dict[str, Any]:
-    """Fetch all structured results for steps 1, 2, 3, 4 and 5."""
+    """Fetch all structured results for steps 1, 2, 3, 4, 5 and 6."""
     try:
-        results = {"step_1": [], "step_2": [], "step_3": [], "step_4": [], "step_5": []}
+        results = {"step_1": [], "step_2": [], "step_3": [], "step_4": [], "step_5": [], "step_6": []}
         with _get_db_connection() as conn, conn.cursor() as cur:
             # Step 1
             cur.execute("SELECT * FROM public.step_1_results WHERE migration_id = %s", (id,))
@@ -2454,6 +2467,10 @@ async def get_migration_results(id: str) -> dict[str, Any]:
             # Step 5
             cur.execute("SELECT * FROM public.step_5_results WHERE migration_id = %s", (id,))
             results["step_5"] = [dict(row) for row in cur.fetchall()]
+
+            # Step 6
+            cur.execute("SELECT * FROM public.step_6_results WHERE migration_id = %s", (id,))
+            results["step_6"] = [dict(row) for row in cur.fetchall()]
             
         return results
     except Exception as exc:
@@ -2542,6 +2559,11 @@ async def update_migration_result(id: str, payload: UpdateResultPayload) -> dict
             elif payload.step == 5:
                 cur.execute(
                     "UPDATE public.step_5_results SET raw_json = %s, updated_at = now() WHERE migration_id = %s",
+                    (json.dumps(payload.new_json), id)
+                )
+            elif payload.step == 6:
+                cur.execute(
+                    "UPDATE public.step_6_results SET raw_json = %s, updated_at = now() WHERE migration_id = %s",
                     (json.dumps(payload.new_json), id)
                 )
             conn.commit()

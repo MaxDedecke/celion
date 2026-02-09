@@ -35,7 +35,7 @@ Antworte ausschließlich mit einem validen JSON-Objekt im folgenden Format:
 }
 `;
 
-export async function* runModelMapping(
+export async function* runMapping(
   sourceEntities: any[],
   sourceSpecs: any,
   targetSpecs: any
@@ -63,7 +63,7 @@ ${JSON.stringify(targetSpecs.objects, null, 2)}
     method: 'POST',
     headers,
     body: JSON.stringify({
-      model: "gpt-4o", // User asked for Gemini 3 Pro if possible, but we use gpt-4o as default if not configured.
+      model: "gpt-4o",
       messages,
       response_format: { type: "json_object" }
     }),
