@@ -2417,9 +2417,9 @@ async def enqueue_migration_step(payload: RunStepRequest) -> dict[str, Any]:
 
 @app.get("/api/migrations/{id}/results")
 async def get_migration_results(id: str) -> dict[str, Any]:
-    """Fetch all structured results for steps 1, 2, 3 and 4."""
+    """Fetch all structured results for steps 1, 2, 3, 4 and 5."""
     try:
-        results = {"step_1": [], "step_2": [], "step_3": [], "step_4": []}
+        results = {"step_1": [], "step_2": [], "step_3": [], "step_4": [], "step_5": []}
         with _get_db_connection() as conn, conn.cursor() as cur:
             # Step 1
             cur.execute("SELECT * FROM public.step_1_results WHERE migration_id = %s", (id,))
@@ -2436,6 +2436,10 @@ async def get_migration_results(id: str) -> dict[str, Any]:
             # Step 4
             cur.execute("SELECT * FROM public.step_4_results WHERE migration_id = %s", (id,))
             results["step_4"] = [dict(row) for row in cur.fetchall()]
+
+            # Step 5
+            cur.execute("SELECT * FROM public.step_5_results WHERE migration_id = %s", (id,))
+            results["step_5"] = [dict(row) for row in cur.fetchall()]
             
         return results
     except Exception as exc:
@@ -2498,6 +2502,11 @@ async def update_migration_result(id: str, payload: UpdateResultPayload) -> dict
             elif payload.step == 4:
                 cur.execute(
                     "UPDATE public.step_4_results SET raw_json = %s, updated_at = now() WHERE migration_id = %s",
+                    (json.dumps(payload.new_json), id)
+                )
+            elif payload.step == 5:
+                cur.execute(
+                    "UPDATE public.step_5_results SET raw_json = %s, updated_at = now() WHERE migration_id = %s",
                     (json.dumps(payload.new_json), id)
                 )
             conn.commit()

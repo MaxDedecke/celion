@@ -85,6 +85,12 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
             fields: [] // Future improvement: fetch actual target schema
           }));
           setTargetEntities(tEntities);
+
+          // Process Existing Mapping (Step 5)
+          const step5 = results.step_5?.[0];
+          if (step5?.raw_json?.mappings) {
+            setMappings(step5.raw_json.mappings);
+          }
         }
       } catch (error) {
         console.error("Failed to load entities for mapping:", error);
@@ -150,11 +156,15 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
 
   const handleSave = async () => {
     setIsSaving(true);
-    // Persist to DB logic placeholder
-    setTimeout(() => {
-      setIsSaving(false);
+    try {
+      await databaseClient.updateMigrationResult(migrationId, 5, { mappings });
       toast.success("Mapping erfolgreich gespeichert");
-    }, 800);
+    } catch (error) {
+      console.error("Failed to save mappings:", error);
+      toast.error("Fehler beim Speichern des Mappings");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (

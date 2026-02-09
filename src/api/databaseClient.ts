@@ -324,6 +324,13 @@ export const databaseClient = {
 
   fetchMigrationResults: (migrationId: string) => fetchFromApi<any>(`/migrations/${migrationId}/results`),
 
+  updateMigrationResult: (migrationId: string, step: number, newJson: any, systemMode?: string, entityName?: string) => 
+    fetchFromApi<any>(`/migrations/${migrationId}/results`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ step, new_json: newJson, system_mode: systemMode, entity_name: entityName })
+    }),
+
   fetchMigrationPipelines: (migrationId: string) => fetchFromApi<any[]>(`/migrations/${migrationId}/pipelines`),
 
   fetchPipelineMappings: (pipelineId: string) => fetchFromApi<any[]>(`/pipelines/${pipelineId}/mappings`),

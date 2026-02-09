@@ -547,3 +547,13 @@ CREATE TABLE IF NOT EXISTS public.step_4_results (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   UNIQUE(migration_id)
 );
+
+-- Step 5: Model Mapping Results
+CREATE TABLE IF NOT EXISTS public.step_5_results (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  migration_id uuid NOT NULL REFERENCES public.migrations(id) ON DELETE CASCADE,
+  summary text,
+  raw_json jsonb DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  UNIQUE(migration_id)
+);
