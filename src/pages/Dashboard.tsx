@@ -5,6 +5,7 @@ import UserMenu from "@/components/UserMenu";
 import AccountDialog from "@/components/dialogs/AccountDialog";
 import AddMigrationDialog from "@/components/dialogs/AddMigrationDialog";
 import EditMigrationDialog from "@/components/dialogs/EditMigrationDialog";
+import MappingDialog from "@/components/dialogs/MappingDialog";
 import MigrationDetails, { type MigrationDetailsRef } from "@/components/MigrationDetails";
 import DataFlowLoader from "@/components/DataFlowLoader";
 import { Button } from "@/components/ui/button";
@@ -22,7 +23,8 @@ import {
   Cpu,
   Activity as ActivityIcon,
   TrendingUp,
-  TrendingDown
+  TrendingDown,
+  Network
 } from "lucide-react";
 import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts";
 import { toast } from "sonner";
@@ -98,6 +100,7 @@ const Dashboard = () => {
   const [selectedMigration, setSelectedMigration] = useState<string | null>(migrationId || null);
   const [showAccountDialog, setShowAccountDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
+  const [showMappingDialog, setShowMappingDialog] = useState(false);
   
   const [migrations, setMigrations] = useState<any[]>([]);
   const [standaloneMigrations, setStandaloneMigrations] = useState<any[]>([]);
@@ -740,6 +743,15 @@ const Dashboard = () => {
                   <Button
                     variant="ghost"
                     size="icon"
+                    onClick={() => setShowMappingDialog(true)}
+                    className="h-8 w-8"
+                    title="Model Mapping manuell bearbeiten"
+                  >
+                    <Network className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    size="icon"
                     onClick={handleOpenEditConfig}
                     className="h-8 w-8"
                   >
@@ -1067,6 +1079,13 @@ const Dashboard = () => {
         onUpdate={handleUpdateMigration}
         currentName={editingMigration?.name || ""}
       />
+      {selectedMigration && (
+        <MappingDialog
+          open={showMappingDialog}
+          onOpenChange={setShowMappingDialog}
+          migrationId={selectedMigration}
+        />
+      )}
       {editConfigData && (
         <AddMigrationDialog
           open={showEditConfigDialog}

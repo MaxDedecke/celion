@@ -322,6 +322,12 @@ export const databaseClient = {
 
   fetchAllMappingsForSource: (pipelineId: string, sourceObjectType: string) => fetchFromApi<Tables<"field_mappings">[]>(`/field_mappings?pipeline_id=eq.${pipelineId}&source_object_type=eq.${sourceObjectType}`),
 
+  fetchMigrationResults: (migrationId: string) => fetchFromApi<any>(`/migrations/${migrationId}/results`),
+
+  fetchMigrationPipelines: (migrationId: string) => fetchFromApi<any[]>(`/migrations/${migrationId}/pipelines`),
+
+  fetchPipelineMappings: (pipelineId: string) => fetchFromApi<any[]>(`/pipelines/${pipelineId}/mappings`),
+
   upsertFieldMapping: (payload: TablesInsert<"field_mappings"> | TablesUpdate<"field_mappings">) => {
     const payloadArray = Array.isArray(payload) ? payload : [payload];
     return fetchFromApi<Tables<"field_mappings">>("/field_mappings", { method: "POST", body: JSON.stringify(payloadArray), headers: { "Content-Type": "application/json", "Prefer": "resolution=merge-duplicates" } });

@@ -2441,6 +2441,34 @@ async def get_migration_results(id: str) -> dict[str, Any]:
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
+@app.get("/api/migrations/{id}/pipelines")
+async def get_migration_pipelines(id: str) -> list[dict[str, Any]]:
+    """Fetch all pipelines for a given migration."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, migration_id, name, description, source_system, target_system, execution_order, is_active FROM public.pipelines WHERE migration_id = %s ORDER BY execution_order ASC",
+                (id,)
+            )
+            rows = cur.fetchall()
+            return [dict(row) for row in rows]
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+@app.get("/api/pipelines/{id}/mappings")
+async def get_pipeline_mappings(id: str) -> list[dict[str, Any]]:
+    """Fetch all field mappings for a given pipeline."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, pipeline_id, target_field_id, source_field_id, mapping_type, collection_item_field_id, join_with, description, source_object_type, target_object_type FROM public.field_mappings WHERE pipeline_id = %s",
+                (id,)
+            )
+            rows = cur.fetchall()
+            return [dict(row) for row in rows]
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
 class UpdateResultPayload(BaseModel):
     step: int
     system_mode: Optional[str] = None # For step 1 & 2
