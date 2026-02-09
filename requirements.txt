@@ -8,3 +8,4 @@ psycopg==3.1.19
 psycopg-binary==3.1.19
 # For RabbitMQ communication
 pika
+neo4j

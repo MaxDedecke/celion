@@ -4,7 +4,10 @@ import time
 import json
 import psycopg
 import psycopg.rows
-from typing import Any, Callable, Dict
+import requests
+from typing import Any, Callable, Dict, Optional
+from openai import OpenAI
+from neo4j import GraphDatabase
 
 # ----------------------------------------------------------------------------
 # Database Utilities
@@ -38,9 +41,9 @@ def _update_migration_step_status(conn: psycopg.Connection, migration_id: str, s
     
     # Determine the overall migration status based on step_status
     overall_migration_status: str
-    if step_status == 'completed':
+    if status == 'completed':
         overall_migration_status = 'completed'
-    elif step_status == 'failed':
+    elif status == 'failed':
         overall_migration_status = 'paused' # Or 'failed', depending on desired behavior
     else: # 'running', 'pending', 'idle'
         overall_migration_status = 'processing'
@@ -52,9 +55,410 @@ def _update_migration_step_status(conn: psycopg.Connection, migration_id: str, s
             SET current_step = %s, step_status = %s, status = %s
             WHERE id = %s
             """,
-            (step_number, step_status, overall_migration_status, migration_id),
+            (step_number, status, overall_migration_status, migration_id),
         )
         conn.commit()
+
+def _update_workflow_state(conn: psycopg.Connection, migration_id: str, workflow_state: Dict[str, Any]):
+    """Updates the workflow_state of a migration."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE public.migrations SET workflow_state = %s WHERE id = %s",
+            (json.dumps(workflow_state), migration_id),
+        )
+        conn.commit()
+
+def _get_connector(conn: psycopg.Connection, migration_id: str, connector_type: str = 'in'):
+    """Fetches connector details for a migration."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT api_url, api_key, username, password, auth_type FROM public.connectors WHERE migration_id = %s AND connector_type = %s",
+            (migration_id, connector_type),
+        )
+        return cur.fetchone()
+
+def _get_neo4j_driver():
+    """Create a new Neo4j driver using environment variables."""
+    uri = os.environ.get("NEO4J_URI", "bolt://neo4j-db:7687")
+    user = os.environ.get("NEO4J_USER", "neo4j")
+    password = os.environ.get("NEO4J_PASSWORD", "password")
+    return GraphDatabase.driver(uri, auth=(user, password))
+
+def _load_system_scheme(system_name: str):
+    """Loads a system scheme from the schemes directory."""
+    normalized = system_name.lower().replace(' ', '').replace('-', '')
+    # Check common variations
+    variations = [normalized, normalized.replace('cloud', ''), normalized.replace('server', '')]
+    
+    scheme_path = None
+    for var in variations:
+        path = f"/app/schemes/{var}.json"
+        if os.path.exists(path):
+            scheme_path = path
+            break
+        path = f"schemes/{var}.json"
+        if os.path.exists(path):
+            scheme_path = path
+            break
+            
+    if not scheme_path:
+        return None
+        
+    try:
+        with open(scheme_path, 'r') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"Error loading scheme {system_name}: {e}")
+        return None
+
+def _extract_items(body: Any, entity_name: str) -> list:
+    """Extracts a list of items from a response body."""
+    if isinstance(body, list): return body
+    if isinstance(body, dict):
+        # Try common keys
+        for key in [entity_name, 'items', 'data', 'tasks', 'results', 'values', 'elements']:
+            if key in body and isinstance(body[key], list):
+                return body[key]
+        # Search for any list
+        for key, value in body.items():
+            if isinstance(value, list):
+                return value
+    return []
+
+def _ingest_items_to_neo4j(driver, system_label, entity_name, items, migration_id):
+    """Ingests a batch of items into Neo4j."""
+    if not items:
+        return
+        
+    sanitized_items = []
+    for item in items:
+        sanitized = {}
+        # Ensure we have an ID
+        if not item.get('id'): continue
+        
+        for k, v in item.items():
+            if isinstance(v, (str, int, float, bool)) or v is None:
+                sanitized[k] = v
+        sanitized_items.append(sanitized)
+    
+    if not sanitized_items:
+        return
+
+    with driver.session() as session:
+        # We use external_id and migration_id as unique constraint
+        # Label is the system name (e.g. ClickUp)
+        query = (
+            f"UNWIND $items AS item "
+            f"MERGE (n:`{system_label}` {{ external_id: toString(item.id), migration_id: $migration_id }}) "
+            f"SET n.entity_type = $entity_type "
+            f"SET n += item"
+        )
+        session.run(
+            query,
+            items=sanitized_items, 
+            migration_id=str(migration_id), 
+            entity_type=entity_name
+        )
+
+def _run_reconciliation(conn: psycopg.Connection, migration_id: str, source_system: str):
+    """Phase 4: Reconciliation & Abschluss (Validierung)"""
+    _write_chat_message(conn, migration_id, 'system', 'Phase 4: Reconciliation starting...', 5)
+    
+    # 1. Get expected count from Step 3 (Source Discovery)
+    with conn.cursor() as cur:
+        cur.execute("SELECT SUM(count) as total FROM public.step_3_results WHERE migration_id = %s", (migration_id,))
+        row = cur.fetchone()
+        expected_count = int(row['total']) if row and row['total'] else 0
+        
+    # 2. Get actual count from Neo4j
+    actual_count = 0
+    driver = None
+    try:
+        driver = _get_neo4j_driver()
+        with driver.session() as session:
+            result = session.run(
+                f"MATCH (n:`{source_system}`) WHERE n.migration_id = $migration_id RETURN count(n) as total",
+                migration_id=str(migration_id)
+            )
+            record = result.single()
+            actual_count = record["total"] if record else 0
+    except Exception as e:
+        _write_chat_message(conn, migration_id, 'system', f"Failed to perform reconciliation count: {e}", 5)
+        raise e
+    finally:
+        if driver:
+            driver.close()
+            
+    # 3. Abgleich
+    _write_chat_message(conn, migration_id, 'system', f"Reconciliation: Expected {expected_count} objects, found {actual_count} in Neo4j.", 5)
+    
+    if expected_count > 0 and actual_count == 0:
+        error_msg = "Critical error: No objects were imported into Neo4j."
+        _write_chat_message(conn, migration_id, 'system', f"⚠️ {error_msg}", 5)
+        raise Exception(error_msg)
+        
+    diff = abs(expected_count - actual_count)
+    if expected_count > 0 and (diff / expected_count) > 0.1: # More than 10% difference
+        warning_msg = f"Warning: Large discrepancy detected ({diff} objects difference). Please check source system logs."
+        _write_chat_message(conn, migration_id, 'system', f"⚠️ {warning_msg}", 5)
+        # We don't raise here to allow the user to proceed if they want, but the warning is clear.
+
+    return actual_count
+
+def _run_graph_enhancement(conn: psycopg.Connection, migration_id: str, source_system: str):
+    """Phase 3: Graph-Enhancement (Agent-based)"""
+    _write_chat_message(conn, migration_id, 'system', 'Phase 3: Graph-Enhancement starting...', 5)
+    
+    driver = None
+    try:
+        driver = _get_neo4j_driver()
+    except Exception as e:
+        _write_chat_message(conn, migration_id, 'system', f"Failed to connect to Neo4j for enhancement: {e}", 5)
+        return
+
+    # 1. Extract sample nodes
+    _write_chat_message(conn, migration_id, 'system', 'Extracting sample nodes for relationship analysis...', 5)
+    sample_data = []
+    with driver.session() as session:
+        # Get a few nodes of each entity type
+        result = session.run(
+            f"MATCH (n:`{source_system}`) WHERE n.migration_id = $migration_id "
+            f"RETURN n.entity_type as type, collect(n)[..3] as samples",
+            migration_id=str(migration_id)
+        )
+        for record in result:
+            sample_data.append({
+                "type": record["type"],
+                "samples": [dict(node) for node in record["samples"]]
+            })
+
+    if not sample_data:
+        _write_chat_message(conn, migration_id, 'system', 'No nodes found in Neo4j to enhance.', 5)
+        return
+
+    # 2. Agent-Call: Analyze relationships
+    _write_chat_message(conn, migration_id, 'system', 'Analyzing potential relationships with AI...', 5)
+    
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    prompt = f"""
+    Ich habe folgende Nodes aus dem System '{source_system}' in Neo4j importiert (migration_id: '{migration_id}').
+    Analysiere die Properties auf potenzielle Beziehungen (z.B. IDs die auf andere Nodes verweisen wie parent_id, project_id, user_id).
+    
+    Node-Beispiele:
+    {json.dumps(sample_data, indent=2)}
+    
+    Generiere Cypher-Queries, um diese Beziehungen (Relationships) zu erstellen.
+    Nutze MERGE und stelle sicher, dass die Beziehung nur innerhalb dieser migration_id ('{migration_id}') und für das Label '{source_system}' erstellt wird.
+    
+    WICHTIG:
+    - Nutze `toString(item.property)` für ID Vergleiche, da Neo4j Properties als Strings gespeichert hat.
+    - Die Nodes haben das Label `{source_system}` und die Property `external_id`.
+    
+    Gib NUR ein JSON-Array mit Cypher-Queries zurück: ["MATCH ... MERGE ...", "MATCH ..."].
+    """
+    
+    try:
+        chat_completion = client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model=os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+            response_format={ "type": "json_object" }
+        )
+        # Expecting {"queries": ["..."]}
+        response_json = json.loads(chat_completion.choices[0].message.content)
+        queries = response_json.get("queries", [])
+        
+        if not queries and isinstance(response_json, list):
+            queries = response_json
+            
+        # 3. Execute Cypher Queries
+        _write_chat_message(conn, migration_id, 'system', f"Executing {len(queries)} enhancement queries...", 5)
+        
+        with driver.session() as session:
+            for query in queries:
+                try:
+                    session.run(query)
+                except Exception as query_error:
+                    print(f"Error executing Cypher: {query_error}\nQuery: {query}")
+
+        _write_chat_message(conn, migration_id, 'assistant', f"Graph enhancement complete. Created relationships based on AI analysis.", 5)
+        
+    except Exception as e:
+        print(f"Graph enhancement agent failed: {e}")
+        _write_chat_message(conn, migration_id, 'system', f"Graph enhancement failed: {e}", 5)
+    finally:
+        if driver:
+            driver.close()
+
+def _run_data_ingest_neo4j(conn: psycopg.Connection, migration_id: str, workflow_state: Dict[str, Any]):
+    """Phase 2: Programmatic Data Import in Neo4j"""
+    _write_chat_message(conn, migration_id, 'system', 'Phase 2: Programmatic Data Import in Neo4j starting...', 5)
+    
+    # 1. Get migration info
+    with conn.cursor() as cur:
+        cur.execute("SELECT source_system, scope_config FROM public.migrations WHERE id = %s", (migration_id,))
+        migration = cur.fetchone()
+        
+    source_system = migration['source_system']
+    scope_config = migration['scope_config'] or {}
+    
+    # 2. Load scheme
+    scheme = _load_system_scheme(source_system)
+    if not scheme:
+        _write_chat_message(conn, migration_id, 'system', f"Failed to load scheme for {source_system}. Skipping Neo4j ingest.", 5)
+        return
+
+    # 3. Get rate limit config
+    rate_limit = workflow_state.get('rate_limit_config', {"delay": 1.0, "batch_size": 50})
+    delay = rate_limit.get('delay', 1.0)
+    
+    # 4. Get entities from Step 3
+    with conn.cursor() as cur:
+        cur.execute("SELECT entity_name, count FROM public.step_3_results WHERE migration_id = %s", (migration_id,))
+        entities = cur.fetchall()
+
+    if not entities:
+        _write_chat_message(conn, migration_id, 'system', "No entities found from Step 3. Skipping Neo4j ingest.", 5)
+        return
+
+    connector = _get_connector(conn, migration_id, 'in')
+    if not connector:
+        _write_chat_message(conn, migration_id, 'system', "Source connector not found. Skipping Neo4j ingest.", 5)
+        return
+
+    # Neo4j setup
+    driver = None
+    try:
+        driver = _get_neo4j_driver()
+    except Exception as e:
+        _write_chat_message(conn, migration_id, 'system', f"Failed to connect to Neo4j: {e}. Skipping ingest.", 5)
+        return
+    
+    total_imported = 0
+    
+    try:
+        for entity in entities:
+            entity_name = entity['entity_name']
+            expected_count = entity['count']
+            
+            _write_chat_message(conn, migration_id, 'system', f"Importing {entity_name} (Goal: {expected_count})...", 5)
+            
+            # Find endpoint in scheme
+            endpoint = scheme.get('discovery', {}).get('endpoints', {}).get(entity_name)
+            if not endpoint:
+                _write_chat_message(conn, migration_id, 'system', f"No endpoint found for {entity_name} in scheme. Skipping.", 5)
+                continue
+            
+            # Replace placeholders from scope_config
+            for key, value in scope_config.items():
+                placeholder = "{" + key + "}"
+                if placeholder in endpoint:
+                    endpoint = endpoint.replace(placeholder, str(value))
+            
+            if "{" in endpoint:
+                 _write_chat_message(conn, migration_id, 'system', f"Endpoint {endpoint} still has unresolved placeholders. Skipping.", 5)
+                 continue
+
+            # Fetching
+            api_url = connector['api_url'].rstrip('/') + endpoint
+            headers = {"Accept": "application/json"}
+            auth = None
+            if connector['auth_type'] == 'api_key' and connector['api_key']:
+                headers["Authorization"] = f"Bearer {connector['api_key']}"
+            elif connector['auth_type'] == 'basic' and connector['username']:
+                auth = (connector['username'], connector['password'] or "")
+
+            try:
+                # Basic fetch for now - in production this would loop through pages
+                response = requests.get(api_url, headers=headers, auth=auth, timeout=30)
+                if response.status_code == 200:
+                    items = _extract_items(response.json(), entity_name)
+                    _ingest_items_to_neo4j(driver, source_system, entity_name, items, migration_id)
+                    
+                    imported_count = len(items)
+                    total_imported += imported_count
+                    _write_chat_message(conn, migration_id, 'system', f"Successfully imported {imported_count} {entity_name} to Neo4j.", 5)
+                else:
+                    _write_chat_message(conn, migration_id, 'system', f"Failed to fetch {entity_name}: HTTP {response.status_code}", 5)
+            except Exception as e:
+                _write_chat_message(conn, migration_id, 'system', f"Error during import of {entity_name}: {e}", 5)
+            
+            # Throttling
+            time.sleep(delay)
+            
+    finally:
+        if driver:
+            driver.close()
+
+    _write_chat_message(conn, migration_id, 'assistant', f"Phase 2 complete. {total_imported} objects imported to Neo4j.", 5)
+
+def _run_rate_limit_calibration(conn: psycopg.Connection, migration_id: str):
+    """Phase 1: Initial Rate-Limit Calibration (Agent-based)"""
+    _write_chat_message(conn, migration_id, 'system', 'Phase 1: Initial Rate-Limit Calibration starting...', 5)
+    
+    connector = _get_connector(conn, migration_id, 'in')
+    if not connector:
+        raise Exception("Source connector not found for rate-limit calibration.")
+
+    api_url = connector['api_url']
+    auth_type = connector['auth_type']
+    
+    # Prepare probe request
+    headers = {"Accept": "application/json"}
+    auth = None
+    if auth_type == 'api_key' and connector['api_key']:
+        # This is a bit generic, usually it's Bearer or a custom header. 
+        # For a probe, we try to be simple.
+        headers["Authorization"] = f"Bearer {connector['api_key']}"
+    elif auth_type == 'basic' and connector['username']:
+        auth = (connector['username'], connector['password'] or "")
+
+    # Perform Probe-Request (e.g., against the base URL or a common endpoint)
+    # For many APIs, just GETing the base URL or a /me endpoint works.
+    try:
+        # Try to find a sensible endpoint or just use the base URL
+        probe_url = api_url.rstrip('/')
+        _write_chat_message(conn, migration_id, 'system', f"Performing probe request to {probe_url}...", 5)
+        response = requests.get(probe_url, headers=headers, auth=auth, timeout=10)
+        
+        response_data = {
+            "status": response.status_code,
+            "headers": dict(response.headers),
+            "body": response.text[:1000] # Limit body size for the agent
+        }
+    except Exception as e:
+        _write_chat_message(conn, migration_id, 'system', f"Probe request failed: {e}. Using default rate limits.", 5)
+        return { "delay": 1.0, "batch_size": 50 }
+
+    # Agent-Call: Analyze response with OpenAI
+    _write_chat_message(conn, migration_id, 'system', 'Analyzing API response for rate limits...', 5)
+    
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    prompt = f"""
+    Analysiere diese API-Antwort und bestimme das optimale delay_seconds und die batch_size, 
+    um sicher unter dem Rate-Limit zu bleiben. Berücksichtige Header wie 'X-RateLimit-Limit', 
+    'Retry-After' oder ähnliche, falls vorhanden.
+    
+    API Antwort:
+    Status: {response_data['status']}
+    Headers: {json.dumps(response_data['headers'])}
+    Body: {response_data['body']}
+    
+    Gib NUR ein JSON zurück im Format: {{ "delay": float, "batch_size": int }}.
+    """
+    
+    try:
+        chat_completion = client.chat.completions.create(
+            messages=[{"role": "user", "content": prompt}],
+            model=os.environ.get("OPENAI_MODEL", "gpt-4o-mini"),
+            response_format={ "type": "json_object" }
+        )
+        result_json = json.loads(chat_completion.choices[0].message.content)
+        _write_chat_message(conn, migration_id, 'assistant', f"Rate-limit calibration complete: {result_json}", 5)
+        return result_json
+    except Exception as e:
+        print(f"Agent call failed: {e}")
+        _write_chat_message(conn, migration_id, 'system', f"Agent analysis failed: {e}. Using defaults.", 5)
+        return { "delay": 1.0, "batch_size": 50 }
 
 # ----------------------------------------------------------------------------
 # Agent Step Functions (Mocks)
@@ -88,11 +492,52 @@ def run_step_4_schema_generation(conn: psycopg.Connection, migration_id: str, pa
     result_message = "Schema generated for source and target systems."
     _write_chat_message(conn, migration_id, 'assistant', result_message, 4)
 
-def run_step_5_mapping_generation(conn: psycopg.Connection, migration_id: str, payload: Dict[str, Any]):
-    _write_chat_message(conn, migration_id, 'system', 'Starting Mapping Generation...', 5)
-    print(f"[{migration_id}] Running step 5: Mapping Generation")
-    time.sleep(2)
-    result_message = "Field and value mappings generated."
+def run_step_5_data_staging(conn: psycopg.Connection, migration_id: str, payload: Dict[str, Any]):
+    _write_chat_message(conn, migration_id, 'system', 'Starting Data Staging Engine...', 5)
+    print(f"[{migration_id}] Running step 5: Data Staging Engine")
+    
+    # Read current workflow_state
+    with conn.cursor() as cur:
+        cur.execute("SELECT workflow_state FROM public.migrations WHERE id = %s", (migration_id,))
+        row = cur.fetchone()
+        workflow_state = row['workflow_state'] if row and row['workflow_state'] else {}
+    
+    # Phase 1: Rate-Limit Calibration
+    rate_limit_config = _run_rate_limit_calibration(conn, migration_id)
+    workflow_state['rate_limit_config'] = rate_limit_config
+    _update_workflow_state(conn, migration_id, workflow_state)
+
+    # Phase 2: Neo4j Ingest
+    _run_data_ingest_neo4j(conn, migration_id, workflow_state)
+
+    # Phase 3: Graph-Enhancement
+    with conn.cursor() as cur:
+        cur.execute("SELECT source_system FROM public.migrations WHERE id = %s", (migration_id,))
+        source_system = cur.fetchone()['source_system']
+    _run_graph_enhancement(conn, migration_id, source_system)
+
+    # Phase 4: Reconciliation
+    actual_count = _run_reconciliation(conn, migration_id, source_system)
+
+    # Finalize Step 5
+    if 'staging' not in workflow_state:
+        workflow_state['staging'] = {}
+    
+    workflow_state['staging']['completed_at'] = time.strftime('%Y-%m-%d %H:%M:%S')
+    workflow_state['staging']['objects_staged'] = actual_count
+    workflow_state['staging']['status'] = 'completed'
+    
+    _update_workflow_state(conn, migration_id, workflow_state)
+    
+    # Update migration objects_transferred for progress display
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE public.migrations SET objects_transferred = %s WHERE id = %s",
+            (f"{actual_count}/{actual_count}", migration_id)
+        )
+        conn.commit()
+
+    result_message = f"Data Staging Engine completed successfully. {actual_count} objects are now available in the graph database for mapping and transformation."
     _write_chat_message(conn, migration_id, 'assistant', result_message, 5)
 
 def run_step_6_data_fetching(conn: psycopg.Connection, migration_id: str, payload: Dict[str, Any]):
@@ -140,7 +585,7 @@ STEP_DISPATCHER: Dict[int, Callable] = {
     2: run_step_2_auth_flow,
     3: run_step_3_capability_discovery,
     4: run_step_4_schema_generation,
-    5: run_step_5_mapping_generation,
+    5: run_step_5_data_staging,
     6: run_step_6_data_fetching,
     7: run_step_7_data_transformation,
     8: run_step_8_data_loading,
