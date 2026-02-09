@@ -74,7 +74,9 @@ const ChatMessageList = ({
   };
 
   // Find the latest action message to pin it to the bottom
-  const actionMessages = visibleMessages.filter(m => {
+  // ÄNDERUNG: Wir suchen in ALLEN Nachrichten, nicht nur in den sichtbaren.
+  // Damit verhindern wir, dass der Fallback-Button erscheint, während die echte Action-Message noch in der Animation-Queue steckt.
+  const actionMessages = messages.filter(m => {
     try {
       const parsed = JSON.parse(m.content);
       return parsed.type === 'action';
@@ -83,6 +85,7 @@ const ChatMessageList = ({
     }
   });
   const lastActionMessage = actionMessages[actionMessages.length - 1];
+  const isLastActionMessageVisible = lastActionMessage && visibleMessages.some(m => m.id === lastActionMessage.id);
 
   return (
     <div className="flex flex-col gap-2 pb-4 pr-3">
@@ -146,7 +149,7 @@ const ChatMessageList = ({
       )}
 
       {/* Pinned Action Buttons */}
-      {lastActionMessage && !isAgentRunning && !isConsultantThinking && (
+      {lastActionMessage && isLastActionMessageVisible && !isAgentRunning && !isConsultantThinking && (
         <div className="mt-4 border-t border-border/50 pt-4 px-2">
           <ChatMessage 
             message={lastActionMessage} 
@@ -157,7 +160,7 @@ const ChatMessageList = ({
       )}
       
       {/* Fallback Continue Button (if no explicit action message exists) */}
-      {showContinueButton && !isAgentRunning && !isConsultantThinking && !lastActionMessage && (
+      {showContinueButton && !isAgentRunning && !isConsultantThinking && !lastActionMessage && !hasQueuedMessages && (
         <div className="flex items-center gap-2 animate-fade-in pt-4 pl-11">
           <button 
             onClick={() => onContinue?.()}

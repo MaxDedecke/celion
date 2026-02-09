@@ -24,7 +24,7 @@ def _get_db_connection() -> psycopg.Connection:
         row_factory=psycopg.rows.dict_row,
     )
 
-def _write_chat_message(conn: psycopg.Connection, migration_id: str, role: str, content: str, step_number: int | None = None):
+def _write_chat_message(conn: psycopg.Connection, migration_id: str, role: str, content: str, step_number: Optional[int] = None):
     """Writes a message to the migration_chat_messages table."""
     with conn.cursor() as cur:
         cur.execute(
@@ -36,15 +36,42 @@ def _write_chat_message(conn: psycopg.Connection, migration_id: str, role: str, 
         )
         conn.commit()
 
-def _update_migration_step_status(conn: psycopg.Connection, migration_id: str, step_number: int, status: str, message: str | None = None):
+def _write_action_buttons(conn: psycopg.Connection, migration_id: str, step_number: int, next_step_title: Optional[str] = None):
+    """Writes action buttons (Continue/Retry) to the chat."""
+    actions = []
+    if next_step_title:
+        actions.append({
+            "action": "continue",
+            "label": f"Weiter zu Schritt {step_number + 1} {next_step_title}",
+            "variant": "primary"
+        })
+    
+    actions.append({
+        "action": "retry",
+        "label": f"Schritt {step_number} wiederholen",
+        "variant": "outline",
+        "stepNumber": step_number
+    })
+
+    action_content = json.dumps({
+        "type": "action",
+        "actions": actions
+    })
+    _write_chat_message(conn, migration_id, 'system', action_content, step_number)
+
+def _update_migration_step_status(conn: psycopg.Connection, migration_id: str, step_number: int, status: str, message: Optional[str] = None):
     """Updates the status of a migration and its current step."""
     
     # Determine the overall migration status based on step_status
     overall_migration_status: str
     if status == 'completed':
-        overall_migration_status = 'completed'
+        # Only set overall status to completed if it was the last step (10)
+        if step_number >= 10:
+            overall_migration_status = 'completed'
+        else:
+            overall_migration_status = 'processing'
     elif status == 'failed':
-        overall_migration_status = 'paused' # Or 'failed', depending on desired behavior
+        overall_migration_status = 'paused'
     else: # 'running', 'pending', 'idle'
         overall_migration_status = 'processing'
 
@@ -289,8 +316,45 @@ def _run_graph_enhancement(conn: psycopg.Connection, migration_id: str, source_s
         if driver:
             driver.close()
 
+def _build_request_headers(scheme, connector):
+    """Builds headers based on scheme authentication and connector credentials."""
+    headers = {"Accept": "application/json"}
+    
+    # Add static headers from scheme
+    if scheme.get('headers'):
+        headers.update(scheme['headers'])
+        
+    auth_config = scheme.get('authentication', {})
+    auth_type = auth_config.get('type')
+    
+    token = connector.get('api_key')
+    username = connector.get('username')
+    password = connector.get('password')
+    
+    if auth_type == 'bearer':
+        if token:
+            prefix = auth_config.get('tokenPrefix', 'Bearer ')
+            headers['Authorization'] = f"{prefix}{token}"
+            
+    elif auth_type == 'header':
+        header_name = auth_config.get('headerName', 'Authorization')
+        prefix = auth_config.get('tokenPrefix', '')
+        if token:
+             headers[header_name] = f"{prefix}{token}"
+             
+    elif auth_type == 'basic':
+        # Requests handles basic auth via the 'auth' parameter usually, 
+        # but we can also set the header manually.
+        if username:
+            import base64
+            creds = f"{username}:{password or ''}"
+            b64_creds = base64.b64encode(creds.encode()).decode()
+            headers['Authorization'] = f"Basic {b64_creds}"
+            
+    return headers
+
 def _run_data_ingest_neo4j(conn: psycopg.Connection, migration_id: str, workflow_state: Dict[str, Any]):
-    """Phase 2: Programmatic Data Import in Neo4j"""
+    """Phase 2: Programmatic Data Import in Neo4j (Agent-Driven)"""
     _write_chat_message(conn, migration_id, 'system', 'Phase 2: Programmatic Data Import in Neo4j starting...', 5)
     
     # 1. Get migration info
@@ -333,58 +397,135 @@ def _run_data_ingest_neo4j(conn: psycopg.Connection, migration_id: str, workflow
         _write_chat_message(conn, migration_id, 'system', f"Failed to connect to Neo4j: {e}. Skipping ingest.", 5)
         return
     
-    total_imported = 0
+    # --- AGENT SETUP ---
+    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     
+    system_prompt = f"""
+    Du bist ein Data Ingestion Agent. Deine Aufgabe ist es, Daten aus der API von '{source_system}' zu holen und in Neo4j zu speichern.
+    
+    DEINE ZIELE (Entities to fetch):
+    {json.dumps([{'name': e['entity_name'], 'goal_count': e['count']} for e in entities], indent=2)}
+    
+    START-KONTEXT (Bekannte IDs):
+    {json.dumps(scope_config, indent=2)}
+    
+    VERFÜGBARE ENDPUNKTE (aus Scheme):
+    {json.dumps(scheme.get('discovery', {}).get('endpoints', {}), indent=2)}
+    
+    REGELN:
+    1. Analysiere die Endpunkte. Wenn ein Endpunkt Platzhalter hat (z.B. {{team_id}}), MUSST du zuerst die Eltern-Ressource abrufen (z.B. 'teams'), um die ID zu erhalten.
+    2. Nutze das Tool 'fetch_and_ingest', um Daten zu laden. Das Tool speichert die Daten direkt in Neo4j und gibt dir eine Zusammenfassung (inklusive gefundener IDs).
+    3. Nutze die zurückgegebenen IDs, um die URLs für abhängige Ressourcen zu konstruieren.
+    4. Gehe methodisch vor: Top-Level zuerst, dann Drill-Down.
+    5. Wenn du alle Ziele erreicht hast oder nicht mehr weiterkommst, rufe keine Tools mehr auf und beende den Dialog.
+    
+    FORMAT:
+    Antworte mit kurzen Gedanken und nutze Tools.
+    """
+    
+    messages = [
+        {"role": "system", "content": system_prompt}
+    ]
+    
+    tools = [
+        {
+            "type": "function",
+            "function": {
+                "name": "fetch_and_ingest",
+                "description": "Ruft Daten von einer URL ab und speichert sie in Neo4j.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "entity_name": { "type": "string", "description": "Name der Entität (z.B. 'teams', 'tasks')." },
+                        "url": { "type": "string", "description": "Die V OLLSTÄNDIGE URL (inkl. Base URL und aufgelösten Platzhaltern)." }
+                    },
+                    "required": ["entity_name", "url"]
+                }
+            }
+        }
+    ]
+    
+    total_imported = 0
+    api_base_url = connector['api_url'].rstrip('/')
+    
+    # Keep track of coverage to avoid infinite loops
+    attempted_urls = set()
+
     try:
-        for entity in entities:
-            entity_name = entity['entity_name']
-            expected_count = entity['count']
-            
-            _write_chat_message(conn, migration_id, 'system', f"Importing {entity_name} (Goal: {expected_count})...", 5)
-            
-            # Find endpoint in scheme
-            endpoint = scheme.get('discovery', {}).get('endpoints', {}).get(entity_name)
-            if not endpoint:
-                _write_chat_message(conn, migration_id, 'system', f"No endpoint found for {entity_name} in scheme. Skipping.", 5)
-                continue
-            
-            # Replace placeholders from scope_config
-            for key, value in scope_config.items():
-                placeholder = "{" + key + "}"
-                if placeholder in endpoint:
-                    endpoint = endpoint.replace(placeholder, str(value))
-            
-            if "{" in endpoint:
-                 _write_chat_message(conn, migration_id, 'system', f"Endpoint {endpoint} still has unresolved placeholders. Skipping.", 5)
-                 continue
-
-            # Fetching
-            api_url = connector['api_url'].rstrip('/') + endpoint
-            headers = {"Accept": "application/json"}
-            auth = None
-            if connector['auth_type'] == 'api_key' and connector['api_key']:
-                headers["Authorization"] = f"Bearer {connector['api_key']}"
-            elif connector['auth_type'] == 'basic' and connector['username']:
-                auth = (connector['username'], connector['password'] or "")
-
+        # Agent Loop (max 15 turns for safety)
+        for turn in range(15):
             try:
-                # Basic fetch for now - in production this would loop through pages
-                response = requests.get(api_url, headers=headers, auth=auth, timeout=30)
-                if response.status_code == 200:
-                    items = _extract_items(response.json(), entity_name)
-                    _ingest_items_to_neo4j(driver, source_system, entity_name, items, migration_id)
-                    
-                    imported_count = len(items)
-                    total_imported += imported_count
-                    _write_chat_message(conn, migration_id, 'system', f"Successfully imported {imported_count} {entity_name} to Neo4j.", 5)
-                else:
-                    _write_chat_message(conn, migration_id, 'system', f"Failed to fetch {entity_name}: HTTP {response.status_code}", 5)
+                chat_completion = client.chat.completions.create(
+                    messages=messages,
+                    model=os.environ.get("OPENAI_MODEL", "gpt-4o"),
+                    tools=tools,
+                    tool_choice="auto"
+                )
             except Exception as e:
-                _write_chat_message(conn, migration_id, 'system', f"Error during import of {entity_name}: {e}", 5)
+                _write_chat_message(conn, migration_id, 'system', f"Agent interaction failed: {e}", 5)
+                break
+                
+            message = chat_completion.choices[0].message
+            messages.append(message)
             
-            # Throttling
-            time.sleep(delay)
-            
+            if message.content:
+                 # Log thought process but keep it brief in UI
+                 pass 
+
+            if not message.tool_calls:
+                _write_chat_message(conn, migration_id, 'system', "Agent finished ingestion plan.", 5)
+                break
+                
+            for tool_call in message.tool_calls:
+                if tool_call.function.name == "fetch_and_ingest":
+                    args = json.loads(tool_call.function.arguments)
+                    entity_name = args.get('entity_name')
+                    url_suffix = args.get('url') # Agent might send full or relative. Let's normalize.
+                    
+                    # Normalize URL
+                    if url_suffix.startswith('http'):
+                        url = url_suffix
+                    else:
+                        # Ensure no double slashes
+                        if not url_suffix.startswith('/'): url_suffix = '/' + url_suffix
+                        url = api_base_url + url_suffix
+                    
+                    # Deduplication check
+                    if url in attempted_urls:
+                         tool_result = "Skipping: URL already processed."
+                    else:
+                        attempted_urls.add(url)
+                        _write_chat_message(conn, migration_id, 'system', f"Agent fetching {entity_name} from {url}...", 5)
+                        
+                        # Execute Request
+                        headers = _build_request_headers(scheme, connector)
+                        try:
+                            response = requests.get(url, headers=headers, timeout=30)
+                            if response.status_code == 200:
+                                items = _extract_items(response.json(), entity_name)
+                                _ingest_items_to_neo4j(driver, source_system, entity_name, items, migration_id)
+                                
+                                count = len(items)
+                                total_imported += count
+                                
+                                # Extract sample IDs for the agent context
+                                sample_ids = [str(i.get('id')) for i in items[:10] if i.get('id')]
+                                tool_result = f"Success. Imported {count} items. Sample IDs found: {json.dumps(sample_ids)}"
+                                
+                            else:
+                                tool_result = f"Error: HTTP {response.status_code} - {response.text[:200]}"
+                        except Exception as req_err:
+                            tool_result = f"Exception: {str(req_err)}"
+                        
+                        time.sleep(delay) # Rate limit
+
+                    messages.append({
+                        "tool_call_id": tool_call.tool_call_id,
+                        "role": "tool",
+                        "name": "fetch_and_ingest",
+                        "content": tool_result
+                    })
+                    
     finally:
         if driver:
             driver.close()
@@ -453,7 +594,17 @@ def _run_rate_limit_calibration(conn: psycopg.Connection, migration_id: str):
             response_format={ "type": "json_object" }
         )
         result_json = json.loads(chat_completion.choices[0].message.content)
-        _write_chat_message(conn, migration_id, 'assistant', f"Rate-limit calibration complete: {result_json}", 5)
+        
+        # Prepare a structured result for the frontend
+        frontend_result = {
+            "status": "success",
+            "phase": "Rate-Limit Calibration",
+            "delay": result_json.get("delay"),
+            "batch_size": result_json.get("batch_size"),
+            "summary": f"Rate-Limits erfolgreich kalibriert: {result_json.get('delay')}s Verzögerung, Batch-Größe {result_json.get('batch_size')}.",
+            "rawOutput": json.dumps(result_json)
+        }
+        _write_chat_message(conn, migration_id, 'assistant', json.dumps(frontend_result), 5)
         return result_json
     except Exception as e:
         print(f"Agent call failed: {e}")
@@ -537,8 +688,16 @@ def run_step_5_data_staging(conn: psycopg.Connection, migration_id: str, payload
         )
         conn.commit()
 
+    # Success message
     result_message = f"Data Staging Engine completed successfully. {actual_count} objects are now available in the graph database for mapping and transformation."
     _write_chat_message(conn, migration_id, 'assistant', result_message, 5)
+    
+    # Add action buttons for the user
+    _write_action_buttons(conn, migration_id, 5, next_step_title="Mapping Suggestions")
+
+    # CRITICAL: Update status to completed LAST
+    # This ensures the frontend finds the action buttons as soon as it sees step_status 'completed'
+    _update_migration_step_status(conn, migration_id, 5, 'completed')
 
 def run_step_6_data_fetching(conn: psycopg.Connection, migration_id: str, payload: Dict[str, Any]):
     _write_chat_message(conn, migration_id, 'system', 'Starting Data Fetching...', 6)

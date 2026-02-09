@@ -49,6 +49,7 @@
     "input-otp": "^1.4.2",
     "keycloak-js": "^26.0.0",
     "lucide-react": "^0.462.0",
+    "neo4j-driver": "^6.0.1",
     "next": "^16.0.1",
     "next-themes": "^0.3.0",
     "node-fetch": "^3.3.2",
