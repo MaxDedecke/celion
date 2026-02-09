@@ -340,12 +340,13 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
         </div>
         
         <div className={cn(
-          "rounded-2xl px-4 py-2 text-sm leading-relaxed w-fit",
+          "rounded-2xl px-4 py-3 text-sm leading-relaxed w-fit border shadow-sm transition-all duration-200",
           message.role === "user" 
-            ? "bg-primary/10 border border-primary/10 text-foreground text-left" 
-            : "bg-transparent text-foreground text-left",
-          derivedStatus === "success" && "bg-emerald-500/5 border-emerald-500/10",
-          derivedStatus === "error" && "bg-red-500/5 border-red-500/10",
+            ? "bg-primary/5 border-primary/5 text-foreground text-left" 
+            : "bg-muted/30 border-muted/30 text-foreground text-left hover:border-primary/10 hover:shadow-md",
+          derivedStatus === "success" && "bg-emerald-500/5 border-emerald-500/5 shadow-emerald-500/5",
+          derivedStatus === "error" && "bg-red-500/5 border-red-500/5 shadow-red-500/5",
+          message.role === "system" && "bg-muted/20 border-muted/20 italic text-muted-foreground"
         )}>
           {jsonContent ? (
             <div className="flex flex-col gap-2">
@@ -376,7 +377,7 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
                 variant="outline" 
                 size="sm" 
                 onClick={() => setShowJsonDialog(true)} 
-                className="h-7 text-xs bg-background/50 hover:bg-background mt-1"
+                className="h-7 text-xs bg-background/50 hover:bg-background mt-1 w-48 self-center"
               >
                 <FileJson className="w-3 h-3 mr-2" />
                 Details anzeigen
