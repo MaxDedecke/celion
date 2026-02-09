@@ -221,9 +221,6 @@ const AddMigrationDialog = ({
               <div key={section.title} className="space-y-4 rounded-xl border border-border/70 bg-card/60 p-4 shadow-sm">
                 <div className="flex items-center justify-between gap-2">
                   <h3 className="text-sm font-semibold">{section.title}</h3>
-                  <span className="rounded-full bg-secondary/20 px-3 py-1 text-[11px] font-medium text-secondary-foreground">
-                    Verbindung
-                  </span>
                 </div>
 
                 <div className="grid grid-cols-2 gap-3">
@@ -249,7 +246,7 @@ const AddMigrationDialog = ({
                     </Select>
                   </div>
 
-                  <div className="space-y-2">
+                  <div className="space-y-3">
                     <div className="flex items-center gap-1.5">
                       <Label htmlFor={section.scopeId}>{section.scopeLabel}</Label>
                       <InfoTooltip content={section.scopeTooltip} side={section.tooltipSide} />

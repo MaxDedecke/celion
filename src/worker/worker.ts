@@ -27,6 +27,21 @@ async function writeChatMessage(migrationId: string, role: string, content: stri
   );
 }
 
+async function writeRetryAction(migrationId: string, stepNumber: number) {
+  const actionContent = JSON.stringify({
+    type: "action",
+    actions: [
+      {
+        action: "retry",
+        label: `Schritt ${stepNumber} wiederholen`,
+        variant: "outline",
+        stepNumber: stepNumber
+      }
+    ]
+  });
+  await writeChatMessage(migrationId, 'system', actionContent, stepNumber);
+}
+
 // Result Persistence Helpers
 async function saveStep1Result(migrationId: string, mode: string, result: any) {
   await pool.query(
@@ -345,6 +360,7 @@ async function processJob(job: any) {
         // Abschluss-Nachrichten (Sofort)
         if (isLogicalFailure) {
           await writeChatMessage(migrationId, 'system', `Schritt 1 System Detection fehlgeschlagen (**${mode === 'source' ? 'Quellsystem' : 'Zielsystem'}** passt nicht).`, currentStepNumber);
+          await writeRetryAction(migrationId, currentStepNumber);
           await logActivity(migrationId, 'warning', `Schritt ${mode}-Erkennung fehlgeschlagen.`);
         } else {
           // Explicitly state success for the current part
@@ -521,6 +537,7 @@ async function processJob(job: any) {
 
               if (isLogicalFailure) {
                 await writeChatMessage(migrationId, 'system', `Schritt 3 Source Discovery fehlgeschlagen.`, currentStepNumber);
+                await writeRetryAction(migrationId, currentStepNumber);
                 await logActivity(migrationId, 'warning', `Schritt Source Discovery fehlgeschlagen.`);
               } else {
                 await writeChatMessage(migrationId, 'system', `Schritt 3 **Source Discovery** erfolgreich abgeschlossen.`, currentStepNumber);
@@ -685,6 +702,7 @@ async function processJob(job: any) {
 
               if (isLogicalFailure) {
                 await writeChatMessage(migrationId, 'system', `Schritt 4 Target Discovery fehlgeschlagen.`, currentStepNumber);
+                await writeRetryAction(migrationId, currentStepNumber);
                 await logActivity(migrationId, 'warning', `Schritt Target Discovery fehlgeschlagen.`);
               } else {
                 await writeChatMessage(migrationId, 'system', `Schritt 4 **Target Discovery** erfolgreich abgeschlossen.`, currentStepNumber);
@@ -847,6 +865,7 @@ async function processJob(job: any) {
         // Abschluss-Nachrichten
         if (isLogicalFailure) {
           await writeChatMessage(migrationId, 'system', `Schritt 2 Authentication fehlgeschlagen (**${mode === 'source' ? 'Quellsystem' : 'Zielsystem'}** konnte nicht authentifiziert werden).`, currentStepNumber);
+          await writeRetryAction(migrationId, currentStepNumber);
           await logActivity(migrationId, 'warning', `Schritt ${mode}-Authentifizierung fehlgeschlagen.`);
         } else {
           await writeChatMessage(migrationId, 'system', `**${mode === 'source' ? 'Quellsystem' : 'Zielsystem'}** erfolgreich authentifiziert.`, currentStepNumber);
@@ -945,6 +964,7 @@ async function processJob(job: any) {
       
       // Fehler-Nachricht (Sofort)
       await writeChatMessage(migrationId, 'system', `Error: ${errorMessage}`, currentStepNumber);
+      await writeRetryAction(migrationId, currentStepNumber);
       await logActivity(migrationId, 'error', `Schritt fehlgeschlagen: ${errorMessage}`);
 
     } catch (e2) {
