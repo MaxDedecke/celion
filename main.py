@@ -821,6 +821,8 @@ async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
                 cur.execute("DELETE FROM public.step_3_results WHERE migration_id = %s", (id,))
             if step <= 4:
                 cur.execute("DELETE FROM public.step_4_results WHERE migration_id = %s", (id,))
+            if step <= 5:
+                cur.execute("DELETE FROM public.step_5_results WHERE migration_id = %s", (id,))
             
             # 2. Reset overall migration complexity if step 3 is retried
             if step <= 3:
@@ -837,7 +839,7 @@ async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
             )
 
             # 4. Clear chat messages from this step onwards
-            # We keep messages with step_number 0 (Welcome) and any messages strictly before this step.
+            # We keep messages strictly before this step.
             cur.execute(
                 """
                 DELETE FROM public.migration_chat_messages 
@@ -1536,6 +1538,18 @@ async def duplicate_migration(id: str, user_id: str) -> Migration:
                 SELECT %s, target_scope_id, target_scope_name, target_status, 
                        writable_entities, missing_permissions, summary, raw_json
                 FROM public.step_4_results WHERE migration_id = %s
+                """,
+                (new_migration_id, id)
+            )
+
+            # 3c. Duplicate Step 5 results
+            cur.execute(
+                """
+                INSERT INTO public.step_5_results (
+                    migration_id, summary, raw_json
+                )
+                SELECT %s, summary, raw_json
+                FROM public.step_5_results WHERE migration_id = %s
                 """,
                 (new_migration_id, id)
             )
