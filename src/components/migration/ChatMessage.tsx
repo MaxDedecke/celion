@@ -27,7 +27,7 @@ const DiscoveryReport = ({ data }: { data: any }) => {
           )}
         </div>
         <p className="text-sm text-foreground/90 leading-relaxed italic mb-3">
-          "{data.summary}"
+          "{typeof data.summary === 'string' ? data.summary : String(data.summary || '')}"
         </p>
         
         <div className="flex flex-wrap gap-2">
@@ -360,16 +360,21 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
                      "Ergebnis:"}
                   </p>
                   {jsonContent.rawOutput && (
-                    <p className="mt-0 opacity-90">
-                      {jsonContent.rawOutput.trim().startsWith("<") 
+                    <div className="mt-0 opacity-90 prose prose-sm dark:prose-invert max-w-none text-foreground">
+                      {typeof jsonContent.rawOutput === 'string' ? (
+                        jsonContent.rawOutput.trim().startsWith("<") 
                           ? "[Raw Content / HTML detected - see details]"
                           : renderFormattedContent(
                               jsonContent.rawOutput.length > 300 
                               ? jsonContent.rawOutput.substring(0, 300) + "..." 
                               : jsonContent.rawOutput
                           )
-                      }
-                    </p>
+                      ) : (
+                        <p className="text-xs italic text-muted-foreground">
+                          [Strukturierte Daten - Details anzeigen]
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
