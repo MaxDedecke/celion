@@ -1,6 +1,7 @@
 {
   "system": "ClickUp",
   "apiType": "REST",
+  "apiBaseUrl": "https://api.clickup.com",
   "baseUrlPattern": "api.clickup.com",
   "authentication": {
     "type": "header",

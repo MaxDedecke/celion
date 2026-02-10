@@ -1,6 +1,7 @@
 {
   "system": "Notion",
   "apiType": "REST",
+  "apiBaseUrl": "https://api.notion.com",
   "baseUrlPattern": "api.notion.com",
   "authentication": {
     "type": "header",

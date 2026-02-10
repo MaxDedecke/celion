@@ -415,8 +415,8 @@ def _run_data_ingest_neo4j(conn: psycopg.Connection, migration_id: str, workflow
     
     # 4. Get entities from Step 3
     with conn.cursor() as cur:
-        cur.execute("SELECT entity_name, count FROM public.step_3_results WHERE migration_id = %s", (migration_id,))
-        entities = cur.fetchall()
+        cur.execute("SELECT entity_name as name, count FROM public.step_3_results WHERE migration_id = %s", (migration_id,))
+        entities = [dict(row) for row in cur.fetchall()]
 
     if not entities:
         _write_chat_message(conn, migration_id, 'system', "No entities found from Step 3. Skipping Neo4j ingest.", 5)
@@ -439,31 +439,23 @@ def _run_data_ingest_neo4j(conn: psycopg.Connection, migration_id: str, workflow
     client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     
     system_prompt = f"""
-    Du bist ein Data Ingestion Agent. Deine Aufgabe ist es, Daten aus der API von '{source_system}' zu holen und in Neo4j zu speichern.
+    Du bist ein Data Ingestion Agent für {source_system}. Deine Aufgabe ist es, Daten über die API zu sammeln und in Neo4j zu speichern.
     
-    DEINE ZIELE (Entities to fetch):
-    {json.dumps([{'name': e['entity_name'], 'goal_count': e['count']} for e in entities], indent=2)}
-    
-    START-KONTEXT (Bekannte IDs):
-    {json.dumps(scope_config, indent=2)}
-    
-    VERFÜGBARE ENDPUNKTE (aus Scheme):
+    ZIELE: {json.dumps(entities)}
+    ENDPUNKTE:
     {json.dumps(scheme.get('discovery', {}).get('endpoints', {}), indent=2)}
     
+    BASE_URL: {api_base_url}
+    ANWEISUNGEN: {scheme.get('agentInstructions', 'Keine speziellen Anweisungen.')}
+
     REGELN:
     1. Analysiere die Endpunkte. Wenn ein Endpunkt Platzhalter hat (z.B. {{team_id}}), MUSST du zuerst die Eltern-Ressource abrufen (z.B. 'teams'), um die ID zu erhalten.
     2. Ersetze Platzhalter in der URL IMMER durch reale IDs, die du aus vorherigen Tool-Aufrufen erhalten hast.
-    3. Nutze das Tool 'fetch_and_ingest', um Daten zu laden. Das Tool speichert die Daten direkt in Neo4j und gibt dir eine Zusammenfassung (inklusive gefundener IDs).
-    4. Nutze die zurückgegebenen IDs, um die URLs für abhängige Ressourcen zu konstruieren.
-    5. Gehe methodisch vor: Top-Level zuerst (z.B. Teams), dann Drill-Down (z.B. Spaces -> Folders -> Lists -> Tasks).
-    6. Wenn du alle Ziele erreicht hast oder nicht mehr weiterkommst, beende den Dialog.
-    
-    WICHTIG für ClickUp:
-    - Startpunkt ist immer '/team'. Die dort gefundene 'id' ist die 'team_id' für alle weiteren Endpunkte.
-    - Spaces benötigen 'team_id'.
-    - Folders benötigen 'space_id'.
-    - Lists können in Folders oder Spaces sein.
-    - Tasks benötigen 'team_id' (global) oder 'list_id'. Nutze bevorzugt den Team-Endpunkt für Tasks mit 'team_id', um alles auf einmal zu bekommen.
+    3. Die URLs müssen IMMER mit der BASE_URL beginnen.
+    4. Nutze das Tool 'fetch_and_ingest', um Daten zu laden. Das Tool speichert die Daten direkt in Neo4j und gibt dir eine Zusammenfassung (inklusive gefundener IDs).
+    5. Nutze die zurückgegebenen IDs, um die URLs für abhängige Ressourcen zu konstruieren.
+    6. Gehe methodisch vor: Top-Level zuerst, dann Drill-Down.
+    7. Wenn du alle Ziele erreicht hast oder nicht mehr weiterkommst, beende den Dialog.
     
     FORMAT:
     Antworte kurz mit deinen Gedanken und rufe dann das Tool auf.
@@ -492,9 +484,7 @@ def _run_data_ingest_neo4j(conn: psycopg.Connection, migration_id: str, workflow
     ]
     
     total_imported = 0
-    api_base_url = connector['api_url'].rstrip('/')
-    if source_system == 'ClickUp':
-        api_base_url = "https://api.clickup.com/api/v2"
+    api_base_url = scheme.get('apiBaseUrl') or connector['api_url'].rstrip('/')
     
     # Keep track of coverage to avoid infinite loops
     attempted_urls = set()
@@ -548,7 +538,18 @@ def _run_data_ingest_neo4j(conn: psycopg.Connection, migration_id: str, workflow
                         # Execute Request
                         headers = _build_request_headers(scheme, connector)
                         try:
-                            response = requests.get(url, headers=headers, timeout=30)
+                            # Determine method (Notion search/query needs POST)
+                            method = 'GET'
+                            body = None
+                            if '/search' in url or '/query' in url:
+                                method = 'POST'
+                                body = {}
+
+                            if method == 'POST':
+                                response = requests.post(url, headers=headers, json=body, timeout=30)
+                            else:
+                                response = requests.get(url, headers=headers, timeout=30)
+
                             if response.status_code == 200:
                                 items = _extract_items(response.json(), entity_name)
                                 _ingest_items_to_neo4j(driver, source_system, entity_name, items, migration_id)

@@ -810,9 +810,11 @@ async function processJob(job: any) {
       const { rows: migrationRowsInfo } = await pool.query('SELECT source_system, notes FROM migrations WHERE id = $1', [migrationId]);
       const sourceSystem = migrationRowsInfo[0]?.source_system;
       const instructions = migrationRowsInfo[0]?.notes;
+      const scheme = await loadScheme(sourceSystem);
 
-      let effectiveApiUrl = connector?.api_url || "";
-      if (sourceSystem === 'ClickUp') effectiveApiUrl = "https://api.clickup.com/api/v2";
+      let effectiveApiUrl = scheme?.apiBaseUrl || connector?.api_url || "";
+      // Strip trailing slash
+      effectiveApiUrl = effectiveApiUrl.replace(/\/$/, "");
 
       const stagingLogs: string[] = [];
       const phase3Logs: string[] = [];
@@ -851,10 +853,13 @@ async function processJob(job: any) {
       let rateLimitResult = { delay: 1.0, batch_size: 50 };
 
       if (connector && effectiveApiUrl) {
-          const probeUrl = sourceSystem === 'ClickUp' ? `${effectiveApiUrl}/user` : effectiveApiUrl.replace(/\/$/, "");
+          const probeUrl = sourceSystem === 'ClickUp' ? `${effectiveApiUrl}/api/v2/user` : (scheme?.authentication?.whoami?.endpoint ? `${effectiveApiUrl}${scheme.authentication.whoami.endpoint}` : effectiveApiUrl);
           await writeChatMessage(migrationId, 'system', `Performing probe request to ${probeUrl}...`, currentStepNumber);
           
-          const headers: any = { "Accept": "application/json" };
+          const headers: any = { 
+              "Accept": "application/json",
+              ...(scheme?.headers || {})
+          };
           if (connector.auth_type === 'api_key' && connector.api_key) {
               headers["Authorization"] = sourceSystem === 'ClickUp' ? connector.api_key : `Bearer ${connector.api_key}`;
           }
@@ -906,7 +911,6 @@ async function processJob(job: any) {
       
       const { rows: step3Rows } = await pool.query('SELECT entity_name, count FROM step_3_results WHERE migration_id = $1', [migrationId]);
       const entities = step3Rows.map(r => ({ name: r.entity_name, count: r.count }));
-      const scheme = await loadScheme(sourceSystem);
       
       let totalImported = 0;
       const driver = neo4j.driver(
@@ -933,12 +937,14 @@ async function processJob(job: any) {
         ZIELE: ${JSON.stringify(entities)}
         ENDPUNKTE: ${JSON.stringify(scheme?.discovery?.endpoints || {})}
         BASE_URL: ${effectiveApiUrl}
+        ANWEISUNGEN: ${scheme?.agentInstructions || 'Keine speziellen Anweisungen.'}
         
         REGELN:
-        1. Beginne beim Top-Level (z.B. Teams bei ClickUp).
-        2. Nutze IDs aus den Ergebnissen, um Platzhalter in URLs für Drill-Downs zu ersetzen.
-        3. Nutze das Tool 'fetch_and_ingest'. Es speichert die Daten und gibt dir gefundene IDs zurück.
-        4. Beende den Prozess, wenn alle Ziele erreicht sind oder keine neuen Daten gefunden werden.
+        1. Beginne beim Top-Level.
+        2. Nutze IDs aus den Ergebnissen, um Platzhalter in URLs (z.B. {database_id}) zu ersetzen.
+        3. Die URLs müssen IMMER mit der BASE_URL beginnen.
+        4. Nutze das Tool 'fetch_and_ingest'. Es speichert die Daten und gibt dir gefundene IDs zurück.
+        5. Beende den Prozess, wenn alle Ziele erreicht sind oder keine neuen Daten gefunden werden.
       `;
 
       let messages: any[] = [{ role: "system", content: agentSystemPrompt }];
@@ -985,13 +991,38 @@ async function processJob(job: any) {
                   attemptedUrls.add(url);
                   addStagingLog(`Agent fetching ${entity_name} von ${url}...`);
 
-                  const headers: any = { "Accept": "application/json" };
+                  const headers: any = { 
+                      "Accept": "application/json",
+                      ...(scheme?.headers || {})
+                  };
+                  
+                  // Handle Authentication generically
                   if (connector.auth_type === 'api_key' && connector.api_key) {
-                      headers["Authorization"] = sourceSystem === 'ClickUp' ? connector.api_key : `Bearer ${connector.api_key}`;
+                      const authConfig = scheme?.authentication;
+                      if (authConfig?.type === 'header') {
+                          const name = authConfig.headerName || 'Authorization';
+                          const prefix = authConfig.tokenPrefix !== undefined ? authConfig.tokenPrefix : 'Bearer ';
+                          headers[name] = `${prefix}${connector.api_key}`;
+                      } else {
+                          // Fallback to Bearer if not specified
+                          headers["Authorization"] = `Bearer ${connector.api_key}`;
+                      }
+                  } else if (connector.auth_type === 'basic' && connector.api_key) {
+                      // Basic auth fallback
+                      headers["Authorization"] = `Basic ${connector.api_key}`;
                   }
 
                   try {
-                      const res = await fetch(url, { headers });
+                      // Determine method (Notion search needs POST)
+                      let method = 'GET';
+                      let body = undefined;
+                      
+                      if (url.includes('/search') || url.includes('/query')) {
+                          method = 'POST';
+                          body = JSON.stringify({});
+                      }
+
+                      const res = await fetch(url, { method, headers, body });
                       if (res.ok) {
                           const data = await res.json();
                           const items = _extractItems(data, entity_name);
