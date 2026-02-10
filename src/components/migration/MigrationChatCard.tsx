@@ -29,9 +29,13 @@ const MigrationChatCard = ({
   onOpenAgentOutput
 }: MigrationChatCardProps) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const bottomSpacerRef = useRef<HTMLDivElement>(null); // New Ref for auto-scroll
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [migrationData, setMigrationData] = useState<Migration>(migration);
+
+  // Track message count to detect new messages for auto-scroll
+  const prevMessageCountRef = useRef(0);
 
   useEffect(() => {
     setMigrationData(migration);
@@ -72,55 +76,65 @@ const MigrationChatCard = ({
   const handleScroll = () => {
     if (scrollContainerRef.current) {
       const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
-      setIsNearBottom(scrollHeight - scrollTop - clientHeight < 100);
+      // Increased threshold to 150px to be more forgiving
+      setIsNearBottom(scrollHeight - scrollTop - clientHeight < 150);
     }
   };
 
-  const scrollToBottom = () => {
-    if (scrollContainerRef.current) {
+  const scrollToBottom = (behavior: ScrollBehavior = 'smooth') => {
+    if (bottomSpacerRef.current) {
+        bottomSpacerRef.current.scrollIntoView({ behavior, block: 'end' });
+    } else if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
     }
   };
 
   const totalSteps = 10;
   const rawStep = migrationData.current_step || 0;
-  // Auch 'pending' als laufend betrachten, damit die UI sofort reagiert
   const isStepRunning = migrationData.step_status === 'running' || migrationData.step_status === 'pending';
-  
   const hasCurrentStepFailed = migrationData.step_status === 'failed';
   const isConsultantThinking = migrationData.consultant_status === 'thinking';
 
-  // Initial scroll to bottom when chat messages are loaded for the first time or migration changes
+  // Initial scroll to bottom: Instant jump
   const initialScrollDone = useRef<string | null>(null);
+  
   useEffect(() => {
     if (chatMessages.length > 0 && initialScrollDone.current !== migration.id) {
-      // Use a small delay to ensure DOM is fully rendered
+      // Small timeout to allow render
       const timeoutId = setTimeout(() => {
-        scrollToBottom();
+        scrollToBottom('auto'); // Instant scroll
         initialScrollDone.current = migration.id;
-      }, 150);
+        prevMessageCountRef.current = chatMessages.length; // Sync count
+      }, 100);
       return () => clearTimeout(timeoutId);
     }
   }, [migration.id, chatMessages.length > 0]);
 
-  // Regular scroll to bottom when new messages arrive and user is near bottom
+  // Auto-scroll on NEW messages
   useEffect(() => {
-    if (scrollContainerRef.current && isNearBottom) {
-      scrollToBottom();
+    const newMessageCount = chatMessages.length;
+    
+    // Check if new messages arrived
+    if (newMessageCount > prevMessageCountRef.current) {
+        // Always scroll to bottom for new messages as requested ("Fokus setzen")
+        // Use timeout to wait for rendering (especially if animation starts)
+        setTimeout(() => scrollToBottom('smooth'), 100);
     }
-  }, [chatMessages, migrationData.step_status, isStepRunning, isNearBottom]);
+    
+    prevMessageCountRef.current = newMessageCount;
+  }, [chatMessages.length]);
 
-  // Continuous scroll while something is animating (typewriter)
+
+  // Continuous scroll while running (if user hasn't scrolled away)
   useEffect(() => {
     let intervalId: NodeJS.Timeout | null = null;
     
-    // Wenn der Agent läuft oder der Consultant denkt, scrollen wir mit
     if (isStepRunning || isConsultantThinking) {
       intervalId = setInterval(() => {
         if (isNearBottom) {
-          scrollToBottom();
+          scrollToBottom('smooth');
         }
-      }, 100);
+      }, 500); // Decreased frequency slightly to reduce jitter
     }
     
     return () => {
@@ -130,19 +144,13 @@ const MigrationChatCard = ({
 
   // Wenn Schritt X läuft oder fehlgeschlagen ist, sind erst X-1 Schritte komplett fertig
   const completedCount = (isStepRunning || hasCurrentStepFailed) ? Math.max(0, rawStep - 1) : rawStep;
-  
   const overallProgress = (completedCount / totalSteps) * 100;
   const currentStepNumber = completedCount + 1 > totalSteps ? totalSteps : completedCount + 1;
-  // Fix: Access by index (0-based) using currentStepNumber (1-based)
   const activeStep = AGENT_WORKFLOW_STEPS[currentStepNumber - 1];
-  
-  // Der Titel für den Indicator/Laufenden Schritt sollte sich auf den *tatsächlichen* Schritt beziehen (rawStep)
-  // Wenn rawStep 1 ist (System Detection), wollen wir "Analysiere System Detection", auch wenn completedCount schon 1 ist.
   const runningStepIndex = Math.max(0, (rawStep || 1) - 1);
   const runningStep = AGENT_WORKFLOW_STEPS[runningStepIndex];
   const currentStepTitle = activeStep?.title || (completedCount === totalSteps ? "Abgeschlossen" : "Bereit");
 
-  // Extract latest action message
   const lastActionMessage = useMemo(() => {
     const actionMessages = chatMessages.filter(m => {
       try {
@@ -189,7 +197,6 @@ const MigrationChatCard = ({
       }
     }
 
-    // Fallback Continue Button
     if (migrationData.status !== "completed") {
       const label = migrationData.status === "not_started" 
         ? "Starten" 
@@ -215,8 +222,8 @@ const MigrationChatCard = ({
 
   const handleSendMessage = (message: string) => {
     onSendMessage(message);
-    // Force scroll to bottom when user sends a message
-    setTimeout(scrollToBottom, 100);
+    // Force scroll immediately
+    setTimeout(() => scrollToBottom('smooth'), 50);
   };
 
   return (
@@ -225,11 +232,8 @@ const MigrationChatCard = ({
       className="flex flex-col overflow-hidden bg-transparent border-transparent"
     >
       <CardHeader className="shrink-0 py-3 px-4">
-        {/* Compact Status Header */}
         <div className="flex flex-col gap-3">
-          {/* Main Row: Stepper Dots + Step Info */}
           <div className="flex items-center gap-4 min-w-0">
-            {/* Stepper Dots */}
             <StepperDots 
               totalSteps={totalSteps} 
               completedSteps={completedCount} 
@@ -237,7 +241,6 @@ const MigrationChatCard = ({
               hasCurrentStepFailed={hasCurrentStepFailed}
             />
             
-            {/* Step Info */}
             <div className="flex items-center gap-2 min-w-0">
               <span className="text-sm font-semibold text-foreground truncate">
                 Schritt {currentStepNumber}: {currentStepTitle}
@@ -250,7 +253,6 @@ const MigrationChatCard = ({
             </div>
           </div>
           
-          {/* Progress Bar Row */}
           <div className="flex flex-col gap-1.5 mt-1">
             <div className="flex items-center justify-between">
               <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Fortschritt</span>
@@ -268,7 +270,7 @@ const MigrationChatCard = ({
 
       <CardContent className="flex min-h-0 flex-1 flex-col p-4 pt-0">
         <div className="relative min-h-0 flex-1">
-          <div ref={scrollContainerRef} onScroll={handleScroll} className="absolute inset-0 overflow-y-auto pr-2">
+          <div ref={scrollContainerRef} onScroll={handleScroll} className="absolute inset-0 overflow-y-auto pr-2 scroll-smooth">
             <ChatMessageList 
               messages={chatMessages} 
               isAgentRunning={isStepRunning} 
@@ -278,11 +280,13 @@ const MigrationChatCard = ({
               currentStepTitle={runningStep?.title}
               currentStep={rawStep}
             />
+            {/* Spacer div for auto-scrolling */}
+            <div ref={bottomSpacerRef} className="h-2" />
           </div>
           
           {!isNearBottom && (
             <Button
-              onClick={scrollToBottom}
+              onClick={() => scrollToBottom('smooth')}
               size="icon"
               variant="secondary"
               className="absolute bottom-4 right-4 z-10 h-8 w-8 rounded-full shadow-md animate-fade-in hover:scale-105 transition-transform"
@@ -292,7 +296,6 @@ const MigrationChatCard = ({
           )}
         </div>
 
-        {/* Action Buttons Layer */}
         <div className="mt-4 flex flex-col gap-3">
           {actionButtons && (
             <div className="flex flex-wrap gap-2 justify-start animate-slide-up">
@@ -310,6 +313,5 @@ const MigrationChatCard = ({
     </Card>
   );
 };
-
 
 export default MigrationChatCard;

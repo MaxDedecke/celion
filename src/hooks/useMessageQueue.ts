@@ -15,6 +15,8 @@ export const useMessageQueue = <T extends { id: string; role?: string; created_a
   const [completedAnimations, setCompletedAnimations] = useState<Set<string>>(new Set());
   const queueRef = useRef<string[]>([]);
   const previousIdsRef = useRef<Set<string>>(new Set());
+  
+  // Ref to track if we have done the initial load.
   const isInitializedRef = useRef(false);
 
   // Callback wenn Animation fertig ist
@@ -40,43 +42,41 @@ export const useMessageQueue = <T extends { id: string; role?: string; created_a
       setCompletedAnimations(new Set());
       setAnimatingId(null);
       previousIdsRef.current = new Set();
+      queueRef.current = [];
       return;
     }
 
     const currentIds = new Set(allMessages.map(m => m.id));
-    
-    // Neue Nachrichten erkennen (nur gegen previousIdsRef prüfen)
+    // Check for NEW messages (not in previous render)
     const newMessages = allMessages.filter(m => !previousIdsRef.current.has(m.id));
-    
-    // Erst-Initialisierung oder Bulk-Load von historischen Daten
-    if (!isInitializedRef.current || newMessages.length > 3) {
-      const now = Date.now();
-      const idsToAnimate: string[] = [];
-      const idsToShowInstantly: string[] = [];
 
-      allMessages.forEach(m => {
-        // Nachricht ist "neu", wenn sie jünger als 10 Sekunden ist
-        const isVeryRecent = m.created_at ? (now - new Date(m.created_at).getTime() < 10000) : false;
+    // Case 1: Initial Load
+    // If not initialized yet, we treat ALL currently present messages as history -> Show instantly, no animation.
+    if (!isInitializedRef.current) {
+        const idsToShowInstantly: string[] = [];
         
-        if (isVeryRecent && isInitializedRef.current) {
-          // Nur während der Session animieren
-          idsToAnimate.push(m.id);
-        } else {
-          idsToShowInstantly.push(m.id);
+        allMessages.forEach(m => {
+             idsToShowInstantly.push(m.id);
+        });
+
+        setVisibleIds(new Set([...visibleIds, ...idsToShowInstantly]));
+        setCompletedAnimations(new Set([...completedAnimations, ...idsToShowInstantly]));
+        
+        previousIdsRef.current = currentIds;
+        isInitializedRef.current = true;
+        return;
+    }
+
+    // Case 2: Update during session (new messages arriving)
+    if (newMessages.length > 0) {
+      newMessages.forEach(m => {
+        // Prevent duplicate queuing if somehow id is already in queue
+        if (!queueRef.current.includes(m.id)) {
+             queueRef.current.push(m.id);
         }
       });
-
-      setVisibleIds(new Set([...visibleIds, ...idsToShowInstantly]));
-      setCompletedAnimations(new Set([...completedAnimations, ...idsToShowInstantly]));
       
-      if (idsToAnimate.length > 0) {
-        queueRef.current.push(...idsToAnimate);
-      }
-
-      previousIdsRef.current = currentIds;
-      isInitializedRef.current = true;
-
-      // Starten falls nichts läuft
+      // Start processing if not already animating
       if (!animatingId && queueRef.current.length > 0) {
         const nextId = queueRef.current.shift();
         if (nextId) {
@@ -84,28 +84,12 @@ export const useMessageQueue = <T extends { id: string; role?: string; created_a
           setAnimatingId(nextId);
         }
       }
-      return;
-    }
-    
-    // Ab hier: Einzelne neue Nachrichten während der Session animieren (z.B. User-Input oder Agenten-Antwort)
-    if (newMessages.length > 0) {
-      newMessages.forEach(m => {
-        queueRef.current.push(m.id);
-      });
-      
-      if (!animatingId && queueRef.current.length > 0) {
-        const firstId = queueRef.current.shift();
-        if (firstId) {
-          setVisibleIds(prev => new Set([...prev, firstId]));
-          setAnimatingId(firstId);
-        }
-      }
     }
     
     previousIdsRef.current = currentIds;
-  }, [allMessages, animatingId]);
+  }, [allMessages, animatingId]); // Re-run when messages change or animation status changes
 
-  // Sicherheits-Timeout: Falls Animation nicht innerhalb von 10 Sekunden abgeschlossen wird
+  // Sicherheits-Timeout: Falls Animation nicht innerhalb von 30 Sekunden abgeschlossen wird
   useEffect(() => {
     if (animatingId === null) return;
     
