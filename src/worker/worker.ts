@@ -759,6 +759,7 @@ async function processJob(job: any) {
 
       const stagingLogs: string[] = [];
       const phase3Logs: string[] = [];
+      let relRules: any[] = [];
 
       const { apiKey, baseUrl, projectId } = resolveOpenAiConfig();
       const openAiHeaders = buildOpenAiHeaders(apiKey, projectId);
@@ -766,16 +767,25 @@ async function processJob(job: any) {
         chat: {
           completions: {
             create: async (params: any) => {
-              const response = await fetch(`${baseUrl}/chat/completions`, {
-                method: 'POST',
-                headers: openAiHeaders,
-                body: JSON.stringify(params),
-              });
-              if (!response.ok) {
-                const errorText = await response.text();
-                throw new Error(`OpenAI API request failed: ${response.status} ${response.statusText} ${errorText}`);
+              const controller = new AbortController();
+              const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 seconds timeout
+              try {
+                const response = await fetch(`${baseUrl}/chat/completions`, {
+                  method: 'POST',
+                  headers: openAiHeaders,
+                  body: JSON.stringify(params),
+                  signal: controller.signal
+                });
+                clearTimeout(timeoutId);
+                if (!response.ok) {
+                  const errorText = await response.text();
+                  throw new Error(`OpenAI API request failed: ${response.status} ${response.statusText} ${errorText}`);
+                }
+                return await response.json();
+              } catch (e: any) {
+                clearTimeout(timeoutId);
+                throw e;
               }
-              return await response.json();
             }
           }
         }
@@ -929,6 +939,7 @@ async function processJob(job: any) {
                           const data = await res.json();
                           const items = _extractItems(data, entity_name);
                           if (items.length > 0) {
+                              // USE sourceSystem as label for consistency
                               await _ingestToNeo4j(driver, sourceSystem, entity_name, items, migrationId);
                               totalImported += items.length;
                               const sampleIds = items.slice(0, 5).map((i: any) => i.id);
@@ -949,7 +960,8 @@ async function processJob(job: any) {
               }
           }
 
-          // --- Phase 3: Automated Relationship Discovery ---
+          // --- End of Phase 2 Ingestion ---
+          console.log(`[Worker] Phase 2 Ingestion complete. Starting Phase 3...`);
           console.log(`[Worker] Starting Phase 3 for migration ${migrationId}`);
           await writeChatMessage(migrationId, 'system', 'Phase 3: Automated Relationship Discovery starting...', currentStepNumber);
           
@@ -959,88 +971,133 @@ async function processJob(job: any) {
 
           addPhase3Log('Analysiere Datenstruktur in Neo4j...');
           
-          // 1. Get Schema Samples (Labels + Property Keys) for this migration
-          const schemaSample: Record<string, string[]> = {};
+          // 1. Get Schema Samples (Entity Types + Property Keys + Sample IDs) for this migration
+          const schemaSample: Record<string, any> = {};
+          const idSamples: Record<string, string[]> = {};
           const schemaSession = driver.session();
           try {
-              const labelsRes = await schemaSession.run(
+              // Fetch distinct entity_type properties
+              const typesRes = await schemaSession.run(
                   `MATCH (n {migration_id: $migrationId}) 
-                   RETURN DISTINCT labels(n)[0] as label`, 
+                   RETURN DISTINCT n.entity_type as type`, 
                   { migrationId }
               );
-              const labels = labelsRes.records.map(r => r.get('label')).filter(l => l);
-              console.log(`[Worker] Found labels for discovery: ${labels.join(', ')}`);
+              const entityTypes = typesRes.records.map(r => r.get('type')).filter(t => t);
+              console.log(`[Worker] Found entity types for discovery: ${entityTypes.join(', ')}`);
               
-              for (const label of labels) {
-                  const keysRes = await schemaSession.run(
-                      `MATCH (n:\`${label}\` {migration_id: $migrationId}) 
-                       RETURN keys(n) as keys LIMIT 1`,
-                      { migrationId }
+              for (const type of entityTypes) {
+                  // Get sample properties
+                  const sampleRes = await schemaSession.run(
+                      `MATCH (n {migration_id: $migrationId, entity_type: $type}) 
+                       RETURN properties(n) as props LIMIT 1`,
+                      { migrationId, type }
                   );
-                  if (keysRes.records.length > 0) {
-                      schemaSample[label] = keysRes.records[0].get('keys');
+                  if (sampleRes.records.length > 0) {
+                      schemaSample[type] = sampleRes.records[0].get('props');
                   }
+
+                  // Get a few sample IDs to help the agent recognize the ID format/match
+                  const idsRes = await schemaSession.run(
+                      `MATCH (n {migration_id: $migrationId, entity_type: $type}) 
+                       RETURN n.external_id as id LIMIT 5`,
+                      { migrationId, type }
+                  );
+                  idSamples[type] = idsRes.records.map(r => r.get('id'));
               }
           } finally {
               await schemaSession.close();
           }
 
-          console.log(`[Worker] Schema sample gathered: ${Object.keys(schemaSample).length} entities`);
+          console.log(`[Worker] Schema and ID samples gathered for ${Object.keys(schemaSample).length} entity types`);
 
           let totalRelsCreated = 0;
           if (Object.keys(schemaSample).length > 0) {
               const discoveryPrompt = `
-                Analysiere die folgenden Entity-Typen und deren Properties aus einem Quellsystem.
-                Deine Aufgabe ist es, strukturelle Beziehungen (Foreign Keys) zu identifizieren.
+                Du bist ein Graph-Experte für das System ${sourceSystem}. Deine Aufgabe ist es, die interne Datenstruktur von ${sourceSystem} zu analysieren und Beziehungen zwischen Objekten zu finden.
                 
-                VERFÜGBARE ENTITIES: ${JSON.stringify(Object.keys(schemaSample))}
-                PROPERTIES PRO ENTITY:
+                ### KONTEXT:
+                - Alle geladenen Daten stammen aus ${sourceSystem}.
+                - Die Knoten in Neo4j unterscheiden sich durch die Property 'entity_type'.
+                
+                ### VERFÜGBARE OBJEKTTYPEN & BEISPIELE:
                 ${JSON.stringify(schemaSample, null, 2)}
                 
-                REGELN:
-                1. Suche nach Feldern, die auf andere Entities verweisen (z.B. 'parent_id', 'project_id', 'user.id', 'creator').
-                2. Erstelle eine Liste von Verknüpfungs-Regeln.
-                3. Jede Regel muss 'from' (Entity mit dem FK), 'to' (Ziel-Entity), 'field' (Name des FK-Feldes) und 'type' (Name der Beziehung, z.B. 'MEMBER_OF', 'SUBTASK_OF', 'ASSIGNED_TO') enthalten.
+                ### BEISPIEL-IDS PRO TYP (ZUM ABGLEICH):
+                ${JSON.stringify(idSamples, null, 2)}
                 
-                ANTWORTE NUR ALS JSON ARRAY:
-                [{"from": "string", "to": "string", "field": "string", "type": "string"}]
+                ### DEINE AUFGABE:
+                1. Analysiere die Properties. Suche nach Feldern, die IDs anderer Objekte enthalten (z.B. 'parent', 'project', 'user', 'owner', 'list_id').
+                2. WICHTIG: Prüfe auch auf Selbst-Referenzen innerhalb des gleichen Typs (z.B. wenn ein Objekt vom Typ 'tasks' ein Feld 'parent' hat, das eine ID aus der ID-Liste von 'tasks' enthält -> dann ist es ein Subtask).
+                3. Erstelle Verknüpfungs-Regeln. Nutze fachlich korrekte Beziehungsnamen für ${sourceSystem} (z.B. 'SUBTASK_OF', 'IN_LIST', 'ASSIGNED_TO', 'CREATED_BY').
+                
+                ### REGEL-FORMAT (JSON ARRAY):
+                [{"from": "Entity-Typ mit FK", "to": "Ziel-Entity-Typ", "field": "Property-Name des FK", "type": "BEZIEHUNGS_NAME"}]
+                
+                ANTWORTE AUSSCHLIESSLICH ALS JSON ARRAY.
               `;
 
+              console.log(`[Worker] Sending Relationship Discovery prompt for ${sourceSystem} to LLM...`);
               const discoveryRes = await openaiClient.chat.completions.create({
                   model: process.env.OPENAI_MODEL || "gpt-4o",
                   messages: [{ role: "user", content: discoveryPrompt }],
                   response_format: { type: "json_object" }
               });
 
-              console.log(`[Worker] LLM Discovery Result: ${discoveryRes.choices[0].message.content}`);
+              const rawContent = discoveryRes.choices[0].message.content || "[]";
+              console.log(`[Worker] LLM Discovery Result: ${rawContent}`);
 
-              let relRules = [];
               try {
-                  const rules = JSON.parse(discoveryRes.choices[0].message.content || "[]");
-                  relRules = Array.isArray(rules) ? rules : (rules.rules || []);
+                  const parsed = JSON.parse(rawContent);
+                  if (Array.isArray(parsed)) {
+                      relRules = parsed;
+                  } else if (parsed.relations && Array.isArray(parsed.relations)) {
+                      relRules = parsed.relations;
+                  } else if (parsed.rules && Array.isArray(parsed.rules)) {
+                      relRules = parsed.rules;
+                  } else if (parsed.from && parsed.to && parsed.field) {
+                      relRules = [parsed]; // Single object
+                  }
               } catch (e) {
                   console.error(`[Worker] Failed to parse discovery rules: ${e}`);
+                  addPhase3Log(`Fehler beim Parsen der Agenten-Antwort.`);
               }
 
               if (relRules.length > 0) {
+                  console.log(`[Worker] Applying ${relRules.length} relationship rules`);
                   addPhase3Log(`${relRules.length} potenzielle Beziehungstypen identifiziert.`);
                   const linkSession = driver.session();
                   try {
                       for (const rule of relRules) {
+                          // Validation: Ensure entity types exist
+                          if (!schemaSample[rule.from] || !schemaSample[rule.to]) {
+                              console.warn(`[Worker] Skipping rule with unknown entity types: ${rule.from} -> ${rule.to}`);
+                              addPhase3Log(`-> Überspringe Regel '${rule.type}': Typ '${!schemaSample[rule.from] ? rule.from : rule.to}' unbekannt.`);
+                              continue;
+                          }
+
+                          console.log(`[Worker] Applying rule: ${rule.from} --(${rule.type})--> ${rule.to} via ${rule.field}`);
+                          // Link nodes by filtering on entity_type property
                           const linkQuery = `
-                            MATCH (a:\`${rule.from}\` {migration_id: $migrationId})
-                            MATCH (b:\`${rule.to}\` {migration_id: $migrationId})
+                            MATCH (a:\`${sourceSystem}\` {migration_id: $migrationId, entity_type: $fromType})
+                            MATCH (b:\`${sourceSystem}\` {migration_id: $migrationId, entity_type: $toType})
                             WHERE a.\`${rule.field}\` IS NOT NULL 
                               AND toString(a.\`${rule.field}\`) = b.external_id
                               AND a <> b
                             MERGE (a)-[r:\`${rule.type}\` {migration_id: $migrationId}]->(b)
                             RETURN count(r) as count
                           `;
-                          const result = await linkSession.run(linkQuery, { migrationId });
+                          const result = await linkSession.run(linkQuery, { 
+                              migrationId, 
+                              fromType: rule.from, 
+                              toType: rule.to 
+                          });
                           const count = result.records[0].get('count').toNumber();
+                          console.log(`[Worker] Created ${count} relationships for ${rule.type}`);
                           if (count > 0) {
                               totalRelsCreated += count;
                               addPhase3Log(`-> ${count} Beziehungen vom Typ '${rule.type}' zwischen '${rule.from}' und '${rule.to}' erstellt.`);
+                          } else {
+                              addPhase3Log(`-> Regel '${rule.type}' identifiziert, aber keine passenden Datensätze gefunden.`);
                           }
                       }
                   } finally {
@@ -1055,7 +1112,7 @@ async function processJob(job: any) {
               status: "success",
               phase: "Relationship Discovery",
               summary: `Strukturanalyse beendet: ${totalRelsCreated} Beziehungen im Graph automatisch identifiziert und verknüpft.`,
-              rawOutput: phase3Logs.join('\n')
+              rawOutput: `### Identifizierte Regeln:\n${relRules.length > 0 ? relRules.map((r: any) => `- **${r.type}**: ${r.from}.${r.field} -> ${r.to}`).join('\n') : 'Keine Regeln gefunden.'}\n\n### Protokoll:\n${phase3Logs.join('\n')}`
           };
           await writeChatMessage(migrationId, 'assistant', JSON.stringify(phase3Result), currentStepNumber);
           
@@ -1286,6 +1343,11 @@ async function _ingestToNeo4j(driver: any, systemLabel: string, entityType: stri
                   for (const [k, v] of Object.entries(i)) {
                       if (['string', 'number', 'boolean'].includes(typeof v) || v === null) {
                           sanitized[k] = v;
+                      } else if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
+                          // Flatten simple nested IDs (e.g., list: { id: "123" } -> list_id: "123")
+                          if (v.id) sanitized[`${k}_id`] = String(v.id);
+                          // Also keep common name fields if they exist
+                          if (v.name) sanitized[`${k}_name`] = String(v.name);
                       }
                   }
                   return sanitized;
