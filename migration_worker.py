@@ -414,13 +414,21 @@ def _run_data_ingest_neo4j(conn: psycopg.Connection, migration_id: str, workflow
     
     REGELN:
     1. Analysiere die Endpunkte. Wenn ein Endpunkt Platzhalter hat (z.B. {{team_id}}), MUSST du zuerst die Eltern-Ressource abrufen (z.B. 'teams'), um die ID zu erhalten.
-    2. Nutze das Tool 'fetch_and_ingest', um Daten zu laden. Das Tool speichert die Daten direkt in Neo4j und gibt dir eine Zusammenfassung (inklusive gefundener IDs).
-    3. Nutze die zurückgegebenen IDs, um die URLs für abhängige Ressourcen zu konstruieren.
-    4. Gehe methodisch vor: Top-Level zuerst, dann Drill-Down.
-    5. Wenn du alle Ziele erreicht hast oder nicht mehr weiterkommst, rufe keine Tools mehr auf und beende den Dialog.
+    2. Ersetze Platzhalter in der URL IMMER durch reale IDs, die du aus vorherigen Tool-Aufrufen erhalten hast.
+    3. Nutze das Tool 'fetch_and_ingest', um Daten zu laden. Das Tool speichert die Daten direkt in Neo4j und gibt dir eine Zusammenfassung (inklusive gefundener IDs).
+    4. Nutze die zurückgegebenen IDs, um die URLs für abhängige Ressourcen zu konstruieren.
+    5. Gehe methodisch vor: Top-Level zuerst (z.B. Teams), dann Drill-Down (z.B. Spaces -> Folders -> Lists -> Tasks).
+    6. Wenn du alle Ziele erreicht hast oder nicht mehr weiterkommst, beende den Dialog.
+    
+    WICHTIG für ClickUp:
+    - Startpunkt ist immer '/team'. Die dort gefundene 'id' ist die 'team_id' für alle weiteren Endpunkte.
+    - Spaces benötigen 'team_id'.
+    - Folders benötigen 'space_id'.
+    - Lists können in Folders oder Spaces sein.
+    - Tasks benötigen 'team_id' (global) oder 'list_id'. Nutze bevorzugt den Team-Endpunkt für Tasks mit 'team_id', um alles auf einmal zu bekommen.
     
     FORMAT:
-    Antworte mit kurzen Gedanken und nutze Tools.
+    Antworte kurz mit deinen Gedanken und rufe dann das Tool auf.
     """
     
     messages = [
@@ -447,6 +455,8 @@ def _run_data_ingest_neo4j(conn: psycopg.Connection, migration_id: str, workflow
     
     total_imported = 0
     api_base_url = connector['api_url'].rstrip('/')
+    if source_system == 'ClickUp':
+        api_base_url = "https://api.clickup.com/api/v2"
     
     # Keep track of coverage to avoid infinite loops
     attempted_urls = set()
@@ -543,28 +553,36 @@ def _run_rate_limit_calibration(conn: psycopg.Connection, migration_id: str):
     api_url = connector['api_url']
     auth_type = connector['auth_type']
     
+    # ClickUp Fix: Use correct base URL and header format
+    with conn.cursor() as cur:
+        cur.execute("SELECT source_system FROM public.migrations WHERE id = %s", (migration_id,))
+        source_system = cur.fetchone()['source_system']
+    
+    if source_system == 'ClickUp':
+        api_url = "https://api.clickup.com/api/v2"
+
     # Prepare probe request
     headers = {"Accept": "application/json"}
     auth = None
     if auth_type == 'api_key' and connector['api_key']:
-        # This is a bit generic, usually it's Bearer or a custom header. 
-        # For a probe, we try to be simple.
-        headers["Authorization"] = f"Bearer {connector['api_key']}"
+        if source_system == 'ClickUp':
+            headers["Authorization"] = connector['api_key']
+        else:
+            headers["Authorization"] = f"Bearer {connector['api_key']}"
     elif auth_type == 'basic' and connector['username']:
         auth = (connector['username'], connector['password'] or "")
 
-    # Perform Probe-Request (e.g., against the base URL or a common endpoint)
-    # For many APIs, just GETing the base URL or a /me endpoint works.
+    # Perform Probe-Request
     try:
-        # Try to find a sensible endpoint or just use the base URL
-        probe_url = api_url.rstrip('/')
+        # For ClickUp, probe /user to verify token
+        probe_url = f"{api_url}/user" if source_system == 'ClickUp' else api_url.rstrip('/')
         _write_chat_message(conn, migration_id, 'system', f"Performing probe request to {probe_url}...", 5)
         response = requests.get(probe_url, headers=headers, auth=auth, timeout=10)
         
         response_data = {
             "status": response.status_code,
             "headers": dict(response.headers),
-            "body": response.text[:1000] # Limit body size for the agent
+            "body": response.text[:1000]
         }
     except Exception as e:
         _write_chat_message(conn, migration_id, 'system', f"Probe request failed: {e}. Using default rate limits.", 5)
@@ -811,12 +829,60 @@ def callback(ch, method, properties, body):
     print(f" [x] Received message: {body.decode()}")
     
     try:
-        job_payload = json.loads(body)
-        process_migration_step(job_payload)
+        message_data = json.loads(body)
+        job_id = message_data.get('job_id')
+        
+        if not job_id:
+            print(" [!] No job_id found in message.")
+            ch.basic_ack(delivery_tag=method.delivery_tag)
+            return
+
+        # Fetch the full job details from the database
+        db_conn = _get_db_connection()
+        try:
+            with db_conn.cursor() as cur:
+                cur.execute("SELECT payload FROM public.jobs WHERE id = %s", (job_id,))
+                row = cur.fetchone()
+                if not row:
+                    print(f" [!] Job {job_id} not found in database.")
+                    ch.basic_ack(delivery_tag=method.delivery_tag)
+                    return
+                
+                # Payload is stored as JSON in the database
+                job_payload = row['payload']
+                if isinstance(job_payload, str):
+                    job_payload = json.loads(job_payload)
+                
+                # Update job status to running
+                cur.execute("UPDATE public.jobs SET status = 'running' WHERE id = %s", (job_id,))
+                db_conn.commit()
+                
+                # Now process the actual migration step
+                process_migration_step(job_payload)
+                
+                # Update job status to completed
+                cur.execute("UPDATE public.jobs SET status = 'completed' WHERE id = %s", (job_id,))
+                db_conn.commit()
+
+        finally:
+            db_conn.close()
+
         ch.basic_ack(delivery_tag=method.delivery_tag)
     except Exception as e:
         print(f" [!] Error processing message: {e}")
-        ch.basic_nack(delivery_tag=method.delivery_tag, requeue=False)
+        # In case of error, we should probably mark the job as failed in DB too
+        try:
+            message_data = json.loads(body)
+            job_id = message_data.get('job_id')
+            if job_id:
+                db_conn = _get_db_connection()
+                with db_conn.cursor() as cur:
+                    cur.execute("UPDATE public.jobs SET status = 'failed', last_error = %s WHERE id = %s", (str(e), job_id))
+                    db_conn.commit()
+                db_conn.close()
+        except:
+            pass
+        ch.basic_ack(delivery_tag=method.delivery_tag) # Ack even on fail to avoid infinite loops, but marked as failed in DB
 
 def main():
     """Main function to start the worker."""

@@ -3,6 +3,7 @@ import neo4j from 'neo4j-driver';
 import { runSystemDetection, runAuthFlow, runSourceDiscovery, runTargetDiscovery, runAnswerAgent, runMapping } from '../agents/agentService';
 import { AGENT_WORKFLOW_STEPS } from '../constants/agentWorkflow';
 import { loadScheme, loadObjectScheme } from '../lib/scheme-loader';
+import { resolveOpenAiConfig, buildOpenAiHeaders } from '../agents/openai/openaiClient';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -741,49 +742,102 @@ async function processJob(job: any) {
 
     } else if (agentName === 'runDataStaging') {
       // Step 5: Data Staging
-      // Technical preparation step
+      // Technical preparation step with Agent-driven Rate-Limit Calibration and Ingestion
       console.log(`[Worker] Running Data Staging for migration ${migrationId}`);
       await writeChatMessage(migrationId, 'assistant', 'Bereite Daten für das Mapping vor (Data Staging)...', currentStepNumber);
 
-      // Phase 1: Rate-Limit Calibration
+      // --- Phase 1: Rate-Limit Calibration ---
       await writeChatMessage(migrationId, 'system', 'Phase 1: Initial Rate-Limit Calibration starting...', currentStepNumber);
       
-      // Get connector info
-      const { rows: connectorRows } = await pool.query('SELECT api_url, api_key, username FROM connectors WHERE migration_id = $1 AND connector_type = $2', [migrationId, 'in']);
+      const { rows: connectorRows } = await pool.query('SELECT api_url, api_key, username, auth_type FROM connectors WHERE migration_id = $1 AND connector_type = $2', [migrationId, 'in']);
       const connector = connectorRows[0];
+      const { rows: migrationRowsInfo } = await pool.query('SELECT source_system, notes FROM migrations WHERE id = $1', [migrationId]);
+      const sourceSystem = migrationRowsInfo[0]?.source_system;
+      const instructions = migrationRowsInfo[0]?.notes;
 
-      // Fix for ClickUp URL issues (Probe Phase)
-      const { rows: migrationRowsInfo } = await pool.query('SELECT source_system FROM migrations WHERE id = $1', [migrationId]);
-      if (migrationRowsInfo[0]?.source_system === 'ClickUp' && connector) {
-          connector.api_url = "https://api.clickup.com";
-      }
-      
+      let effectiveApiUrl = connector?.api_url || "";
+      if (sourceSystem === 'ClickUp') effectiveApiUrl = "https://api.clickup.com/api/v2";
+
+      const { apiKey, baseUrl, projectId } = resolveOpenAiConfig();
+      const openAiHeaders = buildOpenAiHeaders(apiKey, projectId);
+      const openaiClient = {
+        chat: {
+          completions: {
+            create: async (params: any) => {
+              const response = await fetch(`${baseUrl}/chat/completions`, {
+                method: 'POST',
+                headers: openAiHeaders,
+                body: JSON.stringify(params),
+              });
+              if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`OpenAI API request failed: ${response.status} ${response.statusText} ${errorText}`);
+              }
+              return await response.json();
+            }
+          }
+        }
+      };
+
       let rateLimitResult = { delay: 1.0, batch_size: 50 };
 
-      if (connector && connector.api_url) {
-          await writeChatMessage(migrationId, 'system', `Performing probe request to ${connector.api_url}...`, currentStepNumber);
-          // Simulate probe delay
-          await new Promise(resolve => setTimeout(resolve, 1500));
+      if (connector && effectiveApiUrl) {
+          const probeUrl = sourceSystem === 'ClickUp' ? `${effectiveApiUrl}/user` : effectiveApiUrl.replace(/\/$/, "");
+          await writeChatMessage(migrationId, 'system', `Performing probe request to ${probeUrl}...`, currentStepNumber);
           
-          // Heuristic/Simulation of agent finding rate limits
-          // In a real implementation, we would use fetch(connector.api_url) and analyze headers
-          rateLimitResult = { delay: 0.5, batch_size: 100 }; // Optimistic simulation
-          
-          const frontendResult = {
-            status: "success",
-            phase: "Rate-Limit Calibration",
-            delay: rateLimitResult.delay,
-            batch_size: rateLimitResult.batch_size,
-            summary: `Rate-Limits erfolgreich kalibriert: ${rateLimitResult.delay}s Verzögerung, Batch-Größe ${rateLimitResult.batch_size}.`,
-            rawOutput: JSON.stringify(rateLimitResult)
-          };
-          await writeChatMessage(migrationId, 'assistant', JSON.stringify(frontendResult), currentStepNumber);
-      } else {
-          await writeChatMessage(migrationId, 'system', 'Kein Source-Connector gefunden. Verwende Standard-Werte.', currentStepNumber);
+          const headers: any = { "Accept": "application/json" };
+          if (connector.auth_type === 'api_key' && connector.api_key) {
+              headers["Authorization"] = sourceSystem === 'ClickUp' ? connector.api_key : `Bearer ${connector.api_key}`;
+          }
+
+          try {
+              const probeRes = await fetch(probeUrl, { headers });
+              const resHeaders: any = {};
+              probeRes.headers.forEach((v, k) => { resHeaders[k] = v; });
+              const resBody = await probeRes.text();
+
+              // LLM Analysis for Rate Limits
+              const calibrationPrompt = `
+                Analysiere diese API-Antwort und bestimme das optimale delay (in Sekunden, float) und die batch_size (int), 
+                um sicher unter dem Rate-Limit zu bleiben. Berücksichtige Header wie 'X-RateLimit-Limit', 'Retry-After' etc.
+                
+                API Antwort von ${sourceSystem}:
+                Status: ${probeRes.status}
+                Headers: ${JSON.stringify(resHeaders)}
+                Body: ${resBody.substring(0, 1000)}
+                
+                Gib NUR ein JSON zurück: { "delay": float, "batch_size": int }
+              `;
+
+              const calibrationGen = openaiClient.chat.completions.create({
+                  model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+                  messages: [{ role: "user", content: calibrationPrompt }],
+                  response_format: { type: "json_object" }
+              });
+              const calResult = await calibrationGen;
+              const parsedCal = JSON.parse(calResult.choices[0].message.content || "{}");
+              if (parsedCal.delay !== undefined) rateLimitResult = parsedCal;
+
+              const frontendResult = {
+                status: "success",
+                phase: "Rate-Limit Calibration",
+                delay: rateLimitResult.delay,
+                batch_size: rateLimitResult.batch_size,
+                summary: `Rate-Limits erfolgreich kalibriert: ${rateLimitResult.delay}s Verzögerung, Batch-Größe ${rateLimitResult.batch_size}.`,
+                rawOutput: JSON.stringify(rateLimitResult)
+              };
+              await writeChatMessage(migrationId, 'assistant', JSON.stringify(frontendResult), currentStepNumber);
+          } catch (e: any) {
+              await writeChatMessage(migrationId, 'system', `Probe failed: ${e.message}. Using defaults.`, currentStepNumber);
+          }
       }
 
-      // Phase 2: Neo4j Ingest (Real Implementation)
+      // --- Phase 2: Agent-Driven Ingestion ---
       await writeChatMessage(migrationId, 'system', 'Phase 2: Programmatic Data Import in Neo4j starting...', currentStepNumber);
+      
+      const { rows: step3Rows } = await pool.query('SELECT entity_name, count FROM step_3_results WHERE migration_id = $1', [migrationId]);
+      const entities = step3Rows.map(r => ({ name: r.entity_name, count: r.count }));
+      const scheme = await loadScheme(sourceSystem);
       
       let totalImported = 0;
       const driver = neo4j.driver(
@@ -791,118 +845,115 @@ async function processJob(job: any) {
         neo4j.auth.basic(process.env.NEO4J_USER || "neo4j", process.env.NEO4J_PASSWORD || "password")
       );
 
+      const agentSystemPrompt = `
+        Du bist ein Data Ingestion Agent für ${sourceSystem}. Deine Aufgabe ist es, Daten über die API zu sammeln und in Neo4j zu speichern.
+        
+        ZIELE: ${JSON.stringify(entities)}
+        ENDPUNKTE: ${JSON.stringify(scheme?.discovery?.endpoints || {})}
+        BASE_URL: ${effectiveApiUrl}
+        
+        REGELN:
+        1. Beginne beim Top-Level (z.B. Teams bei ClickUp).
+        2. Nutze IDs aus den Ergebnissen, um Platzhalter in URLs für Drill-Downs zu ersetzen.
+        3. Nutze das Tool 'fetch_and_ingest'. Es speichert die Daten und gibt dir gefundene IDs zurück.
+        4. Beende den Prozess, wenn alle Ziele erreicht sind oder keine neuen Daten gefunden werden.
+      `;
+
+      let messages: any[] = [{ role: "system", content: agentSystemPrompt }];
+      const tools = [{
+          type: "function",
+          function: {
+              name: "fetch_and_ingest",
+              description: "Fetch data from a URL and store it in Neo4j.",
+              parameters: {
+                  type: "object",
+                  properties: {
+                      entity_name: { type: "string" },
+                      url: { type: "string", description: "Vollständige URL mit aufgelösten Platzhaltern." }
+                  },
+                  required: ["entity_name", "url"]
+              }
+          }
+      }];
+
+      const attemptedUrls = new Set<string>();
+
       try {
-        const { rows: step3Rows } = await pool.query('SELECT entity_name, count FROM step_3_results WHERE migration_id = $1', [migrationId]);
-        const { rows: migrationRows } = await pool.query('SELECT source_system, scope_config FROM migrations WHERE id = $1', [migrationId]);
-        const sourceSystem = migrationRows[0]?.source_system;
-        const scopeConfig = migrationRows[0]?.scope_config || {};
-        const scheme = await loadScheme(sourceSystem);
+          for (let turn = 0; turn < 15; turn++) {
+              const response = await openaiClient.chat.completions.create({
+                  model: process.env.OPENAI_MODEL || "gpt-4o",
+                  messages,
+                  tools,
+                  tool_choice: "auto"
+              });
 
-        for (const row of step3Rows) {
-            const entityName = row.entity_name;
-            const expectedCount = row.count;
-            await writeChatMessage(migrationId, 'system', `Importing ${entityName} (Goal: ${expectedCount})...`, currentStepNumber);
-            
-            // Find endpoint
-            let endpoint = scheme?.discovery?.endpoints?.[entityName];
-            if (!endpoint) {
-                // Fallback attempt: guess endpoint
-                endpoint = `/${entityName.toLowerCase()}s`; // very basic pluralization
-                // await writeChatMessage(migrationId, 'system', `Kein Endpoint für ${entityName} gefunden.`, currentStepNumber);
-                // continue;
-            }
-            
-            // Replace placeholders from scope_config
-            if (endpoint) {
-                for (const [key, value] of Object.entries(scopeConfig)) {
-                    const placeholder = `{${key}}`;
-                    if (endpoint.includes(placeholder)) {
-                        endpoint = endpoint.replace(placeholder, String(value));
-                    }
-                }
-                
-                if (endpoint.includes("{")) {
-                    await writeChatMessage(migrationId, 'system', `Endpoint ${endpoint} hat noch ungelöste Platzhalter. Überspringe.`, currentStepNumber);
-                    continue;
-                }
-            }
+              const aiMessage = response.choices[0].message;
+              messages.push(aiMessage);
 
-            // Simple fetch logic
-            let effectiveApiUrl = connector.api_url;
-            if (sourceSystem === 'ClickUp') {
-                effectiveApiUrl = "https://api.clickup.com";
-            }
+              if (!aiMessage.tool_calls || aiMessage.tool_calls.length === 0) break;
 
-            const apiUrl = effectiveApiUrl.replace(/\/$/, "") + endpoint;
-            const headers: any = { "Accept": "application/json" };
-            if (connector.api_key) headers["Authorization"] = `Bearer ${connector.api_key}`;
+              for (const toolCall of aiMessage.tool_calls) {
+                  const args = JSON.parse(toolCall.function.arguments);
+                  const { entity_name, url } = args;
 
-            try {
-                const response = await fetch(apiUrl, { headers });
-                if (response.ok) {
-                    const data = await response.json();
-                    let items: any[] = [];
-                    // Heuristic to find list of items
-                    if (Array.isArray(data)) items = data;
-                    else if (data.items && Array.isArray(data.items)) items = data.items;
-                    else if (data.data && Array.isArray(data.data)) items = data.data;
-                    else if (data.tasks && Array.isArray(data.tasks)) items = data.tasks; 
-                    else if (data.issues && Array.isArray(data.issues)) items = data.issues;
+                  if (attemptedUrls.has(url)) {
+                      messages.push({ role: "tool", tool_call_id: toolCall.id, content: "URL already processed." });
+                      continue;
+                  }
+                  attemptedUrls.add(url);
+                  await writeChatMessage(migrationId, 'system', `Agent fetching ${entity_name} von ${url}...`, currentStepNumber);
 
-                    if (items.length > 0) {
-                        const session = driver.session();
-                        try {
-                             await session.run(
-                                `UNWIND $items AS item 
-                                 MERGE (n:\`${sourceSystem}\` { external_id: toString(item.id), migration_id: $migrationId }) 
-                                 SET n.entity_type = $entityType 
-                                 SET n += item`,
-                                { items: items.map((i: any) => ({ ...i, id: String(i.id || i.key || i.uuid || Math.random()) })), migrationId, entityType: entityName }
-                            );
-                            totalImported += items.length;
-                            await writeChatMessage(migrationId, 'system', `Successfully imported ${items.length} ${entityName} to Neo4j.`, currentStepNumber);
-                        } finally {
-                            await session.close();
-                        }
-                    } else {
-                         await writeChatMessage(migrationId, 'system', `Keine Items für ${entityName} in der API-Antwort gefunden.`, currentStepNumber);
-                    }
+                  const headers: any = { "Accept": "application/json" };
+                  if (connector.auth_type === 'api_key' && connector.api_key) {
+                      headers["Authorization"] = sourceSystem === 'ClickUp' ? connector.api_key : `Bearer ${connector.api_key}`;
+                  }
 
-                } else {
-                    await writeChatMessage(migrationId, 'system', `Fehler beim Abruf von ${entityName}: ${response.status}`, currentStepNumber);
-                }
-            } catch (fetchError: any) {
-                await writeChatMessage(migrationId, 'system', `Netzwerkfehler bei ${entityName}: ${fetchError.message}`, currentStepNumber);
-            }
-            // Rate limit delay
-            await new Promise(resolve => setTimeout(resolve, rateLimitResult.delay * 1000));
-        }
-      } catch (err: any) {
-          console.error("Neo4j Import Error:", err);
-          await writeChatMessage(migrationId, 'system', `Kritischer Fehler beim Neo4j-Import: ${err.message}`, currentStepNumber);
+                  try {
+                      const res = await fetch(url, { headers });
+                      if (res.ok) {
+                          const data = await res.json();
+                          const items = _extractItems(data, entity_name);
+                          if (items.length > 0) {
+                              await _ingestToNeo4j(driver, sourceSystem, entity_name, items, migrationId);
+                              totalImported += items.length;
+                              const sampleIds = items.slice(0, 5).map((i: any) => i.id);
+                              messages.push({ role: "tool", tool_call_id: toolCall.id, content: `Success. Imported ${items.length} items. Sample IDs: ${JSON.stringify(sampleIds)}` });
+                              await writeChatMessage(migrationId, 'system', `${items.length} ${entity_name} importiert.`, currentStepNumber);
+                          } else {
+                              messages.push({ role: "tool", tool_call_id: toolCall.id, content: "No items found in response." });
+                          }
+                      } else {
+                          messages.push({ role: "tool", tool_call_id: toolCall.id, content: `Error: HTTP ${res.status}` });
+                      }
+                  } catch (e: any) {
+                      messages.push({ role: "tool", tool_call_id: toolCall.id, content: `Fetch error: ${e.message}` });
+                  }
+                  await new Promise(r => setTimeout(r, rateLimitResult.delay * 1000));
+              }
+          }
       } finally {
-        await driver.close();
+          await driver.close();
       }
-      
-      result = { status: 'success', message: 'Data Staging erfolgreich abgeschlossen.', rateLimit: rateLimitResult, stagedCount: totalImported };
+
+      result = { status: 'success', message: 'Data Staging erfolgreich abgeschlossen.', stagedCount: totalImported };
       await saveStep5Result(migrationId, result);
 
-      const finishClient = await pool.connect();
+      const finishClientStaging = await pool.connect();
       try {
-        await finishClient.query('BEGIN');
-        await finishClient.query('UPDATE migration_steps SET status = $1, result = $2, status_message = $3 WHERE id = $4', [
+        await finishClientStaging.query('BEGIN');
+        await finishClientStaging.query('UPDATE migration_steps SET status = $1, result = $2, status_message = $3 WHERE id = $4', [
           'completed', result, 'Data staging completed successfully.', step_id,
         ]);
 
-        const { rows: migrationRows } = await finishClient.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
-        const migrationData = migrationRows[0];
-        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migrationData?.workflow_state, stepRecord.workflow_step_id || stepId, result, false);
+        const { rows: migRowsStaging } = await finishClientStaging.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
+        const migrationDataStaging = migRowsStaging[0];
+        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migrationDataStaging?.workflow_state, stepRecord.workflow_step_id || stepId, result, false);
         
-        await finishClient.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
+        await finishClientStaging.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
           nextState, progress, 'processing', 'completed', currentStepNumber, migrationId,
         ]);
-        await finishClient.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
-        await finishClient.query('COMMIT');
+        await finishClientStaging.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+        await finishClientStaging.query('COMMIT');
 
         await writeChatMessage(migrationId, 'assistant', 'Die Daten-Bereitstellung (Data Staging) wurde erfolgreich abgeschlossen. Wir können nun mit dem Model Mapping fortfahren.', currentStepNumber);
         
@@ -920,10 +971,10 @@ async function processJob(job: any) {
         }
         await logActivity(migrationId, 'success', 'Data Staging abgeschlossen.');
       } catch (e) {
-        await finishClient.query('ROLLBACK');
+        await finishClientStaging.query('ROLLBACK');
         throw e;
       } finally {
-        finishClient.release();
+        finishClientStaging.release();
       }
 
     } else if (agentName === 'runMappingSuggestion') {
@@ -931,21 +982,21 @@ async function processJob(job: any) {
       console.log(`[Worker] Running Mapping Suggestions for migration ${migrationId}`);
       await writeChatMessage(migrationId, 'assistant', 'Generiere Mapping-Vorschläge...', currentStepNumber);
 
-      const { rows: migrationRows } = await pool.query('SELECT source_system, target_system FROM migrations WHERE id = $1', [migrationId]);
-      const sourceSystem = migrationRows[0]?.source_system;
-      const targetSystem = migrationRows[0]?.target_system;
+      const { rows: migRows6 } = await pool.query('SELECT source_system, target_system FROM migrations WHERE id = $1', [migrationId]);
+      const sSys6 = migRows6[0]?.source_system;
+      const tSys6 = migRows6[0]?.target_system;
 
-      if (!sourceSystem || !targetSystem) throw new Error('Systemkonfiguration unvollständig.');
+      if (!sSys6 || !tSys6) throw new Error('Systemkonfiguration unvollständig.');
 
-      const { rows: step3Rows } = await pool.query('SELECT entity_name, count FROM step_3_results WHERE migration_id = $1', [migrationId]);
-      const sourceEntities = step3Rows.map(r => ({ name: r.entity_name, count: r.count }));
+      const { rows: s3Rows6 } = await pool.query('SELECT entity_name, count FROM step_3_results WHERE migration_id = $1', [migrationId]);
+      const sEnts6 = s3Rows6.map(r => ({ name: r.entity_name, count: r.count }));
 
-      const sourceSpecs = await loadObjectScheme(sourceSystem);
-      const targetSpecs = await loadObjectScheme(targetSystem);
+      const sSpecs6 = await loadObjectScheme(sSys6);
+      const tSpecs6 = await loadObjectScheme(tSys6);
 
-      if (!sourceSpecs || !targetSpecs) throw new Error('Objektspezifikationen konnten nicht geladen werden.');
+      if (!sSpecs6 || !tSpecs6) throw new Error('Objektspezifikationen konnten nicht geladen werden.');
 
-      const messageGenerator = runMapping(sourceEntities, sourceSpecs, targetSpecs);
+      const messageGenerator = runMapping(sEnts6, sSpecs6, tSpecs6);
       let lastMessageText: string | undefined;
       for await (const message of messageGenerator) {
         if (message.content && message.content.length > 0 && message.content[0].text) {
@@ -974,22 +1025,22 @@ async function processJob(job: any) {
         await saveStep6Result(migrationId, result);
       }
 
-      const finishClient = await pool.connect();
+      const finishClient6 = await pool.connect();
       try {
-        await finishClient.query('BEGIN');
-        await finishClient.query('UPDATE migration_steps SET status = $1, result = $2, status_message = $3 WHERE id = $4', [
+        await finishClient6.query('BEGIN');
+        await finishClient6.query('UPDATE migration_steps SET status = $1, result = $2, status_message = $3 WHERE id = $4', [
           isLogicalFailure ? 'failed' : 'completed', result, isLogicalFailure ? failureMessage : 'Mapping suggestions generated.', step_id,
         ]);
 
-        const { rows: migrationRows } = await finishClient.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
-        const migrationData = migrationRows[0];
-        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migrationData?.workflow_state, stepRecord.workflow_step_id || stepId, result, isLogicalFailure);
+        const { rows: migRowsFinal } = await finishClient6.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
+        const migDataFinal = migRowsFinal[0];
+        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migDataFinal?.workflow_state, stepRecord.workflow_step_id || stepId, result, isLogicalFailure);
         
-        await finishClient.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
+        await finishClient6.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
           nextState, progress, isLogicalFailure ? 'paused' : 'processing', isLogicalFailure ? 'failed' : 'completed', currentStepNumber, migrationId,
         ]);
-        await finishClient.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
-        await finishClient.query('COMMIT');
+        await finishClient6.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+        await finishClient6.query('COMMIT');
 
         await writeChatMessage(migrationId, 'assistant', result.summary || 'Ich habe die optimalen Mappings zwischen den Systemen ermittelt. Sie können diese nun im Mapping-Whiteboard überprüfen.', currentStepNumber);
         
@@ -1009,10 +1060,10 @@ async function processJob(job: any) {
         }
         await logActivity(migrationId, isLogicalFailure ? 'warning' : 'success', 'Mapping Suggestions abgeschlossen.');
       } catch (e) {
-        await finishClient.query('ROLLBACK');
+        await finishClient6.query('ROLLBACK');
         throw e;
       } finally {
-        finishClient.release();
+        finishClient6.release();
       }
 
     } else {
@@ -1060,6 +1111,46 @@ function main() {
   }
   console.log('Worker started.');
   setInterval(() => pollForJobs(), POLL_INTERVAL);
+}
+
+function _extractItems(body: any, entityName: string): any[] {
+  if (Array.isArray(body)) return body;
+  if (typeof body === 'object' && body !== null) {
+      for (const key of [entityName, 'items', 'data', 'tasks', 'results', 'values', 'elements']) {
+          if (Array.isArray(body[key])) return body[key];
+      }
+      for (const key in body) {
+          if (Array.isArray(body[key])) return body[key];
+      }
+  }
+  return [];
+}
+
+async function _ingestToNeo4j(driver: any, systemLabel: string, entityType: string, items: any[], migrationId: string) {
+  const session = driver.session();
+  try {
+      await session.run(
+          `UNWIND $items AS item 
+           MERGE (n:\`${systemLabel}\` { external_id: toString(COALESCE(item.id, item.key, item.uuid)), migration_id: $migrationId }) 
+           SET n.entity_type = $entityType 
+           SET n += item`,
+          { 
+              items: items.map(i => {
+                  const sanitized: any = {};
+                  for (const [k, v] of Object.entries(i)) {
+                      if (['string', 'number', 'boolean'].includes(typeof v) || v === null) {
+                          sanitized[k] = v;
+                      }
+                  }
+                  return sanitized;
+              }), 
+              migrationId, 
+              entityType 
+          }
+      );
+  } finally {
+      await session.close();
+  }
 }
 
 main();

@@ -223,7 +223,9 @@ const Dashboard = () => {
           projectId: projectId,
           activities,
           notes: migration.notes ?? "",
-          status: migration.status || deriveMigrationStatus(migration),
+          status: (migration.step_status === 'running' || migration.step_status === 'pending') 
+            ? 'processing' 
+            : (migration.step_status === 'failed' ? 'paused' : (migration.status === 'completed' ? 'completed' : 'not_started')),
           workflowState: migration.workflow_state,
           current_step: migration.current_step,
           step_status: migration.step_status,
