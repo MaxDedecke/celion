@@ -845,6 +845,15 @@ async function processJob(job: any) {
         neo4j.auth.basic(process.env.NEO4J_USER || "neo4j", process.env.NEO4J_PASSWORD || "password")
       );
 
+      // Cleanup: Delete existing nodes for this migration
+      const cleanupSession = driver.session();
+      try {
+          await writeChatMessage(migrationId, 'system', 'Bereinige alte Daten in Neo4j...', currentStepNumber);
+          await cleanupSession.run('MATCH (n { migration_id: $migrationId }) DETACH DELETE n', { migrationId });
+      } finally {
+          await cleanupSession.close();
+      }
+
       const agentSystemPrompt = `
         Du bist ein Data Ingestion Agent für ${sourceSystem}. Deine Aufgabe ist es, Daten über die API zu sammeln und in Neo4j zu speichern.
         
