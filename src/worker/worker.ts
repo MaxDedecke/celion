@@ -757,6 +757,9 @@ async function processJob(job: any) {
       let effectiveApiUrl = connector?.api_url || "";
       if (sourceSystem === 'ClickUp') effectiveApiUrl = "https://api.clickup.com/api/v2";
 
+      const stagingLogs: string[] = [];
+      const phase3Logs: string[] = [];
+
       const { apiKey, baseUrl, projectId } = resolveOpenAiConfig();
       const openAiHeaders = buildOpenAiHeaders(apiKey, projectId);
       const openaiClient = {
@@ -844,7 +847,6 @@ async function processJob(job: any) {
         neo4j.auth.basic(process.env.NEO4J_USER || "neo4j", process.env.NEO4J_PASSWORD || "password")
       );
 
-      const stagingLogs: string[] = [];
       const addStagingLog = (msg: string) => {
           stagingLogs.push(`[${new Date().toLocaleTimeString('de-DE')}] ${msg}`);
       };
@@ -946,6 +948,119 @@ async function processJob(job: any) {
                   await new Promise(r => setTimeout(r, rateLimitResult.delay * 1000));
               }
           }
+
+          // --- Phase 3: Automated Relationship Discovery ---
+          console.log(`[Worker] Starting Phase 3 for migration ${migrationId}`);
+          await writeChatMessage(migrationId, 'system', 'Phase 3: Automated Relationship Discovery starting...', currentStepNumber);
+          
+          const addPhase3Log = (msg: string) => {
+              phase3Logs.push(`[${new Date().toLocaleTimeString('de-DE')}] ${msg}`);
+          };
+
+          addPhase3Log('Analysiere Datenstruktur in Neo4j...');
+          
+          // 1. Get Schema Samples (Labels + Property Keys) for this migration
+          const schemaSample: Record<string, string[]> = {};
+          const schemaSession = driver.session();
+          try {
+              const labelsRes = await schemaSession.run(
+                  `MATCH (n {migration_id: $migrationId}) 
+                   RETURN DISTINCT labels(n)[0] as label`, 
+                  { migrationId }
+              );
+              const labels = labelsRes.records.map(r => r.get('label')).filter(l => l);
+              console.log(`[Worker] Found labels for discovery: ${labels.join(', ')}`);
+              
+              for (const label of labels) {
+                  const keysRes = await schemaSession.run(
+                      `MATCH (n:\`${label}\` {migration_id: $migrationId}) 
+                       RETURN keys(n) as keys LIMIT 1`,
+                      { migrationId }
+                  );
+                  if (keysRes.records.length > 0) {
+                      schemaSample[label] = keysRes.records[0].get('keys');
+                  }
+              }
+          } finally {
+              await schemaSession.close();
+          }
+
+          console.log(`[Worker] Schema sample gathered: ${Object.keys(schemaSample).length} entities`);
+
+          let totalRelsCreated = 0;
+          if (Object.keys(schemaSample).length > 0) {
+              const discoveryPrompt = `
+                Analysiere die folgenden Entity-Typen und deren Properties aus einem Quellsystem.
+                Deine Aufgabe ist es, strukturelle Beziehungen (Foreign Keys) zu identifizieren.
+                
+                VERFÜGBARE ENTITIES: ${JSON.stringify(Object.keys(schemaSample))}
+                PROPERTIES PRO ENTITY:
+                ${JSON.stringify(schemaSample, null, 2)}
+                
+                REGELN:
+                1. Suche nach Feldern, die auf andere Entities verweisen (z.B. 'parent_id', 'project_id', 'user.id', 'creator').
+                2. Erstelle eine Liste von Verknüpfungs-Regeln.
+                3. Jede Regel muss 'from' (Entity mit dem FK), 'to' (Ziel-Entity), 'field' (Name des FK-Feldes) und 'type' (Name der Beziehung, z.B. 'MEMBER_OF', 'SUBTASK_OF', 'ASSIGNED_TO') enthalten.
+                
+                ANTWORTE NUR ALS JSON ARRAY:
+                [{"from": "string", "to": "string", "field": "string", "type": "string"}]
+              `;
+
+              const discoveryRes = await openaiClient.chat.completions.create({
+                  model: process.env.OPENAI_MODEL || "gpt-4o",
+                  messages: [{ role: "user", content: discoveryPrompt }],
+                  response_format: { type: "json_object" }
+              });
+
+              console.log(`[Worker] LLM Discovery Result: ${discoveryRes.choices[0].message.content}`);
+
+              let relRules = [];
+              try {
+                  const rules = JSON.parse(discoveryRes.choices[0].message.content || "[]");
+                  relRules = Array.isArray(rules) ? rules : (rules.rules || []);
+              } catch (e) {
+                  console.error(`[Worker] Failed to parse discovery rules: ${e}`);
+              }
+
+              if (relRules.length > 0) {
+                  addPhase3Log(`${relRules.length} potenzielle Beziehungstypen identifiziert.`);
+                  const linkSession = driver.session();
+                  try {
+                      for (const rule of relRules) {
+                          const linkQuery = `
+                            MATCH (a:\`${rule.from}\` {migration_id: $migrationId})
+                            MATCH (b:\`${rule.to}\` {migration_id: $migrationId})
+                            WHERE a.\`${rule.field}\` IS NOT NULL 
+                              AND toString(a.\`${rule.field}\`) = b.external_id
+                              AND a <> b
+                            MERGE (a)-[r:\`${rule.type}\` {migration_id: $migrationId}]->(b)
+                            RETURN count(r) as count
+                          `;
+                          const result = await linkSession.run(linkQuery, { migrationId });
+                          const count = result.records[0].get('count').toNumber();
+                          if (count > 0) {
+                              totalRelsCreated += count;
+                              addPhase3Log(`-> ${count} Beziehungen vom Typ '${rule.type}' zwischen '${rule.from}' und '${rule.to}' erstellt.`);
+                          }
+                      }
+                  } finally {
+                      await linkSession.close();
+                  }
+              }
+          }
+          addPhase3Log('Phase 3 abgeschlossen.');
+          
+          // Final Phase 3 Summary Message
+          const phase3Result = {
+              status: "success",
+              phase: "Relationship Discovery",
+              summary: `Strukturanalyse beendet: ${totalRelsCreated} Beziehungen im Graph automatisch identifiziert und verknüpft.`,
+              rawOutput: phase3Logs.join('\n')
+          };
+          await writeChatMessage(migrationId, 'assistant', JSON.stringify(phase3Result), currentStepNumber);
+          
+          console.log(`[Worker] Phase 3 completed for migration ${migrationId}`);
+
       } finally {
           await driver.close();
       }
@@ -954,12 +1069,19 @@ async function processJob(job: any) {
       const protocolResult = {
           status: "info",
           phase: "Data Ingestion Protocol",
-          summary: `Daten-Import abgeschlossen: ${totalImported} Objekte insgesamt aus ${attemptedUrls.size} Endpunkten geladen.`,
+          summary: `Daten-Import und Graph-Strukturierung abgeschlossen: ${totalImported} Objekte geladen.`,
           rawOutput: stagingLogs.join('\n')
       };
       await writeChatMessage(migrationId, 'assistant', JSON.stringify(protocolResult), currentStepNumber);
 
-      result = { status: 'success', message: 'Data Staging erfolgreich abgeschlossen.', stagedCount: totalImported, urls: Array.from(attemptedUrls), logs: stagingLogs };
+      result = { 
+          status: 'success', 
+          message: 'Data Staging erfolgreich abgeschlossen.', 
+          stagedCount: totalImported, 
+          urls: Array.from(attemptedUrls), 
+          logs: stagingLogs,
+          phase3Logs: phase3Logs
+      };
       await saveStep5Result(migrationId, result);
 
       const finishClientStaging = await pool.connect();
