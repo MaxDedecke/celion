@@ -679,13 +679,7 @@ async def ask_consultant(id: str, payload: AnswerAgentRequest) -> dict[str, Any]
     """Ask the AI consultant a question about the migration."""
     try:
         with _get_db_connection() as conn, conn.cursor() as cur:
-            # 1. Save user message and set consultant status to thinking
-            cur.execute(
-                """
-                UPDATE public.migrations SET consultant_status = 'thinking' WHERE id = %s
-                """,
-                (id,),
-            )
+            # 1. Save user message
             cur.execute(
                 """
                 INSERT INTO public.migration_chat_messages (migration_id, role, content)
@@ -697,7 +691,7 @@ async def ask_consultant(id: str, payload: AnswerAgentRequest) -> dict[str, Any]
             user_msg_id = cur.fetchone()["id"]
 
             # 2. Fetch context (Step Results)
-            step_results = {"step_1": [], "step_2": [], "step_3": [], "step_4": []}
+            step_results = {"step_1": [], "step_2": [], "step_3": [], "step_4": [], "step_5": [], "step_6": []}
             cur.execute("SELECT * FROM public.step_1_results WHERE migration_id = %s", (id,))
             step_results["step_1"] = [dict(row) for row in cur.fetchall()]
             cur.execute("SELECT * FROM public.step_2_results WHERE migration_id = %s", (id,))
@@ -706,6 +700,10 @@ async def ask_consultant(id: str, payload: AnswerAgentRequest) -> dict[str, Any]
             step_results["step_3"] = [dict(row) for row in cur.fetchall()]
             cur.execute("SELECT * FROM public.step_4_results WHERE migration_id = %s", (id,))
             step_results["step_4"] = [dict(row) for row in cur.fetchall()]
+            cur.execute("SELECT * FROM public.step_5_results WHERE migration_id = %s", (id,))
+            step_results["step_5"] = [dict(row) for row in cur.fetchall()]
+            cur.execute("SELECT * FROM public.step_6_results WHERE migration_id = %s", (id,))
+            step_results["step_6"] = [dict(row) for row in cur.fetchall()]
 
             # 3. Fetch History (last 10 messages for follow-ups)
             cur.execute(
@@ -723,8 +721,8 @@ async def ask_consultant(id: str, payload: AnswerAgentRequest) -> dict[str, Any]
             # For the AnswerAgent, we create a specialized job without a fixed step
             cur.execute(
                 """
-                INSERT INTO public.jobs (payload, status)
-                VALUES (%s, 'pending')
+                INSERT INTO public.jobs (step_id, payload, status)
+                VALUES (NULL, %s, 'pending')
                 RETURNING id
                 """,
                 (json_dumps({

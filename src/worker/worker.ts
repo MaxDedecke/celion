@@ -736,7 +736,6 @@ async function processJob(job: any) {
       if (assistantResponse) {
         await writeChatMessage(migrationId, 'assistant', assistantResponse);
       }
-      await pool.query('UPDATE public.migrations SET consultant_status = $1 WHERE id = $2', ['idle', migrationId]);
       await pool.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
       return;
 
@@ -944,7 +943,14 @@ async function processJob(job: any) {
           await driver.close();
       }
 
-      result = { status: 'success', message: 'Data Staging erfolgreich abgeschlossen.', stagedCount: totalImported };
+      // Summary of processed URLs for debugging
+      if (attemptedUrls.size > 0) {
+          const urlList = Array.from(attemptedUrls).map(u => `- ${u}`).join('\n');
+          const summaryMsg = `**Abgefragte Endpunkte während des Data Staging:**\n${urlList}`;
+          await writeChatMessage(migrationId, 'system', summaryMsg, currentStepNumber);
+      }
+
+      result = { status: 'success', message: 'Data Staging erfolgreich abgeschlossen.', stagedCount: totalImported, urls: Array.from(attemptedUrls) };
       await saveStep5Result(migrationId, result);
 
       const finishClientStaging = await pool.connect();
