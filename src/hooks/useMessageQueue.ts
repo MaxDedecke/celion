@@ -33,41 +33,66 @@ export const useMessageQueue = <T extends { id: string; role?: string; created_a
   }, [delayMs]);
 
   useEffect(() => {
+    // Wenn keine Nachrichten da sind (z.B. beim Wechsel der Migration), Initialisierung zurücksetzen
+    if (allMessages.length === 0) {
+      isInitializedRef.current = false;
+      setVisibleIds(new Set());
+      setCompletedAnimations(new Set());
+      setAnimatingId(null);
+      previousIdsRef.current = new Set();
+      return;
+    }
+
     const currentIds = new Set(allMessages.map(m => m.id));
     
-    // Neue Nachrichten erkennen (nur gegen previousIdsRef prüfen, nicht visibleIds - vermeidet Race Condition)
-    const newIds = allMessages.filter(m => !previousIdsRef.current.has(m.id));
+    // Neue Nachrichten erkennen (nur gegen previousIdsRef prüfen)
+    const newMessages = allMessages.filter(m => !previousIdsRef.current.has(m.id));
     
-    // Bulk-Load Erkennung: Mehr als 3 neue Nachrichten = historische Daten, sofort anzeigen
-    const isBulkLoad = newIds.length > 3;
-    
-    if (!isInitializedRef.current || isBulkLoad) {
-      // Alle Nachrichten sofort sichtbar und als completed markieren
-      setVisibleIds(currentIds);
-      setCompletedAnimations(currentIds);
+    // Erst-Initialisierung oder Bulk-Load von historischen Daten
+    if (!isInitializedRef.current || newMessages.length > 3) {
+      const now = Date.now();
+      const idsToAnimate: string[] = [];
+      const idsToShowInstantly: string[] = [];
+
+      allMessages.forEach(m => {
+        // Nachricht ist "neu", wenn sie jünger als 10 Sekunden ist
+        const isVeryRecent = m.created_at ? (now - new Date(m.created_at).getTime() < 10000) : false;
+        
+        if (isVeryRecent && isInitializedRef.current) {
+          // Nur während der Session animieren
+          idsToAnimate.push(m.id);
+        } else {
+          idsToShowInstantly.push(m.id);
+        }
+      });
+
+      setVisibleIds(new Set([...visibleIds, ...idsToShowInstantly]));
+      setCompletedAnimations(new Set([...completedAnimations, ...idsToShowInstantly]));
+      
+      if (idsToAnimate.length > 0) {
+        queueRef.current.push(...idsToAnimate);
+      }
+
       previousIdsRef.current = currentIds;
       isInitializedRef.current = true;
-      // Queue leeren falls etwas drin war
-      queueRef.current = [];
+
+      // Starten falls nichts läuft
+      if (!animatingId && queueRef.current.length > 0) {
+        const nextId = queueRef.current.shift();
+        if (nextId) {
+          setVisibleIds(prev => new Set([...prev, nextId]));
+          setAnimatingId(nextId);
+        }
+      }
       return;
     }
     
-    // Ab hier: Nur einzelne neue Nachrichten während der Session animieren
-    if (newIds.length > 0) {
-      newIds.forEach(m => {
-        const isOld = m.created_at ? (Date.now() - new Date(m.created_at).getTime() > 20000) : false;
-
-        // Nur alte Nachrichten sofort anzeigen
-        if (isOld) {
-          setVisibleIds(prev => new Set([...prev, m.id]));
-          setCompletedAnimations(prev => new Set([...prev, m.id]));
-        } else {
-          // Alle neuen Nachrichten (inkl. User) in Queue
-          queueRef.current.push(m.id);
-        }
+    // Ab hier: Einzelne neue Nachrichten während der Session animieren (z.B. User-Input oder Agenten-Antwort)
+    if (newMessages.length > 0) {
+      newMessages.forEach(m => {
+        queueRef.current.push(m.id);
       });
       
-      // Erste Agent-Nachricht starten wenn keine Animation läuft
       if (!animatingId && queueRef.current.length > 0) {
         const firstId = queueRef.current.shift();
         if (firstId) {

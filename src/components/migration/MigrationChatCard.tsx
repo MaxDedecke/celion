@@ -78,18 +78,9 @@ const MigrationChatCard = ({
 
   const scrollToBottom = () => {
     if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTo({
-        top: scrollContainerRef.current.scrollHeight,
-        behavior: 'smooth'
-      });
-    }
-  };
-
-  useEffect(() => {
-    if (scrollContainerRef.current && isNearBottom) {
       scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
     }
-  }, [chatMessages, migrationData.step_status, isNearBottom]);
+  };
 
   const totalSteps = 10;
   const rawStep = migrationData.current_step || 0;
@@ -98,7 +89,45 @@ const MigrationChatCard = ({
   
   const hasCurrentStepFailed = migrationData.step_status === 'failed';
   const isConsultantThinking = migrationData.consultant_status === 'thinking';
-  
+
+  // Initial scroll to bottom when chat messages are loaded for the first time or migration changes
+  const initialScrollDone = useRef<string | null>(null);
+  useEffect(() => {
+    if (chatMessages.length > 0 && initialScrollDone.current !== migration.id) {
+      // Use a small delay to ensure DOM is fully rendered
+      const timeoutId = setTimeout(() => {
+        scrollToBottom();
+        initialScrollDone.current = migration.id;
+      }, 150);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [migration.id, chatMessages.length > 0]);
+
+  // Regular scroll to bottom when new messages arrive and user is near bottom
+  useEffect(() => {
+    if (scrollContainerRef.current && isNearBottom) {
+      scrollToBottom();
+    }
+  }, [chatMessages, migrationData.step_status, isStepRunning, isNearBottom]);
+
+  // Continuous scroll while something is animating (typewriter)
+  useEffect(() => {
+    let intervalId: NodeJS.Timeout | null = null;
+    
+    // Wenn der Agent läuft oder der Consultant denkt, scrollen wir mit
+    if (isStepRunning || isConsultantThinking) {
+      intervalId = setInterval(() => {
+        if (isNearBottom) {
+          scrollToBottom();
+        }
+      }, 100);
+    }
+    
+    return () => {
+      if (intervalId) clearInterval(intervalId);
+    };
+  }, [isStepRunning, isConsultantThinking, isNearBottom]);
+
   // Wenn Schritt X läuft oder fehlgeschlagen ist, sind erst X-1 Schritte komplett fertig
   const completedCount = (isStepRunning || hasCurrentStepFailed) ? Math.max(0, rawStep - 1) : rawStep;
   
@@ -184,6 +213,12 @@ const MigrationChatCard = ({
     return null;
   }, [isStepRunning, isConsultantThinking, lastActionMessage, migrationData.status, rawStep, onAction, onContinue, hasCurrentStepFailed, runningStep, currentStepNumber, activeStep]);
 
+  const handleSendMessage = (message: string) => {
+    onSendMessage(message);
+    // Force scroll to bottom when user sends a message
+    setTimeout(scrollToBottom, 100);
+  };
+
   return (
     <Card 
       style={{ height: "calc(100vh - 180px)" }} 
@@ -216,14 +251,17 @@ const MigrationChatCard = ({
           </div>
           
           {/* Progress Bar Row */}
-          <div className="flex items-center gap-3">
+          <div className="flex flex-col gap-1.5 mt-1">
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Fortschritt</span>
+              <span className="text-sm font-bold text-primary tabular-nums">
+                {Math.round(overallProgress)}%
+              </span>
+            </div>
             <Progress 
               value={overallProgress} 
-              className="h-1.5 flex-1"
+              className="h-1.5 w-full"
             />
-            <span className="text-[10px] font-bold text-muted-foreground tabular-nums w-8 text-right">
-              {Math.round(overallProgress)}%
-            </span>
           </div>
         </div>
       </CardHeader>
@@ -264,7 +302,7 @@ const MigrationChatCard = ({
           
           <ChatInput 
             disabled={isStepRunning || isConsultantThinking} 
-            onSend={onSendMessage} 
+            onSend={handleSendMessage} 
             placeholder={isStepRunning ? "Agent arbeitet..." : isConsultantThinking ? "Consultant denkt nach..." : "Nächsten Schritt starten oder Befehl eingeben..."} 
           />
         </div>

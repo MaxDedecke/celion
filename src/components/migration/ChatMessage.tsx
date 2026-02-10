@@ -387,7 +387,7 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
             </div>
           ) : (
             <>
-              {enableTypewriter ? (
+              {enableTypewriter && message.role !== "user" ? (
                 <TypewriterText text={message.content} speed={8} onComplete={onTypewriterComplete} />
               ) : (
                 renderFormattedContent(message.content)
