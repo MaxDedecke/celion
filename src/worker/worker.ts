@@ -726,7 +726,15 @@ async function processJob(job: any) {
     } else if (agentName === 'runAnswerAgent') {
       const userMessage = agentParams?.userMessage;
       const context = agentParams?.context;
-      const messageGenerator = runAnswerAgent(userMessage, context);
+      
+      const { rows: migrationRows } = await pool.query('SELECT source_system FROM migrations WHERE id = $1', [migrationId]);
+      const sourceSystem = migrationRows[0]?.source_system;
+
+      const messageGenerator = runAnswerAgent(userMessage, {
+          ...context,
+          migrationId,
+          sourceSystem
+      });
       let assistantResponse = "";
       for await (const message of messageGenerator) {
         if (message.content && message.content.length > 0 && message.content[0].text) {
