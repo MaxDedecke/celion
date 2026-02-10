@@ -1408,6 +1408,22 @@ async def _duplicate_neo4j_data(old_id: str, new_id: str):
         driver.close()
 
 
+async def _delete_neo4j_data(migration_id: str):
+    """Delete all nodes and relationships associated with a migration in Neo4j."""
+    driver = _get_neo4j_driver()
+    try:
+        with driver.session() as session:
+            # DETACH DELETE ensures relationships are also removed
+            session.run(
+                "MATCH (n {migration_id: $id}) DETACH DELETE n",
+                id=migration_id
+            )
+    except Exception as e:
+        print(f"Error deleting Neo4j data: {e}", file=sys.stderr)
+    finally:
+        driver.close()
+
+
 @app.patch("/api/migrations/{id}", response_model=Migration)
 async def update_migration(id: str, payload: UpdateMigrationPayload) -> Migration:
     """Update a migration in the database."""
@@ -1805,6 +1821,9 @@ async def delete_migration(id: str) -> dict[str, str]:
             # Delete the migration itself
             cur.execute("DELETE FROM public.migrations WHERE id = %s", (id,))
             
+            # Delete Neo4j data
+            await _delete_neo4j_data(id)
+
             conn.commit()
             
             return {"message": f"Migration {id} and related records deleted successfully."}
