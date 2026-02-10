@@ -1673,14 +1673,13 @@ async def duplicate_migration(id: str, user_id: str) -> Migration:
 
             # 8. Add duplication welcome messages to the chat
             welcome_msg_1 = f"Diese Migration wurde von **{original['name']}** dupliziert."
-            welcome_msg_2 = "Einfach auf **Starten** drücken und los geht's."
             
             cur.execute(
                 """
                 INSERT INTO public.migration_chat_messages (migration_id, role, content, step_number)
-                VALUES (%s, 'system', %s, 0), (%s, 'system', %s, 0)
+                VALUES (%s, 'system', %s, 0)
                 """,
-                (new_migration_id, welcome_msg_1, new_migration_id, welcome_msg_2)
+                (new_migration_id, welcome_msg_1)
             )
 
             # 9. Add activity for duplication
