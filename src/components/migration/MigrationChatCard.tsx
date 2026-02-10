@@ -1,7 +1,7 @@
 import { useMemo, useRef, useEffect, useState } from "react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronDown } from "lucide-react";
+import { ChevronDown, ArrowRight, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { AgentWorkflowStepState } from "./types";
 import ChatMessageList from "./ChatMessageList";
@@ -113,6 +113,77 @@ const MigrationChatCard = ({
   const runningStep = AGENT_WORKFLOW_STEPS[runningStepIndex];
   const currentStepTitle = activeStep?.title || (completedCount === totalSteps ? "Abgeschlossen" : "Bereit");
 
+  // Extract latest action message
+  const lastActionMessage = useMemo(() => {
+    const actionMessages = chatMessages.filter(m => {
+      try {
+        const parsed = JSON.parse(m.content);
+        return parsed.type === 'action';
+      } catch {
+        return false;
+      }
+    });
+    return actionMessages[actionMessages.length - 1];
+  }, [chatMessages]);
+
+  const actionButtons = useMemo(() => {
+    if (isStepRunning || isConsultantThinking) return null;
+
+    if (lastActionMessage) {
+      try {
+        const jsonContent = JSON.parse(lastActionMessage.content);
+        const actions = jsonContent.actions || (jsonContent.action ? [jsonContent] : []);
+        
+        return actions.map((action: any, idx: number) => {
+          if (action.action === 'continue' && rawStep !== undefined && lastActionMessage.step_number !== undefined && lastActionMessage.step_number < rawStep) {
+            return null;
+          }
+          
+          return (
+            <Button 
+              key={idx}
+              onClick={() => onAction && onAction(action.action === 'retry' ? `retry:${action.stepNumber}` : action.action)} 
+              variant={action.variant === "primary" ? "default" : "outline"} 
+              size="sm"
+              className={cn(
+                "h-8 text-xs gap-1.5",
+                action.variant !== "primary" && "border-primary/20 hover:bg-primary/5 text-primary"
+              )}
+            >
+              {action.label}
+              {action.action === 'continue' ? <ArrowRight className="h-3.5 w-3.5" /> : <Play className="h-3 w-3" />}
+            </Button>
+          );
+        });
+      } catch (e) {
+        return null;
+      }
+    }
+
+    // Fallback Continue Button
+    if (migrationData.status !== "completed") {
+      const label = migrationData.status === "not_started" 
+        ? "Starten" 
+        : hasCurrentStepFailed 
+          ? `Schritt wiederholen: ${runningStep?.title}` 
+          : `Weiter zu Schritt ${currentStepNumber}: ${activeStep?.title}`;
+      
+      return (
+        <Button 
+          onClick={() => onContinue()} 
+          variant="default" 
+          size="sm"
+          className="h-8 text-xs gap-1.5 animate-fade-in"
+        >
+          {label}
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Button>
+      );
+    }
+
+    return null;
+  }, [isStepRunning, isConsultantThinking, lastActionMessage, migrationData.status, rawStep, onAction, onContinue, hasCurrentStepFailed, runningStep, currentStepNumber, activeStep]);
+
   return (
     <Card 
       style={{ height: "calc(100vh - 180px)" }} 
@@ -120,9 +191,9 @@ const MigrationChatCard = ({
     >
       <CardHeader className="shrink-0 py-3 px-4">
         {/* Compact Status Header */}
-        <div className="flex flex-col gap-2">
-          {/* Main Row: Stepper Dots + Step Info + Progress */}
-          <div className="flex items-center gap-4">
+        <div className="flex flex-col gap-3">
+          {/* Main Row: Stepper Dots + Step Info */}
+          <div className="flex items-center gap-4 min-w-0">
             {/* Stepper Dots */}
             <StepperDots 
               totalSteps={totalSteps} 
@@ -132,54 +203,40 @@ const MigrationChatCard = ({
             />
             
             {/* Step Info */}
-            <div className="flex items-center gap-2 flex-1 min-w-0">
-              <span className="text-sm font-medium text-foreground truncate">
-                Schritt {currentStepNumber} von {totalSteps}: {currentStepTitle}
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="text-sm font-semibold text-foreground truncate">
+                Schritt {currentStepNumber}: {currentStepTitle}
               </span>
               {isStepRunning && (
-                <span className="text-xs text-muted-foreground animate-pulse">
+                <span className="text-xs text-primary animate-pulse font-medium">
                   Wird ausgeführt...
                 </span>
               )}
-              {!isStepRunning && hasCurrentStepFailed && (
-                <span className="text-xs text-destructive font-medium">
-                  Fehlgeschlagen – Wiederholen
-                </span>
-              )}
             </div>
-            
-            {/* Progress Percentage */}
-            <span className="text-sm font-semibold text-muted-foreground tabular-nums">
+          </div>
+          
+          {/* Progress Bar Row */}
+          <div className="flex items-center gap-3">
+            <Progress 
+              value={overallProgress} 
+              className="h-1.5 flex-1"
+            />
+            <span className="text-[10px] font-bold text-muted-foreground tabular-nums w-8 text-right">
               {Math.round(overallProgress)}%
             </span>
           </div>
-          
-          {/* Progress Bar */}
-          <Progress 
-            value={overallProgress} 
-            className="h-1.5"
-          />
         </div>
       </CardHeader>
 
       <CardContent className="flex min-h-0 flex-1 flex-col p-4 pt-0">
         <div className="relative min-h-0 flex-1">
-          <div ref={scrollContainerRef} onScroll={handleScroll} className="absolute inset-0 overflow-y-auto">
+          <div ref={scrollContainerRef} onScroll={handleScroll} className="absolute inset-0 overflow-y-auto pr-2">
             <ChatMessageList 
               messages={chatMessages} 
               isAgentRunning={isStepRunning} 
               isConsultantThinking={isConsultantThinking}
               onOpenAgentOutput={onOpenAgentOutput}
               onAction={onAction}
-              showContinueButton={migrationData.status !== "completed" && !isStepRunning}
-              onContinue={onContinue}
-              continueButtonText={
-                migrationData.status === "not_started" 
-                  ? "Starten" 
-                  : hasCurrentStepFailed 
-                    ? `↻ Schritt wiederholen: ${runningStep?.title}` 
-                    : `Weiter zu Schritt ${currentStepNumber} ${activeStep?.title}`
-              }
               currentStepTitle={runningStep?.title}
               currentStep={rawStep}
             />
@@ -190,14 +247,21 @@ const MigrationChatCard = ({
               onClick={scrollToBottom}
               size="icon"
               variant="secondary"
-              className="absolute bottom-24 right-4 z-10 h-8 w-8 rounded-full shadow-md animate-fade-in hover:scale-105 transition-transform"
+              className="absolute bottom-4 right-4 z-10 h-8 w-8 rounded-full shadow-md animate-fade-in hover:scale-105 transition-transform"
             >
               <ChevronDown className="h-4 w-4" />
             </Button>
           )}
         </div>
 
-        <div className="mt-4 pt-4">
+        {/* Action Buttons Layer */}
+        <div className="mt-4 flex flex-col gap-3">
+          {actionButtons && (
+            <div className="flex flex-wrap gap-2 justify-start animate-slide-up">
+              {actionButtons}
+            </div>
+          )}
+          
           <ChatInput 
             disabled={isStepRunning || isConsultantThinking} 
             onSend={onSendMessage} 

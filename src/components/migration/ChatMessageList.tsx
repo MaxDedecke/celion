@@ -147,30 +147,6 @@ const ChatMessageList = ({
       {isConsultantThinking && !isAgentRunning && (
         <ThinkingIndicator role="consultant" />
       )}
-
-      {/* Pinned Action Buttons */}
-      {lastActionMessage && isLastActionMessageVisible && !isAgentRunning && !isConsultantThinking && (
-        <div className="mt-4 border-t border-border/50 pt-4 px-2">
-          <ChatMessage 
-            message={lastActionMessage} 
-            onAction={handleAction}
-            currentStep={currentStep}
-          />
-        </div>
-      )}
-      
-      {/* Fallback Continue Button (if no explicit action message exists) */}
-      {showContinueButton && !isAgentRunning && !isConsultantThinking && !lastActionMessage && !hasQueuedMessages && (
-        <div className="flex items-center gap-2 animate-fade-in pt-4 pl-11">
-          <button 
-            onClick={() => onContinue?.()}
-            className="text-sm text-primary hover:text-primary/80 flex items-center gap-1.5 transition-all group"
-          >
-            <ArrowRight className="h-3.5 w-3.5 group-hover:translate-x-0.5 transition-transform" />
-            {continueButtonText}
-          </button>
-        </div>
-      )}
     </div>
   );
 };
