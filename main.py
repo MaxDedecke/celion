@@ -21,6 +21,7 @@ from starlette.concurrency import run_in_threadpool
 import pika
 from uuid import UUID
 from decimal import Decimal
+import neo4j
 
 
 LEGACY_MESSAGE = "The legacy Python-based agents have been removed in favor of the frontend implementation."
@@ -1346,6 +1347,67 @@ class UpdateMigrationPayload(BaseModel):
     workflow_state: Optional[dict] = None
     progress: Optional[int] = None
 
+def _get_neo4j_driver():
+    """Create a new Neo4j driver using environment variables."""
+    uri = os.getenv("NEO4J_URI", "bolt://neo4j-db:7687")
+    user = os.getenv("NEO4J_USER", "neo4j")
+    password = os.getenv("NEO4J_PASSWORD", "password")
+    return neo4j.GraphDatabase.driver(uri, auth=(user, password))
+
+
+async def _duplicate_neo4j_data(old_id: str, new_id: str):
+    """Clone all nodes and relationships from one migration to another in Neo4j."""
+    driver = _get_neo4j_driver()
+    try:
+        with driver.session() as session:
+            # 1. Fetch all nodes for the old migration
+            result = session.run(
+                "MATCH (n {migration_id: $oldId}) RETURN labels(n) as labels, properties(n) as props",
+                oldId=old_id
+            )
+            nodes = list(result)
+            
+            # 2. Create new nodes for the new migration
+            for record in nodes:
+                labels = record["labels"]
+                props = dict(record["props"])
+                props["migration_id"] = str(new_id)
+                
+                # Dynamic label creation in Cypher
+                label_str = ":".join([f"`{l}`" for l in labels])
+                query = f"CREATE (n:{label_str}) SET n = $props"
+                session.run(query, props=props)
+            
+            # 3. Fetch and duplicate relationships
+            # Note: This assumes relationships only exist between nodes of the same migration
+            rel_result = session.run(
+                """
+                MATCH (s {migration_id: $oldId})-[r]->(t {migration_id: $oldId})
+                RETURN labels(s) as sLabels, s.external_id as sExt, 
+                       labels(t) as tLabels, t.external_id as tExt, 
+                       type(r) as relType, properties(r) as relProps
+                """,
+                oldId=old_id
+            )
+            
+            for rel in rel_result:
+                s_labels = ":".join([f"`{l}`" for l in rel["sLabels"]])
+                t_labels = ":".join([f"`{l}`" for l in rel["tLabels"]])
+                
+                query = f"""
+                    MATCH (s:{s_labels} {{external_id: $sExt, migration_id: $newId}})
+                    MATCH (t:{t_labels} {{external_id: $tExt, migration_id: $newId}})
+                    CREATE (s)-[r:`{rel["relType"]}`]->(t)
+                    SET r = $relProps
+                """
+                session.run(query, sExt=rel["sExt"], tExt=rel["tExt"], newId=str(new_id), relProps=rel["relProps"])
+                
+    except Exception as e:
+        print(f"Error duplicating Neo4j data: {e}", file=sys.stderr)
+    finally:
+        driver.close()
+
+
 @app.patch("/api/migrations/{id}", response_model=Migration)
 async def update_migration(id: str, payload: UpdateMigrationPayload) -> Migration:
     """Update a migration in the database."""
@@ -1692,6 +1754,9 @@ async def duplicate_migration(id: str, user_id: str) -> Migration:
             )
 
             conn.commit()
+
+            # 10. Duplicate Neo4j data (Async)
+            await _duplicate_neo4j_data(id, str(new_migration_id))
 
             return Migration(
                 id=str(row["id"]),

@@ -844,10 +844,15 @@ async function processJob(job: any) {
         neo4j.auth.basic(process.env.NEO4J_USER || "neo4j", process.env.NEO4J_PASSWORD || "password")
       );
 
+      const stagingLogs: string[] = [];
+      const addStagingLog = (msg: string) => {
+          stagingLogs.push(`[${new Date().toLocaleTimeString('de-DE')}] ${msg}`);
+      };
+
       // Cleanup: Delete existing nodes for this migration
       const cleanupSession = driver.session();
       try {
-          await writeChatMessage(migrationId, 'system', 'Bereinige alte Daten in Neo4j...', currentStepNumber);
+          addStagingLog('Bereinige alte Daten in Neo4j...');
           await cleanupSession.run('MATCH (n { migration_id: $migrationId }) DETACH DELETE n', { migrationId });
       } finally {
           await cleanupSession.close();
@@ -909,7 +914,7 @@ async function processJob(job: any) {
                       continue;
                   }
                   attemptedUrls.add(url);
-                  await writeChatMessage(migrationId, 'system', `Agent fetching ${entity_name} von ${url}...`, currentStepNumber);
+                  addStagingLog(`Agent fetching ${entity_name} von ${url}...`);
 
                   const headers: any = { "Accept": "application/json" };
                   if (connector.auth_type === 'api_key' && connector.api_key) {
@@ -926,15 +931,17 @@ async function processJob(job: any) {
                               totalImported += items.length;
                               const sampleIds = items.slice(0, 5).map((i: any) => i.id);
                               messages.push({ role: "tool", tool_call_id: toolCall.id, content: `Success. Imported ${items.length} items. Sample IDs: ${JSON.stringify(sampleIds)}` });
-                              await writeChatMessage(migrationId, 'system', `${items.length} ${entity_name} importiert.`, currentStepNumber);
+                              addStagingLog(`${items.length} ${entity_name} importiert.`);
                           } else {
                               messages.push({ role: "tool", tool_call_id: toolCall.id, content: "No items found in response." });
                           }
                       } else {
                           messages.push({ role: "tool", tool_call_id: toolCall.id, content: `Error: HTTP ${res.status}` });
+                          addStagingLog(`Fehler beim Abruf von ${entity_name}: HTTP ${res.status}`);
                       }
                   } catch (e: any) {
                       messages.push({ role: "tool", tool_call_id: toolCall.id, content: `Fetch error: ${e.message}` });
+                      addStagingLog(`Fetch-Fehler bei ${entity_name}: ${e.message}`);
                   }
                   await new Promise(r => setTimeout(r, rateLimitResult.delay * 1000));
               }
@@ -943,14 +950,16 @@ async function processJob(job: any) {
           await driver.close();
       }
 
-      // Summary of processed URLs for debugging
-      if (attemptedUrls.size > 0) {
-          const urlList = Array.from(attemptedUrls).map(u => `- ${u}`).join('\n');
-          const summaryMsg = `**Abgefragte Endpunkte während des Data Staging:**\n${urlList}`;
-          await writeChatMessage(migrationId, 'system', summaryMsg, currentStepNumber);
-      }
+      // Send bundled logs as a single structured message
+      const protocolResult = {
+          status: "info",
+          phase: "Data Ingestion Protocol",
+          summary: `Daten-Import abgeschlossen: ${totalImported} Objekte insgesamt aus ${attemptedUrls.size} Endpunkten geladen.`,
+          rawOutput: stagingLogs.join('\n')
+      };
+      await writeChatMessage(migrationId, 'assistant', JSON.stringify(protocolResult), currentStepNumber);
 
-      result = { status: 'success', message: 'Data Staging erfolgreich abgeschlossen.', stagedCount: totalImported, urls: Array.from(attemptedUrls) };
+      result = { status: 'success', message: 'Data Staging erfolgreich abgeschlossen.', stagedCount: totalImported, urls: Array.from(attemptedUrls), logs: stagingLogs };
       await saveStep5Result(migrationId, result);
 
       const finishClientStaging = await pool.connect();

@@ -65,7 +65,8 @@ const ProjectDetail = () => {
   const [projectMigrations, setProjectMigrations] = useState<ProjectMigrationCard[]>([]);
   const [loading, setLoading] = useState(true);
   const [transitioning, setTransitioning] = useState(false);
-  const loaderVisible = useMinimumLoader(loading || transitioning, 900);
+  const [duplicating, setDuplicating] = useState(false);
+  const loaderVisible = useMinimumLoader(loading || transitioning || duplicating, 900);
 
   const [showAccountDialog, setShowAccountDialog] = useState(false);
   
@@ -363,7 +364,7 @@ const ProjectDetail = () => {
 
   const handleDuplicateMigration = async (migrationId: string) => {
     try {
-      setTransitioning(true);
+      setDuplicating(true);
       const existingNames = [
         ...sidebarMigrations.map((migration) => migration.name),
         ...standaloneMigrations.map((migration) => migration.name),
@@ -384,7 +385,7 @@ const ProjectDetail = () => {
       console.error(error);
       toast.error(error instanceof Error ? error.message : "Migration konnte nicht dupliziert werden");
     } finally {
-      setTransitioning(false);
+      setDuplicating(false);
     }
   };
 
@@ -417,7 +418,7 @@ const ProjectDetail = () => {
   if (loaderVisible) {
     return (
       <div className="app-shell flex h-screen items-center justify-center p-6 overflow-hidden">
-        <DataFlowLoader size="lg" />
+        <DataFlowLoader size="lg" message={duplicating ? "Dupliziere Migration..." : undefined} />
       </div>
     );
   }

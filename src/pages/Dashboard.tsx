@@ -117,7 +117,8 @@ const Dashboard = () => {
   const [isSavingNotes, setIsSavingNotes] = useState(false);
   const [projectIdForNewMigration, setProjectIdForNewMigration] = useState<string | null>(null);
   const [transitioning, setTransitioning] = useState(false);
-  const loaderVisible = useMinimumLoader(loading || transitioning, 1000);
+  const [duplicating, setDuplicating] = useState(false);
+  const loaderVisible = useMinimumLoader(loading || transitioning || duplicating, 1000);
   const migrationDetailsRef = useRef<MigrationDetailsRef>(null);
   const [processingMigrationId, setProcessingMigrationId] = useState<string | null>(null);
   const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -460,7 +461,7 @@ const Dashboard = () => {
 
   const handleDuplicateMigration = async (migrationId: string) => {
     try {
-      setTransitioning(true);
+      setDuplicating(true);
       const existingNames = [...migrations, ...standaloneMigrations].map((migration) => migration.name);
       const duplicated = await duplicateMigration(migrationId, { existingNames });
 
@@ -476,7 +477,7 @@ const Dashboard = () => {
       toast.error(error?.message ?? "Migration konnte nicht dupliziert werden");
       console.error(error);
     } finally {
-      setTransitioning(false);
+      setDuplicating(false);
     }
   };
 
@@ -673,7 +674,7 @@ const Dashboard = () => {
   if (loaderVisible) {
     return (
       <div className="app-shell flex h-screen items-center justify-center p-6 overflow-hidden">
-        <DataFlowLoader size="lg" />
+        <DataFlowLoader size="lg" message={duplicating ? "Dupliziere Migration..." : undefined} />
       </div>
     );
   }

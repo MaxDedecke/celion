@@ -5,13 +5,14 @@ type DataFlowLoaderProps = {
   active?: boolean;
   minVisibleMs?: number;
   size?: "sm" | "md" | "lg";
+  message?: string;
   className?: string;
 };
 
 const SIZE_MAP: Record<NonNullable<DataFlowLoaderProps["size"]>, string> = {
-  sm: "w-24",
-  md: "w-32",
-  lg: "w-40",
+  sm: "w-32",
+  md: "w-48",
+  lg: "w-64",
 };
 
 /**
@@ -22,6 +23,7 @@ const DataFlowLoader = ({
   active = true,
   minVisibleMs = 0,
   size = "md",
+  message,
   className,
 }: DataFlowLoaderProps) => {
   const shouldRender = useMinimumLoader(active, minVisibleMs);
@@ -33,7 +35,7 @@ const DataFlowLoader = ({
   return (
     <div
       className={cn(
-        "flex items-center justify-center rounded-2xl border border-primary/25 bg-primary/5 p-6 text-primary",
+        "flex flex-col items-center justify-center rounded-2xl border border-primary/25 bg-primary/5 p-6 text-primary",
         SIZE_MAP[size],
         className,
       )}
@@ -57,6 +59,9 @@ const DataFlowLoader = ({
           <span className="loader-node loader-node-third" />
         </div>
       </div>
+      {message && (
+        <p className="mt-4 text-sm font-medium animate-pulse">{message}</p>
+      )}
       <span className="sr-only">Daten werden verarbeitet</span>
     </div>
   );
