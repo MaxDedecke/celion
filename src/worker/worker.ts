@@ -1013,27 +1013,30 @@ async function processJob(job: any) {
           let totalRelsCreated = 0;
           if (Object.keys(schemaSample).length > 0) {
               const discoveryPrompt = `
-                Du bist ein Graph-Experte für das System ${sourceSystem}. Deine Aufgabe ist es, die interne Datenstruktur von ${sourceSystem} zu analysieren und Beziehungen zwischen Objekten zu finden.
+                Du bist eine technische Schnittstelle für das System ${sourceSystem}. Deine Antwort wird direkt von einem automatisierten Parser verarbeitet.
                 
-                ### KONTEXT:
-                - Alle geladenen Daten stammen aus ${sourceSystem}.
-                - Die Knoten in Neo4j unterscheiden sich durch die Property 'entity_type'.
+                ### STRIKTE AUSGABE-REGELN:
+                1. ANTWORTE AUSSCHLIESSLICH im folgenden JSON-Format: {"rules": [{"from": "string", "to": "string", "field": "string", "type": "string"}]}
+                2. Wenn du keine Beziehungen findest, antworte mit: {"rules": []}
+                3. Erzeuge KEINEN Markdown-Codeblock, KEINE Erklärungen, nur das nackte JSON Objekt.
                 
-                ### VERFÜGBARE OBJEKTTYPEN & BEISPIELE:
+                ### VALIDIERUNG DES VOKABULARS:
+                - Für 'from' und 'to' darfst du NUR exakte Werte aus dieser Liste verwenden: ${JSON.stringify(Object.keys(schemaSample))}
+                - Für 'field' darfst du NUR exakte Property-Namen aus den unten stehenden Beispielen verwenden.
+                - Jede Abweichung in der Schreibweise führt zum Systemabbruch.
+                
+                ### BEISPIEL FÜR EINE KORREKTE ANTWORT:
+                {"rules": [{"from": "tasks", "to": "tasks", "field": "parent_id", "type": "SUBTASK_OF"}, {"from": "tasks", "to": "users", "field": "creator_id", "type": "CREATED_BY"}]}
+                
+                ### DATEN-KONTEXT FÜR ${sourceSystem}:
+                VERFÜGBARE OBJEKTTYPEN & BEISPIELE:
                 ${JSON.stringify(schemaSample, null, 2)}
                 
-                ### BEISPIEL-IDS PRO TYP (ZUM ABGLEICH):
+                BEISPIEL-IDS PRO TYP (ZUM ABGLEICH):
                 ${JSON.stringify(idSamples, null, 2)}
                 
-                ### DEINE AUFGABE:
-                1. Analysiere die Properties. Suche nach Feldern, die IDs anderer Objekte enthalten (z.B. 'parent', 'project', 'user', 'owner', 'list_id').
-                2. WICHTIG: Prüfe auch auf Selbst-Referenzen innerhalb des gleichen Typs (z.B. wenn ein Objekt vom Typ 'tasks' ein Feld 'parent' hat, das eine ID aus der ID-Liste von 'tasks' enthält -> dann ist es ein Subtask).
-                3. Erstelle Verknüpfungs-Regeln. Nutze fachlich korrekte Beziehungsnamen für ${sourceSystem} (z.B. 'SUBTASK_OF', 'IN_LIST', 'ASSIGNED_TO', 'CREATED_BY').
-                
-                ### REGEL-FORMAT (JSON ARRAY):
-                [{"from": "Entity-Typ mit FK", "to": "Ziel-Entity-Typ", "field": "Property-Name des FK", "type": "BEZIEHUNGS_NAME"}]
-                
-                ANTWORTE AUSSCHLIESSLICH ALS JSON ARRAY.
+                ### AUFGABE:
+                Analysiere die Properties auf Foreign Keys (z.B. 'parent', 'project', 'user', 'list_id'). Achte besonders auf Selbst-Referenzen (Subtasks). Nutze fachlich korrekte Beziehungsnamen für ${sourceSystem} (z.B. 'SUBTASK_OF', 'IN_LIST', 'ASSIGNED_TO').
               `;
 
               console.log(`[Worker] Sending Relationship Discovery prompt for ${sourceSystem} to LLM...`);
