@@ -57,12 +57,12 @@ export const useMessageQueue = <T extends { id: string; role?: string; created_a
       newIds.forEach(m => {
         const isOld = m.created_at ? (Date.now() - new Date(m.created_at).getTime() > 20000) : false;
 
-        // User messages oder alte Nachrichten sofort anzeigen und als completed markieren
-        if (m.role === "user" || isOld) {
+        // Nur alte Nachrichten sofort anzeigen
+        if (isOld) {
           setVisibleIds(prev => new Set([...prev, m.id]));
           setCompletedAnimations(prev => new Set([...prev, m.id]));
         } else {
-          // Agent/System/Assistant messages in Queue
+          // Alle neuen Nachrichten (inkl. User) in Queue
           queueRef.current.push(m.id);
         }
       });
@@ -87,7 +87,7 @@ export const useMessageQueue = <T extends { id: string; role?: string; created_a
     const timeoutId = setTimeout(() => {
       console.warn(`[MessageQueue] Animation timeout for message ${animatingId}, forcing completion`);
       onAnimationComplete(animatingId);
-    }, 10000);
+    }, 30000);
     
     return () => clearTimeout(timeoutId);
   }, [animatingId, onAnimationComplete]);

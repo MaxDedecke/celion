@@ -113,17 +113,26 @@ export default {
   					transform: 'translateY(-5px)',
   					animationTimingFunction: 'cubic-bezier(0, 0, 0.2, 1)'
   				},
-  				'30%, 100%': {
-  					transform: 'translateY(0)'
-  				}
-  			}
-  		},
-  		animation: {
-  			'accordion-down': 'accordion-down 0.2s ease-out',
-  			'accordion-up': 'accordion-up 0.2s ease-out',
-  			'gentle-bounce': 'gentle-bounce 8s ease-in-out infinite'
-  		},
-  		fontFamily: {
+  				  			'30%, 100%': {
+  				  					transform: 'translateY(0)'
+  				  				}
+  				  			},
+  				  			'fade-in': {
+  				  				'0%': { opacity: '0' },
+  				  				'100%': { opacity: '1' }
+  				  			},
+  				  			'slide-up': {
+  				  				'0%': { transform: 'translateY(10px)', opacity: '0' },
+  				  				'100%': { transform: 'translateY(0)', opacity: '1' }
+  				  			}
+  				  		},
+  				  		animation: {
+  				  			'accordion-down': 'accordion-down 0.2s ease-out',
+  				  			'accordion-up': 'accordion-up 0.2s ease-out',
+  				  			'gentle-bounce': 'gentle-bounce 8s ease-in-out infinite',
+  				  			'fade-in': 'fade-in 0.3s ease-out forwards',
+  				  			'slide-up': 'slide-up 0.3s ease-out forwards'
+  				  		},  		fontFamily: {
   			sans: [
   				'ui-sans-serif',
   				'system-ui',

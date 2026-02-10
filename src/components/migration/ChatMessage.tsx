@@ -152,14 +152,11 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
   useEffect(() => {
     if (!onTypewriterComplete) return;
 
-    // Only attempt to complete if typewriter is enabled (meaning it's currently animating or queued)
+    // Only attempt to complete if typewriter is enabled
     if (!enableTypewriter) return;
 
     if (jsonContent) {
-      // JSON messages skip animation
-      onTypewriterComplete();
-    } else if (message.role === "user") {
-      // User messages skip animation
+      // JSON messages skip typewriter animation
       onTypewriterComplete();
     }
   }, [enableTypewriter, message.role, onTypewriterComplete, jsonContent]);
@@ -315,8 +312,8 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
   return (
     <div
       className={cn(
-        "flex w-full gap-3 py-2 transition-all duration-300 animate-fade-in",
-        message.role === "user" ? "flex-row-reverse" : "flex-row"
+        "flex w-full gap-3 py-2 transition-all duration-300",
+        message.role === "user" ? "flex-row-reverse animate-slide-up" : "flex-row animate-fade-in"
       )}
     >
       <div className="h-8 w-8 shrink-0 flex items-center justify-center">
@@ -390,8 +387,8 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
             </div>
           ) : (
             <>
-              {enableTypewriter && message.role !== "user" ? (
-                <TypewriterText text={message.content} speed={15} onComplete={onTypewriterComplete} />
+              {enableTypewriter ? (
+                <TypewriterText text={message.content} speed={8} onComplete={onTypewriterComplete} />
               ) : (
                 renderFormattedContent(message.content)
               )}
