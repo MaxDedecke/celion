@@ -173,6 +173,23 @@ const ensureWorkflowState = (state: any = {}) => {
   return { nodes, connections };
 };
 
+const incrementGlobalStats = async (client: any, data: { steps?: number, success?: number, total_agents?: number }) => {
+  const { steps = 0, success = 0, total_agents = 0 } = data;
+  try {
+    await client.query(`
+      INSERT INTO public.global_stats 
+      (day, steps_completed, agent_success_count, agent_total_count)
+      VALUES (CURRENT_DATE, $1, $2, $3)
+      ON CONFLICT (day) DO UPDATE SET
+          steps_completed = global_stats.steps_completed + EXCLUDED.steps_completed,
+          agent_success_count = global_stats.agent_success_count + EXCLUDED.agent_success_count,
+          agent_total_count = global_stats.agent_total_count + EXCLUDED.agent_total_count
+    `, [steps, success, total_agents]);
+  } catch (e) {
+    console.error('[Worker] Failed to update global stats:', e);
+  }
+};
+
 const updateWorkflowForStep = (state: any, workflowStepId: string, result: any, isError: boolean) => {
   const nextState = ensureWorkflowState(state);
   const nodes = nextState.nodes.map((node: any) => ({ ...node }));
@@ -193,7 +210,7 @@ const updateWorkflowForStep = (state: any, workflowStepId: string, result: any, 
 
   nextState.nodes = nodes;
   const completedCount = nodes.filter((n: any) => n.status === 'done').length;
-  const totalSteps = nodes.length || AGENT_WORKFLOW_STEPS.length || 1;
+  const totalSteps = 10; // We always have 10 steps in the workflow
   const progress = Math.round((completedCount / totalSteps) * 100);
 
   return { nextState, progress, completedCount, totalSteps };
@@ -355,6 +372,14 @@ async function processJob(job: any) {
         ]);
 
         await finishClient.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+        
+        // KPI: Increment global steps and agent metrics
+        if (finalStepStatus === 'completed') {
+          await incrementGlobalStats(finishClient, { steps: 1, success: 1, total_agents: 1 });
+        } else if (finalStepStatus === 'failed') {
+          await incrementGlobalStats(finishClient, { total_agents: 1 });
+        }
+
         await finishClient.query('COMMIT');
 
         if (isLogicalFailure) {
@@ -470,6 +495,14 @@ async function processJob(job: any) {
           nextState, progress, migrationStatus, stepStatusForMigration, currentStepNumber, migrationId,
         ]);
         await finishClient.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+        
+        // KPI: Increment global steps and agent metrics
+        if (finalStepStatus === 'completed') {
+          await incrementGlobalStats(finishClient, { steps: 1, success: 1, total_agents: 1 });
+        } else if (finalStepStatus === 'failed') {
+          await incrementGlobalStats(finishClient, { total_agents: 1 });
+        }
+
         await finishClient.query('COMMIT');
 
         if (isLogicalFailure) {
@@ -582,6 +615,14 @@ async function processJob(job: any) {
           nextState, progress, migrationStatus, stepStatusForMigration, currentStepNumber, migrationId,
         ]);
         await finishClient.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+        
+        // KPI: Increment global steps and agent metrics
+        if (finalStepStatus === 'completed') {
+          await incrementGlobalStats(finishClient, { steps: 1, success: 1, total_agents: 1 });
+        } else if (finalStepStatus === 'failed') {
+          await incrementGlobalStats(finishClient, { total_agents: 1 });
+        }
+
         await finishClient.query('COMMIT');
 
         if (isLogicalFailure) {
@@ -691,6 +732,14 @@ async function processJob(job: any) {
           nextState, progress, migrationStatus, stepStatusForMigration, currentStepNumber, migrationId,
         ]);
         await finishClient.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+        
+        // KPI: Increment global steps and agent metrics
+        if (finalStepStatus === 'completed') {
+          await incrementGlobalStats(finishClient, { steps: 1, success: 1, total_agents: 1 });
+        } else if (finalStepStatus === 'failed') {
+          await incrementGlobalStats(finishClient, { total_agents: 1 });
+        }
+
         await finishClient.query('COMMIT');
 
         if (isLogicalFailure) {
@@ -1167,6 +1216,10 @@ async function processJob(job: any) {
           nextState, progress, 'processing', 'completed', currentStepNumber, migrationId,
         ]);
         await finishClientStaging.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+        
+        // KPI: Increment global steps and agent metrics
+        await incrementGlobalStats(finishClientStaging, { steps: 1, success: 1, total_agents: 1 });
+
         await finishClientStaging.query('COMMIT');
 
         await writeChatMessage(migrationId, 'assistant', 'Die Daten-Bereitstellung (Data Staging) wurde erfolgreich abgeschlossen. Wir können nun mit dem Model Mapping fortfahren.', currentStepNumber);
@@ -1254,6 +1307,14 @@ async function processJob(job: any) {
           nextState, progress, isLogicalFailure ? 'paused' : 'processing', isLogicalFailure ? 'failed' : 'completed', currentStepNumber, migrationId,
         ]);
         await finishClient6.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+        
+        // KPI: Increment global stats
+        if (!isLogicalFailure) {
+          await incrementGlobalStats(finishClient6, { steps: 1, success: 1, total_agents: 1 });
+        } else {
+          await incrementGlobalStats(finishClient6, { total_agents: 1 });
+        }
+
         await finishClient6.query('COMMIT');
 
         await writeChatMessage(migrationId, 'assistant', result.summary || 'Ich habe die optimalen Mappings zwischen den Systemen ermittelt. Sie können diese nun im Mapping-Whiteboard überprüfen.', currentStepNumber);
@@ -1297,6 +1358,10 @@ async function processJob(job: any) {
       const { nextState, progress } = updateWorkflowForStep(migrationData?.workflow_state, stepRecord.workflow_step_id || stepId, errorMessage, true);
       await errorClient.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4 WHERE id = $5', [nextState, progress, 'paused', 'failed', migrationId]);
       await errorClient.query('UPDATE jobs SET status = $1, last_error = $2 WHERE id = $3', ['failed', errorMessage, job.id]);
+      
+      // KPI: Increment global stats (only total attempts)
+      await incrementGlobalStats(errorClient, { total_agents: 1 });
+
       await errorClient.query('COMMIT');
       await writeChatMessage(migrationId, 'system', `Error: ${errorMessage}`, currentStepNumber);
       await writeRetryAction(migrationId, currentStepNumber);

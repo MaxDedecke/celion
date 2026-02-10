@@ -64,27 +64,58 @@ def _update_migration_step_status(conn: psycopg.Connection, migration_id: str, s
     
     # Determine the overall migration status based on step_status
     overall_migration_status: str
+    progress: float = (step_number / 10.0) * 100.0
+    
     if status == 'completed':
         # Only set overall status to completed if it was the last step (10)
         if step_number >= 10:
             overall_migration_status = 'completed'
+            progress = 100.0
         else:
             overall_migration_status = 'processing'
+        
+        # KPI: Increment global steps and agent metrics
+        _increment_global_stats(conn, steps=1, success=1, total_agents=1)
+
     elif status == 'failed':
         overall_migration_status = 'paused'
+        # KPI: Record a failed attempt
+        _increment_global_stats(conn, total_agents=1)
     else: # 'running', 'pending', 'idle'
         overall_migration_status = 'processing'
+        # If running, we might be at slightly less than full step progress
+        progress = max(0, ((step_number - 0.5) / 10.0) * 100.0)
 
     with conn.cursor() as cur:
         cur.execute(
             """
             UPDATE public.migrations
-            SET current_step = %s, step_status = %s, status = %s
+            SET current_step = %s, step_status = %s, status = %s, progress = %s
             WHERE id = %s
             """,
-            (step_number, status, overall_migration_status, migration_id),
+            (step_number, status, overall_migration_status, progress, migration_id),
         )
         conn.commit()
+
+def _increment_global_stats(conn, steps=0, objects=0, success=0, total_agents=0, accuracy=None):
+    """Helper to update the daily global statistics."""
+    try:
+        with conn.cursor() as cur:
+            cur.execute("""
+                INSERT INTO public.global_stats 
+                (day, steps_completed, objects_migrated, agent_success_count, agent_total_count, reconciliation_accuracy_sum, reconciliation_count)
+                VALUES (CURRENT_DATE, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT (day) DO UPDATE SET
+                    steps_completed = global_stats.steps_completed + EXCLUDED.steps_completed,
+                    objects_migrated = global_stats.objects_migrated + EXCLUDED.objects_migrated,
+                    agent_success_count = global_stats.agent_success_count + EXCLUDED.agent_success_count,
+                    agent_total_count = global_stats.agent_total_count + EXCLUDED.agent_total_count,
+                    reconciliation_accuracy_sum = global_stats.reconciliation_accuracy_sum + EXCLUDED.reconciliation_accuracy_sum,
+                    reconciliation_count = global_stats.reconciliation_count + EXCLUDED.reconciliation_count
+            """, (steps, objects, success, total_agents, float(accuracy) if accuracy is not None else 0.0, 1 if accuracy is not None else 0))
+            conn.commit()
+    except Exception as e:
+        print(f"Failed to update global stats: {e}")
 
 def _update_workflow_state(conn: psycopg.Connection, migration_id: str, workflow_state: Dict[str, Any]):
     """Updates the workflow_state of a migration."""
@@ -219,6 +250,13 @@ def _run_reconciliation(conn: psycopg.Connection, migration_id: str, source_syst
     # 3. Abgleich
     _write_chat_message(conn, migration_id, 'system', f"Reconciliation: Expected {expected_count} objects, found {actual_count} in Neo4j.", 5)
     
+    # KPI: Update global stats with actual migrated count and accuracy
+    accuracy = 1.0
+    if expected_count > 0:
+        accuracy = max(0.0, 1.0 - (abs(expected_count - actual_count) / float(expected_count)))
+    
+    _increment_global_stats(conn, objects=actual_count, accuracy=accuracy)
+
     if expected_count > 0 and actual_count == 0:
         error_msg = "Critical error: No objects were imported into Neo4j."
         _write_chat_message(conn, migration_id, 'system', f"⚠️ {error_msg}", 5)

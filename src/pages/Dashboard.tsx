@@ -129,6 +129,29 @@ const Dashboard = () => {
   const [totalMigrationsCount, setTotalMigrationsCount] = useState(0);
   const migrationsPageRef = useRef(0);
 
+  const [dashboardStats, setDashboardStats] = useState<{
+    total_migrations: number;
+    completed_migrations: number;
+    total_objects_migrated: number;
+    avg_automation_rate: number;
+    data_reliability_score: number;
+    vendor_lockins_prevented: number;
+    activity_graph: any[];
+    total_steps_executed: number;
+  } | null>(null);
+
+  const loadDashboardStats = async () => {
+    try {
+      const response = await fetch("/api/stats/dashboard");
+      if (response.ok) {
+        const data = await response.json();
+        setDashboardStats(data);
+      }
+    } catch (error) {
+      console.error("Fehler beim Laden der Dashboard-Statistiken:", error);
+    }
+  };
+
   // Check auth and load project data
   useEffect(() => {
     checkAuth();
@@ -152,6 +175,7 @@ const Dashboard = () => {
   const loadAllData = async () => {
     try {
       setLoading(true);
+      await loadDashboardStats();
       
       // Load all projects
       const { data: projectsData, error: projectsError } = await databaseClient.fetchProjects();
@@ -847,32 +871,7 @@ const Dashboard = () => {
                   
                   <div className="h-32">
                     <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={(() => {
-                        // Generate last 30 days activity data
-                        const last30Days = Array.from({ length: 30 }, (_, i) => {
-                          const date = new Date();
-                          date.setDate(date.getDate() - (29 - i));
-                          return {
-                            date: date.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' }),
-                            fullDate: date.toISOString().split('T')[0],
-                            steps: 0
-                          };
-                        });
-                        
-                        // Count migrations activity per day based on updatedAt
-                        [...migrations, ...standaloneMigrations].forEach(migration => {
-                          if (!migration.updatedAt) return;
-                          const date = new Date(migration.updatedAt);
-                          if (isNaN(date.getTime())) return;
-                          const migrationDate = date.toISOString().split('T')[0];
-                          const dayData = last30Days.find(d => d.fullDate === migrationDate);
-                          if (dayData) {
-                            dayData.steps++;
-                          }
-                        });
-                        
-                        return last30Days;
-                      })()}>
+                      <AreaChart data={dashboardStats?.activity_graph || []}>
                         <defs>
                           <linearGradient id="activityGradient" x1="0" y1="0" x2="0" y2="1">
                             <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
@@ -892,7 +891,7 @@ const Dashboard = () => {
                             active && payload?.[0] ? (
                               <div className="bg-popover px-3 py-2 rounded-lg shadow-lg border">
                                 <p className="text-xs text-muted-foreground">{payload[0].payload.date}</p>
-                                <p className="text-sm font-semibold">{payload[0].value} Schritte</p>
+                                <p className="text-sm font-semibold">{payload[0].value} Aktivitäten</p>
                               </div>
                             ) : null
                           )}
@@ -919,12 +918,8 @@ const Dashboard = () => {
                     <div>
                       <div className="flex items-baseline gap-2">
                         <p className="text-2xl font-semibold tabular-nums">
-                          {[...migrations, ...standaloneMigrations].filter(m => m.progress === 100).length}
+                          {dashboardStats?.vendor_lockins_prevented ?? 0}
                         </p>
-                        <span className="flex items-center gap-0.5 text-xs text-emerald-500">
-                          <TrendingUp className="h-3 w-3" />
-                          +2
-                        </span>
                       </div>
                       <p className="text-sm text-muted-foreground">Vendor Lock-Ins verhindert</p>
                     </div>
@@ -937,14 +932,7 @@ const Dashboard = () => {
                     </div>
                     <div>
                       <p className="text-2xl font-semibold tabular-nums">
-                        {(() => {
-                          const total = [...migrations, ...standaloneMigrations].reduce((acc, m) => {
-                            const transferred = m.objectsTransferred || "0/0";
-                            const [done] = transferred.split("/").map(Number);
-                            return acc + (isNaN(done) ? 0 : done);
-                          }, 0);
-                          return total.toLocaleString('de-DE');
-                        })()}
+                        {(dashboardStats?.total_objects_migrated ?? 0).toLocaleString('de-DE')}
                       </p>
                       <p className="text-sm text-muted-foreground">Migrierte Objekte</p>
                     </div>
@@ -958,10 +946,10 @@ const Dashboard = () => {
                     <div>
                       <div className="flex items-baseline gap-2">
                         <p className="text-2xl font-semibold tabular-nums">
-                          {[...migrations, ...standaloneMigrations].filter(m => m.progress === 100).length}
+                          {dashboardStats?.completed_migrations ?? 0}
                         </p>
                         <span className="text-sm text-muted-foreground">
-                          / {migrations.length + standaloneMigrations.length}
+                          / {dashboardStats?.total_migrations ?? 0}
                         </span>
                       </div>
                       <p className="text-sm text-muted-foreground">Abgeschlossene Migrationen</p>
@@ -974,8 +962,10 @@ const Dashboard = () => {
                       <Clock className="h-5 w-5 text-amber-500" />
                     </div>
                     <div>
-                      <p className="text-2xl font-semibold tabular-nums">2.4h</p>
-                      <p className="text-sm text-muted-foreground">Ø Migrationsdauer</p>
+                      <p className="text-2xl font-semibold tabular-nums">
+                        {(dashboardStats?.total_steps_executed ?? 0) * 8}h
+                      </p>
+                      <p className="text-sm text-muted-foreground">Eingesparte Arbeitszeit</p>
                     </div>
                   </div>
 
@@ -986,11 +976,9 @@ const Dashboard = () => {
                     </div>
                     <div>
                       <div className="flex items-baseline gap-2">
-                        <p className="text-2xl font-semibold tabular-nums">87%</p>
-                        <span className="flex items-center gap-0.5 text-xs text-emerald-500">
-                          <TrendingUp className="h-3 w-3" />
-                          +5%
-                        </span>
+                        <p className="text-2xl font-semibold tabular-nums">
+                          {dashboardStats?.avg_automation_rate ?? 0}%
+                        </p>
                       </div>
                       <p className="text-sm text-muted-foreground">KI-Automatisierungsrate</p>
                     </div>
@@ -1003,7 +991,9 @@ const Dashboard = () => {
                     </div>
                     <div>
                       <div className="flex items-baseline gap-2">
-                        <p className="text-2xl font-semibold tabular-nums">98.2%</p>
+                        <p className="text-2xl font-semibold tabular-nums">
+                          {dashboardStats?.data_reliability_score ?? 0}%
+                        </p>
                       </div>
                       <p className="text-sm text-muted-foreground">Datenqualitäts-Score</p>
                     </div>
