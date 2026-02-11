@@ -88,6 +88,21 @@ const MigrationChatCard = ({
     };
   }, [migration.id]);
 
+  const totalSteps = 10;
+  const rawStep = migrationData.current_step || 0;
+  const isStepRunning = migrationData.step_status === 'running' || migrationData.step_status === 'pending';
+  const hasCurrentStepFailed = migrationData.step_status === 'failed';
+  const isConsultantThinking = migrationData.consultant_status === 'thinking';
+
+  // Wenn Schritt X läuft oder fehlgeschlagen ist, sind erst X-1 Schritte komplett fertig
+  const completedCount = (isStepRunning || hasCurrentStepFailed) ? Math.max(0, rawStep - 1) : rawStep;
+  const overallProgress = (completedCount / totalSteps) * 100;
+  const currentStepNumber = completedCount + 1 > totalSteps ? totalSteps : completedCount + 1;
+  const activeStep = AGENT_WORKFLOW_STEPS[currentStepNumber - 1];
+  const runningStepIndex = Math.max(0, (rawStep || 1) - 1);
+  const runningStep = AGENT_WORKFLOW_STEPS[runningStepIndex];
+  const currentStepTitle = activeStep?.title || (completedCount === totalSteps ? "Abgeschlossen" : "Bereit");
+
   const handleScroll = () => {
     if (scrollContainerRef.current) {
       const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
@@ -103,12 +118,6 @@ const MigrationChatCard = ({
       scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
     }
   };
-
-  const totalSteps = 10;
-  const rawStep = migrationData.current_step || 0;
-  const isStepRunning = migrationData.step_status === 'running' || migrationData.step_status === 'pending';
-  const hasCurrentStepFailed = migrationData.step_status === 'failed';
-  const isConsultantThinking = migrationData.consultant_status === 'thinking';
 
   // Initial scroll to bottom: Instant jump
   const initialScrollDone = useRef<string | null>(null);
@@ -156,15 +165,6 @@ const MigrationChatCard = ({
       if (intervalId) clearInterval(intervalId);
     };
   }, [isStepRunning, isConsultantThinking, isNearBottom]);
-
-  // Wenn Schritt X läuft oder fehlgeschlagen ist, sind erst X-1 Schritte komplett fertig
-  const completedCount = (isStepRunning || hasCurrentStepFailed) ? Math.max(0, rawStep - 1) : rawStep;
-  const overallProgress = (completedCount / totalSteps) * 100;
-  const currentStepNumber = completedCount + 1 > totalSteps ? totalSteps : completedCount + 1;
-  const activeStep = AGENT_WORKFLOW_STEPS[currentStepNumber - 1];
-  const runningStepIndex = Math.max(0, (rawStep || 1) - 1);
-  const runningStep = AGENT_WORKFLOW_STEPS[runningStepIndex];
-  const currentStepTitle = activeStep?.title || (completedCount === totalSteps ? "Abgeschlossen" : "Bereit");
 
   const lastActionMessage = useMemo(() => {
     const actionMessages = chatMessages.filter(m => {
@@ -243,46 +243,9 @@ const MigrationChatCard = ({
 
   return (
     <Card 
-      style={{ height: "calc(100vh - 180px)" }} 
-      className="flex flex-col overflow-hidden bg-transparent border-transparent"
+      style={{ height: "calc(100vh - 120px)" }} 
+      className="flex flex-1 flex-col overflow-hidden bg-transparent border-transparent"
     >
-      <CardHeader className="shrink-0 py-3 px-4">
-        <div className="flex flex-col gap-3">
-          <div className="flex items-center gap-4 min-w-0">
-            <StepperDots 
-              totalSteps={totalSteps} 
-              completedSteps={completedCount} 
-              isCurrentStepRunning={isStepRunning}
-              hasCurrentStepFailed={hasCurrentStepFailed}
-            />
-            
-            <div className="flex items-center gap-2 min-w-0">
-              <span className="text-sm font-semibold text-foreground truncate">
-                Schritt {currentStepNumber}: {currentStepTitle}
-              </span>
-              {isStepRunning && (
-                <span className="text-xs text-primary animate-pulse font-medium">
-                  Wird ausgeführt...
-                </span>
-              )}
-            </div>
-          </div>
-          
-          <div className="flex flex-col gap-1.5 mt-1">
-            <div className="flex items-center justify-between">
-              <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">Fortschritt</span>
-              <span className="text-sm font-bold text-primary tabular-nums">
-                {Math.round(overallProgress)}%
-              </span>
-            </div>
-            <Progress 
-              value={overallProgress} 
-              className="h-1.5 w-full"
-            />
-          </div>
-        </div>
-      </CardHeader>
-
       <CardContent className="flex min-h-0 flex-1 flex-col p-4 pt-0">
         <div className="relative min-h-0 flex-1">
           <div ref={scrollContainerRef} onScroll={handleScroll} className="absolute inset-0 overflow-y-auto pr-2 scroll-smooth">

@@ -8,7 +8,11 @@ export interface MigrationDetailsRef {
   openWorkflowPanel: () => void;
 }
 
-const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(({ project, onRefresh, onStepRunningChange }, ref) => {
+const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(({ 
+  project, 
+  onRefresh, 
+  onStepRunningChange
+}, ref) => {
   const [isStepRunning, setIsStepRunning] = useState(project.step_status === 'running');
   const [isWorkflowPanelOpen, setIsWorkflowPanelOpen] = useState(false);
 

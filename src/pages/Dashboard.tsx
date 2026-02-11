@@ -54,6 +54,8 @@ import {
 import { duplicateMigration } from "@/lib/migrationDuplication";
 import { cn } from "@/lib/utils";
 import { logout } from "@/auth/keycloakClient";
+import { Progress } from "@/components/ui/progress";
+import { AGENT_WORKFLOW_STEPS } from "@/constants/agentWorkflow";
 
 const deriveMigrationStatus = (migration: any): MigrationStatus => {
   const progress = Number(migration?.progress ?? 0);
@@ -254,6 +256,7 @@ const Dashboard = () => {
           workflowState: migration.workflow_state,
           current_step: migration.current_step,
           step_status: migration.step_status,
+          consultant_status: migration.consultant_status,
           scopeConfig: migration.scope_config,
         };
       }),
@@ -679,6 +682,32 @@ const Dashboard = () => {
     ? [...migrations, ...standaloneMigrations].find((m) => m.id === selectedMigration)
     : null;
 
+  // Header Info Memoized
+  const headerInfo = useMemo(() => {
+    if (!currentMigration) return null;
+
+    const totalSteps = 10;
+    const rawStep = currentMigration.current_step || 0;
+    const isStepRunning = currentMigration.step_status === 'running' || currentMigration.step_status === 'pending';
+    const hasCurrentStepFailed = currentMigration.step_status === 'failed';
+    
+    const completedCount = (isStepRunning || hasCurrentStepFailed) ? Math.max(0, rawStep - 1) : rawStep;
+    const progress = (completedCount / totalSteps) * 100;
+    const currentStepNumber = completedCount + 1 > totalSteps ? totalSteps : completedCount + 1;
+    const activeStep = AGENT_WORKFLOW_STEPS[currentStepNumber - 1];
+    const title = activeStep?.title || (completedCount === totalSteps ? "Abgeschlossen" : "Bereit");
+
+    return {
+      progress,
+      step: {
+        number: currentStepNumber,
+        title,
+        isRunning: isStepRunning,
+        hasFailed: hasCurrentStepFailed
+      }
+    };
+  }, [currentMigration]);
+
   const isMappingEnabled = useMemo(() => {
     if (!currentMigration) return false;
     const rawStep = currentMigration.current_step || 0;
@@ -753,20 +782,50 @@ const Dashboard = () => {
           >
             {currentMigration ? (
               <>
-                <div className="flex items-center gap-4">
-                  <div className="inline-flex items-center gap-2 rounded-full bg-foreground/5 px-4 py-1 text-sm text-muted-foreground">
-                    Migration
+                <div className="flex items-center gap-6 flex-1 min-w-0">
+                  <div className="flex items-center gap-4 shrink-0">
+                    <div className="inline-flex items-center gap-2 rounded-full bg-foreground/5 px-4 py-1 text-sm text-muted-foreground whitespace-nowrap">
+                      Migration
+                    </div>
+                    <div className="text-base font-semibold text-foreground truncate max-w-[200px]">
+                      {currentMigration.name}
+                    </div>
+                    <div className="flex items-center gap-2 text-sm text-muted-foreground whitespace-nowrap">
+                      <span>{currentMigration.sourceSystem}</span>
+                      <span>→</span>
+                      <span>{currentMigration.targetSystem}</span>
+                    </div>
                   </div>
-                  <div className="text-base font-semibold text-foreground">
-                    {currentMigration.name}
-                  </div>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                    <span>{currentMigration.sourceSystem}</span>
-                    <span>→</span>
-                    <span>{currentMigration.targetSystem}</span>
-                  </div>
+
+                  <div className="h-8 w-px bg-border/60 shrink-0" />
+
+                  {/* Progress & Step Info centered in header */}
+                  {headerInfo && (
+                    <div className="flex flex-1 items-center gap-6 min-w-0 max-w-xl">
+                      <div className="flex flex-col gap-0.5 min-w-0 w-full">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-sm font-bold text-foreground whitespace-nowrap">
+                            Schritt {headerInfo.step.number}:
+                          </span>
+                          <span className="text-sm font-medium text-muted-foreground truncate">
+                            {headerInfo.step.title}
+                          </span>
+                          {headerInfo.step.isRunning && (
+                            <div className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse shrink-0" />
+                          )}
+                        </div>
+                        <div className="flex items-center gap-3">
+                          <Progress value={headerInfo.progress} className="h-1.5 flex-1" />
+                          <span className="text-[11px] font-bold text-primary tabular-nums min-w-[30px]">
+                            {Math.round(headerInfo.progress)}%
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-3">
+
+                <div className="flex items-center gap-3 shrink-0 ml-4">
                   <Button
                     variant="ghost"
                     size="icon"
@@ -941,7 +1000,7 @@ const Dashboard = () => {
                   {/* Completed Migrations */}
                   <div className="flex items-start gap-4">
                     <div className="p-2.5 rounded-xl bg-emerald-500/10">
-                      <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                      <ShieldCheck className="h-5 w-5 text-emerald-500" />
                     </div>
                     <div>
                       <div className="flex items-baseline gap-2">
