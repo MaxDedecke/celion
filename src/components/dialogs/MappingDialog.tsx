@@ -82,6 +82,7 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
   
   const [mappings, setMappings] = useState<MappingTuple[]>([]);
   const [mappingRules, setMappingRules] = useState<MappingRule[]>([]);
+  const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
   // Chat State
@@ -258,6 +259,12 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
   const activeSource = sourceEntities[currentSourceIdx];
   const activeTarget = targetEntities[currentTargetIdx];
 
+  const currentRules = useMemo(() => {
+    if (!activeSource) return [];
+    // Filter all rules where the source object matches the active source
+    return mappingRules.filter(r => r.source_object === activeSource.id || r.source_object === activeSource.name);
+  }, [mappingRules, activeSource]);
+
   const currentTuple = useMemo(() => {
     if (!activeSource || !activeTarget) return null;
     return mappings.find(m => 
@@ -377,7 +384,7 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
                 {/* Rule Selector Dropdown */}
                 <div className="px-4 py-2 border-b bg-muted/5 flex items-center gap-2 shrink-0">
                     <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Regel-Fokus:</span>
-                    <Select onValueChange={handleRuleSelect} disabled={mappingRules.length === 0}>
+                    <Select value={selectedRuleId || ""} onValueChange={handleRuleSelect} disabled={mappingRules.length === 0}>
                         <SelectTrigger className="h-8 w-full max-w-[400px]">
                             <SelectValue placeholder={mappingRules.length > 0 ? "Wähle eine Regel zum Anzeigen..." : "Keine Regeln definiert"} />
                         </SelectTrigger>
@@ -537,6 +544,55 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
                       </div>
                     </ScrollArea>
                   </div>
+                </div>
+
+                {/* Rule Details Footer */}
+                <div className="shrink-0 border-t bg-muted/5 p-4 flex flex-col gap-3 min-h-[100px] max-h-[300px] overflow-y-auto">
+                    <div className="flex items-center justify-between sticky top-0 bg-muted/5 pb-2 z-10">
+                        <div className="flex items-center gap-2">
+                            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Regeln</span>
+                            <Badge variant="outline" className="text-[10px] h-5">
+                                {currentRules.length}
+                            </Badge>
+                        </div>
+                    </div>
+                    
+                    {currentRules.length > 0 ? (
+                        <div className="flex flex-col gap-2">
+                            {currentRules.map(rule => (
+                                <div key={rule.id} className="p-2 rounded border bg-background/50 flex flex-col gap-1">
+                                    <div className="flex items-center justify-between">
+                                        <div className="flex items-center gap-2 text-sm">
+                                            {/* Source Property */}
+                                            <span className="font-medium text-foreground">{rule.source_property || "(Object)"}</span>
+                                            
+                                            <ArrowLeftRight className="w-3 h-3 text-muted-foreground" />
+                                            
+                                            {/* Target (Object + Property) */}
+                                            <span className="text-muted-foreground">{rule.target_object}</span>
+                                            <span className="font-medium text-foreground">{rule.target_property ? `.${rule.target_property}` : ''}</span>
+                                        </div>
+                                        <Badge variant={
+                                            rule.rule_type === 'MAP' ? 'default' : 
+                                            rule.rule_type === 'POLISH' ? 'secondary' : 'outline'
+                                        } className="text-[10px] h-5 scale-90 origin-right">
+                                            {rule.rule_type}
+                                        </Badge>
+                                    </div>
+                                    
+                                    {rule.note && (
+                                        <div className="text-xs text-muted-foreground italic">
+                                            "{rule.note}"
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="flex items-center justify-center py-4 text-xs text-muted-foreground italic">
+                            Keine Regeln für dieses Quell-Objekt vorhanden.
+                        </div>
+                    )}
                 </div>
               </ResizablePanel>
 
