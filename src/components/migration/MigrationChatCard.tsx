@@ -42,9 +42,17 @@ const MigrationChatCard = ({
   }, [migration]);
 
   useEffect(() => {
+    let isActive = true;
+    
+    // Reset state when migration changes
+    setChatMessages([]);
+    prevMessageCountRef.current = 0;
+
     const fetchChatMessages = async () => {
       try {
         const response = await fetch(`/api/migrations/${migration.id}/chat?t=${Date.now()}`);
+        if (!isActive) return;
+        
         const data = await response.json();
         setChatMessages(data);
       } catch (error) {
@@ -55,6 +63,8 @@ const MigrationChatCard = ({
     const fetchMigration = async () => {
       try {
         const response = await fetch(`/api/migrations/${migration.id}?t=${Date.now()}`);
+        if (!isActive) return;
+        
         const data = await response.json();
         setMigrationData(data);
       } catch (error) {
@@ -66,11 +76,16 @@ const MigrationChatCard = ({
     fetchMigration();
 
     const interval = setInterval(() => {
-      fetchChatMessages();
-      fetchMigration();
+      if (isActive) {
+        fetchChatMessages();
+        fetchMigration();
+      }
     }, 3000); // Poll every 3 seconds
 
-    return () => clearInterval(interval);
+    return () => {
+      isActive = false;
+      clearInterval(interval);
+    };
   }, [migration.id]);
 
   const handleScroll = () => {
@@ -272,6 +287,7 @@ const MigrationChatCard = ({
         <div className="relative min-h-0 flex-1">
           <div ref={scrollContainerRef} onScroll={handleScroll} className="absolute inset-0 overflow-y-auto pr-2 scroll-smooth">
             <ChatMessageList 
+              key={migration.id}
               messages={chatMessages} 
               isAgentRunning={isStepRunning} 
               isConsultantThinking={isConsultantThinking}
