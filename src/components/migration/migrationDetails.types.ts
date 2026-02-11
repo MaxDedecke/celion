@@ -6,6 +6,7 @@ export interface MigrationDetailsProps {
   project: MigrationProject;
   onRefresh: () => Promise<void>;
   onStepRunningChange?: (isRunning: boolean) => void;
+  activeView?: 'chat' | 'workflow' | 'mapping';
 }
 
 export type RawActivityRecord = {

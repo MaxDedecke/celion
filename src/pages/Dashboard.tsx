@@ -5,7 +5,6 @@ import UserMenu from "@/components/UserMenu";
 import AccountDialog from "@/components/dialogs/AccountDialog";
 import AddMigrationDialog from "@/components/dialogs/AddMigrationDialog";
 import EditMigrationDialog from "@/components/dialogs/EditMigrationDialog";
-import MappingDialog from "@/components/dialogs/MappingDialog";
 import MigrationDetails, { type MigrationDetailsRef } from "@/components/MigrationDetails";
 import DataFlowLoader from "@/components/DataFlowLoader";
 import { Button } from "@/components/ui/button";
@@ -15,6 +14,7 @@ import {
   ArrowRight,
   Settings,
   MessageSquare,
+  MessageCircle,
   Loader2,
   ShieldCheck,
   Package,
@@ -102,7 +102,7 @@ const Dashboard = () => {
   const [selectedMigration, setSelectedMigration] = useState<string | null>(migrationId || null);
   const [showAccountDialog, setShowAccountDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
-  const [showMappingDialog, setShowMappingDialog] = useState(false);
+  const [activeView, setActiveView] = useState<'chat' | 'workflow' | 'mapping'>('chat');
   
   const [migrations, setMigrations] = useState<any[]>([]);
   const [standaloneMigrations, setStandaloneMigrations] = useState<any[]>([]);
@@ -165,6 +165,8 @@ const Dashboard = () => {
 
   useEffect(() => {
     setSelectedMigration(migrationId ?? null);
+    // When migration changes, default back to chat view
+    setActiveView('chat');
   }, [migrationId]);
 
   const checkAuth = async () => {
@@ -827,18 +829,27 @@ const Dashboard = () => {
 
                 <div className="flex items-center gap-3 shrink-0 ml-4">
                   <Button
-                    variant="ghost"
+                    variant={activeView === 'chat' ? 'secondary' : 'ghost'}
                     size="icon"
-                    onClick={() => migrationDetailsRef.current?.openWorkflowPanel()}
+                    onClick={() => setActiveView('chat')}
+                    className="h-8 w-8"
+                    title="Chat"
+                  >
+                    <MessageCircle className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    variant={activeView === 'workflow' ? 'secondary' : 'ghost'}
+                    size="icon"
+                    onClick={() => setActiveView('workflow')}
                     className="h-8 w-8"
                     title="Erkenntnisse"
                   >
                     <Workflow className="h-4 w-4" />
                   </Button>
                   <Button
-                    variant="ghost"
+                    variant={activeView === 'mapping' ? 'secondary' : 'ghost'}
                     size="icon"
-                    onClick={() => setShowMappingDialog(true)}
+                    onClick={() => setActiveView('mapping')}
                     className="h-8 w-8"
                     disabled={!isMappingEnabled}
                     title={isMappingEnabled ? "Mappings" : "Mapping erst nach Abschluss von Schritt 4 verfügbar"}
@@ -900,6 +911,7 @@ const Dashboard = () => {
                   project={currentMigration}
                   onRefresh={refreshCurrentMigration}
                   onStepRunningChange={(isRunning) => handleStepRunningChange(currentMigration.id, isRunning)}
+                  activeView={activeView}
                 />
               </div>
             </div>
@@ -1144,13 +1156,6 @@ const Dashboard = () => {
         onUpdate={handleUpdateMigration}
         currentName={editingMigration?.name || ""}
       />
-      {selectedMigration && (
-        <MappingDialog
-          open={showMappingDialog}
-          onOpenChange={setShowMappingDialog}
-          migrationId={selectedMigration}
-        />
-      )}
       {editConfigData && (
         <AddMigrationDialog
           open={showEditConfigDialog}

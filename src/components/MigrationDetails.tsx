@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState, forwardRef, useImperativeHandle } from "react";
 import MigrationChatCard from "./migration/MigrationChatCard";
+import WorkflowPanel from "./migration/WorkflowPanel";
+import MappingPanel from "./migration/MappingPanel";
 import { toast } from "sonner";
 import type { MigrationDetailsProps } from "./migration/migrationDetails.types";
-import WorkflowPanelDialog from "./dialogs/WorkflowPanelDialog";
 
 export interface MigrationDetailsRef {
   openWorkflowPanel: () => void;
@@ -11,14 +12,14 @@ export interface MigrationDetailsRef {
 const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(({ 
   project, 
   onRefresh, 
-  onStepRunningChange
+  onStepRunningChange,
+  activeView = 'chat'
 }, ref) => {
   const [isStepRunning, setIsStepRunning] = useState(project.step_status === 'running');
-  const [isWorkflowPanelOpen, setIsWorkflowPanelOpen] = useState(false);
 
   useImperativeHandle(ref, () => ({
     openWorkflowPanel: () => {
-      setIsWorkflowPanelOpen(true);
+      // Logic for imperative call if still needed
     }
   }));
 
@@ -29,14 +30,11 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
   }, [project.step_status, onStepRunningChange]);
 
   const handleNextWorkflowStep = useCallback(async (explicitStep?: number) => {
-    // Safety: ensure explicitStep is a number and not a React event object
     const validatedStep = typeof explicitStep === 'number' ? explicitStep : undefined;
     
     if (isStepRunning && !validatedStep) return;
 
     try {
-      // If the last step failed, we retry it (current_step). 
-      // Otherwise we move to the next step (current_step + 1).
       const stepToRun = validatedStep || (project.step_status === 'failed' 
         ? (project.current_step || 1) 
         : (project.current_step || 0) + 1);
@@ -81,7 +79,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
       const trimmed = message.trim();
       const lower = trimmed.toLowerCase();
       
-      // If it looks like a command, trigger workflow
       if (
         lower === "start" || 
         lower === "weiter" || 
@@ -92,7 +89,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         return;
       }
 
-      // Otherwise, ask the consultant (AnswerAgent)
       try {
         const response = await fetch(`/api/migrations/${project.id}/chat/answer`, {
           method: 'POST',
@@ -104,7 +100,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
 
         if (!response.ok) throw new Error("Consultant request failed");
         
-        await onRefresh(); // To show user message immediately
+        await onRefresh(); 
       } catch (error) {
         console.error("Fehler beim Senden der Consultant-Anfrage:", error);
         toast.error("Fehler beim Senden der Nachricht.");
@@ -115,21 +111,27 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex flex-1 flex-col gap-4 overflow-auto p-0">
-        <MigrationChatCard
-          migration={project}
-          onSendMessage={handleSendChatMessage}
-          onContinue={handleNextWorkflowStep}
-          onAction={handleAction}
-          onOpenAgentOutput={(stepId) => console.log("onOpenAgentOutput not implemented", stepId)}
-        />
+      <div className="flex flex-1 flex-col overflow-hidden p-0">
+        {activeView === 'chat' && (
+          <MigrationChatCard
+            migration={project}
+            onSendMessage={handleSendChatMessage}
+            onContinue={handleNextWorkflowStep}
+            onAction={handleAction}
+            onOpenAgentOutput={(stepId) => console.log("onOpenAgentOutput not implemented", stepId)}
+          />
+        )}
+        {activeView === 'workflow' && (
+          <div className="flex-1 overflow-hidden p-6 bg-muted/5">
+            <WorkflowPanel migrationId={project.id} />
+          </div>
+        )}
+        {activeView === 'mapping' && (
+          <div className="flex-1 overflow-hidden p-6 bg-muted/5">
+            <MappingPanel migrationId={project.id} />
+          </div>
+        )}
       </div>
-
-      <WorkflowPanelDialog 
-        open={isWorkflowPanelOpen} 
-        onOpenChange={setIsWorkflowPanelOpen} 
-        migrationId={project.id} 
-      />
     </div>
   );
 });
