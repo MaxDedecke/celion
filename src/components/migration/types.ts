@@ -21,6 +21,7 @@ export interface MigrationProject {
   outConnectorDetail?: string | null;
   current_step?: number;
   step_status?: 'idle' | 'pending' | 'running' | 'completed' | 'failed';
+  consultant_status?: 'idle' | 'thinking';
 }
 
 export interface MigrationStatusMeta {

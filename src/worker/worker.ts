@@ -776,6 +776,9 @@ async function processJob(job: any) {
       const userMessage = agentParams?.userMessage;
       const context = agentParams?.context;
       
+      // Set status to thinking
+      await pool.query('UPDATE migrations SET consultant_status = $1 WHERE id = $2', ['thinking', migrationId]);
+      
       const { rows: migrationRows } = await pool.query('SELECT source_system FROM migrations WHERE id = $1', [migrationId]);
       const sourceSystem = migrationRows[0]?.source_system;
 
@@ -793,6 +796,10 @@ async function processJob(job: any) {
       if (assistantResponse) {
         await writeChatMessage(migrationId, 'assistant', assistantResponse);
       }
+      
+      // Reset status to idle
+      await pool.query('UPDATE migrations SET consultant_status = $1 WHERE id = $2', ['idle', migrationId]);
+
       await pool.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
       return;
 

@@ -557,3 +557,5 @@ CREATE TABLE IF NOT EXISTS public.step_5_results (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   UNIQUE(migration_id)
 );
+-- Add consultant_status column to migrations table
+ALTER TABLE public.migrations ADD COLUMN IF NOT EXISTS consultant_status text DEFAULT 'idle';

@@ -679,6 +679,7 @@ class Migration(BaseModel):
     progress: Optional[float] = 0.0
     current_step: int = 0
     step_status: str = "idle"
+    consultant_status: str = "idle"
     status: Optional[str] = "not_started"
     created_at: str
     updated_at: Optional[str] = None
@@ -1129,7 +1130,7 @@ async def create_migration(payload: CreateMigrationPayload) -> Migration:
                     out_connector, out_connector_detail, status, scope_config
                 )
                 VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, current_step, step_status, status, created_at, updated_at, scope_config
+                RETURNING id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, current_step, step_status, consultant_status, status, created_at, updated_at, scope_config
                 """,
                 (
                     payload.name,
@@ -1188,6 +1189,7 @@ async def create_migration(payload: CreateMigrationPayload) -> Migration:
                 progress=row["progress"],
                 current_step=row["current_step"],
                 step_status=row["step_status"],
+                consultant_status=row["consultant_status"],
                 status=row["status"],
                 created_at=row["created_at"].isoformat(),
                 updated_at=row["updated_at"].isoformat() if row["updated_at"] else None,
@@ -1321,7 +1323,7 @@ async def get_migrations(
     try:
         with _get_db_connection() as conn, conn.cursor() as cur:
             
-            base_select = "SELECT m.id, m.name, m.source_system, m.target_system, m.source_url, m.target_url, m.in_connector, m.in_connector_detail, m.out_connector, m.out_connector_detail, m.objects_transferred, m.mapped_objects, m.project_id, m.notes, m.scope_config, m.workflow_state, m.progress, m.current_step, m.step_status, m.status, m.created_at, m.updated_at FROM public.migrations m"
+            base_select = "SELECT m.id, m.name, m.source_system, m.target_system, m.source_url, m.target_url, m.in_connector, m.in_connector_detail, m.out_connector, m.out_connector_detail, m.objects_transferred, m.mapped_objects, m.project_id, m.notes, m.scope_config, m.workflow_state, m.progress, m.current_step, m.step_status, m.consultant_status, m.status, m.created_at, m.updated_at FROM public.migrations m"
             
             conditions = []
             params = []
@@ -1402,6 +1404,7 @@ async def get_migrations(
                         progress=float(row["progress"]) if row.get("progress") is not None else 0.0,
                         current_step=int(row["current_step"]) if row.get("current_step") is not None else 0,
                         step_status=row.get("step_status") or "idle",
+                        consultant_status=row.get("consultant_status") or "idle",
                         status=row.get("status") or "not_started",
                         created_at=created_at_str,
                         updated_at=updated_at_str,
@@ -1424,7 +1427,7 @@ async def get_migration(id: str) -> Migration:
     try:
         with _get_db_connection() as conn, conn.cursor() as cur:
             cur.execute(
-                "SELECT id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, scope_config, workflow_state, progress, current_step, step_status, status, created_at, updated_at FROM public.migrations WHERE id = %s",
+                "SELECT id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, scope_config, workflow_state, progress, current_step, step_status, consultant_status, status, created_at, updated_at FROM public.migrations WHERE id = %s",
                 (id,),
             )
             row = cur.fetchone()
@@ -1451,6 +1454,7 @@ async def get_migration(id: str) -> Migration:
                 progress=row["progress"],
                 current_step=row["current_step"],
                 step_status=row["step_status"],
+                consultant_status=row["consultant_status"],
                 status=row["status"],
                 created_at=row["created_at"].isoformat(),
                 updated_at=row["updated_at"].isoformat() if row["updated_at"] else None,
@@ -1728,7 +1732,7 @@ async def update_migration(id: str, payload: UpdateMigrationPayload) -> Migratio
                 UPDATE public.migrations
                 SET {", ".join(updates)}
                 WHERE id = %s
-                RETURNING id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, scope_config, workflow_state, progress, current_step, step_status, status, created_at, updated_at
+                RETURNING id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, scope_config, workflow_state, progress, current_step, step_status, consultant_status, status, created_at, updated_at
             """
             
             cur.execute(query, tuple(params))
@@ -1758,6 +1762,7 @@ async def update_migration(id: str, payload: UpdateMigrationPayload) -> Migratio
                 progress=row["progress"],
                 current_step=row["current_step"],
                 step_status=row["step_status"],
+                consultant_status=row["consultant_status"],
                 status=row["status"],
                 created_at=row["created_at"].isoformat(),
                 updated_at=row["updated_at"].isoformat() if row["updated_at"] else None,
@@ -1824,7 +1829,7 @@ async def duplicate_migration(id: str, user_id: str) -> Migration:
                 RETURNING id, name, source_system, target_system, source_url, target_url, 
                           in_connector, in_connector_detail, out_connector, out_connector_detail, 
                           objects_transferred, mapped_objects, project_id, notes, scope_config, 
-                          workflow_state, progress, current_step, step_status, status, created_at, updated_at
+                          workflow_state, progress, current_step, step_status, consultant_status, status, created_at, updated_at
             """
 
             cur.execute(query, tuple(params))
@@ -2072,6 +2077,7 @@ async def duplicate_migration(id: str, user_id: str) -> Migration:
                 progress=row["progress"],
                 current_step=row["current_step"],
                 step_status=row["step_status"],
+                consultant_status=row["consultant_status"],
                 status=row["status"],
                 created_at=row["created_at"].isoformat(),
                 updated_at=row["updated_at"].isoformat() if row["updated_at"] else None,
