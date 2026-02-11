@@ -243,7 +243,6 @@ const MigrationChatCard = ({
 
   return (
     <Card 
-      style={{ height: "calc(100vh - 120px)" }} 
       className="flex flex-1 flex-col overflow-hidden bg-transparent border-transparent"
     >
       <CardContent className="flex min-h-0 flex-1 flex-col p-4 pt-0">
