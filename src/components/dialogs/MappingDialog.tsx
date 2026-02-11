@@ -67,10 +67,10 @@ interface MappingRule {
   id: string;
   source_system: string;
   source_object: string;
-  source_property?: string;
+  source_property: string;
   target_system: string;
   target_object: string;
-  target_property?: string;
+  target_property: string;
   note?: string;
   rule_type: 'MAP' | 'POLISH' | 'SUMMARY';
 }
@@ -90,6 +90,10 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
   const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
 
+  // Field selection for rule creation (Rule Focus)
+  const [selectedSourceFieldId, setSelectedSourceFieldId] = useState<string | null>(null);
+  const [selectedTargetFieldId, setSelectedTargetFieldId] = useState<string | null>(null);
+
   // Editing State
   const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
   const [editingNote, setEditingNote] = useState("");
@@ -107,14 +111,12 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
       if (!open) return;
       setLoading(true);
       try {
-        // 1. Fetch Migration to get system names
         const { data: migration } = await databaseClient.fetchMigrationById(migrationId);
         if (!migration) throw new Error("Migration not found");
 
         setSourceSystemName(migration.source_system);
         setTargetSystemName(migration.target_system);
 
-        // 2. Fetch Specs for both systems in parallel
         const [sourceSpecsRes, targetSpecsRes] = await Promise.all([
           databaseClient.fetchObjectSpecs(migration.source_system),
           databaseClient.fetchObjectSpecs(migration.target_system)
@@ -147,16 +149,13 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
           })));
         }
 
-        // 3. Fetch Existing Results (Step 6 Mapping)
         const { data: results } = await databaseClient.fetchMigrationResults(migrationId);
         if (results?.step_6?.[0]?.raw_json?.mappings) {
           setMappings(results.step_6[0].raw_json.mappings);
         } else if (results?.step_5?.[0]?.raw_json?.mappings) {
-          // Fallback to step 5 if we just renamed everything
           setMappings(results.step_5[0].raw_json.mappings);
         }
 
-        // 4. Fetch Mapping Rules
         const rulesResponse = await fetch(`/api/migrations/${migrationId}/mapping-rules`);
         if (rulesResponse.ok) {
             const rules = await rulesResponse.json();
@@ -177,10 +176,7 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
   // Chat Fetching Logic
   useEffect(() => {
     if (!open) return;
-
     let isActive = true;
-    
-    // Reset state when opening
     setChatMessages([]);
     prevMessageCountRef.current = 0;
 
@@ -188,7 +184,6 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
       try {
         const response = await fetch(`/api/migrations/${migrationId}/mapping-chat?t=${Date.now()}`);
         if (!isActive) return;
-        
         const data = await response.json();
         setChatMessages(data);
       } catch (error) {
@@ -196,7 +191,6 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
       }
     };
 
-    // Also refresh rules periodically
     const fetchRules = async () => {
         try {
             const response = await fetch(`/api/migrations/${migrationId}/mapping-rules`);
@@ -212,13 +206,12 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
 
     fetchChatMessages();
     fetchRules();
-
     const interval = setInterval(() => {
       if (isActive) {
         fetchChatMessages();
         fetchRules();
       }
-    }, 3000); // Poll every 3 seconds
+    }, 3000);
 
     return () => {
       isActive = false;
@@ -226,7 +219,6 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
     };
   }, [open, migrationId]);
 
-  // Chat Auto-Scroll Logic
   const handleScroll = () => {
     if (chatScrollRef.current) {
       const { scrollTop, scrollHeight, clientHeight } = chatScrollRef.current;
@@ -252,14 +244,11 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
 
   const handleSendMessage = async (message: string) => {
     try {
-      // We need to implement the POST
       await fetch(`/api/migrations/${migrationId}/mapping-chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: message, role: 'user' })
       });
-      
-      // Trigger immediate fetch or just wait for poll
       setTimeout(() => scrollToBottom('smooth'), 50);
     } catch (error) {
       console.error("Failed to send message:", error);
@@ -267,63 +256,13 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
     }
   };
 
-
   const activeSource = sourceEntities[currentSourceIdx];
   const activeTarget = targetEntities[currentTargetIdx];
 
   const currentRules = useMemo(() => {
     if (!activeSource) return [];
-    // Filter all rules where the source object matches the active source
     return mappingRules.filter(r => r.source_object === activeSource.id || r.source_object === activeSource.name);
   }, [mappingRules, activeSource]);
-
-  const currentTuple = useMemo(() => {
-    if (!activeSource || !activeTarget) return null;
-    return mappings.find(m => 
-      m.sourceEntity === activeSource.id && m.targetEntity === activeTarget.id
-    ) || {
-      sourceEntity: activeSource.id,
-      targetEntity: activeTarget.id,
-      fieldMappings: []
-    };
-  }, [mappings, activeSource, activeTarget]);
-
-  const addFieldMapping = (sourceFieldId: string, targetFieldId: string) => {
-    setMappings(prev => {
-      const existingIdx = prev.findIndex(m => 
-        m.sourceEntity === activeSource.id && m.targetEntity === activeTarget.id
-      );
-
-      if (existingIdx >= 0) {
-        const updated = [...prev];
-        const tuple = { ...updated[existingIdx] };
-        tuple.fieldMappings = tuple.fieldMappings.filter(f => f.targetField !== targetFieldId);
-        tuple.fieldMappings.push({ sourceField: sourceFieldId, targetField: targetFieldId });
-        updated[existingIdx] = tuple;
-        return updated;
-      } else {
-        return [...prev, {
-          sourceEntity: activeSource.id,
-          targetEntity: activeTarget.id,
-          fieldMappings: [{ sourceField: sourceFieldId, targetField: targetFieldId }]
-        }];
-      }
-    });
-  };
-
-  const removeFieldMapping = (targetFieldId: string) => {
-    setMappings(prev => {
-      return prev.map(m => {
-        if (m.sourceEntity === activeSource.id && m.targetEntity === activeTarget.id) {
-          return {
-            ...m,
-            fieldMappings: m.fieldMappings.filter(f => f.targetField !== targetFieldId)
-          };
-        }
-        return m;
-      });
-    });
-  };
 
   const handleSave = async () => {
     setIsSaving(true);
@@ -339,16 +278,21 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
   };
 
   const handleRuleSelect = (ruleId: string) => {
+      if (selectedRuleId === ruleId) {
+          setSelectedRuleId(null);
+          return;
+      }
+
       const rule = mappingRules.find(r => r.id === ruleId);
       if (!rule) return;
+      
+      setSelectedRuleId(ruleId);
 
       const sIdx = sourceEntities.findIndex(e => e.id === rule.source_object || e.name === rule.source_object);
       const tIdx = targetEntities.findIndex(e => e.id === rule.target_object || e.name === rule.target_object);
-
+      
       if (sIdx !== -1) setCurrentSourceIdx(sIdx);
       if (tIdx !== -1) setCurrentTargetIdx(tIdx);
-      
-      toast.info(`Ansicht gewechselt: ${rule.source_object} -> ${rule.target_object}`);
   };
 
   const handleRuleUpdate = async (ruleId: string, payload: Partial<{ note: string, rule_type: string }>) => {
@@ -358,9 +302,7 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload)
         });
-
         if (!response.ok) throw new Error("Update failed");
-
         const updatedRule = await response.json();
         setMappingRules(prev => prev.map(r => r.id === ruleId ? updatedRule : r));
         setEditingRuleId(null);
@@ -368,6 +310,104 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
     } catch (error) {
         console.error("Failed to update rule:", error);
         toast.error("Fehler beim Aktualisieren der Regel");
+    }
+  };
+
+  const handleDeleteRule = async (ruleId: string) => {
+    try {
+        const response = await fetch(`/api/migrations/${migrationId}/mapping-rules/${ruleId}`, {
+            method: 'DELETE'
+        });
+        if (!response.ok) throw new Error("Delete failed");
+        
+        const deletedRule = mappingRules.find(r => r.id === ruleId);
+        if (deletedRule) {
+            // Also remove from local mappings state to keep Step 6 in sync
+            setMappings(prev => {
+                return prev.map(m => {
+                    if (m.sourceEntity === deletedRule.source_object && m.targetEntity === deletedRule.target_object) {
+                        return {
+                            ...m,
+                            fieldMappings: m.fieldMappings.filter(fm => fm.sourceField !== deletedRule.source_property || fm.targetField !== deletedRule.target_property)
+                        };
+                    }
+                    return m;
+                });
+            });
+        }
+
+        setMappingRules(prev => prev.filter(r => r.id !== ruleId));
+        if (selectedRuleId === ruleId) setSelectedRuleId(null);
+        toast.success("Regel gelöscht");
+    } catch (error) {
+        console.error("Failed to delete rule:", error);
+        toast.error("Fehler beim Löschen der Regel");
+    }
+  };
+
+  const handleCreateRule = async () => {
+    if (!activeSource || !activeTarget) {
+        toast.error("Wählen Sie zuerst ein Quell- und Zielobjekt aus");
+        return;
+    }
+
+    if (!selectedSourceFieldId || !selectedTargetFieldId) {
+        toast.error("Bitte wählen Sie zuerst Quell- und Zielfelder im Whiteboard aus");
+        return;
+    }
+
+    try {
+        const payload = {
+            source_system: sourceSystemName,
+            source_object: activeSource.id,
+            source_property: selectedSourceFieldId,
+            target_system: targetSystemName,
+            target_object: activeTarget.id,
+            target_property: selectedTargetFieldId,
+            rule_type: 'MAP',
+            note: ""
+        };
+
+        const response = await fetch(`/api/migrations/${migrationId}/mapping-rules`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) throw new Error("Creation failed");
+
+        const newRule = await response.json();
+        setMappingRules(prev => [newRule, ...prev]);
+        
+        // SYNC with Step 6 Mappings
+        setMappings(prev => {
+            const existingIdx = prev.findIndex(m => 
+              m.sourceEntity === activeSource.id && m.targetEntity === activeTarget.id
+            );
+            if (existingIdx >= 0) {
+              const updated = [...prev];
+              const tuple = { ...updated[existingIdx] };
+              tuple.fieldMappings = tuple.fieldMappings.filter(f => f.targetField !== selectedTargetFieldId);
+              tuple.fieldMappings.push({ sourceField: selectedSourceFieldId, targetField: selectedTargetFieldId });
+              updated[existingIdx] = tuple;
+              return updated;
+            } else {
+              return [...prev, {
+                sourceEntity: activeSource.id,
+                targetEntity: activeTarget.id,
+                fieldMappings: [{ sourceField: selectedSourceFieldId, targetField: selectedTargetFieldId }]
+              }];
+            }
+        });
+
+        toast.success(`Regel erstellt`);
+        setSelectedSourceFieldId(null);
+        setSelectedTargetFieldId(null);
+        setEditingRuleId(newRule.id);
+        setEditingNote("");
+    } catch (error) {
+        console.error("Failed to create rule:", error);
+        toast.error("Fehler beim Erstellen der Regel");
     }
   };
 
@@ -379,11 +419,8 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
             <div>
               <DialogTitle className="text-xl font-bold flex items-center gap-2">
                 <ArrowLeftRight className="w-5 h-5 text-primary" />
-                Manual Model Mapping
+                Model Mapping
               </DialogTitle>
-              <DialogDescription>
-                Definieren Sie manuell die Relationen zwischen Quell- und Ziel-Entitäten für Schritt 6.
-              </DialogDescription>
             </div>
             <div className="flex items-center gap-4">
               <Button size="sm" onClick={handleSave} disabled={isSaving} className="min-w-[100px]">
@@ -411,9 +448,7 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
         ) : (
           <div className="flex-1 flex overflow-hidden">
             <ResizablePanelGroup direction="horizontal">
-              {/* Left Column: Mapping UI (Default 60%, Min 50%) */}
               <ResizablePanel defaultSize={60} minSize={50} className="flex flex-col min-h-0">
-                {/* Rule Selector Dropdown */}
                 <div className="px-4 py-2 border-b bg-muted/5 flex items-center gap-2 shrink-0">
                     <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Regel-Fokus:</span>
                     <Select value={selectedRuleId || ""} onValueChange={handleRuleSelect} disabled={mappingRules.length === 0}>
@@ -428,10 +463,10 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
                                             {rule.rule_type}
                                         </Badge>
                                         <div className="flex items-center gap-1 text-xs">
-                                            <span className="font-semibold">{rule.source_object}{rule.source_property ? `.${rule.source_property}` : ''}</span>
+                                            <span className="font-semibold">{rule.source_object}.{rule.source_property}</span>
                                             <span className="text-[10px] opacity-70">({rule.source_system})</span>
                                             <ArrowLeftRight className="w-2 h-2 mx-1" />
-                                            <span className="font-semibold">{rule.target_object}{rule.target_property ? `.${rule.target_property}` : ''}</span>
+                                            <span className="font-semibold">{rule.target_object}.{rule.target_property}</span>
                                             <span className="text-[10px] opacity-70">({rule.target_system})</span>
                                         </div>
                                     </div>
@@ -441,11 +476,10 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
                     </Select>
                 </div>
 
-                {/* Entity Selector Slots */}
                 <div className="grid grid-cols-2 gap-px bg-border shrink-0">
                   <div className={cn(
                     "bg-background p-4 flex items-center justify-between gap-4 transition-all border-b-2",
-                    activeSource && mappings.some(m => m.sourceEntity === activeSource.id) ? "border-b-primary shadow-[0_4px_12px_-2px_rgba(59,130,246,0.2)]" : "border-b-transparent"
+                    activeSource && mappingRules.some(r => r.source_object === activeSource.id) ? "border-b-primary shadow-[0_4px_12px_-2px_rgba(59,130,246,0.2)]" : "border-b-transparent"
                   )}>
                     <Button 
                       variant="ghost" size="icon" 
@@ -456,7 +490,7 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
                     </Button>
                     <div className="flex-1 text-center">
                       <div className="flex items-center justify-center gap-2 mb-1">
-                        <Database className={cn("w-4 h-4 transition-colors", activeSource && mappings.some(m => m.sourceEntity === activeSource.id) ? "text-primary" : "text-muted-foreground")} />
+                        <Database className={cn("w-4 h-4 transition-colors", activeSource && mappingRules.some(r => r.source_object === activeSource.id) ? "text-primary" : "text-muted-foreground")} />
                         <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Source: {sourceSystemName}</span>
                       </div>
                       <h3 className="font-bold text-lg">{activeSource?.name || "Keine Entitäten"}</h3>
@@ -472,7 +506,7 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
 
                   <div className={cn(
                     "bg-background p-4 flex items-center justify-between gap-4 transition-all border-b-2",
-                    activeTarget && mappings.some(m => m.targetEntity === activeTarget.id) ? "border-b-emerald-500 shadow-[0_4px_12px_-2px_rgba(16,185,129,0.2)]" : "border-b-transparent"
+                    activeTarget && mappingRules.some(r => r.target_object === activeTarget.id) ? "border-b-emerald-500 shadow-[0_4px_12px_-2px_rgba(16,185,129,0.2)]" : "border-b-transparent"
                   )}>
                     <Button 
                       variant="ghost" size="icon" 
@@ -483,7 +517,7 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
                     </Button>
                     <div className="flex-1 text-center">
                       <div className="flex items-center justify-center gap-2 mb-1">
-                        <Target className={cn("w-4 h-4 transition-colors", activeTarget && mappings.some(m => m.targetEntity === activeTarget.id) ? "text-emerald-500" : "text-muted-foreground")} />
+                        <Target className={cn("w-4 h-4 transition-colors", activeTarget && mappingRules.some(r => r.target_object === activeTarget.id) ? "text-emerald-500" : "text-muted-foreground")} />
                         <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Target: {targetSystemName}</span>
                       </div>
                       <h3 className="font-bold text-lg">{activeTarget?.name || "Keine Entitäten"}</h3>
@@ -498,36 +532,34 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
                   </div>
                 </div>
 
-                {/* Whiteboard Area */}
                 <div className="flex-1 grid grid-cols-2 overflow-hidden min-h-0">
                   <div className="flex flex-col min-h-0">
                     <ScrollArea className="flex-1">
                       <div className="p-4 space-y-2">
                         {(activeSource?.fields || []).map((field) => {
-                          const isMappedLocally = currentTuple?.fieldMappings.some(fm => fm.sourceField === field.id);
+                          const hasRule = mappingRules.some(r => r.source_object === activeSource.id && r.source_property === field.id);
+                          const isSelectedForRule = selectedSourceFieldId === field.id;
                           
                           return (
                             <div 
                               key={field.id}
                               className={cn(
-                                "group flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer shadow-sm",
-                                isMappedLocally 
+                                "group flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer shadow-sm relative",
+                                hasRule 
                                   ? "bg-primary/10 border-primary ring-1 ring-primary/20 shadow-primary/5" 
-                                  : "bg-card border-border hover:border-primary/50"
+                                  : "bg-card border-border hover:border-primary/50",
+                                isSelectedForRule && "ring-2 ring-primary ring-offset-2 bg-primary/20 shadow-lg"
                               )}
-                              onClick={() => {
-                                const targetFields = activeTarget?.fields.length ? activeTarget.fields : [{id: "summary", name: "Summary"}, {id: "description", name: "Description"}, {id: "status", name: "Status"}];
-                                const firstUnmapped = targetFields.find(f => 
-                                  !currentTuple?.fieldMappings.some(m => m.targetField === f.id)
-                                );
-                                if (firstUnmapped) addFieldMapping(field.id, firstUnmapped.id);
-                              }}
+                              onClick={() => setSelectedSourceFieldId(isSelectedForRule ? null : field.id)}
                             >
                               <div className="flex flex-col">
-                                <span className={cn("text-sm font-medium transition-colors", isMappedLocally ? "text-primary" : "text-foreground")}>{field.name}</span>
+                                <span className={cn("text-sm font-medium transition-colors", hasRule ? "text-primary" : "text-foreground")}>{field.name}</span>
                                 <span className="text-[10px] text-muted-foreground uppercase">{field.type}</span>
                               </div>
-                              <Plus className={cn("w-4 h-4 transition-colors", isMappedLocally ? "text-primary" : "text-muted-foreground group-hover:text-primary")} />
+                              <div className="flex items-center gap-2">
+                                  {isSelectedForRule && <Badge className="h-4 text-[8px] px-1 bg-primary text-white">Quelle ausgewählt</Badge>}
+                                  {!hasRule && <Plus className={cn("w-4 h-4 text-muted-foreground group-hover:text-primary")} />}
+                              </div>
                             </div>
                           );
                         })}
@@ -538,40 +570,46 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
                   <div className="flex flex-col min-h-0">
                     <ScrollArea className="flex-1">
                       <div className="p-4 space-y-3">
-                        {(activeTarget && (activeTarget.fields.length === 0 ? [{id: "summary", name: "Summary"}, {id: "description", name: "Description"}] : activeTarget.fields)).map((fieldObj) => {
+                        {(activeTarget && (activeTarget.fields.length === 0 ? [{id: "summary", name: "Summary"}] : activeTarget.fields)).map((fieldObj) => {
                           const field = typeof fieldObj === 'string' ? {id: fieldObj, name: fieldObj} : fieldObj;
-                          const mapping = currentTuple?.fieldMappings.find(m => m.targetField === field.id);
-                          const sourceField = activeSource?.fields.find(f => f.id === mapping?.sourceField);
+                          const rule = mappingRules.find(r => r.target_object === activeTarget.id && r.target_property === field.id);
+                          const isSelectedForRule = selectedTargetFieldId === field.id;
                           
                           return (
                             <div 
                               key={field.id}
                               className={cn(
-                                "flex items-center gap-4 p-3 rounded-xl border transition-all",
-                                mapping 
+                                "flex items-center gap-4 p-3 rounded-xl border transition-all cursor-pointer",
+                                rule 
                                   ? "bg-emerald-500/10 border-emerald-500 ring-1 ring-emerald-500/20 shadow-emerald-500/5" 
-                                  : "bg-card border-dashed opacity-60"
+                                  : "bg-card border-dashed opacity-60",
+                                isSelectedForRule && "ring-2 ring-emerald-500 ring-offset-2 bg-emerald-500/20 shadow-lg opacity-100"
                               )}
+                              onClick={() => {
+                                  if (isSelectedForRule) {
+                                      setSelectedTargetFieldId(null);
+                                  } else {
+                                      setSelectedTargetFieldId(field.id);
+                                      if (rule) setSelectedSourceFieldId(rule.source_property);
+                                  }
+                              }}
                             >
                               <div className="flex-1 flex flex-col">
-                                <span className={cn("text-sm font-semibold transition-colors", mapping ? "text-emerald-600" : "text-foreground")}>{field.name}</span>
-                                {mapping ? (
+                                <div className="flex items-center justify-between">
+                                    <span className={cn("text-sm font-semibold transition-colors", rule ? "text-emerald-600" : "text-foreground")}>{field.name}</span>
+                                    {isSelectedForRule && <Badge className="h-4 text-[8px] px-1 bg-emerald-500 text-white">Ziel ausgewählt</Badge>}
+                                </div>
+                                {rule ? (
                                   <div className="flex items-center gap-2 mt-1">
                                     <Badge variant="secondary" className="bg-emerald-500/20 text-emerald-700 border-none text-[10px] h-5 font-bold">
-                                      {sourceField?.name || mapping.sourceField}
+                                      {rule.source_property}
                                     </Badge>
-                                    <button 
-                                      onClick={() => removeFieldMapping(field.id)}
-                                      className="text-muted-foreground hover:text-destructive transition-colors"
-                                    >
-                                      <Trash2 className="w-3 h-3" />
-                                    </button>
                                   </div>
                                 ) : (
                                   <span className="text-[10px] text-muted-foreground italic">Nicht zugewiesen</span>
                                 )}
                               </div>
-                              {!mapping && <Plus className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100" />}
+                              {!rule && <Plus className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100" />}
                             </div>
                           );
                         })}
@@ -580,7 +618,6 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
                   </div>
                 </div>
 
-                {/* Rule Details Footer */}
                 <div className="shrink-0 border-t bg-muted/5 p-4 flex flex-col gap-3 min-h-[100px] max-h-[300px] overflow-y-auto">
                     <div className="flex items-center justify-between sticky top-0 bg-muted/5 pb-2 z-10">
                         <div className="flex items-center gap-2">
@@ -588,52 +625,90 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
                             <Badge variant="outline" className="text-[10px] h-5">
                                 {currentRules.length}
                             </Badge>
+                            
+                            <div className="flex items-center gap-2 ml-4">
+                                <Button 
+                                    variant={selectedSourceFieldId && selectedTargetFieldId ? "default" : "outline"}
+                                    size="sm" 
+                                    className={cn(
+                                        "h-7 px-3 text-[10px] font-bold transition-all border-dashed",
+                                        selectedSourceFieldId && selectedTargetFieldId ? "bg-primary text-white scale-105 border-solid" : "text-muted-foreground"
+                                    )}
+                                    onClick={handleCreateRule}
+                                >
+                                    <Plus className="w-3 h-3 mr-1" />
+                                    Regel erstellen {selectedSourceFieldId && selectedTargetFieldId && `(${selectedSourceFieldId} → ${selectedTargetFieldId})`}
+                                </Button>
+                                {!(selectedSourceFieldId && selectedTargetFieldId) && (
+                                    <span className="text-[9px] text-muted-foreground animate-pulse">Klicke Felder oben an, um den Fokus zu setzen</span>
+                                )}
+                            </div>
                         </div>
                     </div>
                     
                     {currentRules.length > 0 ? (
                         <div className="flex flex-col gap-2">
                             {currentRules.map(rule => (
-                                <div key={rule.id} className="p-2 rounded border bg-background/50 flex flex-col gap-1 group/rule">
+                                <div 
+                                    key={rule.id} 
+                                    className={cn(
+                                        "p-2 rounded border flex flex-col gap-1 group/rule border-l-4 transition-all cursor-pointer",
+                                        selectedRuleId === rule.id 
+                                            ? "bg-primary/5 border-primary border-l-primary shadow-sm" 
+                                            : "bg-background/50 border-border border-l-primary/30 hover:bg-muted/20"
+                                    )}
+                                    onClick={() => handleRuleSelect(rule.id)}
+                                >
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-2 text-sm">
-                                            {/* Source: Object.Property (System) */}
                                             <div className="flex items-center gap-1">
                                                 <span className="font-bold text-foreground">
-                                                    {rule.source_object}{rule.source_property ? `.${rule.source_property}` : ''}
+                                                    {rule.source_object}.<span className="text-primary">{rule.source_property}</span>
                                                 </span>
                                                 <span className="text-[10px] text-muted-foreground font-medium">({rule.source_system})</span>
                                             </div>
-                                            
                                             <ArrowLeftRight className="w-3 h-3 text-muted-foreground shrink-0" />
-                                            
-                                            {/* Target: Object.Property (System) */}
                                             <div className="flex items-center gap-1">
-                                                <span className="font-bold text-primary">
-                                                    {rule.target_object}{rule.target_property ? `.${rule.target_property}` : ''}
+                                                <span className="font-bold text-foreground">
+                                                    {rule.target_object}.<span className="text-emerald-600">{rule.target_property}</span>
                                                 </span>
                                                 <span className="text-[10px] text-muted-foreground font-medium">({rule.target_system})</span>
                                             </div>
                                         </div>
                                         
-                                        <Select 
-                                            value={rule.rule_type} 
-                                            onValueChange={(val) => handleRuleUpdate(rule.id, { rule_type: val as any })}
-                                        >
-                                            <SelectTrigger className="h-6 w-auto min-w-[80px] text-[10px] px-2 bg-transparent border-none shadow-none">
-                                                <SelectValue />
-                                            </SelectTrigger>
-                                            <SelectContent>
-                                                <SelectItem value="MAP" className="text-[10px]">MAP</SelectItem>
-                                                <SelectItem value="POLISH" className="text-[10px]">POLISH</SelectItem>
-                                                <SelectItem value="SUMMARY" className="text-[10px]">SUMMARY</SelectItem>
-                                            </SelectContent>
-                                        </Select>
+                                        <div className="flex items-center gap-2">
+                                            <Select 
+                                                value={rule.rule_type} 
+                                                onValueChange={(val) => handleRuleUpdate(rule.id, { rule_type: val as any })}
+                                            >
+                                                <SelectTrigger 
+                                                    className="h-6 w-auto min-w-[80px] text-[10px] px-2 bg-transparent border-none shadow-none font-bold"
+                                                    onClick={(e) => e.stopPropagation()}
+                                                >
+                                                    <SelectValue />
+                                                </SelectTrigger>
+                                                <SelectContent>
+                                                    <SelectItem value="MAP" className="text-[10px]">MAP</SelectItem>
+                                                    <SelectItem value="POLISH" className="text-[10px]">POLISH</SelectItem>
+                                                    <SelectItem value="SUMMARY" className="text-[10px]">SUMMARY</SelectItem>
+                                                </SelectContent>
+                                            </Select>
+                                            <Button 
+                                                size="icon" variant="ghost" 
+                                                className="h-6 w-6 text-muted-foreground hover:text-destructive opacity-0 group-hover/rule:opacity-100 transition-opacity"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    handleDeleteRule(rule.id);
+                                                }}
+                                            >
+                                                <Trash2 className="w-3.5 h-3.5" />
+                                            </Button>
+                                        </div>
                                     </div>
                                     
                                     <div className="flex items-start gap-2 min-h-[20px]">
                                         {editingRuleId === rule.id ? (
-                                            <div className="flex-1 flex items-center gap-2">
+                                            <div className="flex-1 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
                                                 <Input 
                                                     value={editingNote} 
                                                     onChange={(e) => setEditingNote(e.target.value)}
@@ -656,7 +731,8 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
                                                 <Button 
                                                     size="icon" variant="ghost" 
                                                     className="h-6 w-6 opacity-0 group-hover/rule:opacity-100 transition-opacity"
-                                                    onClick={() => {
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
                                                         setEditingRuleId(rule.id);
                                                         setEditingNote(rule.note || "");
                                                     }}
@@ -679,7 +755,6 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
 
               <ResizableHandle withHandle />
 
-              {/* Right Column: Chat (Default 40%, Max 50%) */}
               <ResizablePanel defaultSize={40} maxSize={50} minSize={25} className="flex flex-col min-h-0 bg-muted/10">
                  <div className="px-4 py-3 bg-background/50 flex items-center gap-2 shrink-0">
                   <MessageSquare className="w-4 h-4 text-primary" />
@@ -690,7 +765,6 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
                       <ChatMessageList 
                         messages={chatMessages} 
                         isAgentRunning={false} 
-                        // Simple defaults as we are in manual mode
                       />
                       <div ref={bottomSpacerRef} className="h-2" />
                    </div>

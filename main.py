@@ -957,10 +957,10 @@ class MappingRule(BaseModel):
 class CreateMappingRulePayload(BaseModel):
     source_system: str
     source_object: str
-    source_property: Optional[str] = None
+    source_property: str
     target_system: str
     target_object: str
-    target_property: Optional[str] = None
+    target_property: str
     note: Optional[str] = None
     rule_type: str
 
@@ -1086,6 +1086,23 @@ async def patch_mapping_rule(id: str, rule_id: str, payload: UpdateMappingRulePa
     except Exception as exc:
         print(f"Error updating mapping rule: {exc}")
         raise HTTPException(status_code=500, detail="Failed to update mapping rule.") from exc
+
+@app.delete("/api/migrations/{id}/mapping-rules/{rule_id}")
+async def delete_mapping_rule(id: str, rule_id: str) -> dict[str, str]:
+    """Delete an existing mapping rule."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            cur.execute("DELETE FROM public.mapping_rules WHERE id = %s AND migration_id = %s RETURNING id", (rule_id, id))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Mapping rule not found.")
+            conn.commit()
+            return {"message": "Mapping rule deleted successfully."}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"Error deleting mapping rule: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to delete mapping rule.") from exc
 
 
 @app.post("/api/migrations/{id}/mapping-chat", response_model=MappingChatMessage)
