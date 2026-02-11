@@ -31,6 +31,7 @@ import ChatMessageList from "@/components/migration/ChatMessageList";
 import ChatInput from "@/components/migration/ChatInput";
 import type { ChatMessage } from "@/components/migration/ChatMessage";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 interface MappingDialogProps {
   open: boolean;
@@ -59,6 +60,18 @@ interface MappingTuple {
   }[];
 }
 
+interface MappingRule {
+  id: string;
+  source_system: string;
+  source_object: string;
+  source_property?: string;
+  target_system: string;
+  target_object: string;
+  target_property?: string;
+  note?: string;
+  rule_type: 'MAP' | 'POLISH' | 'SUMMARY';
+}
+
 const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) => {
   const [loading, setLoading] = useState(true);
   const [sourceEntities, setSourceEntities] = useState<Entity[]>([]);
@@ -68,6 +81,7 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
   const [currentTargetIdx, setCurrentTargetIdx] = useState(0);
   
   const [mappings, setMappings] = useState<MappingTuple[]>([]);
+  const [mappingRules, setMappingRules] = useState<MappingRule[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
   // Chat State
@@ -128,6 +142,14 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
           // Fallback to step 5 if we just renamed everything
           setMappings(results.step_5[0].raw_json.mappings);
         }
+
+        // 4. Fetch Mapping Rules
+        const rulesResponse = await fetch(`/api/migrations/${migrationId}/mapping-rules`);
+        if (rulesResponse.ok) {
+            const rules = await rulesResponse.json();
+            setMappingRules(rules);
+        }
+
       } catch (error) {
         console.error("Failed to load data for mapping:", error);
         toast.error("Fehler beim Laden der Mapping-Konfiguration");
@@ -161,11 +183,27 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
       }
     };
 
+    // Also refresh rules periodically
+    const fetchRules = async () => {
+        try {
+            const response = await fetch(`/api/migrations/${migrationId}/mapping-rules`);
+            if (!isActive) return;
+            if (response.ok) {
+                const rules = await response.json();
+                setMappingRules(rules);
+            }
+        } catch (error) {
+            console.error("Failed to fetch rules:", error);
+        }
+    };
+
     fetchChatMessages();
+    fetchRules();
 
     const interval = setInterval(() => {
       if (isActive) {
         fetchChatMessages();
+        fetchRules();
       }
     }, 3000); // Poll every 3 seconds
 
@@ -201,11 +239,6 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
 
   const handleSendMessage = async (message: string) => {
     try {
-      // Optimistic update (optional, but good for UX)
-      // Actually, ChatMessageList handles optimistic updates via parent usually, 
-      // but here we just send and let the poller pick it up or push it.
-      // MigrationChatCard relies on onSendMessage prop.
-      
       // We need to implement the POST
       await fetch(`/api/migrations/${migrationId}/mapping-chat`, {
         method: 'POST',
@@ -286,6 +319,19 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
     }
   };
 
+  const handleRuleSelect = (ruleId: string) => {
+      const rule = mappingRules.find(r => r.id === ruleId);
+      if (!rule) return;
+
+      const sIdx = sourceEntities.findIndex(e => e.id === rule.source_object || e.name === rule.source_object);
+      const tIdx = targetEntities.findIndex(e => e.id === rule.target_object || e.name === rule.target_object);
+
+      if (sIdx !== -1) setCurrentSourceIdx(sIdx);
+      if (tIdx !== -1) setCurrentTargetIdx(tIdx);
+      
+      toast.info(`Ansicht gewechselt: ${rule.source_object} -> ${rule.target_object}`);
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-[95vw] w-[1400px] h-[85vh] flex flex-col p-0 overflow-hidden [&>button]:hidden bg-background border-border shadow-2xl">
@@ -328,6 +374,32 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
             <ResizablePanelGroup direction="horizontal">
               {/* Left Column: Mapping UI (Default 67%, Min 50%) */}
               <ResizablePanel defaultSize={67} minSize={50} className="flex flex-col min-h-0">
+                {/* Rule Selector Dropdown */}
+                <div className="px-4 py-2 border-b bg-muted/5 flex items-center gap-2 shrink-0">
+                    <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Regel-Fokus:</span>
+                    <Select onValueChange={handleRuleSelect} disabled={mappingRules.length === 0}>
+                        <SelectTrigger className="h-8 w-full max-w-[400px]">
+                            <SelectValue placeholder={mappingRules.length > 0 ? "Wähle eine Regel zum Anzeigen..." : "Keine Regeln definiert"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {mappingRules.map(rule => (
+                                <SelectItem key={rule.id} value={rule.id}>
+                                    <div className="flex items-center gap-2">
+                                        <Badge variant="outline" className="text-[10px] h-5 min-w-[50px] justify-center">
+                                            {rule.rule_type}
+                                        </Badge>
+                                        <span className="truncate">
+                                            {rule.source_object} {rule.source_property ? `.${rule.source_property}` : ''} 
+                                            {' -> '} 
+                                            {rule.target_object} {rule.target_property ? `.${rule.target_property}` : ''}
+                                        </span>
+                                    </div>
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
+
                 {/* Entity Selector Slots */}
                 <div className="grid grid-cols-2 gap-px bg-border shrink-0">
                   <div className={cn(
@@ -386,11 +458,8 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
                 </div>
 
                 {/* Whiteboard Area */}
-                <div className="flex-1 grid grid-cols-2 divide-x overflow-hidden min-h-0">
-                  <div className="flex flex-col bg-muted/5 min-h-0">
-                    <div className="p-3 border-b bg-muted/10 shrink-0">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Quellfelder</span>
-                    </div>
+                <div className="flex-1 grid grid-cols-2 overflow-hidden min-h-0">
+                  <div className="flex flex-col min-h-0">
                     <ScrollArea className="flex-1">
                       <div className="p-4 space-y-2">
                         {(activeSource?.fields || []).map((field) => {
@@ -425,10 +494,7 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
                     </ScrollArea>
                   </div>
 
-                  <div className="flex flex-col bg-background min-h-0">
-                    <div className="p-3 border-b bg-muted/10 shrink-0">
-                      <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Zielfelder & Mappings</span>
-                    </div>
+                  <div className="flex flex-col min-h-0">
                     <ScrollArea className="flex-1">
                       <div className="p-4 space-y-3">
                         {(activeTarget && (activeTarget.fields.length === 0 ? [{id: "summary", name: "Summary"}, {id: "description", name: "Description"}] : activeTarget.fields)).map((fieldObj) => {
@@ -472,38 +538,13 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
                     </ScrollArea>
                   </div>
                 </div>
-
-                {/* Protocol Section */}
-                <div className="shrink-0 h-48 border-t bg-muted/20 flex flex-col min-h-0">
-                  <div className="px-4 py-2 border-b bg-background flex items-center gap-2 shrink-0">
-                    <Code className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Mapping Protokoll (YAML)</span>
-                  </div>
-                  <ScrollArea className="flex-1">
-                    <div className="p-4">
-                      <pre className="text-[11px] font-mono text-muted-foreground leading-relaxed">
-                        {mappings.length > 0 ? (
-                          mappings.map(m => (
-                            `# Mapping Tuple: ${m.sourceEntity} -> ${m.targetEntity}\n` +
-                            `- source: ${m.sourceEntity}\n` +
-                            `  target: ${m.targetEntity}\n` +
-                            `  fields:\n` +
-                            m.fieldMappings.map(fm => `    - ${fm.sourceField}: ${fm.targetField}`).join('\n')
-                          )).join('\n\n')
-                        ) : (
-                          "# Verknüpfen Sie Felder auf dem Whiteboard, um das Protokoll zu generieren..."
-                        )}
-                      </pre>
-                    </div>
-                  </ScrollArea>
-                </div>
               </ResizablePanel>
 
               <ResizableHandle withHandle />
 
               {/* Right Column: Chat (Default 33%, Max 50%) */}
-              <ResizablePanel defaultSize={33} maxSize={50} minSize={20} className="flex flex-col min-h-0 bg-muted/10">
-                 <div className="px-4 py-3 border-b bg-background/50 flex items-center gap-2 shrink-0">
+              <ResizablePanel defaultSize={33} maxSize={50} minSize={25} className="flex flex-col min-h-0 bg-muted/10">
+                 <div className="px-4 py-3 bg-background/50 flex items-center gap-2 shrink-0">
                   <MessageSquare className="w-4 h-4 text-primary" />
                   <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Mapping Assistent</span>
                 </div>
@@ -517,7 +558,7 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
                       <div ref={bottomSpacerRef} className="h-2" />
                    </div>
                 </div>
-                <div className="p-4 bg-background border-t">
+                <div className="p-4 bg-background">
                   <ChatInput 
                     onSend={handleSendMessage} 
                     placeholder="Fragen zum Mapping stellen..."

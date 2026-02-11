@@ -13,6 +13,8 @@ Du bist der Celion Mapping Rules Agent. Deine Aufgabe ist es, den Benutzer beim 
 - Wenn der Benutzer den Chat startet (oder keine klare Historie vorliegt), frage zuerst: "Soll ich einen konkreten Vorschlag basierend auf den Daten machen, oder wollen wir die Objekte Schritt für Schritt durchgehen?"
 - Wenn der Benutzer "Vorschlag" wählt, analysiere die Schemata (falls im Kontext) und mache einen Vorschlag.
 - Wenn der Benutzer "Schritt für Schritt" wählt, gehe die Quell-Objekte nacheinander durch.
+- Wenn du eine sinnvolle Zuordnung gefunden hast, biete an, diese als Regel zu speichern.
+- Nutze das Tool 'create_mapping_rule', um Regeln in der Datenbank zu speichern, wenn der Benutzer zustimmt.
 - Antworte immer auf Deutsch.
 
 ### DEIN WISSEN:
@@ -26,7 +28,29 @@ Du bist der Celion Mapping Rules Agent. Deine Aufgabe ist es, den Benutzer beim 
 
 // Wir definieren vorerst keine Tools, da der Agent primär beratend tätig ist. 
 // Später könnten Tools hinzukommen, um das Mapping direkt in der DB zu ändern.
-const TOOLS: any[] = []; 
+const TOOLS = [
+  {
+    type: "function",
+    function: {
+      name: "create_mapping_rule",
+      description: "Speichert eine Mapping-Regel in der Datenbank.",
+      parameters: {
+        type: "object",
+        properties: {
+          source_system: { type: "string" },
+          source_object: { type: "string" },
+          source_property: { type: "string", description: "Optional" },
+          target_system: { type: "string" },
+          target_object: { type: "string" },
+          target_property: { type: "string", description: "Optional" },
+          note: { type: "string", description: "Optional: Notiz oder Begründung" },
+          rule_type: { type: "string", enum: ["MAP", "POLISH", "SUMMARY"], description: "Art der Regel: MAP (Standard), POLISH (Nachbearbeitung), SUMMARY (Zusammenfassung/Doku)" }
+        },
+        required: ["source_system", "source_object", "target_system", "target_object", "rule_type"]
+      }
+    }
+  }
+];
 
 export async function* runMappingRules(
   userMessage: string,
@@ -42,6 +66,7 @@ export async function* runMappingRules(
 ): AsyncGenerator<Message> {
   const { apiKey, baseUrl, projectId } = resolveOpenAiConfig();
   const headers = buildOpenAiHeaders(apiKey, projectId);
+  const backendUrl = process.env.INTERNAL_BACKEND_URL || "http://backend:8000";
   
   const historyPrompt = context.history.map(h => `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.content}`).join('\n');
   
@@ -83,7 +108,7 @@ ${userMessage}
       body: JSON.stringify({
         model: "gpt-4o",
         messages,
-        tools: TOOLS.length > 0 ? TOOLS : undefined
+        tools: TOOLS
       }),
     });
 
@@ -106,11 +131,37 @@ ${userMessage}
       };
     }
 
-    // Falls wir später Tools hinzufügen:
     if (message.tool_calls && message.tool_calls.length > 0) {
-       // Tool execution logic here
-       // For now, break as we have no tools
-       break;
+      for (const toolCall of message.tool_calls) {
+        const functionName = toolCall.function.name;
+        const args = JSON.parse(toolCall.function.arguments);
+        let result: any;
+
+        console.log(`[MappingRules] Tool Call: ${functionName}`, args);
+
+        try {
+          if (functionName === 'create_mapping_rule') {
+            const ruleResponse = await fetch(`${backendUrl}/api/migrations/${context.migrationId}/mapping-rules`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(args)
+            });
+            const ruleData = await ruleResponse.json();
+            result = { success: true, rule: ruleData };
+          } else {
+            result = { error: `Unknown tool: ${functionName}` };
+          }
+        } catch (error) {
+          result = { error: error instanceof Error ? error.message : String(error) };
+        }
+
+        messages.push({
+          tool_call_id: toolCall.id,
+          role: "tool",
+          name: functionName,
+          content: JSON.stringify(result)
+        });
+      }
     } else {
       break;
     }

@@ -941,6 +941,104 @@ async def get_mapping_chat_messages(id: str) -> list[MappingChatMessage]:
         raise HTTPException(status_code=500, detail="Failed to fetch mapping chat messages.") from exc
 
 
+class MappingRule(BaseModel):
+    id: str
+    migration_id: str
+    source_system: str
+    source_object: str
+    source_property: Optional[str] = None
+    target_system: str
+    target_object: str
+    target_property: Optional[str] = None
+    note: Optional[str] = None
+    rule_type: str # 'MAP', 'POLISH', 'SUMMARY'
+    created_at: str
+
+class CreateMappingRulePayload(BaseModel):
+    source_system: str
+    source_object: str
+    source_property: Optional[str] = None
+    target_system: str
+    target_object: str
+    target_property: Optional[str] = None
+    note: Optional[str] = None
+    rule_type: str
+
+@app.get("/api/migrations/{id}/mapping-rules", response_model=list[MappingRule])
+async def get_mapping_rules(id: str) -> list[MappingRule]:
+    """Fetch all mapping rules for a given migration."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT * FROM public.mapping_rules WHERE migration_id = %s ORDER BY created_at DESC",
+                (id,),
+            )
+            rows = cur.fetchall()
+            return [
+                MappingRule(
+                    id=str(row["id"]),
+                    migration_id=str(row["migration_id"]),
+                    source_system=row["source_system"],
+                    source_object=row["source_object"],
+                    source_property=row.get("source_property"),
+                    target_system=row["target_system"],
+                    target_object=row["target_object"],
+                    target_property=row.get("target_property"),
+                    note=row.get("note"),
+                    rule_type=row["rule_type"],
+                    created_at=row["created_at"].isoformat(),
+                )
+                for row in rows
+            ]
+    except Exception as exc:
+        print(f"Error fetching mapping rules: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to fetch mapping rules.") from exc
+
+@app.post("/api/migrations/{id}/mapping-rules", response_model=MappingRule)
+async def create_mapping_rule(id: str, payload: CreateMappingRulePayload) -> MappingRule:
+    """Create a new mapping rule."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO public.mapping_rules 
+                (migration_id, source_system, source_object, source_property, target_system, target_object, target_property, note, rule_type)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                RETURNING *
+                """,
+                (
+                    id, 
+                    payload.source_system, 
+                    payload.source_object, 
+                    payload.source_property,
+                    payload.target_system, 
+                    payload.target_object, 
+                    payload.target_property,
+                    payload.note,
+                    payload.rule_type
+                ),
+            )
+            row = cur.fetchone()
+            conn.commit()
+            
+            return MappingRule(
+                id=str(row["id"]),
+                migration_id=str(row["migration_id"]),
+                source_system=row["source_system"],
+                source_object=row["source_object"],
+                source_property=row.get("source_property"),
+                target_system=row["target_system"],
+                target_object=row["target_object"],
+                target_property=row.get("target_property"),
+                note=row.get("note"),
+                rule_type=row["rule_type"],
+                created_at=row["created_at"].isoformat(),
+            )
+    except Exception as exc:
+        print(f"Error creating mapping rule: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to create mapping rule.") from exc
+
+
 @app.post("/api/migrations/{id}/mapping-chat", response_model=MappingChatMessage)
 async def create_mapping_chat_message(id: str, payload: CreateMappingChatMessagePayload) -> MappingChatMessage:
     """Create a new mapping chat message for a given migration."""
