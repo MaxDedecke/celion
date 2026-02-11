@@ -775,13 +775,13 @@ const Dashboard = () => {
           totalMigrationsCount={totalMigrationsCount}
         />
 
-        <div className="flex flex-1 flex-col gap-6">
-          <header
-            data-sidebar-anchor
-            className="app-surface flex items-center justify-between rounded-3xl px-6 py-5"
-          >
-            {currentMigration ? (
-              <>
+        <div className={cn("flex flex-1 flex-col min-h-0", currentMigration ? "gap-0" : "gap-6")}>
+          {currentMigration ? (
+            <div className="app-surface flex flex-1 flex-col overflow-hidden rounded-3xl">
+              <header
+                data-sidebar-anchor
+                className="flex items-center justify-between border-b px-6 py-4 shrink-0"
+              >
                 <div className="flex items-center gap-6 flex-1 min-w-0">
                   <div className="flex items-center gap-4 shrink-0">
                     <div className="inline-flex items-center gap-2 rounded-full bg-foreground/5 px-4 py-1 text-sm text-muted-foreground whitespace-nowrap">
@@ -892,9 +892,23 @@ const Dashboard = () => {
                     onLogout={handleLogout}
                   />
                 </div>
-              </>
-            ) : (
-              <>
+              </header>
+
+              <div className="flex-1 overflow-hidden">
+                <MigrationDetails
+                  ref={migrationDetailsRef}
+                  project={currentMigration}
+                  onRefresh={refreshCurrentMigration}
+                  onStepRunningChange={(isRunning) => handleStepRunningChange(currentMigration.id, isRunning)}
+                />
+              </div>
+            </div>
+          ) : (
+            <>
+              <header
+                data-sidebar-anchor
+                className="app-surface flex items-center justify-between rounded-3xl px-6 py-5"
+              >
                 <div>
                   <h1 className="text-xl font-semibold text-foreground">Dashboard</h1>
                   <p className="text-sm text-muted-foreground">Eine kompakte Übersicht deiner Migrationen.</p>
@@ -903,226 +917,215 @@ const Dashboard = () => {
                   onSettingsClick={() => setShowAccountDialog(true)}
                   onLogout={handleLogout}
                 />
-              </>
-            )}
-          </header>
+              </header>
 
-          <div className="flex-1 overflow-hidden">
-            {currentMigration ? (
-              <div className="app-surface h-full overflow-hidden rounded-3xl">
-                <MigrationDetails
-                  ref={migrationDetailsRef}
-                  project={currentMigration}
-                  onRefresh={refreshCurrentMigration}
-                  onStepRunningChange={(isRunning) => handleStepRunningChange(currentMigration.id, isRunning)}
-                />
-              </div>
-            ) : (
-              <div className="app-surface flex h-full flex-col rounded-3xl px-8 py-6 overflow-hidden">
-                {/* STICKY: Activity Chart Section */}
-                <div className="shrink-0 pb-6 border-b border-border/20">
-                  <div className="flex items-center justify-between mb-4">
-                    <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-                      Aktivitätsübersicht
+              <div className="flex-1 overflow-hidden">
+                <div className="app-surface flex h-full flex-col rounded-3xl px-8 py-6 overflow-hidden">
+                  {/* STICKY: Activity Chart Section */}
+                  <div className="shrink-0 pb-6 border-b border-border/20">
+                    <div className="flex items-center justify-between mb-4">
+                      <h2 className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
+                        Aktivitätsübersicht
+                      </h2>
+                      <span className="text-xs text-muted-foreground">Letzte 30 Tage</span>
+                    </div>
+                    
+                    <div className="h-32">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={dashboardStats?.activity_graph || []}>
+                          <defs>
+                            <linearGradient id="activityGradient" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
+                              <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
+                            </linearGradient>
+                          </defs>
+                          <XAxis 
+                            dataKey="date" 
+                            axisLine={false} 
+                            tickLine={false}
+                            tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
+                            interval="preserveStartEnd"
+                          />
+                          <YAxis hide />
+                          <Tooltip 
+                            content={({ active, payload }) => (
+                              active && payload?.[0] ? (
+                                <div className="bg-popover px-3 py-2 rounded-lg shadow-lg border">
+                                  <p className="text-xs text-muted-foreground">{payload[0].payload.date}</p>
+                                  <p className="text-sm font-semibold">{payload[0].value} Aktivitäten</p>
+                                </div>
+                              ) : null
+                            )}
+                          />
+                          <Area 
+                            type="monotone" 
+                            dataKey="steps" 
+                            stroke="hsl(var(--primary))" 
+                            fill="url(#activityGradient)" 
+                            strokeWidth={2}
+                          />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+
+                  {/* STICKY: Key Metrics Grid */}
+                  <div className="shrink-0 grid grid-cols-3 gap-6 py-6 border-b border-border/20">
+                    {/* Vendor Lock-Ins Prevented */}
+                    <div className="flex items-start gap-4">
+                      <div className="p-2.5 rounded-xl bg-emerald-500/10">
+                        <ShieldCheck className="h-5 w-5 text-emerald-500" />
+                      </div>
+                      <div>
+                        <div className="flex items-baseline gap-2">
+                          <p className="text-2xl font-semibold tabular-nums">
+                            {dashboardStats?.vendor_lockins_prevented ?? 0}
+                          </p>
+                        </div>
+                        <p className="text-sm text-muted-foreground">Vendor Lock-Ins verhindert</p>
+                      </div>
+                    </div>
+
+                    {/* Total Migrated Objects */}
+                    <div className="flex items-start gap-4">
+                      <div className="p-2.5 rounded-xl bg-primary/10">
+                        <Package className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <p className="text-2xl font-semibold tabular-nums">
+                          {(dashboardStats?.total_objects_migrated ?? 0).toLocaleString('de-DE')}
+                        </p>
+                        <p className="text-sm text-muted-foreground">Migrierte Objekte</p>
+                      </div>
+                    </div>
+
+                    {/* Completed Migrations */}
+                    <div className="flex items-start gap-4">
+                      <div className="p-2.5 rounded-xl bg-emerald-500/10">
+                        <ShieldCheck className="h-5 w-5 text-emerald-500" />
+                      </div>
+                      <div>
+                        <div className="flex items-baseline gap-2">
+                          <p className="text-2xl font-semibold tabular-nums">
+                            {dashboardStats?.completed_migrations ?? 0}
+                          </p>
+                          <span className="text-sm text-muted-foreground">
+                            / {dashboardStats?.total_migrations ?? 0}
+                          </span>
+                        </div>
+                        <p className="text-sm text-muted-foreground">Abgeschlossene Migrationen</p>
+                      </div>
+                    </div>
+
+                    {/* Average Duration */}
+                    <div className="flex items-start gap-4">
+                      <div className="p-2.5 rounded-xl bg-amber-500/10">
+                        <Clock className="h-5 w-5 text-amber-500" />
+                      </div>
+                      <div>
+                        <p className="text-2xl font-semibold tabular-nums">
+                          {(dashboardStats?.total_steps_executed ?? 0) * 8}h
+                        </p>
+                        <p className="text-sm text-muted-foreground">Eingesparte Arbeitszeit</p>
+                      </div>
+                    </div>
+
+                    {/* Mapping Automation Rate */}
+                    <div className="flex items-start gap-4">
+                      <div className="p-2.5 rounded-xl bg-accent/30">
+                        <Cpu className="h-5 w-5 text-accent-foreground" />
+                      </div>
+                      <div>
+                        <div className="flex items-baseline gap-2">
+                          <p className="text-2xl font-semibold tabular-nums">
+                            {dashboardStats?.avg_automation_rate ?? 0}%
+                          </p>
+                        </div>
+                        <p className="text-sm text-muted-foreground">KI-Automatisierungsrate</p>
+                      </div>
+                    </div>
+
+                    {/* Data Reliability Score */}
+                    <div className="flex items-start gap-4">
+                      <div className="p-2.5 rounded-xl bg-primary/10">
+                        <ActivityIcon className="h-5 w-5 text-primary" />
+                      </div>
+                      <div>
+                        <div className="flex items-baseline gap-2">
+                          <p className="text-2xl font-semibold tabular-nums">
+                            {dashboardStats?.data_reliability_score ?? 0}%
+                          </p>
+                        </div>
+                        <p className="text-sm text-muted-foreground">Datenqualitäts-Score</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* SCROLLABLE: Recent Activities List */}
+                  <div className="flex-1 min-h-0 pt-6 flex flex-col">
+                    <h2 className="shrink-0 text-xs font-medium text-muted-foreground uppercase tracking-wide mb-4">
+                      Letzte Aktivitäten
                     </h2>
-                    <span className="text-xs text-muted-foreground">Letzte 30 Tage</span>
-                  </div>
-                  
-                  <div className="h-32">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <AreaChart data={dashboardStats?.activity_graph || []}>
-                        <defs>
-                          <linearGradient id="activityGradient" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="hsl(var(--primary))" stopOpacity={0.3}/>
-                            <stop offset="95%" stopColor="hsl(var(--primary))" stopOpacity={0}/>
-                          </linearGradient>
-                        </defs>
-                        <XAxis 
-                          dataKey="date" 
-                          axisLine={false} 
-                          tickLine={false}
-                          tick={{ fontSize: 10, fill: 'hsl(var(--muted-foreground))' }}
-                          interval="preserveStartEnd"
-                        />
-                        <YAxis hide />
-                        <Tooltip 
-                          content={({ active, payload }) => (
-                            active && payload?.[0] ? (
-                              <div className="bg-popover px-3 py-2 rounded-lg shadow-lg border">
-                                <p className="text-xs text-muted-foreground">{payload[0].payload.date}</p>
-                                <p className="text-sm font-semibold">{payload[0].value} Aktivitäten</p>
+                    
+                    {[...migrations, ...standaloneMigrations].length > 0 ? (
+                      <div className="flex-1 min-h-0 overflow-y-auto -mx-4 px-4">
+                        <div className="space-y-1">
+                        {[...migrations, ...standaloneMigrations]
+                          .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
+                          .slice(0, 6)
+                          .map((migration) => (
+                            <button
+                              key={migration.id}
+                              onClick={() => {
+                                if (migration.projectId) {
+                                  navigate(`/projects/${migration.projectId}/migration/${migration.id}`);
+                                } else {
+                                  navigate(`/migration/${migration.id}`);
+                                }
+                              }}
+                              className="w-full flex items-center justify-between py-3 px-4 -mx-4 rounded-lg hover:bg-foreground/5 transition-colors group"
+                            >
+                              <div className="flex items-center gap-4">
+                                <span className="font-medium">{migration.name}</span>
+                                <span className="text-sm text-muted-foreground">
+                                  {migration.sourceSystem} → {migration.targetSystem}
+                                </span>
                               </div>
-                            ) : null
-                          )}
-                        />
-                        <Area 
-                          type="monotone" 
-                          dataKey="steps" 
-                          stroke="hsl(var(--primary))" 
-                          fill="url(#activityGradient)" 
-                          strokeWidth={2}
-                        />
-                      </AreaChart>
-                    </ResponsiveContainer>
-                  </div>
-                </div>
-
-                {/* STICKY: Key Metrics Grid */}
-                <div className="shrink-0 grid grid-cols-3 gap-6 py-6 border-b border-border/20">
-                  {/* Vendor Lock-Ins Prevented */}
-                  <div className="flex items-start gap-4">
-                    <div className="p-2.5 rounded-xl bg-emerald-500/10">
-                      <ShieldCheck className="h-5 w-5 text-emerald-500" />
-                    </div>
-                    <div>
-                      <div className="flex items-baseline gap-2">
-                        <p className="text-2xl font-semibold tabular-nums">
-                          {dashboardStats?.vendor_lockins_prevented ?? 0}
-                        </p>
-                      </div>
-                      <p className="text-sm text-muted-foreground">Vendor Lock-Ins verhindert</p>
-                    </div>
-                  </div>
-
-                  {/* Total Migrated Objects */}
-                  <div className="flex items-start gap-4">
-                    <div className="p-2.5 rounded-xl bg-primary/10">
-                      <Package className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <p className="text-2xl font-semibold tabular-nums">
-                        {(dashboardStats?.total_objects_migrated ?? 0).toLocaleString('de-DE')}
-                      </p>
-                      <p className="text-sm text-muted-foreground">Migrierte Objekte</p>
-                    </div>
-                  </div>
-
-                  {/* Completed Migrations */}
-                  <div className="flex items-start gap-4">
-                    <div className="p-2.5 rounded-xl bg-emerald-500/10">
-                      <ShieldCheck className="h-5 w-5 text-emerald-500" />
-                    </div>
-                    <div>
-                      <div className="flex items-baseline gap-2">
-                        <p className="text-2xl font-semibold tabular-nums">
-                          {dashboardStats?.completed_migrations ?? 0}
-                        </p>
-                        <span className="text-sm text-muted-foreground">
-                          / {dashboardStats?.total_migrations ?? 0}
-                        </span>
-                      </div>
-                      <p className="text-sm text-muted-foreground">Abgeschlossene Migrationen</p>
-                    </div>
-                  </div>
-
-                  {/* Average Duration */}
-                  <div className="flex items-start gap-4">
-                    <div className="p-2.5 rounded-xl bg-amber-500/10">
-                      <Clock className="h-5 w-5 text-amber-500" />
-                    </div>
-                    <div>
-                      <p className="text-2xl font-semibold tabular-nums">
-                        {(dashboardStats?.total_steps_executed ?? 0) * 8}h
-                      </p>
-                      <p className="text-sm text-muted-foreground">Eingesparte Arbeitszeit</p>
-                    </div>
-                  </div>
-
-                  {/* Mapping Automation Rate */}
-                  <div className="flex items-start gap-4">
-                    <div className="p-2.5 rounded-xl bg-accent/30">
-                      <Cpu className="h-5 w-5 text-accent-foreground" />
-                    </div>
-                    <div>
-                      <div className="flex items-baseline gap-2">
-                        <p className="text-2xl font-semibold tabular-nums">
-                          {dashboardStats?.avg_automation_rate ?? 0}%
-                        </p>
-                      </div>
-                      <p className="text-sm text-muted-foreground">KI-Automatisierungsrate</p>
-                    </div>
-                  </div>
-
-                  {/* Data Reliability Score */}
-                  <div className="flex items-start gap-4">
-                    <div className="p-2.5 rounded-xl bg-primary/10">
-                      <ActivityIcon className="h-5 w-5 text-primary" />
-                    </div>
-                    <div>
-                      <div className="flex items-baseline gap-2">
-                        <p className="text-2xl font-semibold tabular-nums">
-                          {dashboardStats?.data_reliability_score ?? 0}%
-                        </p>
-                      </div>
-                      <p className="text-sm text-muted-foreground">Datenqualitäts-Score</p>
-                    </div>
-                  </div>
-                </div>
-
-                {/* SCROLLABLE: Recent Activities List */}
-                <div className="flex-1 min-h-0 pt-6 flex flex-col">
-                  <h2 className="shrink-0 text-xs font-medium text-muted-foreground uppercase tracking-wide mb-4">
-                    Letzte Aktivitäten
-                  </h2>
-                  
-                  {[...migrations, ...standaloneMigrations].length > 0 ? (
-                    <div className="flex-1 min-h-0 overflow-y-auto -mx-4 px-4">
-                      <div className="space-y-1">
-                      {[...migrations, ...standaloneMigrations]
-                        .sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime())
-                        .slice(0, 6)
-                        .map((migration) => (
-                          <button
-                            key={migration.id}
-                            onClick={() => {
-                              if (migration.projectId) {
-                                navigate(`/projects/${migration.projectId}/migration/${migration.id}`);
-                              } else {
-                                navigate(`/migration/${migration.id}`);
-                              }
-                            }}
-                            className="w-full flex items-center justify-between py-3 px-4 -mx-4 rounded-lg hover:bg-foreground/5 transition-colors group"
-                          >
-                            <div className="flex items-center gap-4">
-                              <span className="font-medium">{migration.name}</span>
-                              <span className="text-sm text-muted-foreground">
-                                {migration.sourceSystem} → {migration.targetSystem}
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-4">
-                              <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
-                                <div 
-                                  className="h-full bg-foreground/50 rounded-full transition-all"
-                                  style={{ width: `${migration.progress}%` }}
-                                />
+                              <div className="flex items-center gap-4">
+                                <div className="w-20 h-1.5 bg-muted rounded-full overflow-hidden">
+                                  <div 
+                                    className="h-full bg-foreground/50 rounded-full transition-all"
+                                    style={{ width: `${migration.progress}%` }}
+                                  />
+                                </div>
+                                <span className="text-sm font-medium tabular-nums w-10 text-right text-muted-foreground">
+                                  {migration.progress}%
+                                </span>
+                                <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                               </div>
-                              <span className="text-sm font-medium tabular-nums w-10 text-right text-muted-foreground">
-                                {migration.progress}%
-                              </span>
-                              <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
-                            </div>
-                          </button>
-                        ))}
+                            </button>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                  ) : (
-                    <div className="flex flex-col items-center justify-center py-12 text-center">
-                      <Workflow className="h-8 w-8 text-muted-foreground/40 mb-4" />
-                      <p className="text-muted-foreground">Keine Migrationen vorhanden</p>
-                      <Button
-                        onClick={() => setShowAddDialog(true)}
-                        variant="ghost"
-                        className="mt-4"
-                      >
-                        <Plus className="mr-2 h-4 w-4" />
-                        Migration erstellen
-                      </Button>
-                    </div>
-                  )}
+                    ) : (
+                      <div className="flex flex-col items-center justify-center py-12 text-center">
+                        <Workflow className="h-8 w-8 text-muted-foreground/40 mb-4" />
+                        <p className="text-muted-foreground">Keine Migrationen vorhanden</p>
+                        <Button
+                          onClick={() => setShowAddDialog(true)}
+                          variant="ghost"
+                          className="mt-4"
+                        >
+                          <Plus className="mr-2 h-4 w-4" />
+                          Migration erstellen
+                        </Button>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
-            )}
-          </div>
+            </>
+          )}
         </div>
       </div>
 

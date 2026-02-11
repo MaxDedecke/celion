@@ -115,7 +115,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex flex-1 flex-col gap-4 overflow-auto p-6">
+      <div className="flex flex-1 flex-col gap-4 overflow-auto p-0">
         <MigrationChatCard
           migration={project}
           onSendMessage={handleSendChatMessage}
