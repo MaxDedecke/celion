@@ -220,7 +220,7 @@ def _ingest_items_to_neo4j(driver, system_label, entity_name, items, migration_i
 
 def _run_reconciliation(conn: psycopg.Connection, migration_id: str, source_system: str):
     """Phase 4: Reconciliation & Abschluss (Validierung)"""
-    _write_chat_message(conn, migration_id, 'system', 'Phase 4: Reconciliation starting...', 5)
+    _write_chat_message(conn, migration_id, 'assistant', 'Phase 4: Reconciliation starting...', 5)
     
     # 1. Get expected count from Step 3 (Source Discovery)
     with conn.cursor() as cur:
@@ -248,7 +248,7 @@ def _run_reconciliation(conn: psycopg.Connection, migration_id: str, source_syst
             driver.close()
             
     # 3. Abgleich
-    _write_chat_message(conn, migration_id, 'system', f"Reconciliation: Expected {expected_count} objects, found {actual_count} in Neo4j.", 5)
+    _write_chat_message(conn, migration_id, 'assistant', f"Reconciliation: Expected {expected_count} objects, found {actual_count} in Neo4j.", 5)
     
     # KPI: Update global stats with actual migrated count and accuracy
     accuracy = 1.0
@@ -259,30 +259,30 @@ def _run_reconciliation(conn: psycopg.Connection, migration_id: str, source_syst
 
     if expected_count > 0 and actual_count == 0:
         error_msg = "Critical error: No objects were imported into Neo4j."
-        _write_chat_message(conn, migration_id, 'system', f"⚠️ {error_msg}", 5)
+        _write_chat_message(conn, migration_id, 'assistant', f"⚠️ {error_msg}", 5)
         # We don't raise here to allow the user to proceed if they want, but the warning is clear.
         
     diff = abs(expected_count - actual_count)
     if expected_count > 0 and (diff / expected_count) > 0.1: # More than 10% difference
         warning_msg = f"Warning: Large discrepancy detected ({diff} objects difference). Please check source system logs."
-        _write_chat_message(conn, migration_id, 'system', f"⚠️ {warning_msg}", 5)
+        _write_chat_message(conn, migration_id, 'assistant', f"⚠️ {warning_msg}", 5)
         # We don't raise here to allow the user to proceed if they want, but the warning is clear.
 
     return actual_count, expected_count, accuracy
 
 def _run_graph_enhancement(conn: psycopg.Connection, migration_id: str, source_system: str):
     """Phase 3: Graph-Enhancement (Agent-based)"""
-    _write_chat_message(conn, migration_id, 'system', 'Phase 3: Graph-Enhancement starting...', 5)
+    _write_chat_message(conn, migration_id, 'assistant', 'Phase 3: Graph-Enhancement starting...', 5)
     
     driver = None
     try:
         driver = _get_neo4j_driver()
     except Exception as e:
-        _write_chat_message(conn, migration_id, 'system', f"Failed to connect to Neo4j for enhancement: {e}", 5)
+        _write_chat_message(conn, migration_id, 'assistant', f"Failed to connect to Neo4j for enhancement: {e}", 5)
         return
 
     # 1. Extract sample nodes
-    _write_chat_message(conn, migration_id, 'system', 'Extracting sample nodes for relationship analysis...', 5)
+    _write_chat_message(conn, migration_id, 'assistant', 'Extracting sample nodes for relationship analysis...', 5)
     sample_data = []
     with driver.session() as session:
         # Get a few nodes of each entity type
@@ -298,11 +298,11 @@ def _run_graph_enhancement(conn: psycopg.Connection, migration_id: str, source_s
             })
 
     if not sample_data:
-        _write_chat_message(conn, migration_id, 'system', 'No nodes found in Neo4j to enhance.', 5)
+        _write_chat_message(conn, migration_id, 'assistant', 'No nodes found in Neo4j to enhance.', 5)
         return
 
     # 2. Agent-Call: Analyze relationships
-    _write_chat_message(conn, migration_id, 'system', 'Analyzing potential relationships with AI...', 5)
+    _write_chat_message(conn, migration_id, 'assistant', 'Analyzing potential relationships with AI...', 5)
     
     client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     prompt = f"""
@@ -336,7 +336,7 @@ def _run_graph_enhancement(conn: psycopg.Connection, migration_id: str, source_s
             queries = response_json
             
         # 3. Execute Cypher Queries
-        _write_chat_message(conn, migration_id, 'system', f"Executing {len(queries)} enhancement queries...", 5)
+        _write_chat_message(conn, migration_id, 'assistant', f"Executing {len(queries)} enhancement queries...", 5)
         
         with driver.session() as session:
             for query in queries:
@@ -349,7 +349,7 @@ def _run_graph_enhancement(conn: psycopg.Connection, migration_id: str, source_s
         
     except Exception as e:
         print(f"Graph enhancement agent failed: {e}")
-        _write_chat_message(conn, migration_id, 'system', f"Graph enhancement failed: {e}", 5)
+        _write_chat_message(conn, migration_id, 'assistant', f"Graph enhancement failed: {e}", 5)
     finally:
         if driver:
             driver.close()
@@ -393,7 +393,7 @@ def _build_request_headers(scheme, connector):
 
 def _run_data_ingest_neo4j(conn: psycopg.Connection, migration_id: str, workflow_state: Dict[str, Any]):
     """Phase 2: Programmatic Data Import in Neo4j (Agent-Driven)"""
-    _write_chat_message(conn, migration_id, 'system', 'Phase 2: Programmatic Data Import in Neo4j starting...', 5)
+    _write_chat_message(conn, migration_id, 'assistant', 'Phase 2: Programmatic Data Import in Neo4j starting...', 5)
     
     # 1. Get migration info
     with conn.cursor() as cur:
@@ -406,7 +406,7 @@ def _run_data_ingest_neo4j(conn: psycopg.Connection, migration_id: str, workflow
     # 2. Load scheme
     scheme = _load_system_scheme(source_system)
     if not scheme:
-        _write_chat_message(conn, migration_id, 'system', f"Failed to load scheme for {source_system}. Skipping Neo4j ingest.", 5)
+        _write_chat_message(conn, migration_id, 'assistant', f"Failed to load scheme for {source_system}. Skipping Neo4j ingest.", 5)
         return
 
     # 3. Get rate limit config
@@ -419,12 +419,12 @@ def _run_data_ingest_neo4j(conn: psycopg.Connection, migration_id: str, workflow
         entities = [dict(row) for row in cur.fetchall()]
 
     if not entities:
-        _write_chat_message(conn, migration_id, 'system', "No entities found from Step 3. Skipping Neo4j ingest.", 5)
+        _write_chat_message(conn, migration_id, 'assistant', "No entities found from Step 3. Skipping Neo4j ingest.", 5)
         return
 
     connector = _get_connector(conn, migration_id, 'in')
     if not connector:
-        _write_chat_message(conn, migration_id, 'system', "Source connector not found. Skipping Neo4j ingest.", 5)
+        _write_chat_message(conn, migration_id, 'assistant', "Source connector not found. Skipping Neo4j ingest.", 5)
         return
 
     # Neo4j setup
@@ -511,7 +511,7 @@ def _run_data_ingest_neo4j(conn: psycopg.Connection, migration_id: str, workflow
                  pass 
 
             if not message.tool_calls:
-                _write_chat_message(conn, migration_id, 'system', "Agent finished ingestion plan.", 5)
+                _write_chat_message(conn, migration_id, 'assistant', "Agent finished ingestion plan.", 5)
                 break
                 
             for tool_call in message.tool_calls:
@@ -533,7 +533,7 @@ def _run_data_ingest_neo4j(conn: psycopg.Connection, migration_id: str, workflow
                          tool_result = "Skipping: URL already processed."
                     else:
                         attempted_urls.add(url)
-                        _write_chat_message(conn, migration_id, 'system', f"Agent fetching {entity_name} from {url}...", 5)
+                        _write_chat_message(conn, migration_id, 'assistant', f"Agent fetching {entity_name} from {url}...", 5)
                         
                         # Execute Request
                         headers = _build_request_headers(scheme, connector)
@@ -583,7 +583,7 @@ def _run_data_ingest_neo4j(conn: psycopg.Connection, migration_id: str, workflow
 
 def _run_rate_limit_calibration(conn: psycopg.Connection, migration_id: str):
     """Phase 1: Initial Rate-Limit Calibration (Agent-based)"""
-    _write_chat_message(conn, migration_id, 'system', 'Phase 1: Initial Rate-Limit Calibration starting...', 5)
+    _write_chat_message(conn, migration_id, 'assistant', 'Phase 1: Initial Rate-Limit Calibration starting...', 5)
     
     connector = _get_connector(conn, migration_id, 'in')
     if not connector:
@@ -615,7 +615,7 @@ def _run_rate_limit_calibration(conn: psycopg.Connection, migration_id: str):
     try:
         # For ClickUp, probe /user to verify token
         probe_url = f"{api_url}/user" if source_system == 'ClickUp' else api_url.rstrip('/')
-        _write_chat_message(conn, migration_id, 'system', f"Performing probe request to {probe_url}...", 5)
+        _write_chat_message(conn, migration_id, 'assistant', f"Performing probe request to {probe_url}...", 5)
         response = requests.get(probe_url, headers=headers, auth=auth, timeout=10)
         
         response_data = {
@@ -624,11 +624,11 @@ def _run_rate_limit_calibration(conn: psycopg.Connection, migration_id: str):
             "body": response.text[:1000]
         }
     except Exception as e:
-        _write_chat_message(conn, migration_id, 'system', f"Probe request failed: {e}. Using default rate limits.", 5)
+        _write_chat_message(conn, migration_id, 'assistant', f"Probe request failed: {e}. Using default rate limits.", 5)
         return { "delay": 1.0, "batch_size": 50 }
 
     # Agent-Call: Analyze response with OpenAI
-    _write_chat_message(conn, migration_id, 'system', 'Analyzing API response for rate limits...', 5)
+    _write_chat_message(conn, migration_id, 'assistant', 'Analyzing API response for rate limits...', 5)
     
     client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
     prompt = f"""
@@ -665,7 +665,7 @@ def _run_rate_limit_calibration(conn: psycopg.Connection, migration_id: str):
         return result_json
     except Exception as e:
         print(f"Agent call failed: {e}")
-        _write_chat_message(conn, migration_id, 'system', f"Agent analysis failed: {e}. Using defaults.", 5)
+        _write_chat_message(conn, migration_id, 'assistant', f"Agent analysis failed: {e}. Using defaults.", 5)
         return { "delay": 1.0, "batch_size": 50 }
 
 # ----------------------------------------------------------------------------
@@ -673,35 +673,35 @@ def _run_rate_limit_calibration(conn: psycopg.Connection, migration_id: str):
 # ----------------------------------------------------------------------------
 
 def run_step_1_system_detection(conn: psycopg.Connection, migration_id: str, payload: Dict[str, Any]):
-    _write_chat_message(conn, migration_id, 'system', 'Starting System Detection...', 1)
+    _write_chat_message(conn, migration_id, 'assistant', 'Starting System Detection...', 1)
     print(f"[{migration_id}] Running step 1: System Detection")
     time.sleep(2) # Simulate LLM call, curl, etc.
     result_message = "System detected: Jira Cloud. Curl Response: 200 OK"
     _write_chat_message(conn, migration_id, 'assistant', result_message, 1)
 
 def run_step_2_auth_flow(conn: psycopg.Connection, migration_id: str, payload: Dict[str, Any]):
-    _write_chat_message(conn, migration_id, 'system', 'Starting Authentication Flow...', 2)
+    _write_chat_message(conn, migration_id, 'assistant', 'Starting Authentication Flow...', 2)
     print(f"[{migration_id}] Running step 2: Authentication Flow")
     time.sleep(2)
     result_message = "Authentication successful. Received API token."
     _write_chat_message(conn, migration_id, 'assistant', result_message, 2)
 
 def run_step_3_capability_discovery(conn: psycopg.Connection, migration_id: str, payload: Dict[str, Any]):
-    _write_chat_message(conn, migration_id, 'system', 'Starting Capability Discovery...', 3)
+    _write_chat_message(conn, migration_id, 'assistant', 'Starting Capability Discovery...', 3)
     print(f"[{migration_id}] Running step 3: Capability Discovery")
     time.sleep(2)
     result_message = "Discovered capabilities: issue tracking, project management."
     _write_chat_message(conn, migration_id, 'assistant', result_message, 3)
 
 def run_step_4_schema_generation(conn: psycopg.Connection, migration_id: str, payload: Dict[str, Any]):
-    _write_chat_message(conn, migration_id, 'system', 'Starting Schema Generation...', 4)
+    _write_chat_message(conn, migration_id, 'assistant', 'Starting Schema Generation...', 4)
     print(f"[{migration_id}] Running step 4: Schema Generation")
     time.sleep(2)
     result_message = "Schema generated for source and target systems."
     _write_chat_message(conn, migration_id, 'assistant', result_message, 4)
 
 def run_step_5_data_staging(conn: psycopg.Connection, migration_id: str, payload: Dict[str, Any]):
-    _write_chat_message(conn, migration_id, 'system', 'Starting Data Staging Engine...', 5)
+    _write_chat_message(conn, migration_id, 'assistant', 'Starting Data Staging Engine...', 5)
     print(f"[{migration_id}] Running step 5: Data Staging Engine")
     
     # Read current workflow_state
@@ -779,35 +779,35 @@ def run_step_5_data_staging(conn: psycopg.Connection, migration_id: str, payload
     _update_migration_step_status(conn, migration_id, 5, 'completed')
 
 def run_step_6_data_fetching(conn: psycopg.Connection, migration_id: str, payload: Dict[str, Any]):
-    _write_chat_message(conn, migration_id, 'system', 'Starting Data Fetching...', 6)
+    _write_chat_message(conn, migration_id, 'assistant', 'Starting Data Fetching...', 6)
     print(f"[{migration_id}] Running step 6: Data Fetching")
     time.sleep(2)
     result_message = "Fetched 100 issues from source system."
     _write_chat_message(conn, migration_id, 'assistant', result_message, 6)
 
 def run_step_7_data_transformation(conn: psycopg.Connection, migration_id: str, payload: Dict[str, Any]):
-    _write_chat_message(conn, migration_id, 'system', 'Starting Data Transformation...', 7)
+    _write_chat_message(conn, migration_id, 'assistant', 'Starting Data Transformation...', 7)
     print(f"[{migration_id}] Running step 7: Data Transformation")
     time.sleep(2)
     result_message = "Transformed 100 issues for target system."
     _write_chat_message(conn, migration_id, 'assistant', result_message, 7)
 
 def run_step_8_data_loading(conn: psycopg.Connection, migration_id: str, payload: Dict[str, Any]):
-    _write_chat_message(conn, migration_id, 'system', 'Starting Data Loading...', 8)
+    _write_chat_message(conn, migration_id, 'assistant', 'Starting Data Loading...', 8)
     print(f"[{migration_id}] Running step 8: Data Loading")
     time.sleep(2)
     result_message = "Loaded 100 issues into target system."
     _write_chat_message(conn, migration_id, 'assistant', result_message, 8)
 
 def run_step_9_validation(conn: psycopg.Connection, migration_id: str, payload: Dict[str, Any]):
-    _write_chat_message(conn, migration_id, 'system', 'Starting Validation...', 9)
+    _write_chat_message(conn, migration_id, 'assistant', 'Starting Validation...', 9)
     print(f"[{migration_id}] Running step 9: Validation")
     time.sleep(2)
     result_message = "Data validation successful. All items match."
     _write_chat_message(conn, migration_id, 'assistant', result_message, 9)
 
 def run_step_10_cleanup(conn: psycopg.Connection, migration_id: str, payload: Dict[str, Any]):
-    _write_chat_message(conn, migration_id, 'system', 'Starting Cleanup...', 10)
+    _write_chat_message(conn, migration_id, 'assistant', 'Starting Cleanup...', 10)
     print(f"[{migration_id}] Running step 10: Cleanup")
     time.sleep(2)
     result_message = "Cleanup complete. Migration finished. [Download Report](/reports/migration_report_123.pdf)"
@@ -860,7 +860,7 @@ def process_migration_step(job_payload: Dict[str, Any]):
         print(f" [!] Error processing step {step_number} for migration {migration_id}: {e}")
         if db_conn:
             _update_migration_step_status(db_conn, migration_id, step_number, 'failed', str(e))
-            _write_chat_message(db_conn, migration_id, 'system', f"Error during step {step_number}: {e}", step_number)
+            _write_chat_message(db_conn, migration_id, 'assistant', f"Error during step {step_number}: {e}", step_number)
     finally:
         if db_conn:
             db_conn.close()

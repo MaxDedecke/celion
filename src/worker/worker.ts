@@ -270,7 +270,7 @@ async function processJob(job: any) {
   // MODIFIED: Only show for non-split agents or the first part of split agents (source)
   // Skip for Consultant
   if (agentName !== 'runAnswerAgent' && (agentParams?.mode || 'source') === 'source') {
-    await writeChatMessage(migrationId, 'system', `Starte Schritt ${currentStepNumber} ${stepTitle}...`, currentStepNumber);
+    await writeChatMessage(migrationId, 'assistant', `Starte Schritt ${currentStepNumber} ${stepTitle}...`, currentStepNumber);
   }
 
   console.log("Agent params:", JSON.stringify(agentParams, null, 2));
@@ -383,13 +383,13 @@ async function processJob(job: any) {
         await finishClient.query('COMMIT');
 
         if (isLogicalFailure) {
-          await writeChatMessage(migrationId, 'system', `Schritt 1 System Detection fehlgeschlagen (**${mode === 'source' ? 'Quellsystem' : 'Zielsystem'}** passt nicht).`, currentStepNumber);
+          await writeChatMessage(migrationId, 'assistant', `Schritt 1 System Detection fehlgeschlagen (**${mode === 'source' ? 'Quellsystem' : 'Zielsystem'}** passt nicht).`, currentStepNumber);
           await writeRetryAction(migrationId, currentStepNumber);
           await logActivity(migrationId, 'warning', `Schritt ${mode}-Erkennung fehlgeschlagen.`);
         } else {
-          await writeChatMessage(migrationId, 'system', `**${mode === 'source' ? 'Quellsystem' : 'Zielsystem'}**-Analyse erfolgreich.`, currentStepNumber);
+          await writeChatMessage(migrationId, 'assistant', `**${mode === 'source' ? 'Quellsystem' : 'Zielsystem'}**-Analyse erfolgreich.`, currentStepNumber);
           if (isLastJob) {
-             await writeChatMessage(migrationId, 'system', `Schritt 1 **System Detection** erfolgreich.`, currentStepNumber);
+             await writeChatMessage(migrationId, 'assistant', `Schritt 1 **System Detection** erfolgreich.`, currentStepNumber);
              const nextStepIndex = currentStepNumber;
              if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
                  const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
@@ -506,11 +506,11 @@ async function processJob(job: any) {
         await finishClient.query('COMMIT');
 
         if (isLogicalFailure) {
-          await writeChatMessage(migrationId, 'system', `Schritt 3 Source Discovery fehlgeschlagen.`, currentStepNumber);
+          await writeChatMessage(migrationId, 'assistant', `Schritt 3 Source Discovery fehlgeschlagen.`, currentStepNumber);
           await writeRetryAction(migrationId, currentStepNumber);
           await logActivity(migrationId, 'warning', `Schritt Source Discovery fehlgeschlagen.`);
         } else {
-          await writeChatMessage(migrationId, 'system', `Schritt 3 **Source Discovery** erfolgreich abgeschlossen.`, currentStepNumber);
+          await writeChatMessage(migrationId, 'assistant', `Schritt 3 **Source Discovery** erfolgreich abgeschlossen.`, currentStepNumber);
           const nextStepIndex = currentStepNumber;
           if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
               const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
@@ -626,11 +626,11 @@ async function processJob(job: any) {
         await finishClient.query('COMMIT');
 
         if (isLogicalFailure) {
-          await writeChatMessage(migrationId, 'system', `Schritt 4 Target Discovery fehlgeschlagen.`, currentStepNumber);
+          await writeChatMessage(migrationId, 'assistant', `Schritt 4 Target Discovery fehlgeschlagen.`, currentStepNumber);
           await writeRetryAction(migrationId, currentStepNumber);
           await logActivity(migrationId, 'warning', `Schritt Target Discovery fehlgeschlagen.`);
         } else {
-          await writeChatMessage(migrationId, 'system', `Schritt 4 **Target Discovery** erfolgreich abgeschlossen.`, currentStepNumber);
+          await writeChatMessage(migrationId, 'assistant', `Schritt 4 **Target Discovery** erfolgreich abgeschlossen.`, currentStepNumber);
           const nextStepIndex = currentStepNumber;
           if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
               const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
@@ -743,13 +743,13 @@ async function processJob(job: any) {
         await finishClient.query('COMMIT');
 
         if (isLogicalFailure) {
-          await writeChatMessage(migrationId, 'system', `Schritt 2 Authentication fehlgeschlagen (**${mode === 'source' ? 'Quellsystem' : 'Zielsystem'}** konnte nicht authentifiziert werden).`, currentStepNumber);
+          await writeChatMessage(migrationId, 'assistant', `Schritt 2 Authentication fehlgeschlagen (**${mode === 'source' ? 'Quellsystem' : 'Zielsystem'}** konnte nicht authentifiziert werden).`, currentStepNumber);
           await writeRetryAction(migrationId, currentStepNumber);
           await logActivity(migrationId, 'warning', `Schritt ${mode}-Authentifizierung fehlgeschlagen.`);
         } else {
-          await writeChatMessage(migrationId, 'system', `**${mode === 'source' ? 'Quellsystem' : 'Zielsystem'}** erfolgreich authentifiziert.`, currentStepNumber);
+          await writeChatMessage(migrationId, 'assistant', `**${mode === 'source' ? 'Quellsystem' : 'Zielsystem'}** erfolgreich authentifiziert.`, currentStepNumber);
           if (isLastJob) {
-             await writeChatMessage(migrationId, 'system', `Schritt 2 **Authentication** erfolgreich.`, currentStepNumber);
+             await writeChatMessage(migrationId, 'assistant', `Schritt 2 **Authentication** erfolgreich.`, currentStepNumber);
              const nextStepIndex = currentStepNumber;
              if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
                  const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
@@ -810,7 +810,7 @@ async function processJob(job: any) {
       await writeChatMessage(migrationId, 'assistant', 'Bereite Daten für das Mapping vor (Data Staging)...', currentStepNumber);
 
       // --- Phase 1: Rate-Limit Calibration ---
-      await writeChatMessage(migrationId, 'system', 'Phase 1: Initial Rate-Limit Calibration starting...', currentStepNumber);
+      await writeChatMessage(migrationId, 'assistant', 'Phase 1: Initial Rate-Limit Calibration starting...', currentStepNumber);
       
       const { rows: connectorRows } = await pool.query('SELECT api_url, api_key, username, auth_type FROM connectors WHERE migration_id = $1 AND connector_type = $2', [migrationId, 'in']);
       const connector = connectorRows[0];
@@ -861,7 +861,7 @@ async function processJob(job: any) {
 
       if (connector && effectiveApiUrl) {
           const probeUrl = sourceSystem === 'ClickUp' ? `${effectiveApiUrl}/api/v2/user` : (scheme?.authentication?.whoami?.endpoint ? `${effectiveApiUrl}${scheme.authentication.whoami.endpoint}` : effectiveApiUrl);
-          await writeChatMessage(migrationId, 'system', `Performing probe request to ${probeUrl}...`, currentStepNumber);
+          await writeChatMessage(migrationId, 'assistant', `Performing probe request to ${probeUrl}...`, currentStepNumber);
           
           const headers: any = { 
               "Accept": "application/json",
@@ -909,12 +909,12 @@ async function processJob(job: any) {
               };
               await writeChatMessage(migrationId, 'assistant', JSON.stringify(frontendResult), currentStepNumber);
           } catch (e: any) {
-              await writeChatMessage(migrationId, 'system', `Probe failed: ${e.message}. Using defaults.`, currentStepNumber);
+              await writeChatMessage(migrationId, 'assistant', `Probe failed: ${e.message}. Using defaults.`, currentStepNumber);
           }
       }
 
       // --- Phase 2: Agent-Driven Ingestion ---
-      await writeChatMessage(migrationId, 'system', 'Phase 2: Programmatic Data Import in Neo4j starting...', currentStepNumber);
+      await writeChatMessage(migrationId, 'assistant', 'Phase 2: Programmatic Data Import in Neo4j starting...', currentStepNumber);
       
       const { rows: step3Rows } = await pool.query('SELECT entity_name, count FROM step_3_results WHERE migration_id = $1', [migrationId]);
       const entities = step3Rows.map(r => ({ name: r.entity_name, count: r.count }));
@@ -1058,7 +1058,7 @@ async function processJob(job: any) {
           // --- End of Phase 2 Ingestion ---
           console.log(`[Worker] Phase 2 Ingestion complete. Starting Phase 3...`);
           console.log(`[Worker] Starting Phase 3 for migration ${migrationId}`);
-          await writeChatMessage(migrationId, 'system', 'Phase 3: Automated Relationship Discovery starting...', currentStepNumber);
+          await writeChatMessage(migrationId, 'assistant', 'Phase 3: Automated Relationship Discovery starting...', currentStepNumber);
           
           const addPhase3Log = (msg: string) => {
               phase3Logs.push(`[${new Date().toLocaleTimeString('de-DE')}] ${msg}`);
@@ -1401,7 +1401,7 @@ async function processJob(job: any) {
       await incrementGlobalStats(errorClient, { total_agents: 1 });
 
       await errorClient.query('COMMIT');
-      await writeChatMessage(migrationId, 'system', `Error: ${errorMessage}`, currentStepNumber);
+      await writeChatMessage(migrationId, 'assistant', `Error: ${errorMessage}`, currentStepNumber);
       await writeRetryAction(migrationId, currentStepNumber);
       await logActivity(migrationId, 'error', `Schritt fehlgeschlagen: ${errorMessage}`);
     } catch (e2) {
