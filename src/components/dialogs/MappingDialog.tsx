@@ -21,7 +21,9 @@ import {
   Save,
   Loader2,
   X,
-  MessageSquare
+  MessageSquare,
+  Pencil,
+  Check
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { databaseClient } from "@/api/databaseClient";
@@ -32,6 +34,7 @@ import ChatInput from "@/components/migration/ChatInput";
 import type { ChatMessage } from "@/components/migration/ChatMessage";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 
 interface MappingDialogProps {
   open: boolean;
@@ -76,6 +79,8 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
   const [loading, setLoading] = useState(true);
   const [sourceEntities, setSourceEntities] = useState<Entity[]>([]);
   const [targetEntities, setTargetEntities] = useState<Entity[]>([]);
+  const [sourceSystemName, setSourceSystemName] = useState("Source");
+  const [targetSystemName, setTargetSystemName] = useState("Target");
   
   const [currentSourceIdx, setCurrentSourceIdx] = useState(0);
   const [currentTargetIdx, setCurrentTargetIdx] = useState(0);
@@ -84,6 +89,10 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
   const [mappingRules, setMappingRules] = useState<MappingRule[]>([]);
   const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+
+  // Editing State
+  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
+  const [editingNote, setEditingNote] = useState("");
 
   // Chat State
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -101,6 +110,9 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
         // 1. Fetch Migration to get system names
         const { data: migration } = await databaseClient.fetchMigrationById(migrationId);
         if (!migration) throw new Error("Migration not found");
+
+        setSourceSystemName(migration.source_system);
+        setTargetSystemName(migration.target_system);
 
         // 2. Fetch Specs for both systems in parallel
         const [sourceSpecsRes, targetSpecsRes] = await Promise.all([
@@ -339,9 +351,29 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
       toast.info(`Ansicht gewechselt: ${rule.source_object} -> ${rule.target_object}`);
   };
 
+  const handleRuleUpdate = async (ruleId: string, payload: Partial<{ note: string, rule_type: string }>) => {
+    try {
+        const response = await fetch(`/api/migrations/${migrationId}/mapping-rules/${ruleId}`, {
+            method: 'PATCH',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) throw new Error("Update failed");
+
+        const updatedRule = await response.json();
+        setMappingRules(prev => prev.map(r => r.id === ruleId ? updatedRule : r));
+        setEditingRuleId(null);
+        toast.success("Regel aktualisiert");
+    } catch (error) {
+        console.error("Failed to update rule:", error);
+        toast.error("Fehler beim Aktualisieren der Regel");
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[95vw] w-[1400px] h-[85vh] flex flex-col p-0 overflow-hidden [&>button]:hidden bg-background border-border shadow-2xl">
+      <DialogContent className="max-w-[95vw] w-[1600px] h-[90vh] flex flex-col p-0 overflow-hidden [&>button]:hidden bg-background border-border shadow-2xl">
         <DialogHeader className="p-6 border-b shrink-0">
           <div className="flex items-center justify-between">
             <div>
@@ -379,8 +411,8 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
         ) : (
           <div className="flex-1 flex overflow-hidden">
             <ResizablePanelGroup direction="horizontal">
-              {/* Left Column: Mapping UI (Default 67%, Min 50%) */}
-              <ResizablePanel defaultSize={67} minSize={50} className="flex flex-col min-h-0">
+              {/* Left Column: Mapping UI (Default 60%, Min 50%) */}
+              <ResizablePanel defaultSize={60} minSize={50} className="flex flex-col min-h-0">
                 {/* Rule Selector Dropdown */}
                 <div className="px-4 py-2 border-b bg-muted/5 flex items-center gap-2 shrink-0">
                     <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Regel-Fokus:</span>
@@ -395,11 +427,13 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
                                         <Badge variant="outline" className="text-[10px] h-5 min-w-[50px] justify-center">
                                             {rule.rule_type}
                                         </Badge>
-                                        <span className="truncate">
-                                            {rule.source_object} {rule.source_property ? `.${rule.source_property}` : ''} 
-                                            {' -> '} 
-                                            {rule.target_object} {rule.target_property ? `.${rule.target_property}` : ''}
-                                        </span>
+                                        <div className="flex items-center gap-1 text-xs">
+                                            <span className="font-semibold">{rule.source_object}{rule.source_property ? `.${rule.source_property}` : ''}</span>
+                                            <span className="text-[10px] opacity-70">({rule.source_system})</span>
+                                            <ArrowLeftRight className="w-2 h-2 mx-1" />
+                                            <span className="font-semibold">{rule.target_object}{rule.target_property ? `.${rule.target_property}` : ''}</span>
+                                            <span className="text-[10px] opacity-70">({rule.target_system})</span>
+                                        </div>
                                     </div>
                                 </SelectItem>
                             ))}
@@ -423,7 +457,7 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
                     <div className="flex-1 text-center">
                       <div className="flex items-center justify-center gap-2 mb-1">
                         <Database className={cn("w-4 h-4 transition-colors", activeSource && mappings.some(m => m.sourceEntity === activeSource.id) ? "text-primary" : "text-muted-foreground")} />
-                        <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Source Entity</span>
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Source: {sourceSystemName}</span>
                       </div>
                       <h3 className="font-bold text-lg">{activeSource?.name || "Keine Entitäten"}</h3>
                     </div>
@@ -450,7 +484,7 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
                     <div className="flex-1 text-center">
                       <div className="flex items-center justify-center gap-2 mb-1">
                         <Target className={cn("w-4 h-4 transition-colors", activeTarget && mappings.some(m => m.targetEntity === activeTarget.id) ? "text-emerald-500" : "text-muted-foreground")} />
-                        <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Target Entity</span>
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Target: {targetSystemName}</span>
                       </div>
                       <h3 className="font-bold text-lg">{activeTarget?.name || "Keine Entitäten"}</h3>
                     </div>
@@ -560,31 +594,78 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
                     {currentRules.length > 0 ? (
                         <div className="flex flex-col gap-2">
                             {currentRules.map(rule => (
-                                <div key={rule.id} className="p-2 rounded border bg-background/50 flex flex-col gap-1">
+                                <div key={rule.id} className="p-2 rounded border bg-background/50 flex flex-col gap-1 group/rule">
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-2 text-sm">
-                                            {/* Source Property */}
-                                            <span className="font-medium text-foreground">{rule.source_property || "(Object)"}</span>
+                                            {/* Source: Object.Property (System) */}
+                                            <div className="flex items-center gap-1">
+                                                <span className="font-bold text-foreground">
+                                                    {rule.source_object}{rule.source_property ? `.${rule.source_property}` : ''}
+                                                </span>
+                                                <span className="text-[10px] text-muted-foreground font-medium">({rule.source_system})</span>
+                                            </div>
                                             
-                                            <ArrowLeftRight className="w-3 h-3 text-muted-foreground" />
+                                            <ArrowLeftRight className="w-3 h-3 text-muted-foreground shrink-0" />
                                             
-                                            {/* Target (Object + Property) */}
-                                            <span className="text-muted-foreground">{rule.target_object}</span>
-                                            <span className="font-medium text-foreground">{rule.target_property ? `.${rule.target_property}` : ''}</span>
+                                            {/* Target: Object.Property (System) */}
+                                            <div className="flex items-center gap-1">
+                                                <span className="font-bold text-primary">
+                                                    {rule.target_object}{rule.target_property ? `.${rule.target_property}` : ''}
+                                                </span>
+                                                <span className="text-[10px] text-muted-foreground font-medium">({rule.target_system})</span>
+                                            </div>
                                         </div>
-                                        <Badge variant={
-                                            rule.rule_type === 'MAP' ? 'default' : 
-                                            rule.rule_type === 'POLISH' ? 'secondary' : 'outline'
-                                        } className="text-[10px] h-5 scale-90 origin-right">
-                                            {rule.rule_type}
-                                        </Badge>
+                                        
+                                        <Select 
+                                            value={rule.rule_type} 
+                                            onValueChange={(val) => handleRuleUpdate(rule.id, { rule_type: val as any })}
+                                        >
+                                            <SelectTrigger className="h-6 w-auto min-w-[80px] text-[10px] px-2 bg-transparent border-none shadow-none">
+                                                <SelectValue />
+                                            </SelectTrigger>
+                                            <SelectContent>
+                                                <SelectItem value="MAP" className="text-[10px]">MAP</SelectItem>
+                                                <SelectItem value="POLISH" className="text-[10px]">POLISH</SelectItem>
+                                                <SelectItem value="SUMMARY" className="text-[10px]">SUMMARY</SelectItem>
+                                            </SelectContent>
+                                        </Select>
                                     </div>
                                     
-                                    {rule.note && (
-                                        <div className="text-xs text-muted-foreground italic">
-                                            "{rule.note}"
-                                        </div>
-                                    )}
+                                    <div className="flex items-start gap-2 min-h-[20px]">
+                                        {editingRuleId === rule.id ? (
+                                            <div className="flex-1 flex items-center gap-2">
+                                                <Input 
+                                                    value={editingNote} 
+                                                    onChange={(e) => setEditingNote(e.target.value)}
+                                                    className="h-7 text-xs"
+                                                    autoFocus
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter') handleRuleUpdate(rule.id, { note: editingNote });
+                                                        if (e.key === 'Escape') setEditingRuleId(null);
+                                                    }}
+                                                />
+                                                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleRuleUpdate(rule.id, { note: editingNote })}>
+                                                    <Check className="w-3 h-3" />
+                                                </Button>
+                                            </div>
+                                        ) : (
+                                            <div className="flex-1 flex items-center justify-between group/note">
+                                                <span className="text-xs text-muted-foreground italic truncate">
+                                                    {rule.note ? `"${rule.note}"` : "Keine Notiz vorhanden."}
+                                                </span>
+                                                <Button 
+                                                    size="icon" variant="ghost" 
+                                                    className="h-6 w-6 opacity-0 group-hover/rule:opacity-100 transition-opacity"
+                                                    onClick={() => {
+                                                        setEditingRuleId(rule.id);
+                                                        setEditingNote(rule.note || "");
+                                                    }}
+                                                >
+                                                    <Pencil className="w-3 h-3" />
+                                                </Button>
+                                            </div>
+                                        )}
+                                    </div>
                                 </div>
                             ))}
                         </div>
@@ -598,8 +679,8 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
 
               <ResizableHandle withHandle />
 
-              {/* Right Column: Chat (Default 33%, Max 50%) */}
-              <ResizablePanel defaultSize={33} maxSize={50} minSize={25} className="flex flex-col min-h-0 bg-muted/10">
+              {/* Right Column: Chat (Default 40%, Max 50%) */}
+              <ResizablePanel defaultSize={40} maxSize={50} minSize={25} className="flex flex-col min-h-0 bg-muted/10">
                  <div className="px-4 py-3 bg-background/50 flex items-center gap-2 shrink-0">
                   <MessageSquare className="w-4 h-4 text-primary" />
                   <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Mapping Assistent</span>

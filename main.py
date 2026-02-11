@@ -964,6 +964,10 @@ class CreateMappingRulePayload(BaseModel):
     note: Optional[str] = None
     rule_type: str
 
+class UpdateMappingRulePayload(BaseModel):
+    note: Optional[str] = None
+    rule_type: Optional[str] = None
+
 @app.get("/api/migrations/{id}/mapping-rules", response_model=list[MappingRule])
 async def get_mapping_rules(id: str) -> list[MappingRule]:
     """Fetch all mapping rules for a given migration."""
@@ -1037,6 +1041,51 @@ async def create_mapping_rule(id: str, payload: CreateMappingRulePayload) -> Map
     except Exception as exc:
         print(f"Error creating mapping rule: {exc}")
         raise HTTPException(status_code=500, detail="Failed to create mapping rule.") from exc
+
+@app.patch("/api/migrations/{id}/mapping-rules/{rule_id}", response_model=MappingRule)
+async def patch_mapping_rule(id: str, rule_id: str, payload: UpdateMappingRulePayload) -> MappingRule:
+    """Update an existing mapping rule."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            updates = []
+            params = []
+            if payload.note is not None:
+                updates.append("note = %s")
+                params.append(payload.note)
+            if payload.rule_type is not None:
+                updates.append("rule_type = %s")
+                params.append(payload.rule_type)
+            
+            if not updates:
+                raise HTTPException(status_code=400, detail="No fields to update.")
+            
+            query = f"UPDATE public.mapping_rules SET {', '.join(updates)} WHERE id = %s AND migration_id = %s RETURNING *"
+            params.extend([rule_id, id])
+            
+            cur.execute(query, tuple(params))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="Mapping rule not found.")
+            
+            conn.commit()
+            return MappingRule(
+                id=str(row["id"]),
+                migration_id=str(row["migration_id"]),
+                source_system=row["source_system"],
+                source_object=row["source_object"],
+                source_property=row.get("source_property"),
+                target_system=row["target_system"],
+                target_object=row["target_object"],
+                target_property=row.get("target_property"),
+                note=row.get("note"),
+                rule_type=row["rule_type"],
+                created_at=row["created_at"].isoformat(),
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        print(f"Error updating mapping rule: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to update mapping rule.") from exc
 
 
 @app.post("/api/migrations/{id}/mapping-chat", response_model=MappingChatMessage)
