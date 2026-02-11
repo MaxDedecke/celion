@@ -899,6 +899,162 @@ async def create_migration_chat_message(id: str, payload: CreateMigrationChatMes
         raise HTTPException(status_code=500, detail="Failed to create migration chat message.") from exc
 
 
+class MappingChatMessage(BaseModel):
+    """Pydantic model for a mapping chat message."""
+    id: str
+    migration_id: str
+    role: str
+    content: str
+    created_at: str
+
+
+class CreateMappingChatMessagePayload(BaseModel):
+    """Pydantic model for creating a mapping chat message."""
+    role: str
+    content: str
+
+
+@app.get("/api/migrations/{id}/mapping-chat", response_model=list[MappingChatMessage])
+async def get_mapping_chat_messages(id: str) -> list[MappingChatMessage]:
+    """Fetch all mapping chat messages for a given migration."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, migration_id, role, content, created_at FROM public.mapping_chat_messages WHERE migration_id = %s ORDER BY created_at ASC",
+                (id,),
+            )
+            chat_rows = cur.fetchall()
+
+            messages = [
+                MappingChatMessage(
+                    id=str(row["id"]),
+                    migration_id=str(row["migration_id"]),
+                    role=row["role"],
+                    content=row["content"],
+                    created_at=row["created_at"].isoformat(),
+                )
+                for row in chat_rows
+            ]
+            return messages
+    except Exception as exc:
+        print(f"Error fetching mapping chat messages: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to fetch mapping chat messages.") from exc
+
+
+@app.post("/api/migrations/{id}/mapping-chat", response_model=MappingChatMessage)
+async def create_mapping_chat_message(id: str, payload: CreateMappingChatMessagePayload) -> MappingChatMessage:
+    """Create a new mapping chat message for a given migration."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            # 1. Save user message
+            cur.execute(
+                """
+                INSERT INTO public.mapping_chat_messages (migration_id, role, content)
+                VALUES (%s, %s, %s)
+                RETURNING id, migration_id, role, content, created_at
+                """,
+                (id, payload.role, payload.content),
+            )
+            row = cur.fetchone()
+            
+            # 2. Prepare Context for Agent
+            # Current Mappings from Step 6
+            cur.execute("SELECT raw_json FROM public.step_6_results WHERE migration_id = %s", (id,))
+            step6_row = cur.fetchone()
+            current_mappings = step6_row['raw_json'].get('mappings', []) if step6_row and step6_row['raw_json'] else []
+            
+            # Get Migration details (Source/Target Systems)
+            cur.execute("SELECT source_system, target_system FROM public.migrations WHERE id = %s", (id,))
+            migration_info = cur.fetchone()
+            source_system = migration_info["source_system"] if migration_info else None
+            target_system = migration_info["target_system"] if migration_info else None
+
+            # Load Schemas
+            import re
+            
+            source_schema = {}
+            if source_system:
+                norm_source = "".join(re.findall(r"[a-z0-9]", source_system.lower()))
+                source_path = os.path.join(os.getcwd(), "schemes", "objects", f"{norm_source}_objects.json")
+                if os.path.exists(source_path):
+                    with open(source_path, "r", encoding="utf-8") as f:
+                        source_schema = json.load(f)
+
+            target_schema = {}
+            if target_system:
+                norm_target = "".join(re.findall(r"[a-z0-9]", target_system.lower()))
+                target_path = os.path.join(os.getcwd(), "schemes", "objects", f"{norm_target}_objects.json")
+                if os.path.exists(target_path):
+                    with open(target_path, "r", encoding="utf-8") as f:
+                        target_schema = json.load(f)
+
+            # Source Entities from Step 3
+            cur.execute("SELECT entity_name as name, count FROM public.step_3_results WHERE migration_id = %s", (id,))
+            source_entities = [dict(r) for r in cur.fetchall()]
+            
+            # Target Entities (Try Step 4 writable_entities or fallback)
+            cur.execute("SELECT writable_entities FROM public.step_4_results WHERE migration_id = %s", (id,))
+            step4_row = cur.fetchone()
+            target_entity_names = step4_row['writable_entities'] if step4_row and step4_row['writable_entities'] else []
+            target_entities = [{"name": name} for name in target_entity_names]
+            
+            # History
+            cur.execute(
+                """
+                SELECT role, content FROM public.mapping_chat_messages 
+                WHERE migration_id = %s 
+                ORDER BY created_at DESC LIMIT 10
+                """,
+                (id,)
+            )
+            history = [{"role": r["role"], "content": r["content"]} for r in reversed(cur.fetchall())]
+
+            # 3. Enqueue Job for Mapping Rules Agent
+            if payload.role == 'user':
+                cur.execute(
+                    """
+                    INSERT INTO public.jobs (step_id, payload, status)
+                    VALUES (NULL, %s, 'pending')
+                    RETURNING id
+                    """,
+                    (json_dumps({
+                        "migrationId": id,
+                        "agentName": "runMappingRules",
+                        "agentParams": {
+                            "userMessage": payload.content,
+                            "context": {
+                                "currentMappings": current_mappings,
+                                "sourceEntities": source_entities,
+                                "targetEntities": target_entities,
+                                "sourceSchema": source_schema,
+                                "targetSchema": target_schema,
+                                "history": history,
+                                "migrationId": id
+                            }
+                        }
+                    }),),
+                )
+                job_row = cur.fetchone()
+                publish_to_rabbitmq(job_row["id"])
+            
+            conn.commit()
+
+            if not row:
+                raise HTTPException(status_code=500, detail="Failed to create mapping chat message.")
+
+            return MappingChatMessage(
+                id=str(row["id"]),
+                migration_id=str(row["migration_id"]),
+                role=row["role"],
+                content=row["content"],
+                created_at=row["created_at"].isoformat(),
+            )
+    except Exception as exc:
+        print(f"Error creating mapping chat message: {exc}")
+        raise HTTPException(status_code=500, detail="Failed to create mapping chat message.") from exc
+
+
+
 @app.post("/api/migrations/{id}/action/{step}")
 async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
     """Trigger a specific step in the migration process."""

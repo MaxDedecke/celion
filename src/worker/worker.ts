@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import neo4j from 'neo4j-driver';
-import { runSystemDetection, runAuthFlow, runSourceDiscovery, runTargetDiscovery, runAnswerAgent, runMapping } from '../agents/agentService';
+import { runSystemDetection, runAuthFlow, runSourceDiscovery, runTargetDiscovery, runAnswerAgent, runMapping, runMappingRules } from '../agents/agentService';
 import { AGENT_WORKFLOW_STEPS } from '../constants/agentWorkflow';
 import { loadScheme, loadObjectScheme } from '../lib/scheme-loader';
 import { resolveOpenAiConfig, buildOpenAiHeaders } from '../agents/openai/openaiClient';
@@ -26,6 +26,13 @@ async function writeChatMessage(migrationId: string, role: string, content: stri
   await pool.query(
     'INSERT INTO migration_chat_messages (migration_id, role, content, step_number) VALUES ($1, $2, $3, $4)',
     [migrationId, role, content, stepNumber]
+  );
+}
+
+async function writeMappingChatMessage(migrationId: string, role: string, content: string) {
+  await pool.query(
+    'INSERT INTO mapping_chat_messages (migration_id, role, content) VALUES ($1, $2, $3)',
+    [migrationId, role, content]
   );
 }
 
@@ -237,7 +244,7 @@ async function processJob(job: any) {
     }
   }
 
-  if (!stepRecord && agentName !== 'runAnswerAgent') {
+  if (!stepRecord && agentName !== 'runAnswerAgent' && agentName !== 'runMappingRules') {
     console.error('Unable to find migration step for job', job.id);
     await pool.query('UPDATE jobs SET status = $1, last_error = $2 WHERE id = $3', ['failed', 'Step not found', job.id]);
     return;
@@ -254,8 +261,8 @@ async function processJob(job: any) {
     if (step_id) {
       await startClient.query('UPDATE migration_steps SET status = $1 WHERE id = $2', ['running', step_id]);
     }
-    // Update migration status only for process-relevant agents (not for Consultant)
-    if (agentName !== 'runAnswerAgent') {
+    // Update migration status only for process-relevant agents (not for Consultant or MappingRules)
+    if (agentName !== 'runAnswerAgent' && agentName !== 'runMappingRules') {
       await startClient.query('UPDATE migrations SET status = $1, step_status = $2 WHERE id = $3', ['processing', 'running', migrationId]);
     }
     await startClient.query('COMMIT');
@@ -268,8 +275,8 @@ async function processJob(job: any) {
 
   // Start-Nachricht im Chat (Sofort sichtbar)
   // MODIFIED: Only show for non-split agents or the first part of split agents (source)
-  // Skip for Consultant
-  if (agentName !== 'runAnswerAgent' && (agentParams?.mode || 'source') === 'source') {
+  // Skip for Consultant and MappingRules
+  if (agentName !== 'runAnswerAgent' && agentName !== 'runMappingRules' && (agentParams?.mode || 'source') === 'source') {
     await writeChatMessage(migrationId, 'assistant', `Starte Schritt ${currentStepNumber} ${stepTitle}...`, currentStepNumber);
   }
 
@@ -1378,6 +1385,29 @@ async function processJob(job: any) {
       } finally {
         finishClient6.release();
       }
+
+    } else if (agentName === 'runMappingRules') {
+      const userMessage = agentParams?.userMessage;
+      const context = agentParams?.context;
+
+      const messageGenerator = runMappingRules(userMessage, {
+          ...context,
+          migrationId
+      });
+
+      let assistantResponse = "";
+      for await (const message of messageGenerator) {
+        if (message.content && message.content.length > 0 && message.content[0].text) {
+          assistantResponse = message.content[0].text;
+        }
+      }
+
+      if (assistantResponse) {
+        await writeMappingChatMessage(migrationId, 'assistant', assistantResponse);
+      }
+
+      await pool.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+      return;
 
     } else {
       throw new Error(`Agent ${agentName} is not yet implemented in the worker.`);
