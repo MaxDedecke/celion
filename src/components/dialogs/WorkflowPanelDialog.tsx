@@ -36,6 +36,8 @@ interface MigrationResults {
   step_2: WorkflowStepResult[];
   step_3: WorkflowStepResult[];
   step_4: WorkflowStepResult[];
+  step_5: WorkflowStepResult[];
+  step_6: WorkflowStepResult[];
 }
 
 const WorkflowPanelDialog = ({
@@ -82,6 +84,8 @@ const WorkflowPanelDialog = ({
     if (stepNum === 2) return results.step_2;
     if (stepNum === 3) return results.step_3;
     if (stepNum === 4) return results.step_4;
+    if (stepNum === 5) return results.step_5;
+    if (stepNum === 6) return results.step_6;
     return [];
   };
 
@@ -99,6 +103,8 @@ const WorkflowPanelDialog = ({
     else if (stepNum === 2) targetList = newResults.step_2;
     else if (stepNum === 3) targetList = newResults.step_3;
     else if (stepNum === 4) targetList = newResults.step_4;
+    else if (stepNum === 5) targetList = newResults.step_5;
+    else if (stepNum === 6) targetList = newResults.step_6;
 
     if (targetList[selectedSubItemIndex]) {
       const updatedJson = { ...targetList[selectedSubItemIndex].raw_json };

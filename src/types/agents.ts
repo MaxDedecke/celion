@@ -141,3 +141,11 @@ export interface CapabilityDiscoveryResult {
   raw_output?: string | null;
 }
 
+export interface DataStagingResult {
+  objects_staged: number;
+  expected_count: number;
+  accuracy: number;
+  summary?: string | null;
+  raw_json?: Record<string, unknown> | null;
+}
+

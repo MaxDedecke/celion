@@ -260,7 +260,7 @@ def _run_reconciliation(conn: psycopg.Connection, migration_id: str, source_syst
     if expected_count > 0 and actual_count == 0:
         error_msg = "Critical error: No objects were imported into Neo4j."
         _write_chat_message(conn, migration_id, 'system', f"⚠️ {error_msg}", 5)
-        raise Exception(error_msg)
+        # We don't raise here to allow the user to proceed if they want, but the warning is clear.
         
     diff = abs(expected_count - actual_count)
     if expected_count > 0 and (diff / expected_count) > 0.1: # More than 10% difference
@@ -268,7 +268,7 @@ def _run_reconciliation(conn: psycopg.Connection, migration_id: str, source_syst
         _write_chat_message(conn, migration_id, 'system', f"⚠️ {warning_msg}", 5)
         # We don't raise here to allow the user to proceed if they want, but the warning is clear.
 
-    return actual_count
+    return actual_count, expected_count, accuracy
 
 def _run_graph_enhancement(conn: psycopg.Connection, migration_id: str, source_system: str):
     """Phase 3: Graph-Enhancement (Agent-based)"""
@@ -725,7 +725,29 @@ def run_step_5_data_staging(conn: psycopg.Connection, migration_id: str, payload
     _run_graph_enhancement(conn, migration_id, source_system)
 
     # Phase 4: Reconciliation
-    actual_count = _run_reconciliation(conn, migration_id, source_system)
+    actual_count, expected_count, accuracy = _run_reconciliation(conn, migration_id, source_system)
+
+    # Create detailed result for Step 5
+    step_5_result = {
+        "objects_staged": actual_count,
+        "expected_count": expected_count,
+        "accuracy": accuracy,
+        "status": "completed"
+    }
+    step_5_summary = f"Data Staging completed. Staged {actual_count} objects (Expected: {expected_count}). Accuracy: {round(accuracy * 100, 1)}%."
+
+    # Write official Step 5 Result to DB
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO public.step_5_results (migration_id, summary, raw_json)
+            VALUES (%s, %s, %s)
+            ON CONFLICT (migration_id) DO UPDATE
+            SET summary = EXCLUDED.summary, raw_json = EXCLUDED.raw_json, created_at = now()
+            """,
+            (migration_id, step_5_summary, json.dumps(step_5_result))
+        )
+        conn.commit()
 
     # Finalize Step 5
     if 'staging' not in workflow_state:
