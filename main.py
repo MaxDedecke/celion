@@ -951,7 +951,7 @@ class MappingRule(BaseModel):
     target_object: str
     target_property: Optional[str] = None
     note: Optional[str] = None
-    rule_type: str # 'MAP', 'POLISH', 'SUMMARY'
+    rule_type: str # 'MAP', 'POLISH', 'SUMMARY', 'IGNORE'
     created_at: str
 
 class CreateMappingRulePayload(BaseModel):
