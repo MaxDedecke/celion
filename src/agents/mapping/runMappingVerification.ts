@@ -38,7 +38,7 @@ Antworte ausschließlich mit einem validen JSON-Objekt im folgenden Format:
       ]
     }
   },
-  "summary": "Kurze deutsche Zusammenfassung der Überprüfung und Empfehlungen für den Benutzer."
+  "summary": "Detaillierte deutsche Begründung der Überprüfung. Erkläre bei Unvollständigkeit GANZ GENAU, was fehlt (welche Objekte oder Pflichtfelder) und gib konkrete Handlungsempfehlungen für den Benutzer."
 }
 `;
 

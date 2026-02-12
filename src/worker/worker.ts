@@ -1323,6 +1323,11 @@ async function processJob(job: any) {
         try {
           result = JSON.parse(lastMessageText);
           resultMessageText = JSON.stringify(result);
+          
+          if (result.verification_report && result.verification_report.is_complete === false) {
+            isLogicalFailure = true;
+            failureMessage = "Mapping ist unvollständig.";
+          }
         } catch (e) {
           result = { text: lastMessageText };
           resultMessageText = JSON.stringify(result);
@@ -1365,9 +1370,35 @@ async function processJob(job: any) {
 
         await finishClient6.query('COMMIT');
 
-        await writeChatMessage(migrationId, 'assistant', result.summary || 'Ich habe die Mappings überprüft. Die Ergebnisse finden Sie in den Erkenntnissen.', currentStepNumber);
-        
-        if (!isLogicalFailure) {
+        if (isLogicalFailure) {
+          if (result?.verification_report && result.verification_report.is_complete === false) {
+            let message = `Die Überprüfung hat ergeben, dass das Mapping noch **unvollständig** ist.\n\n`;
+            
+            if (result.summary) {
+              message += `${result.summary}\n\n`;
+            }
+            
+            if (result.verification_report.missing_entities && result.verification_report.missing_entities.length > 0) {
+              message += `**Fehlende Entitäten:** ${result.verification_report.missing_entities.join(', ')}\n`;
+            }
+            
+            if (result.verification_report.target_readiness?.missing_required_fields && result.verification_report.target_readiness.missing_required_fields.length > 0) {
+              message += `**Fehlende Pflichtfelder:**\n`;
+              result.verification_report.target_readiness.missing_required_fields.forEach((f: any) => {
+                message += `- ${f.targetEntity}: ${f.field}\n`;
+              });
+            }
+
+            message += `\nBitte passen Sie die Regeln im Mapping-Panel an und starten Sie die Verifizierung erneut.`;
+            await writeChatMessage(migrationId, 'assistant', message, currentStepNumber);
+          } else {
+            await writeChatMessage(migrationId, 'assistant', `Schritt 6 Mapping Verification fehlgeschlagen: ${failureMessage}`, currentStepNumber);
+          }
+          await writeRetryAction(migrationId, currentStepNumber);
+          await logActivity(migrationId, 'warning', `Schritt Mapping Verification fehlgeschlagen.`);
+        } else {
+          await writeChatMessage(migrationId, 'assistant', result.summary || 'Ich habe die Mappings erfolgreich überprüft. Wir können nun mit der Qualitätsprüfung fortfahren.', currentStepNumber);
+          
           const nextStepIndex = currentStepNumber;
           if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
               const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
@@ -1380,8 +1411,8 @@ async function processJob(job: any) {
               });
               await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
           }
+          await logActivity(migrationId, 'success', 'Mapping Verification erfolgreich abgeschlossen.');
         }
-        await logActivity(migrationId, isLogicalFailure ? 'warning' : 'success', 'Mapping Verification abgeschlossen.');
       } catch (e) {
         await finishClient6.query('ROLLBACK');
         throw e;
