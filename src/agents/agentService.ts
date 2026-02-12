@@ -4,4 +4,5 @@ export { runSourceDiscovery } from './sourceDiscovery/runSourceDiscovery';
 export { runTargetDiscovery } from './targetDiscovery/runTargetDiscovery';
 export { runAnswerAgent } from './answerAgent/runAnswerAgent';
 export { runMapping } from './mapping/runMapping';
+export { runMappingVerification } from './mapping/runMappingVerification';
 export { runMappingRules } from './mappingRules/runMappingRules';

@@ -40,11 +40,11 @@ export const AGENT_WORKFLOW_STEPS = [
     color: "rose",
   },
   {
-    id: "mapping-suggestion",
-    title: "Mapping Suggestions",
-    description: "Erstellt ein initiales Feld-zu-Feld-Mapping (Source → Target) basierend auf Ähnlichkeit, Bezeichnung, Typ und Kontext der Daten.",
-    phase: "Mapping Suggestions",
-    agentType: "mapping-suggestion",
+    id: "mapping-verification",
+    title: "Mapping Verification",
+    description: "Überprüft die definierten Mapping-Regeln auf Vollständigkeit und Konsistenz bezüglich der Quell- und Zielsysteme.",
+    phase: "Mapping Verification",
+    agentType: "mapping-verification",
     color: "sky",
   },
   {

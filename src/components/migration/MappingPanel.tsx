@@ -136,17 +136,31 @@ const MappingPanel = ({ migrationId }: MappingPanelProps) => {
           })));
         }
 
-        const { data: results } = await databaseClient.fetchMigrationResults(migrationId);
-        if (results?.step_6?.[0]?.raw_json?.mappings) {
-          setMappings(results.step_6[0].raw_json.mappings);
-        } else if (results?.step_5?.[0]?.raw_json?.mappings) {
-          setMappings(results.step_5[0].raw_json.mappings);
-        }
-
         const rulesResponse = await fetch(`/api/migrations/${migrationId}/mapping-rules`);
         if (rulesResponse.ok) {
-            const rules = await rulesResponse.json();
+            const rules: MappingRule[] = await rulesResponse.json();
             setMappingRules(rules);
+
+            // Reconstruct mappings tuples from rules for the UI whiteboard
+            const reconstructedMappings: MappingTuple[] = [];
+            rules.forEach(rule => {
+                let tuple = reconstructedMappings.find(m => m.sourceEntity === rule.source_object && m.targetEntity === rule.target_object);
+                if (!tuple) {
+                    tuple = {
+                        sourceEntity: rule.source_object,
+                        targetEntity: rule.target_object,
+                        fieldMappings: []
+                    };
+                    reconstructedMappings.push(tuple);
+                }
+                if (rule.source_property && rule.target_property) {
+                    tuple.fieldMappings.push({
+                        sourceField: rule.source_property,
+                        targetField: rule.target_property
+                    });
+                }
+            });
+            setMappings(reconstructedMappings);
         }
 
       } catch (error) {

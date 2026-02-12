@@ -1318,7 +1318,7 @@ async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
                 3: "runCapabilityDiscovery",
                 4: "runTargetSchema",
                 5: "runDataStaging",
-                6: "runMappingSuggestion",
+                6: "runMappingVerification",
                 7: "runQualityEnhancement",
                 8: "runDataTransfer",
                 9: "runVerification",

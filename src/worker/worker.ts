@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import neo4j from 'neo4j-driver';
-import { runSystemDetection, runAuthFlow, runSourceDiscovery, runTargetDiscovery, runAnswerAgent, runMapping, runMappingRules } from '../agents/agentService';
+import { runSystemDetection, runAuthFlow, runSourceDiscovery, runTargetDiscovery, runAnswerAgent, runMapping, runMappingVerification, runMappingRules } from '../agents/agentService';
 import { AGENT_WORKFLOW_STEPS } from '../constants/agentWorkflow';
 import { loadScheme, loadObjectScheme } from '../lib/scheme-loader';
 import { resolveOpenAiConfig, buildOpenAiHeaders } from '../agents/openai/openaiClient';
@@ -1276,7 +1276,7 @@ async function processJob(job: any) {
                 type: "action",
                 actions: [
                   { action: "continue", label: `Weiter zu Schritt ${nextStepIndex + 1} ${nextStep.title}`, variant: "primary" },
-                  { action: "retry", label: "Schritt wiederholen", variant: "secondary", stepNumber: currentStepNumber }
+                  { action: "retry", label: `Schritt ${currentStepNumber} wiederholen`, variant: "outline", stepNumber: currentStepNumber }
                 ]
             });
             await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
@@ -1289,10 +1289,10 @@ async function processJob(job: any) {
         finishClientStaging.release();
       }
 
-    } else if (agentName === 'runMappingSuggestion') {
-      // Step 6: Mapping Suggestions
-      console.log(`[Worker] Running Mapping Suggestions for migration ${migrationId}`);
-      await writeChatMessage(migrationId, 'assistant', 'Generiere Mapping-Vorschläge...', currentStepNumber);
+    } else if (agentName === 'runMappingVerification') {
+      // Step 6: Mapping Verification
+      console.log(`[Worker] Running Mapping Verification for migration ${migrationId}`);
+      await writeChatMessage(migrationId, 'assistant', 'Verifiziere Mapping-Konfiguration...', currentStepNumber);
 
       const { rows: migRows6 } = await pool.query('SELECT source_system, target_system FROM migrations WHERE id = $1', [migrationId]);
       const sSys6 = migRows6[0]?.source_system;
@@ -1303,12 +1303,15 @@ async function processJob(job: any) {
       const { rows: s3Rows6 } = await pool.query('SELECT entity_name, count FROM step_3_results WHERE migration_id = $1', [migrationId]);
       const sEnts6 = s3Rows6.map(r => ({ name: r.entity_name, count: r.count }));
 
+      // Fetch Existing Mapping Rules
+      const { rows: ruleRows6 } = await pool.query('SELECT * FROM public.mapping_rules WHERE migration_id = $1', [migrationId]);
+
       const sSpecs6 = await loadObjectScheme(sSys6);
       const tSpecs6 = await loadObjectScheme(tSys6);
 
       if (!sSpecs6 || !tSpecs6) throw new Error('Objektspezifikationen konnten nicht geladen werden.');
 
-      const messageGenerator = runMapping(sEnts6, sSpecs6, tSpecs6);
+      const messageGenerator = runMappingVerification(sEnts6, ruleRows6, sSpecs6, tSpecs6);
       let lastMessageText: string | undefined;
       for await (const message of messageGenerator) {
         if (message.content && message.content.length > 0 && message.content[0].text) {
@@ -1327,10 +1330,10 @@ async function processJob(job: any) {
           failureMessage = "Agent lieferte kein gültiges JSON Ergebnis.";
         }
       } else {
-        result = { error: 'Mapping agent produced no output' };
+        result = { error: 'Verification agent produced no output' };
         resultMessageText = JSON.stringify(result);
         isLogicalFailure = true;
-        failureMessage = "Mapping agent produced no output.";
+        failureMessage = "Verification agent produced no output.";
       }
 
       if (!isLogicalFailure) {
@@ -1341,7 +1344,7 @@ async function processJob(job: any) {
       try {
         await finishClient6.query('BEGIN');
         await finishClient6.query('UPDATE migration_steps SET status = $1, result = $2, status_message = $3 WHERE id = $4', [
-          isLogicalFailure ? 'failed' : 'completed', result, isLogicalFailure ? failureMessage : 'Mapping suggestions generated.', step_id,
+          isLogicalFailure ? 'failed' : 'completed', result, isLogicalFailure ? failureMessage : 'Mapping verification completed.', step_id,
         ]);
 
         const { rows: migRowsFinal } = await finishClient6.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
@@ -1362,7 +1365,7 @@ async function processJob(job: any) {
 
         await finishClient6.query('COMMIT');
 
-        await writeChatMessage(migrationId, 'assistant', result.summary || 'Ich habe die optimalen Mappings zwischen den Systemen ermittelt. Sie können diese nun im Mapping-Whiteboard überprüfen.', currentStepNumber);
+        await writeChatMessage(migrationId, 'assistant', result.summary || 'Ich habe die Mappings überprüft. Die Ergebnisse finden Sie in den Erkenntnissen.', currentStepNumber);
         
         if (!isLogicalFailure) {
           const nextStepIndex = currentStepNumber;
@@ -1378,7 +1381,7 @@ async function processJob(job: any) {
               await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
           }
         }
-        await logActivity(migrationId, isLogicalFailure ? 'warning' : 'success', 'Mapping Suggestions abgeschlossen.');
+        await logActivity(migrationId, isLogicalFailure ? 'warning' : 'success', 'Mapping Verification abgeschlossen.');
       } catch (e) {
         await finishClient6.query('ROLLBACK');
         throw e;
