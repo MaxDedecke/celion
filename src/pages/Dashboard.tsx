@@ -835,7 +835,7 @@ const Dashboard = () => {
                     className="h-8 w-8"
                     title="Chat"
                   >
-                    <MessageCircle className="h-4 w-4" />
+                    <MessageCircle className={cn("h-4 w-4 transition-colors", activeView === 'chat' && "text-primary")} />
                   </Button>
                   <Button
                     variant={activeView === 'workflow' ? 'secondary' : 'ghost'}
@@ -844,7 +844,7 @@ const Dashboard = () => {
                     className="h-8 w-8"
                     title="Erkenntnisse"
                   >
-                    <Workflow className="h-4 w-4" />
+                    <Workflow className={cn("h-4 w-4 transition-colors", activeView === 'workflow' && "text-primary")} />
                   </Button>
                   <Button
                     variant={activeView === 'mapping' ? 'secondary' : 'ghost'}
@@ -854,7 +854,7 @@ const Dashboard = () => {
                     disabled={!isMappingEnabled}
                     title={isMappingEnabled ? "Mappings" : "Mapping erst nach Abschluss von Schritt 4 verfügbar"}
                   >
-                    <Network className="h-4 w-4" />
+                    <Network className={cn("h-4 w-4 transition-colors", activeView === 'mapping' && "text-primary")} />
                   </Button>
                   <Button
                     variant="ghost"
