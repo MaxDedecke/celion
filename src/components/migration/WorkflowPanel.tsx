@@ -171,7 +171,7 @@ const WorkflowPanel = ({ migrationId }: WorkflowPanelProps) => {
   };
 
   return (
-    <div className="flex flex-1 min-h-0 bg-background rounded-3xl overflow-hidden border">
+    <div className="flex flex-1 min-h-0 bg-background overflow-hidden">
       {/* Linke Seite: Flow / Schritte */}
       <div className="w-[350px] border-r bg-muted/10 flex flex-col">
         <ScrollArea className="flex-1 p-4">

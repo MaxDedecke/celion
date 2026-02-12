@@ -126,12 +126,12 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
           />
         )}
         {activeView === 'workflow' && (
-          <div className="flex-1 overflow-hidden p-6 bg-muted/5 flex flex-col">
+          <div className="flex-1 overflow-hidden flex flex-col">
             <WorkflowPanel migrationId={project.id} />
           </div>
         )}
         {activeView === 'mapping' && (
-          <div className="flex-1 overflow-hidden p-6 bg-muted/5 flex flex-col">
+          <div className="flex-1 overflow-hidden flex flex-col">
             <MappingPanel migrationId={project.id} />
           </div>
         )}

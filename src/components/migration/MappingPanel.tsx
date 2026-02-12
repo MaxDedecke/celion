@@ -454,7 +454,7 @@ const MappingPanel = ({ migrationId }: MappingPanelProps) => {
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden bg-background rounded-3xl border">
+    <div className="flex flex-1 flex-col overflow-hidden bg-background">
         <div className="p-4 border-b flex items-center justify-between shrink-0">
             <div>
                 <h2 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Mapping</h2>
