@@ -1397,7 +1397,13 @@ async function processJob(job: any) {
           await writeRetryAction(migrationId, currentStepNumber);
           await logActivity(migrationId, 'warning', `Schritt Mapping Verification fehlgeschlagen.`);
         } else {
-          await writeChatMessage(migrationId, 'assistant', result.summary || 'Ich habe die Mappings erfolgreich überprüft. Wir können nun mit der Qualitätsprüfung fortfahren.', currentStepNumber);
+          // Zuerst die individuelle Zusammenfassung des Agenten
+          if (result.summary) {
+            await writeChatMessage(migrationId, 'assistant', result.summary, currentStepNumber);
+          }
+          
+          // Dann die standardisierte Erfolgsmeldung
+          await writeChatMessage(migrationId, 'assistant', `Schritt 6 **Mapping Verification** erfolgreich abgeschlossen.`, currentStepNumber);
           
           const nextStepIndex = currentStepNumber;
           if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
