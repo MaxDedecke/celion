@@ -358,6 +358,39 @@ const MappingPanel = ({ migrationId }: MappingPanelProps) => {
     }
   };
 
+  const handleDirectIgnore = async (fieldId: string) => {
+    if (!activeSource) return;
+
+    try {
+        const payload = {
+            source_system: sourceSystemName,
+            source_object: activeSource.id,
+            source_property: fieldId,
+            target_system: targetSystemName,
+            target_object: activeTarget?.id || "IGNORE",
+            target_property: "IGNORE",
+            rule_type: 'IGNORE',
+            note: "Direkt ignoriert via UI"
+        };
+
+        const response = await fetch(`/api/migrations/${migrationId}/mapping-rules`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload)
+        });
+
+        if (!response.ok) throw new Error("Ignore creation failed");
+
+        const newRule = await response.json();
+        setMappingRules(prev => [newRule, ...prev]);
+        
+        toast.success(`Feld "${fieldId}" wird nun ignoriert`);
+    } catch (error) {
+        console.error("Failed to create ignore rule:", error);
+        toast.error("Fehler beim Ignorieren des Feldes");
+    }
+  };
+
   const handleCreateRule = async () => {
     if (!activeSource || !activeTarget) {
         toast.error("Wählen Sie zuerst ein Quell- und Zielobjekt aus");
@@ -455,9 +488,36 @@ const MappingPanel = ({ migrationId }: MappingPanelProps) => {
 
   return (
     <div className="flex flex-1 flex-col overflow-hidden bg-background">
-        <div className="p-4 border-b flex items-center justify-between shrink-0">
-            <div>
-                <h2 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Mapping</h2>
+        <div className="p-4 border-b flex items-center justify-between shrink-0 gap-4">
+            <div className="flex items-center gap-4 flex-1">
+                <h2 className="font-bold text-sm uppercase tracking-wider text-muted-foreground whitespace-nowrap">Mapping</h2>
+                
+                <div className="h-4 w-px bg-border hidden sm:block" />
+                
+                <div className="flex items-center gap-2 flex-1 max-w-md">
+                    <span className="text-[10px] font-bold uppercase text-muted-foreground whitespace-nowrap">Regel-Fokus:</span>
+                    <Select value={selectedRuleId || ""} onValueChange={handleRuleSelect} disabled={mappingRules.length === 0}>
+                        <SelectTrigger className="h-8 w-full bg-muted/30 border-none shadow-none text-xs font-medium">
+                            <SelectValue placeholder={mappingRules.length > 0 ? "Regel auswählen..." : "Keine Regeln"} />
+                        </SelectTrigger>
+                        <SelectContent>
+                            {mappingRules.map(rule => (
+                                <SelectItem key={rule.id} value={rule.id}>
+                                    <div className="flex items-center gap-2">
+                                        <Badge variant="outline" className="text-[9px] h-4 min-w-[45px] justify-center px-1">
+                                            {rule.rule_type}
+                                        </Badge>
+                                        <div className="flex items-center gap-1 text-[11px]">
+                                            <span className="font-semibold">{rule.source_object}.{rule.source_property}</span>
+                                            <ArrowLeftRight className="w-2 h-2 opacity-50" />
+                                            <span className="font-semibold text-emerald-600">{rule.target_object}.{rule.target_property}</span>
+                                        </div>
+                                    </div>
+                                </SelectItem>
+                            ))}
+                        </SelectContent>
+                    </Select>
+                </div>
             </div>
             <div className="flex items-center gap-2">
                 <Button size="sm" onClick={handleSave} disabled={isSaving} className="h-8 text-xs min-w-[100px]">
@@ -470,37 +530,10 @@ const MappingPanel = ({ migrationId }: MappingPanelProps) => {
         <div className="flex-1 flex overflow-hidden">
             <ResizablePanelGroup direction="horizontal">
               <ResizablePanel defaultSize={60} minSize={50} className="flex flex-col min-h-0">
-                <div className="px-4 py-2 border-b bg-muted/5 flex items-center gap-2 shrink-0">
-                    <span className="text-xs font-semibold text-muted-foreground whitespace-nowrap">Regel-Fokus:</span>
-                    <Select value={selectedRuleId || ""} onValueChange={handleRuleSelect} disabled={mappingRules.length === 0}>
-                        <SelectTrigger className="h-8 w-full max-w-[400px]">
-                            <SelectValue placeholder={mappingRules.length > 0 ? "Wähle eine Regel zum Anzeigen..." : "Keine Regeln definiert"} />
-                        </SelectTrigger>
-                        <SelectContent>
-                            {mappingRules.map(rule => (
-                                <SelectItem key={rule.id} value={rule.id}>
-                                    <div className="flex items-center gap-2">
-                                        <Badge variant="outline" className="text-[10px] h-5 min-w-[50px] justify-center">
-                                            {rule.rule_type}
-                                        </Badge>
-                                        <div className="flex items-center gap-1 text-xs">
-                                            <span className="font-semibold">{rule.source_object}.{rule.source_property}</span>
-                                            <span className="text-[10px] opacity-70">({rule.source_system})</span>
-                                            <ArrowLeftRight className="w-2 h-2 mx-1" />
-                                            <span className="font-semibold">{rule.target_object}.{rule.target_property}</span>
-                                            <span className="text-[10px] opacity-70">({rule.target_system})</span>
-                                        </div>
-                                    </div>
-                                </SelectItem>
-                            ))}
-                        </SelectContent>
-                    </Select>
-                </div>
-
-                <div className="grid grid-cols-2 gap-px bg-border shrink-0">
+                <div className="grid grid-cols-2 shrink-0">
                   <div className={cn(
-                    "bg-background p-4 flex items-center justify-between gap-4 transition-all border-b-2",
-                    activeSource && mappingRules.some(r => r.source_object === activeSource.id) ? "border-b-primary shadow-[0_4px_12px_-2px_rgba(59,130,246,0.2)]" : "border-b-transparent",
+                    "bg-background p-4 flex items-center justify-between gap-4 transition-all border-b",
+                    activeSource && mappingRules.some(r => r.source_object === activeSource.id) ? "border-b-primary shadow-[0_2px_8px_-2px_rgba(59,130,246,0.1)]" : "border-b-border",
                     activeSource?.isIgnored && "opacity-60 grayscale-[0.5]"
                   )}>
                     <Button 
@@ -540,8 +573,8 @@ const MappingPanel = ({ migrationId }: MappingPanelProps) => {
                   </div>
 
                   <div className={cn(
-                    "bg-background p-4 flex items-center justify-between gap-4 transition-all border-b-2",
-                    activeTarget && mappingRules.some(r => r.target_object === activeTarget.id) ? "border-b-emerald-500 shadow-[0_4px_12px_-2px_rgba(16,185,129,0.2)]" : "border-b-transparent"
+                    "bg-background p-4 flex items-center justify-between gap-4 transition-all border-b",
+                    activeTarget && mappingRules.some(r => r.target_object === activeTarget.id) ? "border-b-emerald-500 shadow-[0_2px_8px_-2px_rgba(16,185,129,0.1)]" : "border-b-border"
                   )}>
                     <Button 
                       variant="ghost" size="icon" 
@@ -593,7 +626,19 @@ const MappingPanel = ({ migrationId }: MappingPanelProps) => {
                               </div>
                               <div className="flex items-center gap-2">
                                   {isSelectedForRule && <Badge className="h-4 text-[8px] px-1 bg-primary text-white">Quelle ausgewählt</Badge>}
-                                  {!hasRule && <Plus className={cn("w-4 h-4 text-muted-foreground group-hover:text-primary")} />}
+                                  {!hasRule && (
+                                    <Button 
+                                      size="icon" variant="ghost" 
+                                      className="h-7 w-7 text-muted-foreground hover:text-amber-600 hover:bg-amber-50"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        handleDirectIgnore(field.id);
+                                      }}
+                                      title="Direkt ignorieren"
+                                    >
+                                      <Eye className="w-4 h-4" />
+                                    </Button>
+                                  )}
                               </div>
                             </div>
                           );
@@ -653,7 +698,7 @@ const MappingPanel = ({ migrationId }: MappingPanelProps) => {
                   </div>
                 </div>
 
-                <div className="shrink-0 border-t bg-muted/5 p-4 flex flex-col gap-3 min-h-[100px] max-h-[300px] overflow-y-auto">
+                <div className="shrink-0 bg-muted/5 p-4 flex flex-col gap-3 min-h-[100px] max-h-[300px] overflow-y-auto">
                     <div className="flex items-center justify-between sticky top-0 bg-muted/5 pb-2 z-10">
                         <div className="flex items-center gap-2">
                             <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Regeln</span>
