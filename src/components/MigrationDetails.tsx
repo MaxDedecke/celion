@@ -4,6 +4,7 @@ import WorkflowPanel from "./migration/WorkflowPanel";
 import MappingPanel from "./migration/MappingPanel";
 import { toast } from "sonner";
 import type { MigrationDetailsProps } from "./migration/migrationDetails.types";
+import { cn } from "@/lib/utils";
 
 export interface MigrationDetailsRef {
   openWorkflowPanel: () => void;
@@ -111,7 +112,10 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
-      <div className="flex flex-1 flex-col overflow-hidden p-0">
+      <div 
+        key={activeView}
+        className="flex flex-1 flex-col overflow-hidden p-0 animate-in fade-in zoom-in-[0.98] duration-300 ease-out"
+      >
         {activeView === 'chat' && (
           <MigrationChatCard
             migration={project}
@@ -122,12 +126,12 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
           />
         )}
         {activeView === 'workflow' && (
-          <div className="flex-1 overflow-hidden p-6 bg-muted/5">
+          <div className="flex-1 overflow-hidden p-6 bg-muted/5 flex flex-col">
             <WorkflowPanel migrationId={project.id} />
           </div>
         )}
         {activeView === 'mapping' && (
-          <div className="flex-1 overflow-hidden p-6 bg-muted/5">
+          <div className="flex-1 overflow-hidden p-6 bg-muted/5 flex flex-col">
             <MappingPanel migrationId={project.id} />
           </div>
         )}

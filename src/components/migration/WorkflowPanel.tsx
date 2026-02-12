@@ -28,6 +28,10 @@ interface MigrationResults {
   step_4: WorkflowStepResult[];
   step_5: WorkflowStepResult[];
   step_6: WorkflowStepResult[];
+  step_7: WorkflowStepResult[];
+  step_8: WorkflowStepResult[];
+  step_9: WorkflowStepResult[];
+  step_10: WorkflowStepResult[];
 }
 
 const WorkflowPanel = ({ migrationId }: WorkflowPanelProps) => {
@@ -64,13 +68,8 @@ const WorkflowPanel = ({ migrationId }: WorkflowPanelProps) => {
   const getStepResults = (stepIndex: number): WorkflowStepResult[] => {
     if (!results) return [];
     const stepNum = stepIndex + 1;
-    if (stepNum === 1) return results.step_1;
-    if (stepNum === 2) return results.step_2;
-    if (stepNum === 3) return results.step_3;
-    if (stepNum === 4) return results.step_4;
-    if (stepNum === 5) return results.step_5;
-    if (stepNum === 6) return results.step_6;
-    return [];
+    const key = `step_${stepNum}` as keyof MigrationResults;
+    return results[key] || [];
   };
 
   const currentStepResults = getStepResults(selectedStepIndex);
@@ -80,17 +79,11 @@ const WorkflowPanel = ({ migrationId }: WorkflowPanelProps) => {
     if (!results) return;
     
     const newResults = { ...results };
-    let targetList: WorkflowStepResult[] = [];
     const stepNum = selectedStepIndex + 1;
-    
-    if (stepNum === 1) targetList = newResults.step_1;
-    else if (stepNum === 2) targetList = newResults.step_2;
-    else if (stepNum === 3) targetList = newResults.step_3;
-    else if (stepNum === 4) targetList = newResults.step_4;
-    else if (stepNum === 5) targetList = newResults.step_5;
-    else if (stepNum === 6) targetList = newResults.step_6;
+    const key = `step_${stepNum}` as keyof MigrationResults;
+    const targetList = newResults[key];
 
-    if (targetList[selectedSubItemIndex]) {
+    if (targetList && targetList[selectedSubItemIndex]) {
       const updatedJson = { ...targetList[selectedSubItemIndex].raw_json };
       let current = updatedJson;
       for (let i = 0; i < path.length - 1; i++) {
