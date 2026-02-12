@@ -412,7 +412,7 @@ const MappingPanel = ({ migrationId }: MappingPanelProps) => {
     <div className="flex flex-1 flex-col overflow-hidden bg-background rounded-3xl border">
         <div className="p-4 border-b flex items-center justify-between shrink-0">
             <div>
-                <h2 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Manual Model Mapping</h2>
+                <h2 className="font-bold text-sm uppercase tracking-wider text-muted-foreground">Mapping</h2>
             </div>
             <div className="flex items-center gap-2">
                 <Button size="sm" onClick={handleSave} disabled={isSaving} className="h-8 text-xs min-w-[100px]">
