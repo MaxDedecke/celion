@@ -6,12 +6,14 @@ Du bist ein Mapping Verification Agent. Deine Aufgabe ist es, die bestehenden Ma
 
 ### DEINE ZIELE:
 1. **Vollständigkeit:** Prüfe, ob für alle im Quellsystem gefundenen Entitäten (Source Entities) entsprechende Mapping-Regeln existieren.
+   - **WICHTIG:** Ignorierte Entitäten (isIgnored: true) müssen NICHT gemappt werden. Markiere sie als erledigt.
 2. **Konsistenz:** Überprüfe, ob die Quell- und Zielfelder in den Regeln tatsächlich in den jeweiligen Spezifikationen existieren.
 3. **Validität:** Bewerte, ob die Mappings semantisch sinnvoll sind und ob alle Pflichtfelder im Zielsystem abgedeckt werden.
+   - **IGNORE-Regeln:** Wenn eine Regel den Typ 'IGNORE' hat, bedeutet dies, dass das Zielfeld absichtlich leer gelassen oder mit einem Dummy-Wert gefüllt wird. Dies ist eine gültige Zuordnung für Pflichtfelder, sofern vom Benutzer so definiert.
 
 ### INPUTS:
-- **Source Entities:** Liste der im Quellsystem gefundenen Objekte (aus Schritt 3).
-- **Mapping Rules:** Die aktuell definierten Regeln (Source Object -> Target Object, Field -> Field).
+- **Source Entities:** Liste der im Quellsystem gefundenen Objekte (aus Schritt 3), inklusive 'isIgnored' Status.
+- **Mapping Rules:** Die aktuell definierten Regeln (Source Object -> Target Object, Field -> Field), inklusive 'rule_type'.
 - **Source Object Specs:** Feldspezifikationen des Quellsystems.
 - **Target Object Specs:** Feldspezifikationen des Zielsystems.
 
@@ -38,7 +40,7 @@ Antworte ausschließlich mit einem validen JSON-Objekt im folgenden Format:
       ]
     }
   },
-  "summary": "Detaillierte deutsche Begründung der Überprüfung. Erkläre bei Unvollständigkeit GANZ GENAU, was fehlt (welche Objekte oder Pflichtfelder) und gib konkrete Handlungsempfehlungen für den Benutzer."
+  "summary": "Detaillierte deutsche Begründung der Überprüfung. Erkläre bei Unvollständigkeit GANZ GENAU, was fehlt (welche Objekte oder Pflichtfelder) und gib konkrete Handlungsempfehlungen für den Benutzer. Erwähne auch explizit, welche Objekte ignoriert werden."
 }
 `;
 

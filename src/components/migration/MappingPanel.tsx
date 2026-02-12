@@ -13,7 +13,9 @@ import {
   Loader2,
   MessageSquare,
   Pencil,
-  Check
+  Check,
+  EyeOff,
+  Eye
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { databaseClient } from "@/api/databaseClient";
@@ -40,6 +42,7 @@ interface Entity {
   id: string;
   name: string;
   fields: EntityField[];
+  isIgnored?: boolean;
 }
 
 interface MappingTuple {
@@ -60,7 +63,7 @@ interface MappingRule {
   target_object: string;
   target_property: string;
   note?: string;
-  rule_type: 'MAP' | 'POLISH' | 'SUMMARY';
+  rule_type: 'MAP' | 'POLISH' | 'SUMMARY' | 'IGNORE';
 }
 
 const MappingPanel = ({ migrationId }: MappingPanelProps) => {
@@ -77,6 +80,7 @@ const MappingPanel = ({ migrationId }: MappingPanelProps) => {
   const [mappingRules, setMappingRules] = useState<MappingRule[]>([]);
   const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [isTogglingIgnore, setIsTogglingIgnore] = useState(false);
 
   // Field selection for rule creation (Rule Focus)
   const [selectedSourceFieldId, setSelectedSourceFieldId] = useState<string | null>(null);
@@ -104,24 +108,33 @@ const MappingPanel = ({ migrationId }: MappingPanelProps) => {
         setSourceSystemName(migration.source_system);
         setTargetSystemName(migration.target_system);
 
-        const [sourceSpecsRes, targetSpecsRes] = await Promise.all([
+        const [sourceSpecsRes, targetSpecsRes, resultsRes] = await Promise.all([
           databaseClient.fetchObjectSpecs(migration.source_system),
-          databaseClient.fetchObjectSpecs(migration.target_system)
+          databaseClient.fetchObjectSpecs(migration.target_system),
+          databaseClient.fetchMigrationResults(migrationId)
         ]);
 
         const sSpecs = sourceSpecsRes.data;
         const tSpecs = targetSpecsRes.data;
+        const results = resultsRes.data;
+
+        // Inventory results from Step 3 containing ignore status
+        const inventoryResults = results?.step_3 || [];
 
         if (sSpecs?.objects) {
-          setSourceEntities(sSpecs.objects.map((obj: any) => ({
-            id: obj.key,
-            name: obj.displayName || obj.key,
-            fields: (obj.fields || []).map((f: any) => ({
-              id: f.id,
-              name: f.name || f.id,
-              type: f.type || "text"
-            }))
-          })));
+          setSourceEntities(sSpecs.objects.map((obj: any) => {
+            const inventoryItem = inventoryResults.find((r: any) => r.entity_name === obj.key || r.entity_name === obj.displayName);
+            return {
+              id: obj.key,
+              name: obj.displayName || obj.key,
+              isIgnored: inventoryItem?.is_ignored || false,
+              fields: (obj.fields || []).map((f: any) => ({
+                id: f.id,
+                name: f.name || f.id,
+                type: f.type || "text"
+              }))
+            };
+          }));
         }
 
         if (tSpecs?.objects) {
@@ -411,6 +424,24 @@ const MappingPanel = ({ migrationId }: MappingPanelProps) => {
     }
   };
 
+  const handleToggleIgnore = async () => {
+    if (!activeSource) return;
+    setIsTogglingIgnore(true);
+    try {
+      // Pass both technical key (id) and displayName (name) to ensure matching in the backend
+      const { data, error } = await databaseClient.toggleEntityIgnore(migrationId, activeSource.id, activeSource.name);
+      if (error) throw error;
+      
+      setSourceEntities(prev => prev.map(e => e.id === activeSource.id ? { ...e, isIgnored: data.is_ignored } : e));
+      toast.success(data.is_ignored ? `Objekt "${activeSource.name}" wird nun ignoriert` : `Objekt "${activeSource.name}" wird nicht mehr ignoriert`);
+    } catch (error) {
+      console.error("Failed to toggle ignore:", error);
+      toast.error("Fehler beim Ändern des Ignore-Status");
+    } finally {
+      setIsTogglingIgnore(false);
+    }
+  };
+
   if (loading) {
     return (
       <div className="flex-1 flex items-center justify-center">
@@ -469,7 +500,8 @@ const MappingPanel = ({ migrationId }: MappingPanelProps) => {
                 <div className="grid grid-cols-2 gap-px bg-border shrink-0">
                   <div className={cn(
                     "bg-background p-4 flex items-center justify-between gap-4 transition-all border-b-2",
-                    activeSource && mappingRules.some(r => r.source_object === activeSource.id) ? "border-b-primary shadow-[0_4px_12px_-2px_rgba(59,130,246,0.2)]" : "border-b-transparent"
+                    activeSource && mappingRules.some(r => r.source_object === activeSource.id) ? "border-b-primary shadow-[0_4px_12px_-2px_rgba(59,130,246,0.2)]" : "border-b-transparent",
+                    activeSource?.isIgnored && "opacity-60 grayscale-[0.5]"
                   )}>
                     <Button 
                       variant="ghost" size="icon" 
@@ -482,8 +514,21 @@ const MappingPanel = ({ migrationId }: MappingPanelProps) => {
                       <div className="flex items-center justify-center gap-2 mb-1">
                         <Database className={cn("w-4 h-4 transition-colors", activeSource && mappingRules.some(r => r.source_object === activeSource.id) ? "text-primary" : "text-muted-foreground")} />
                         <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Source: {sourceSystemName}</span>
+                        {activeSource && (
+                          <Button 
+                            variant="ghost" size="icon" className={cn("h-6 w-6 ml-1", activeSource.isIgnored ? "text-primary bg-primary/10" : "text-muted-foreground")} 
+                            onClick={(e) => { e.stopPropagation(); handleToggleIgnore(); }}
+                            disabled={isTogglingIgnore}
+                            title={activeSource.isIgnored ? "Objekt wird ignoriert" : "Objekt ignorieren"}
+                          >
+                            {activeSource.isIgnored ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                          </Button>
+                        )}
                       </div>
-                      <h3 className="font-bold text-lg">{activeSource?.name || "Keine Entitäten"}</h3>
+                      <h3 className={cn("font-bold text-lg flex items-center justify-center gap-2", activeSource?.isIgnored && "line-through text-muted-foreground")}>
+                        {activeSource?.name || "Keine Entitäten"}
+                        {activeSource?.isIgnored && <Badge variant="outline" className="text-[10px] h-5 bg-primary/5 text-primary border-primary/20">Ignoriert</Badge>}
+                      </h3>
                     </div>
                     <Button 
                       variant="ghost" size="icon" 
@@ -591,8 +636,8 @@ const MappingPanel = ({ migrationId }: MappingPanelProps) => {
                                 </div>
                                 {rule ? (
                                   <div className="flex items-center gap-2 mt-1">
-                                    <Badge variant="secondary" className="bg-emerald-500/20 text-emerald-700 border-none text-[10px] h-5 font-bold">
-                                      {rule.source_property}
+                                    <Badge variant="secondary" className={cn("bg-emerald-500/20 text-emerald-700 border-none text-[10px] h-5 font-bold", rule.rule_type === 'IGNORE' && "bg-amber-500/20 text-amber-700")}>
+                                      {rule.rule_type === 'IGNORE' ? "IGNORIERT" : rule.source_property}
                                     </Badge>
                                   </div>
                                 ) : (
@@ -652,7 +697,7 @@ const MappingPanel = ({ migrationId }: MappingPanelProps) => {
                                     <div className="flex items-center justify-between">
                                         <div className="flex items-center gap-2 text-sm">
                                             <div className="flex items-center gap-1">
-                                                <span className="font-bold text-foreground">
+                                                <span className={cn("font-bold text-foreground", rule.rule_type === 'IGNORE' && "line-through opacity-50")}>
                                                     {rule.source_object}.<span className="text-primary">{rule.source_property}</span>
                                                 </span>
                                                 <span className="text-[10px] text-muted-foreground font-medium">({rule.source_system})</span>
@@ -672,7 +717,10 @@ const MappingPanel = ({ migrationId }: MappingPanelProps) => {
                                                 onValueChange={(val) => handleRuleUpdate(rule.id, { rule_type: val as any })}
                                             >
                                                 <SelectTrigger 
-                                                    className="h-6 w-auto min-w-[80px] text-[10px] px-2 bg-transparent border-none shadow-none font-bold"
+                                                    className={cn(
+                                                      "h-6 w-auto min-w-[80px] text-[10px] px-2 bg-transparent border-none shadow-none font-bold",
+                                                      rule.rule_type === 'IGNORE' && "text-amber-600"
+                                                    )}
                                                     onClick={(e) => e.stopPropagation()}
                                                 >
                                                     <SelectValue />
@@ -681,6 +729,7 @@ const MappingPanel = ({ migrationId }: MappingPanelProps) => {
                                                     <SelectItem value="MAP" className="text-[10px]">MAP</SelectItem>
                                                     <SelectItem value="POLISH" className="text-[10px]">POLISH</SelectItem>
                                                     <SelectItem value="SUMMARY" className="text-[10px]">SUMMARY</SelectItem>
+                                                    <SelectItem value="IGNORE" className="text-[10px] text-amber-600 font-bold">IGNORE</SelectItem>
                                                 </SelectContent>
                                             </Select>
                                             <Button 

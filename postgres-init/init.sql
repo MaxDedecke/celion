@@ -524,6 +524,7 @@ CREATE TABLE IF NOT EXISTS public.step_3_results (
   count integer NOT NULL DEFAULT 0,
   complexity text, -- 'low', 'medium', 'high'
   error_message text,
+  is_ignored boolean NOT NULL DEFAULT false,
   raw_json jsonb DEFAULT '{}'::jsonb,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   UNIQUE(migration_id, entity_name)

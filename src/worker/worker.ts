@@ -1300,8 +1300,8 @@ async function processJob(job: any) {
 
       if (!sSys6 || !tSys6) throw new Error('Systemkonfiguration unvollständig.');
 
-      const { rows: s3Rows6 } = await pool.query('SELECT entity_name, count FROM step_3_results WHERE migration_id = $1', [migrationId]);
-      const sEnts6 = s3Rows6.map(r => ({ name: r.entity_name, count: r.count }));
+      const { rows: s3Rows6 } = await pool.query('SELECT entity_name, count, is_ignored FROM step_3_results WHERE migration_id = $1', [migrationId]);
+      const sEnts6 = s3Rows6.map(r => ({ name: r.entity_name, count: r.count, isIgnored: r.is_ignored }));
 
       // Fetch Existing Mapping Rules
       const { rows: ruleRows6 } = await pool.query('SELECT * FROM public.mapping_rules WHERE migration_id = $1', [migrationId]);

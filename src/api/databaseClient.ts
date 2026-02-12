@@ -326,6 +326,11 @@ export const databaseClient = {
 
   fetchObjectSpecs: (systemName: string) => fetchFromApi<any>(`/schemes/objects/${systemName}`),
 
+  toggleEntityIgnore: (migrationId: string, entityName: string, displayName?: string) => 
+    fetchFromApi<any>(`/migrations/${migrationId}/inventory/${entityName}/toggle-ignore${displayName ? `?display_name=${encodeURIComponent(displayName)}` : ''}`, {
+      method: "POST",
+    }),
+
   updateMigrationResult: (migrationId: string, step: number, newJson: any, systemMode?: string, entityName?: string) => 
     fetchFromApi<any>(`/migrations/${migrationId}/results`, {
       method: "PATCH",

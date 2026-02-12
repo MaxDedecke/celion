@@ -3256,6 +3256,45 @@ async def update_migration_result(id: str, payload: UpdateResultPayload) -> dict
     except Exception as exc:
         raise HTTPException(status_code=500, detail=str(exc))
 
+@app.post("/api/migrations/{id}/inventory/{entity_name}/toggle-ignore")
+async def toggle_entity_ignore(id: str, entity_name: str, display_name: Optional[str] = None) -> dict[str, Any]:
+    """Toggle the ignore status of an entity in the inventory (Step 3 Results)."""
+    try:
+        with _get_db_connection() as conn, conn.cursor() as cur:
+            # First try by entity_name (technical key)
+            cur.execute(
+                "UPDATE public.step_3_results SET is_ignored = NOT is_ignored WHERE migration_id = %s AND entity_name = %s RETURNING is_ignored, entity_name",
+                (id, entity_name),
+            )
+            row = cur.fetchone()
+            
+            # If not found and display_name is provided, try by display_name
+            if not row and display_name:
+                cur.execute(
+                    "UPDATE public.step_3_results SET is_ignored = NOT is_ignored WHERE migration_id = %s AND entity_name = %s RETURNING is_ignored, entity_name",
+                    (id, display_name),
+                )
+                row = cur.fetchone()
+
+            if not row:
+                # If still not found, insert it as a new entry (assuming it was implicit/not ignored before)
+                cur.execute(
+                    """
+                    INSERT INTO public.step_3_results (migration_id, entity_name, is_ignored, count)
+                    VALUES (%s, %s, true, 0)
+                    RETURNING is_ignored, entity_name
+                    """,
+                    (id, entity_name)
+                )
+                row = cur.fetchone()
+            
+            conn.commit()
+            return {"entity_name": row["entity_name"], "is_ignored": row["is_ignored"]}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
 def _cli(url: str) -> int:
     """Provide a clear CLI notice that legacy agents are no longer available."""
 
