@@ -3,36 +3,20 @@ import { Message } from '../openai/types';
 import { buildOpenAiHeaders, resolveOpenAiConfig } from '../openai/openaiClient';
 
 const SYSTEM_PROMPT = `
-You are an authentication expert. Your task is to verify if the provided credentials (Email and API Token) 
-work for a specific target system and URL.
+Verify credentials for the target system.
+Use the provided Auth Scheme instructions.
+1. Use 'apiBaseUrl' if present in the scheme.
+2. Construct headers based on 'type':
+   - "bearer": "Authorization": "<tokenPrefix><API_TOKEN>"
+   - "header": "<headerName>": "<tokenPrefix><API_TOKEN>"
+   - "basic": "Authorization": "Basic <CREDENTIALS_BASE64>"
+3. Call the 'whoami' endpoint defined in the scheme using 'http_probe'.
+4. MANDATORY: Pass the 'headers' object to 'http_probe'.
 
-You will be provided with:
-1. Target URL
-2. Credentials (Email, API Token)
-3. Auth Scheme (Configuration from the system's spec file)
+SECURITY:
+- Use placeholders <API_TOKEN>, <EMAIL>, <CREDENTIALS_BASE64> in tool calls. DO NOT send real secrets.
 
-Your goal:
-- STRICTLY follow the 'authentication' section in the Auth Scheme.
-- **CRITICAL:** If the Auth Scheme contains an 'apiBaseUrl' (e.g. "https://api.notion.com"), USE IT as the base for your requests instead of the provided 'Target URL'.
-- Include any global 'headers' defined in the Auth Scheme (e.g. 'Notion-Version') in your requests.
-- Construct the correct authentication headers based on 'type':
-  - **type: "bearer"**: Header "Authorization" = "<tokenPrefix><API_TOKEN>" (usually "Bearer <API_TOKEN>")
-  - **type: "header"**: Header "<headerName>" = "<tokenPrefix><API_TOKEN>"
-  - **type: "basic"**: Header "Authorization" = "Basic <CREDENTIALS_BASE64>"
-- Use the 'http_probe' tool to call the 'whoami' endpoint defined in the scheme.
-- **MANDATORY:** You MUST provide the 'headers' object in the 'http_probe' tool call, containing the auth headers.
-
-IMPORTANT SECURITY INSTRUCTIONS:
-- Do NOT use real credential values in your tool calls.
-- Use the placeholder "<API_TOKEN>" where the API Token is required (e.g. in Bearer or Private-Token headers).
-- Use the placeholder "<EMAIL>" where the Email is required.
-- For Basic Auth, use the placeholder "<CREDENTIALS_BASE64>" which represents 'base64(email:apiToken)'.
-  Example: "Authorization": "Basic <CREDENTIALS_BASE64>"
-
-- If 'tokenPrefix' is an empty string in the scheme, DO NOT add "Bearer " or any other prefix. Use the token placeholder directly.
-- If 'headerName' is specified (e.g. 'PRIVATE-TOKEN'), use that exact header name.
-
-Return the result in the following JSON format:
+Return JSON:
 {
   "success": boolean,
   "authenticatedAs": string | null,
@@ -47,14 +31,14 @@ const TOOLS = [
     type: "function",
     function: {
       name: "http_probe",
-      description: "Performs an HTTP request to verify credentials.",
+      description: "Verifies credentials via HTTP request.",
       parameters: {
         type: "object",
         properties: {
-          url: { type: "string", description: "The full URL to probe." },
-          method: { type: "string", enum: ["GET", "POST"], description: "HTTP method." },
-          headers: { type: "object", description: "Authentication and other headers." },
-          body: { type: "string", description: "Optional body." }
+          url: { type: "string" },
+          method: { type: "string", enum: ["GET", "POST"] },
+          headers: { type: "object" },
+          body: { type: "string" }
         },
         required: ["url", "headers"]
       }
@@ -75,11 +59,18 @@ export async function* runAuthFlow(
   const token = credentials.apiToken || "";
   const base64Credentials = btoa(`${email}:${token}`);
 
+  // Only pass relevant auth details to save tokens
+  const simplifiedScheme = {
+    authentication: authScheme.authentication || authScheme,
+    apiBaseUrl: authScheme.apiBaseUrl,
+    headers: authScheme.headers
+  };
+
   const userContext = `
-Target URL: ${url}
-Email: ${credentials.email || 'Not provided'}
-API Token: ${credentials.apiToken ? 'PROVIDED' : 'MISSING'}
-Auth Scheme: ${JSON.stringify(authScheme, null, 2)}
+Target: ${url}
+Email: ${credentials.email ? 'PROVIDED' : 'MISSING'}
+Token: ${credentials.apiToken ? 'PROVIDED' : 'MISSING'}
+Scheme: ${JSON.stringify(simplifiedScheme)}
   `;
 
   const messages: any[] = [
@@ -127,62 +118,45 @@ Auth Scheme: ${JSON.stringify(authScheme, null, 2)}
         try {
           if (functionName === 'http_probe') {
             console.log(`[AuthAgent] Requesting probe for ${args.url}`);
-            console.log(`[AuthAgent] Proposed Headers (Placeholder):`, JSON.stringify(args.headers, null, 2));
-
+            
             // Forcefully inject headers if missing or empty, based on authScheme
             if (!args.headers || Object.keys(args.headers).length === 0) {
-                console.log("[AuthAgent] Headers missing/empty. Constructing from scheme fallback...");
                 args.headers = args.headers || {};
-                
-                // authScheme IS the authentication object + extras (from worker.ts)
-                const auth = authScheme; 
+                const auth = authScheme.authentication || authScheme; 
                 
                 if (auth) {
                     if (auth.type === 'bearer') {
-                        // Default to Bearer if tokenPrefix is undefined, else use it (even if empty)
                         const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : 'Bearer ';
-                        args.headers['Authorization'] = `${prefix}<API_TOKEN>`;
+                        args.headers['Authorization'] = `${prefix}${token}`;
                     } else if (auth.type === 'header') {
                         const name = auth.headerName || 'Authorization';
                         const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : '';
-                        args.headers[name] = `${prefix}<API_TOKEN>`;
+                        args.headers[name] = `${prefix}${token}`;
                     } else if (auth.type === 'basic') {
-                        args.headers['Authorization'] = 'Basic <CREDENTIALS_BASE64>';
+                        args.headers['Authorization'] = `Basic ${base64Credentials}`;
                     }
                 }
-                
-                // Also inject global headers if present
                 if (auth.headers) {
-                    args.headers = { ...args.headers, ...auth.headers };
+                    Object.assign(args.headers, auth.headers);
+                }
+            } else {
+                // Replace placeholders if headers were provided by LLM
+                for (const [key, value] of Object.entries(args.headers)) {
+                    if (typeof value === 'string') {
+                      args.headers[key] = (value as string)
+                        .replace('<API_TOKEN>', token)
+                        .replace('<EMAIL>', email)
+                        .replace('<CREDENTIALS_BASE64>', base64Credentials);
+                    }
                 }
             }
-
-            // Inject actual credentials into headers
-            if (args.headers) {
-              for (const [key, value] of Object.entries(args.headers)) {
-                if (typeof value === 'string') {
-                  // Cast to string to satisfy TS
-                  const strValue = value as string;
-                  args.headers[key] = strValue
-                    .replace('<API_TOKEN>', token)
-                    .replace('<EMAIL>', email)
-                    .replace('<CREDENTIALS_BASE64>', base64Credentials);
-                }
-              }
-            }
-            
-            // Log masked headers for debugging
-            const maskedHeaders = { ...args.headers };
-            if (maskedHeaders.Authorization) maskedHeaders.Authorization = "[MASKED]";
-            if (maskedHeaders['PRIVATE-TOKEN']) maskedHeaders['PRIVATE-TOKEN'] = "[MASKED]";
-            console.log(`[AuthAgent] Sending Headers:`, JSON.stringify(maskedHeaders, null, 2));
 
             result = await httpClient(args);
-            // Truncate large bodies
+            // Aggressive truncation
             if (result.body) {
               const bodyStr = typeof result.body === 'string' ? result.body : JSON.stringify(result.body);
-              if (bodyStr.length > 10000) {
-                result.body = bodyStr.slice(0, 10000) + '...[TRUNCATED BY AGENT]';
+              if (bodyStr.length > 2000) {
+                result.body = bodyStr.slice(0, 2000) + '...[TRUNCATED]';
               }
             }
           } else {
