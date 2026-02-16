@@ -4,16 +4,12 @@ import { Message } from '../openai/types';
 import { buildOpenAiHeaders, resolveOpenAiConfig } from '../openai/openaiClient';
 
 const SYSTEM_PROMPT = `
-You are a system detection expert. Your task is to identify the software system running at a given URL.
-You should check for common signatures in HTTP headers, HTML content, and specific API endpoints.
+Identify the software system at the target URL.
+Check HTTP headers, HTML content, and API endpoints.
+Use 'curl_head_probe' first for headers. Use 'http_probe' for HTML/API checks if needed.
+Compare with 'Expected System'.
 
-Use the available tools 'curl_head_probe' and 'http_probe' to gather information.
-- Start with 'curl_head_probe' to check headers (e.g. Server, X-Powered-By, Set-Cookie).
-- If inconclusive, use 'http_probe' to check HTML content or specific API endpoints (e.g. /rest/api/2/serverInfo for Jira).
-
-Compare your findings with the 'Expected System' if provided.
-
-Return the result in the following JSON format:
+Return JSON:
 {
   "systemMatchesUrl": boolean,
   "apiTypeDetected": "REST" | "GraphQL" | "SOAP" | "gRPC" | "unknown",
@@ -35,12 +31,12 @@ const TOOLS = [
     type: "function",
     function: {
       name: "curl_head_probe",
-      description: "Performs a HEAD request to inspect HTTP headers and redirects.",
+      description: "Inspects HTTP headers/redirects via HEAD.",
       parameters: {
         type: "object",
         properties: {
-          url: { type: "string", description: "The URL to probe." },
-          headers: { type: "object", description: "Optional headers to include." }
+          url: { type: "string" },
+          headers: { type: "object" }
         },
         required: ["url"]
       }
@@ -50,14 +46,14 @@ const TOOLS = [
     type: "function",
     function: {
       name: "http_probe",
-      description: "Performs a full HTTP request (GET/POST) to inspect body/content.",
+      description: "Inspects body via GET/POST.",
       parameters: {
         type: "object",
         properties: {
-          url: { type: "string", description: "The URL to probe." },
-          method: { type: "string", enum: ["GET", "POST", "HEAD", "PUT", "DELETE"], description: "HTTP method." },
-          headers: { type: "object", description: "Optional headers." },
-          body: { type: "string", description: "Optional body content." }
+          url: { type: "string" },
+          method: { type: "string", enum: ["GET", "POST", "HEAD"] },
+          headers: { type: "object" },
+          body: { type: "string" }
         },
         required: ["url"]
       }
@@ -71,7 +67,7 @@ export async function* runSystemDetection(url: string, system: string, instructi
 
   const messages: any[] = [
     { role: "system", content: SYSTEM_PROMPT },
-    { role: "user", content: `Target URL: ${url}\nExpected System: ${system || 'Not specified'}\nHints: ${instructions || 'None'}` }
+    { role: "user", content: `URL: ${url}\nExpected: ${system || '?'}\nHints: ${instructions || '-'}` }
   ];
 
   // OpenAI Chat Completions Loop
@@ -80,10 +76,10 @@ export async function* runSystemDetection(url: string, system: string, instructi
       method: 'POST',
       headers,
       body: JSON.stringify({
-        model: "gpt-4o-mini", // Or generic, using standard model
+        model: "gpt-4o-mini",
         messages,
         tools: TOOLS,
-        response_format: { type: "json_object" } // Using json_object to ensure valid JSON
+        response_format: { type: "json_object" }
       }),
     });
 
@@ -123,8 +119,8 @@ export async function* runSystemDetection(url: string, system: string, instructi
             // Aggressive truncation to prevent context length errors
             if (result.body) {
               const bodyStr = typeof result.body === 'string' ? result.body : JSON.stringify(result.body);
-              if (bodyStr.length > 10000) {
-                result.body = bodyStr.slice(0, 10000) + '...[TRUNCATED BY AGENT]';
+              if (bodyStr.length > 2000) {
+                result.body = bodyStr.slice(0, 2000) + '...[TRUNCATED]';
               }
             }
           } else {

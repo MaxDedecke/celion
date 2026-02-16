@@ -163,11 +163,20 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
 
   const derivedStatus = useMemo(() => {
     if (message.status) return message.status;
+    
+    // If we have valid JSON content, rely on its internal status/success fields
+    // instead of scanning the full string which might contain scraped HTML with "success" classes
+    if (jsonContent) {
+      if (jsonContent.status === 'success' || jsonContent.success === true || jsonContent.systemMatchesUrl === true) return "success";
+      if (jsonContent.status === 'error' || jsonContent.error || jsonContent.systemMatchesUrl === false) return "error";
+      return undefined;
+    }
+
     const lower = message.content.toLowerCase();
     if (lower.includes("erfolgreich") || lower.includes("abgeschlossen") || lower.includes("success")) return "success";
     if (lower.includes("fehlgeschlagen") || lower.includes("failed") || lower.includes("error:")) return "error";
     return undefined;
-  }, [message.status, message.content]);
+  }, [message.status, message.content, jsonContent]);
 
   // Special Action Message Rendering
   if (jsonContent && jsonContent.type === 'action') {
@@ -379,7 +388,7 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
                 variant="outline" 
                 size="sm" 
                 onClick={() => setShowJsonDialog(true)} 
-                className="h-7 text-xs bg-background/50 hover:bg-background mt-1 w-48 self-center"
+                className="h-7 text-xs bg-background/80 hover:bg-accent mt-1 w-48 self-center"
               >
                 <FileJson className="w-3 h-3 mr-2" />
                 Details anzeigen
