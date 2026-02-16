@@ -56,6 +56,8 @@ const AddMigrationDialog = ({
   const [targetName, setTargetName] = useState(initialData?.scopeConfig?.targetName ?? "");
   const [error, setError] = useState<string | null>(null);
 
+  const [stepInfo, setStepInfo] = useState<{ current: number; total: number } | null>(null);
+
   const resetForm = useCallback(() => {
     if (isEditMode && initialData) {
       setName(initialData.name ?? "");
@@ -81,6 +83,8 @@ const AddMigrationDialog = ({
       setTargetEmail("");
       setSourceScope("");
       setTargetName("");
+      // Reset step info when opening in create mode (will be updated by agent)
+      setStepInfo(null);
     }
     setError(null);
   }, [initialData, isEditMode]);
@@ -90,6 +94,9 @@ const AddMigrationDialog = ({
       // Always reset form state when dialog opens, specifically for Edit Mode
       if (isEditMode) {
         resetForm();
+      } else {
+          // Reset for create mode too to clear previous steps if any
+          setStepInfo(null);
       }
     }
   }, [open, isEditMode, resetForm]);
@@ -142,7 +149,15 @@ const AddMigrationDialog = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="bg-popover border-border w-full sm:max-w-5xl p-0 overflow-hidden">
+      <DialogContent 
+        className="bg-popover border-border w-full sm:max-w-5xl p-0 overflow-hidden"
+        onInteractOutside={(e) => e.preventDefault()}
+      >
+        {!isEditMode && stepInfo && (
+          <div className="absolute right-12 top-4 z-50 text-xs text-muted-foreground bg-background/80 px-2 py-1 rounded pointer-events-none">
+            Schritt {stepInfo.current} von {stepInfo.total}
+          </div>
+        )}
         <div className="border-b border-border bg-muted/30 px-6 py-4">
           <DialogHeader className="space-y-1">
             <DialogTitle className="text-xl">
@@ -334,6 +349,7 @@ const AddMigrationDialog = ({
               onOpenChange(false);
             }} 
             onCancel={() => onOpenChange(false)}
+            onStepChange={(current, total) => setStepInfo({ current, total })}
             initialData={initialData}
           />
         )}

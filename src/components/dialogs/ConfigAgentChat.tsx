@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef } from "react";
-import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import ChatMessage, { type ChatMessage as ChatMessageType } from "@/components/migration/ChatMessage";
 import ChatInput from "@/components/migration/ChatInput";
@@ -9,6 +8,7 @@ import type { NewMigrationInput } from "@/types/migration";
 interface ConfigAgentChatProps {
   onComplete: (config: NewMigrationInput) => void;
   onCancel: () => void;
+  onStepChange?: (step: number, total: number) => void;
   initialData?: Partial<NewMigrationInput>;
 }
 
@@ -34,23 +34,12 @@ interface StepConfig {
   options?: readonly string[];
 }
 
-const ConfigAgentChat = ({ onComplete, onCancel, initialData }: ConfigAgentChatProps) => {
+const ConfigAgentChat = ({ onComplete, onCancel, onStepChange, initialData }: ConfigAgentChatProps) => {
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
   const [config, setConfig] = useState<Partial<NewMigrationInput>>(initialData || {});
   const [isProcessing, setIsProcessing] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
-
-  const addMessage = (role: "assistant" | "user", content: string) => {
-    const newMessage: ChatMessageType = {
-      id: crypto.randomUUID(),
-      role,
-      content,
-      created_at: new Date().toISOString(),
-      status: "success",
-    };
-    setMessages((prev) => [...prev, newMessage]);
-  };
 
   const steps: StepConfig[] = [
     {
@@ -131,10 +120,22 @@ const ConfigAgentChat = ({ onComplete, onCancel, initialData }: ConfigAgentChatP
     }
   ];
 
+  const addMessage = (role: "assistant" | "user", content: string) => {
+    const newMessage: ChatMessageType = {
+      id: crypto.randomUUID(),
+      role,
+      content,
+      created_at: new Date().toISOString(),
+      status: "success",
+    };
+    setMessages((prev) => [...prev, newMessage]);
+  };
+
   // Initial greeting
   useEffect(() => {
     if (messages.length === 0) {
       addMessage("assistant", steps[0].question);
+      onStepChange?.(1, steps.length);
     }
   }, []);
 
@@ -215,6 +216,7 @@ const ConfigAgentChat = ({ onComplete, onCancel, initialData }: ConfigAgentChatP
     const nextIndex = currentStepIndex + 1;
     if (nextIndex < steps.length) {
       setCurrentStepIndex(nextIndex);
+      onStepChange?.(nextIndex + 1, steps.length);
       const nextStep = steps[nextIndex];
       
       let question = nextStep.question;
@@ -251,10 +253,6 @@ Alles korrekt? (ja/nein)`;
           disabled={isProcessing || currentStepIndex >= steps.length && steps[currentStepIndex]?.key !== 'confirmation'} 
           placeholder={steps[currentStepIndex]?.options ? `Wähle z.B. ${steps[currentStepIndex].options![0]}...` : "Antwort eingeben..."}
         />
-        <div className="mt-2 text-xs text-muted-foreground flex justify-between">
-           <span>Schritt {Math.min(currentStepIndex + 1, steps.length)} von {steps.length}</span>
-           <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={onCancel}>Abbrechen</Button>
-        </div>
       </div>
     </div>
   );
