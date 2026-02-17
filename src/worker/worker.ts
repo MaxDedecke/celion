@@ -817,7 +817,7 @@ async function processJob(job: any) {
       await writeChatMessage(migrationId, 'assistant', 'Bereite Daten für das Mapping vor (Data Staging)...', currentStepNumber);
 
       // --- Phase 1: Rate-Limit Calibration ---
-      await writeChatMessage(migrationId, 'assistant', 'Phase 1: Initial Rate-Limit Calibration starting...', currentStepNumber);
+      await writeChatMessage(migrationId, 'assistant', 'Phase 1: Initiale Rate-Limit Kalibrierung startet...', currentStepNumber);
       
       const { rows: connectorRows } = await pool.query('SELECT api_url, api_key, username, auth_type FROM connectors WHERE migration_id = $1 AND connector_type = $2', [migrationId, 'in']);
       const connector = connectorRows[0];
@@ -868,7 +868,7 @@ async function processJob(job: any) {
 
       if (connector && effectiveApiUrl) {
           const probeUrl = sourceSystem === 'ClickUp' ? `${effectiveApiUrl}/api/v2/user` : (scheme?.authentication?.whoami?.endpoint ? `${effectiveApiUrl}${scheme.authentication.whoami.endpoint}` : effectiveApiUrl);
-          await writeChatMessage(migrationId, 'assistant', `Performing probe request to ${probeUrl}...`, currentStepNumber);
+          await writeChatMessage(migrationId, 'assistant', `Führe Probe-Anfrage durch an ${probeUrl}...`, currentStepNumber);
           
           const headers: any = { 
               "Accept": "application/json",
@@ -916,12 +916,12 @@ async function processJob(job: any) {
               };
               await writeChatMessage(migrationId, 'assistant', JSON.stringify(frontendResult), currentStepNumber);
           } catch (e: any) {
-              await writeChatMessage(migrationId, 'assistant', `Probe failed: ${e.message}. Using defaults.`, currentStepNumber);
+              await writeChatMessage(migrationId, 'assistant', `Probe fehlgeschlagen: ${e.message}. Nutze Standardwerte.`, currentStepNumber);
           }
       }
 
       // --- Phase 2: Agent-Driven Ingestion ---
-      await writeChatMessage(migrationId, 'assistant', 'Phase 2: Programmatic Data Import in Neo4j starting...', currentStepNumber);
+      await writeChatMessage(migrationId, 'assistant', 'Phase 2: Programmatischer Datenimport in Neo4j startet...', currentStepNumber);
       
       const { rows: step3Rows } = await pool.query('SELECT entity_name, count FROM step_3_results WHERE migration_id = $1', [migrationId]);
       const entities = step3Rows.map(r => ({ name: r.entity_name, count: r.count }));
@@ -1003,7 +1003,7 @@ async function processJob(job: any) {
                       continue;
                   }
                   attemptedUrls.add(url);
-                  addStagingLog(`Agent fetching ${entity_name} von ${url}...`);
+                  addStagingLog(`Agent ruft ${entity_name} von ${url} ab...`);
 
                   const headers: any = { 
                       "Accept": "application/json",
@@ -1056,7 +1056,7 @@ async function processJob(job: any) {
                       }
                   } catch (e: any) {
                       messages.push({ role: "tool", tool_call_id: toolCall.id, content: `Fetch error: ${e.message}` });
-                      addStagingLog(`Fetch-Fehler bei ${entity_name}: ${e.message}`);
+                      addStagingLog(`Abruffehler bei ${entity_name}: ${e.message}`);
                   }
                   await new Promise(r => setTimeout(r, rateLimitResult.delay * 1000));
               }
@@ -1065,7 +1065,7 @@ async function processJob(job: any) {
           // --- End of Phase 2 Ingestion ---
           console.log(`[Worker] Phase 2 Ingestion complete. Starting Phase 3...`);
           console.log(`[Worker] Starting Phase 3 for migration ${migrationId}`);
-          await writeChatMessage(migrationId, 'assistant', 'Phase 3: Automated Relationship Discovery starting...', currentStepNumber);
+          await writeChatMessage(migrationId, 'assistant', 'Phase 3: Automatische Beziehungserkennung startet...', currentStepNumber);
           
           const addPhase3Log = (msg: string) => {
               phase3Logs.push(`[${new Date().toLocaleTimeString('de-DE')}] ${msg}`);
@@ -1229,7 +1229,7 @@ async function processJob(job: any) {
 
       // Send bundled logs as a single structured message
       const protocolResult = {
-          status: "info",
+          status: "success", // Changed from 'info' to 'success' for green coloring
           phase: "Data Ingestion Protocol",
           summary: `Daten-Import und Graph-Strukturierung abgeschlossen: ${totalImported} Objekte geladen.`,
           rawOutput: stagingLogs.join('\n')

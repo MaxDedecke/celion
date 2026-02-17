@@ -155,8 +155,14 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
     // Only attempt to complete if typewriter is enabled
     if (!enableTypewriter) return;
 
+    // JSON messages skip typewriter animation
     if (jsonContent) {
-      // JSON messages skip typewriter animation
+      onTypewriterComplete();
+      return;
+    }
+
+    // User messages skip typewriter animation (they have CSS slide-up)
+    if (message.role === "user") {
       onTypewriterComplete();
     }
   }, [enableTypewriter, message.role, onTypewriterComplete, jsonContent]);
