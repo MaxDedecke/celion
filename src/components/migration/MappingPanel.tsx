@@ -27,9 +27,21 @@ import type { ChatMessage } from "@/components/migration/ChatMessage";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 
 interface MappingPanelProps {
   migrationId: string;
+  onClose?: () => void;
+  onTriggerStep?: () => void;
 }
 
 interface EntityField {
@@ -66,7 +78,7 @@ interface MappingRule {
   rule_type: 'MAP' | 'POLISH' | 'SUMMARY' | 'IGNORE';
 }
 
-const MappingPanel = ({ migrationId }: MappingPanelProps) => {
+const MappingPanel = ({ migrationId, onClose, onTriggerStep }: MappingPanelProps) => {
   const [loading, setLoading] = useState(true);
   const [sourceEntities, setSourceEntities] = useState<Entity[]>([]);
   const [targetEntities, setTargetEntities] = useState<Entity[]>([]);
@@ -81,6 +93,7 @@ const MappingPanel = ({ migrationId }: MappingPanelProps) => {
   const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [isTogglingIgnore, setIsTogglingIgnore] = useState(false);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
 
   // Field selection for rule creation (Rule Focus)
   const [selectedSourceFieldId, setSelectedSourceFieldId] = useState<string | null>(null);
@@ -277,17 +290,29 @@ const MappingPanel = ({ migrationId }: MappingPanelProps) => {
     return mappingRules.filter(r => r.source_object === activeSource.id || r.source_object === activeSource.name);
   }, [mappingRules, activeSource]);
 
-  const handleSave = async () => {
+  const handleSaveClick = () => {
+    setShowSaveDialog(true);
+  };
+
+  const handleConfirmSave = async () => {
+    setShowSaveDialog(false);
     setIsSaving(true);
     try {
       await databaseClient.updateMigrationResult(migrationId, 6, { mappings });
       toast.success("Mapping erfolgreich gespeichert");
+      onTriggerStep?.();
+      onClose?.();
     } catch (error) {
       console.error("Failed to save mappings:", error);
       toast.error("Fehler beim Speichern des Mappings");
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const handleCancelSave = () => {
+    setShowSaveDialog(false);
+    onClose?.();
   };
 
   const handleRuleSelect = (ruleId: string) => {
@@ -520,7 +545,7 @@ const MappingPanel = ({ migrationId }: MappingPanelProps) => {
                 </div>
             </div>
             <div className="flex items-center gap-2">
-                <Button size="sm" onClick={handleSave} disabled={isSaving} className="h-8 text-xs min-w-[100px]">
+                <Button size="sm" onClick={handleSaveClick} disabled={isSaving} className="h-8 text-xs min-w-[100px]">
                     {isSaving ? <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" /> : <Save className="w-3.5 h-3.5 mr-1.5" />}
                     Speichern
                 </Button>
@@ -863,6 +888,21 @@ const MappingPanel = ({ migrationId }: MappingPanelProps) => {
               </ResizablePanel>
             </ResizablePanelGroup>
           </div>
+
+          <AlertDialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Mappings speichern & verifizieren?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Das Speichern der Mappings erfordert eine erneute Verifizierung (Schritt 6). Möchten Sie fortfahren?
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel onClick={handleCancelSave}>Abbrechen</AlertDialogCancel>
+                <AlertDialogAction onClick={handleConfirmSave}>Speichern & Prüfen</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
     </div>
   );
 };

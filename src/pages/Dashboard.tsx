@@ -971,6 +971,7 @@ const Dashboard = () => {
                   onRefresh={refreshCurrentMigration}
                   onStepRunningChange={(isRunning) => handleStepRunningChange(currentMigration.id, isRunning)}
                   activeView={activeView}
+                  onViewChange={setActiveView}
                 />
               </div>
             </div>

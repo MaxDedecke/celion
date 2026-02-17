@@ -14,7 +14,8 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
   project, 
   onRefresh, 
   onStepRunningChange,
-  activeView = 'chat'
+  activeView = 'chat',
+  onViewChange
 }, ref) => {
   const [isStepRunning, setIsStepRunning] = useState(project.step_status === 'running');
 
@@ -132,7 +133,11 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         )}
         {activeView === 'mapping' && (
           <div className="flex-1 overflow-hidden flex flex-col">
-            <MappingPanel migrationId={project.id} />
+            <MappingPanel 
+              migrationId={project.id} 
+              onClose={() => onViewChange?.('chat')}
+              onTriggerStep={() => handleNextWorkflowStep(6)}
+            />
           </div>
         )}
       </div>
