@@ -1233,13 +1233,59 @@ async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
                 UPDATE public.migrations
                 SET current_step = %s, step_status = 'running', status = 'processing'
                 WHERE id = %s
-                RETURNING id, source_url, source_system, target_url, target_system, notes
+                RETURNING id, source_url, source_system, target_url, target_system, notes, workflow_state
                 """,
                 (step, id),
             )
             migration_row = cur.fetchone()
             if not migration_row:
                 raise HTTPException(status_code=404, detail="Migration not found")
+
+            # --- Workflow State Consistency ---
+            # Remove nodes from workflow_state that correspond to the retried step or later steps.
+            wf_state = migration_row.get("workflow_state") or {}
+            if "nodes" in wf_state and isinstance(wf_state["nodes"], list):
+                new_nodes = []
+                step_map = {
+                    "system-detection": 1,
+                    "auth-flow": 2,
+                    "schema-discovery": 3,
+                    "target-schema": 4,
+                    "data-staging": 5,
+                    "mapping-verification": 6,
+                    "quality-enhancement": 7,
+                    "data-transfer": 8,
+                    "verification": 9,
+                    "report": 10
+                }
+                
+                for node in wf_state["nodes"]:
+                     node_id = node.get("id", "")
+                     keep = True
+                     
+                     # Check named IDs
+                     if node_id in step_map:
+                         if step_map[node_id] >= step:
+                             keep = False
+                     
+                     # Check step-N IDs
+                     elif node_id.startswith("step-"):
+                         try:
+                             node_step_num = int(node_id.split("-")[1])
+                             if node_step_num >= step:
+                                 keep = False
+                         except ValueError:
+                             pass
+                     
+                     if keep:
+                         new_nodes.append(node)
+
+                wf_state["nodes"] = new_nodes
+                # Update workflow_state in DB
+                cur.execute(
+                    "UPDATE public.migrations SET workflow_state = %s WHERE id = %s",
+                    (json.dumps(wf_state), id)
+                )
 
             # 2. Create a migration_step record
             step_name = f"Step {step}"

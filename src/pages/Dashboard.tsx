@@ -19,6 +19,8 @@ import {
   ShieldCheck,
   Package,
   CheckCircle2,
+  XCircle,
+  Circle,
   Clock,
   Cpu,
   Activity as ActivityIcon,
@@ -719,6 +721,44 @@ const Dashboard = () => {
     return completedCount >= 5;
   }, [currentMigration]);
 
+  const isStep6Verified = useMemo(() => {
+    if (!currentMigration?.workflowState?.nodes) return false;
+    const step6Node = currentMigration.workflowState.nodes.find((n: any) => n.id === "mapping-verification" || n.id === "step-6");
+    if (!step6Node) return false;
+    
+    // Check for success: status='done' AND no error
+    return step6Node.status === 'done' && step6Node.agentResult && !step6Node.agentResult.error;
+  }, [currentMigration]);
+
+  const configVerificationStatus = useMemo(() => {
+    if (!currentMigration?.workflowState?.nodes) return 'unverified';
+    
+    const step1Node = currentMigration.workflowState.nodes.find((n: any) => n.id === "system-detection" || n.id === "step-1");
+    const step2Node = currentMigration.workflowState.nodes.find((n: any) => n.id === "auth-flow" || n.id === "step-2");
+
+    // Check Step 2 (Auth)
+    if (step2Node?.status === 'done') {
+        if (step2Node.agentResult && !step2Node.agentResult.error) {
+            return 'verified';
+        }
+        return 'failed';
+    }
+
+    // Check Step 1 (System)
+    if (step1Node?.status === 'done') {
+         if (step1Node.agentResult && step1Node.agentResult.error) {
+             return 'failed';
+         }
+         // Step 1 done & success, Step 2 not done -> Unverified (Auth not checked yet)
+         return 'unverified';
+    }
+
+    // Neither run
+    return 'unverified';
+  }, [currentMigration]);
+
+
+
   // Load notes when current migration changes
   useEffect(() => {
     if (currentMigration) {
@@ -850,19 +890,38 @@ const Dashboard = () => {
                     variant={activeView === 'mapping' ? 'secondary' : 'ghost'}
                     size="icon"
                     onClick={() => setActiveView('mapping')}
-                    className="h-8 w-8"
+                    className="h-8 w-8 relative"
                     disabled={!isMappingEnabled}
-                    title={isMappingEnabled ? "Mappings" : "Mapping erst nach Abschluss von Schritt 4 verfügbar"}
+                    title={isMappingEnabled ? (isStep6Verified ? "Mappings - verifiziert" : "Mappings") : "Mapping erst nach Abschluss von Schritt 4 verfügbar"}
                   >
                     <Network className={cn("h-4 w-4 transition-colors", activeView === 'mapping' && "text-primary")} />
+                    {isMappingEnabled && (
+                      <div className="absolute -top-1 -right-1 pointer-events-none bg-background rounded-full ring-2 ring-background">
+                         {isStep6Verified ? (
+                           <CheckCircle2 className="h-3 w-3 text-green-500 fill-background" /> 
+                         ) : (
+                           <XCircle className="h-3 w-3 text-red-500 fill-background" />
+                         )}
+                      </div>
+                    )}
                   </Button>
                   <Button
                     variant="ghost"
                     size="icon"
                     onClick={handleOpenEditConfig}
-                    className="h-8 w-8"
+                    className="h-8 w-8 relative"
+                    title={configVerificationStatus === 'verified' ? "Konfiguration - verifiziert" : "Konfiguration"}
                   >
                     <Settings className="h-4 w-4" />
+                    <div className="absolute -top-1 -right-1 pointer-events-none bg-background rounded-full ring-2 ring-background">
+                        {configVerificationStatus === 'verified' ? (
+                          <CheckCircle2 className="h-3 w-3 text-green-500 fill-background" /> 
+                        ) : configVerificationStatus === 'failed' ? (
+                          <XCircle className="h-3 w-3 text-red-500 fill-background" />
+                        ) : (
+                          <Circle className="h-3 w-3 text-muted-foreground fill-background" />
+                        )}
+                    </div>
                   </Button>
                   <Popover open={isNotesPopoverOpen} onOpenChange={setIsNotesPopoverOpen}>
                     <PopoverTrigger asChild>
