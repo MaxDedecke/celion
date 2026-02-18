@@ -1566,6 +1566,55 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
           
           console.log(`[Worker] Phase 3 completed for migration ${migrationId}`);
 
+          // --- Phase 4: Validation ---
+          console.log(`[Worker] Starting Phase 4 (Validation) for migration ${migrationId}`);
+          await writeChatMessage(migrationId, 'assistant', 'Phase 4: Validierung der Datenintegrität...', currentStepNumber);
+          
+          const validationLogs: string[] = [];
+          const addValidationLog = (msg: string) => {
+              validationLogs.push(`[${new Date().toLocaleTimeString('de-DE')}] ${msg}`);
+          };
+          
+          let validationErrors = 0;
+          
+          const validationSession = driver.session();
+          try {
+              for (const entity of entities) {
+                  // Count nodes in Neo4j for this entity type and migration
+                  const result = await validationSession.run(
+                      `MATCH (n {migration_id: $migrationId, entity_type: $entityType}) RETURN count(n) as count`,
+                      { migrationId, entityType: entity.name }
+                  );
+                  const actualCount = result.records[0].get('count').toNumber();
+                  const expectedCount = entity.count;
+                  
+                  const match = actualCount === expectedCount;
+                  if (!match) validationErrors++;
+                  
+                  const icon = match ? '✅' : '⚠️';
+                  const msg = `${icon} Entity '${entity.name}': Erwartet ${expectedCount}, Gefunden ${actualCount}.`;
+                  addValidationLog(msg);
+              }
+          } catch (error: any) {
+              console.error(`[Worker] Validation failed: ${error}`);
+              addValidationLog(`❌ Validierungsfehler: ${error.message}`);
+              validationErrors++;
+          } finally {
+              await validationSession.close();
+          }
+          
+          const validationSummary = validationErrors === 0 
+              ? `Validierung erfolgreich: Alle ${entities.length} Entitätstypen sind vollständig vorhanden.`
+              : `Validierung abgeschlossen mit ${validationErrors} Abweichungen.`;
+              
+          const validationResultObj = {
+              status: validationErrors === 0 ? "success" : "warning",
+              phase: "Validation",
+              summary: validationSummary,
+              rawOutput: validationLogs.join('\n')
+          };
+          await writeChatMessage(migrationId, 'assistant', JSON.stringify(validationResultObj), currentStepNumber);
+
       } finally {
           await driver.close();
       }
