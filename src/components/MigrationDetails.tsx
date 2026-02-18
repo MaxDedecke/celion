@@ -73,8 +73,10 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
       if (!isNaN(stepNum)) {
         handleNextWorkflowStep(stepNum);
       }
+    } else if (action === 'open-mapping-ui') {
+      onViewChange?.('mapping');
     }
-  }, [handleNextWorkflowStep]);
+  }, [handleNextWorkflowStep, onViewChange]);
 
   const handleSendChatMessage = useCallback(
     async (message: string) => {

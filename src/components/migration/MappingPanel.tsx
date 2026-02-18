@@ -15,7 +15,8 @@ import {
   Pencil,
   Check,
   EyeOff,
-  Eye
+  Eye,
+  Sparkles
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { databaseClient } from "@/api/databaseClient";
@@ -105,6 +106,8 @@ const MappingPanel = ({ migrationId, onClose, onTriggerStep }: MappingPanelProps
 
   // Chat State
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
+  const [isChatLoaded, setIsChatLoaded] = useState(false);
+  const welcomeCheckedRef = useRef(false);
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const bottomSpacerRef = useRef<HTMLDivElement>(null);
   const [isNearBottom, setIsNearBottom] = useState(true);
@@ -188,10 +191,6 @@ const MappingPanel = ({ migrationId, onClose, onTriggerStep }: MappingPanelProps
             });
             setMappings(reconstructedMappings);
         }
-
-      } catch (error) {
-        console.error("Failed to load data for mapping:", error);
-        toast.error("Fehler beim Laden der Mapping-Konfiguration");
       } finally {
         setLoading(false);
       }
@@ -203,15 +202,28 @@ const MappingPanel = ({ migrationId, onClose, onTriggerStep }: MappingPanelProps
   // Chat Fetching Logic
   useEffect(() => {
     let isActive = true;
-    setChatMessages([]);
-    prevMessageCountRef.current = 0;
-
+    // Do not reset chatMessages here to avoid flickering if we just poll
+    // But we do need to reset if migrationId changes.
+    // However, this effect runs on migrationId change.
+    
+    // We only reset if we are switching migrations, but the dependency is migrationId.
+    // So we should reset.
+    // BUT: The welcome message logic relies on knowing when the *first* load for this migration is done.
+    
+    // Let's keep the reset but ensure we track loading state properly.
+    if (migrationId) {
+        // Resetting state for new migration
+        // Note: We might want to do this only if migrationId actually changed from previous render
+        // but react handles dependencies.
+    }
+    
     const fetchChatMessages = async () => {
       try {
         const response = await fetch(`/api/migrations/${migrationId}/mapping-chat?t=${Date.now()}`);
         if (!isActive) return;
         const data = await response.json();
         setChatMessages(data);
+        setIsChatLoaded(true);
       } catch (error) {
         console.error("Failed to fetch chat messages:", error);
       }
@@ -230,6 +242,12 @@ const MappingPanel = ({ migrationId, onClose, onTriggerStep }: MappingPanelProps
         }
     };
 
+    // Reset for new migration
+    setChatMessages([]);
+    setIsChatLoaded(false);
+    welcomeCheckedRef.current = false;
+    prevMessageCountRef.current = 0;
+
     fetchChatMessages();
     fetchRules();
     const interval = setInterval(() => {
@@ -244,6 +262,38 @@ const MappingPanel = ({ migrationId, onClose, onTriggerStep }: MappingPanelProps
       clearInterval(interval);
     };
   }, [migrationId]);
+
+  // Initial Welcome Message
+  useEffect(() => {
+    if (isChatLoaded && !welcomeCheckedRef.current) {
+        welcomeCheckedRef.current = true;
+        if (chatMessages.length === 0) {
+            const sendWelcome = async () => {
+                try {
+                  // Send welcome message
+                  await fetch(`/api/migrations/${migrationId}/mapping-chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                      content: "Willkommen im Mapping-Editor! Ich unterstütze dich bei der Zuordnung deiner Datenfelder. Wähle einfach links ein Quellfeld und rechts ein Zielfeld aus, oder frag mich nach Vorschlägen.", 
+                      role: 'assistant' 
+                    })
+                  });
+                  
+                  // Optimistic update or refetch
+                  const response = await fetch(`/api/migrations/${migrationId}/mapping-chat?t=${Date.now()}`);
+                  if (response.ok) {
+                    const data = await response.json();
+                    setChatMessages(data);
+                  }
+                } catch (error) {
+                  console.error("Failed to send welcome message:", error);
+                }
+            };
+            sendWelcome();
+        }
+    }
+  }, [isChatLoaded, migrationId, chatMessages.length]);
 
   const handleScroll = () => {
     if (chatScrollRef.current) {
@@ -675,7 +725,7 @@ const MappingPanel = ({ migrationId, onClose, onTriggerStep }: MappingPanelProps
                   <div className="flex flex-col min-h-0">
                     <ScrollArea className="flex-1">
                       <div className="p-4 space-y-3">
-                        {(activeTarget && (activeTarget.fields.length === 0 ? [{id: "summary", name: "Summary"}] : activeTarget.fields)).map((fieldObj) => {
+                        {activeTarget && (activeTarget.fields.length === 0 ? [{id: "summary", name: "Summary"}] : activeTarget.fields).map((fieldObj) => {
                           const field = typeof fieldObj === 'string' ? {id: fieldObj, name: fieldObj} : fieldObj;
                           const rule = mappingRules.find(r => r.target_object === activeTarget.id && r.target_property === field.id);
                           const isSelectedForRule = selectedTargetFieldId === field.id;
@@ -879,6 +929,17 @@ const MappingPanel = ({ migrationId, onClose, onTriggerStep }: MappingPanelProps
                    </div>
                 </div>
                 <div className="p-4 bg-background">
+                  <div className="flex justify-end mb-2">
+                    <Button 
+                      variant="outline" 
+                      size="sm" 
+                      className="text-xs h-7 gap-1.5 text-primary border-primary/20 hover:bg-primary/5"
+                      onClick={() => handleSendMessage("Bitte erstelle automatisch alle notwendigen Mappings für die aktuellen Objekte und ignoriere Felder, die nicht benötigt werden.")}
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Automatisches Mapping
+                    </Button>
+                  </div>
                   <ChatInput 
                     onSend={handleSendMessage} 
                     placeholder="Fragen zum Mapping stellen..."

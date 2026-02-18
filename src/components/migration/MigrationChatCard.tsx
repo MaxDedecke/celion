@@ -33,6 +33,7 @@ const MigrationChatCard = ({
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [migrationData, setMigrationData] = useState<Migration>(migration);
+  const [mappingRules, setMappingRules] = useState<any[]>([]);
 
   // Track message count to detect new messages for auto-scroll
   const prevMessageCountRef = useRef(0);
@@ -46,6 +47,7 @@ const MigrationChatCard = ({
     
     // Reset state when migration changes
     setChatMessages([]);
+    setMappingRules([]);
     prevMessageCountRef.current = 0;
 
     const fetchChatMessages = async () => {
@@ -72,13 +74,29 @@ const MigrationChatCard = ({
       }
     };
 
+    const fetchMappingRules = async () => {
+       // Only fetch if we are close to step 6 (e.g. step 5 completed or step 6 active)
+       if (migrationData.current_step >= 5) {
+          try {
+            const response = await fetch(`/api/migrations/${migration.id}/mapping-rules`);
+            if (!isActive) return;
+            const data = await response.json();
+            setMappingRules(data);
+          } catch (error) {
+            console.error("Failed to fetch mapping rules:", error);
+          }
+       }
+    };
+
     fetchChatMessages();
     fetchMigration();
+    fetchMappingRules();
 
     const interval = setInterval(() => {
       if (isActive) {
         fetchChatMessages();
         fetchMigration();
+        fetchMappingRules();
       }
     }, 3000); // Poll every 3 seconds
 
@@ -86,7 +104,7 @@ const MigrationChatCard = ({
       isActive = false;
       clearInterval(interval);
     };
-  }, [migration.id]);
+  }, [migration.id, migrationData.current_step]); // Added migrationData.current_step dependency for rules fetch trigger
 
   const totalSteps = 10;
   const rawStep = migrationData.current_step || 0;
@@ -181,6 +199,21 @@ const MigrationChatCard = ({
   const actionButtons = useMemo(() => {
     if (isStepRunning || isConsultantThinking) return null;
 
+    // Special case for Step 6: If no mappings exist, show "Create Mappings" button
+    if (currentStepNumber === 6 && mappingRules.length === 0) {
+       return (
+        <Button 
+          onClick={() => onAction && onAction('open-mapping-ui')} 
+          variant="default" 
+          size="sm"
+          className="h-8 text-xs gap-1.5 animate-fade-in"
+        >
+          Mapping erstellen
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Button>
+      );
+    }
+
     if (lastActionMessage) {
       try {
         const jsonContent = JSON.parse(lastActionMessage.content);
@@ -233,7 +266,7 @@ const MigrationChatCard = ({
     }
 
     return null;
-  }, [isStepRunning, isConsultantThinking, lastActionMessage, migrationData.status, rawStep, onAction, onContinue, hasCurrentStepFailed, runningStep, currentStepNumber, activeStep]);
+  }, [isStepRunning, isConsultantThinking, lastActionMessage, migrationData.status, rawStep, onAction, onContinue, hasCurrentStepFailed, runningStep, currentStepNumber, activeStep, mappingRules.length]);
 
   const handleSendMessage = (message: string) => {
     onSendMessage(message);
