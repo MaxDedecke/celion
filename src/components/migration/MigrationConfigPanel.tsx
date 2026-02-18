@@ -9,6 +9,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { AlertCircle, Loader2, Save } from "lucide-react";
 import { toast } from "sonner";
 import { databaseClient } from "@/api/databaseClient";
@@ -28,6 +36,7 @@ const MigrationConfigPanel = ({ migrationId, projectId, onClose, onUpdate }: Mig
   // Global State
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [showSaveDialog, setShowSaveDialog] = useState(false);
 
   // Form State
   const [name, setName] = useState("");
@@ -108,7 +117,21 @@ const MigrationConfigPanel = ({ migrationId, projectId, onClose, onUpdate }: Mig
     loadMigrationData();
   }, [loadMigrationData]);
 
-  const handleSave = async () => {
+  const hasChanges = initialData ? (
+    name.trim() !== initialData.name ||
+    sourceUrl.trim() !== initialData.sourceUrl ||
+    targetUrl.trim() !== initialData.targetUrl ||
+    sourceSystem !== initialData.sourceSystem ||
+    targetSystem !== initialData.targetSystem ||
+    sourceApiToken.trim() !== (initialData.sourceAuth.apiToken || "") ||
+    targetApiToken.trim() !== (initialData.targetAuth.apiToken || "") ||
+    sourceEmail.trim() !== (initialData.sourceAuth.email || "") ||
+    targetEmail.trim() !== (initialData.targetAuth.email || "") ||
+    sourceScope.trim() !== (initialData.scopeConfig?.sourceScope || "") ||
+    targetName.trim() !== (initialData.scopeConfig?.targetName || "")
+  ) : false;
+
+  const handleSaveClick = () => {
     if (!migrationId) return;
 
     if (!name.trim() || !sourceUrl.trim() || !targetUrl.trim() || !sourceSystem || !targetSystem) {
@@ -125,7 +148,12 @@ const MigrationConfigPanel = ({ migrationId, projectId, onClose, onUpdate }: Mig
       setError("Bitte hinterlege einen API Token für das Zielsystem.");
       return;
     }
+    
+    setShowSaveDialog(true);
+  };
 
+  const performSave = async (shouldRestart: boolean) => {
+    setShowSaveDialog(false);
     setSaving(true);
     setError(null);
 
@@ -135,8 +163,7 @@ const MigrationConfigPanel = ({ migrationId, projectId, onClose, onUpdate }: Mig
         targetName: targetName.trim() || undefined,
       };
 
-      // Update migration
-      const { error: migrationError } = await databaseClient.updateMigration(migrationId, {
+      const migrationUpdates: any = {
         name: name.trim(),
         source_system: sourceSystem,
         target_system: targetSystem,
@@ -145,7 +172,18 @@ const MigrationConfigPanel = ({ migrationId, projectId, onClose, onUpdate }: Mig
         in_connector_detail: sourceUrl.trim(),
         out_connector_detail: AUTH_DETAIL_TOKEN,
         scope_config: scopeConfig,
-      });
+      };
+
+      if (shouldRestart) {
+        migrationUpdates.status = "not_started";
+        migrationUpdates.current_step = 0;
+        migrationUpdates.step_status = "idle";
+        migrationUpdates.progress = 0;
+        migrationUpdates.workflow_state = {};
+      }
+
+      // Update migration
+      const { error: migrationError } = await databaseClient.updateMigration(migrationId, migrationUpdates);
 
       if (migrationError) throw migrationError;
 
@@ -179,7 +217,7 @@ const MigrationConfigPanel = ({ migrationId, projectId, onClose, onUpdate }: Mig
       );
       if (targetConnectorError) throw targetConnectorError;
 
-      toast.success("Konfiguration erfolgreich gespeichert");
+      toast.success(shouldRestart ? "Konfiguration gespeichert und Migration zurückgesetzt" : "Konfiguration erfolgreich gespeichert");
       
       onUpdate?.();
       onClose?.();
@@ -437,8 +475,8 @@ const MigrationConfigPanel = ({ migrationId, projectId, onClose, onUpdate }: Mig
                         Abbrechen
                     </Button>
                     <Button
-                        onClick={handleSave}
-                        disabled={saving}
+                        onClick={handleSaveClick}
+                        disabled={saving || !hasChanges}
                         className="flex-1 md:flex-none min-w-[150px]"
                     >
                         {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Save className="mr-2 h-4 w-4" />}
@@ -448,6 +486,28 @@ const MigrationConfigPanel = ({ migrationId, projectId, onClose, onUpdate }: Mig
             </div>
 
         </div>
+
+        <Dialog open={showSaveDialog} onOpenChange={setShowSaveDialog}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Änderungen speichern</DialogTitle>
+              <DialogDescription>
+                Möchtest du die Migration neu starten oder mit den aktuellen Änderungen fortfahren?
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="gap-2 sm:gap-0">
+                <Button variant="outline" onClick={() => setShowSaveDialog(false)}>
+                    Abbrechen
+                </Button>
+                <Button variant="secondary" onClick={() => performSave(false)}>
+                    Fortsetzen
+                </Button>
+                <Button onClick={() => performSave(true)}>
+                    Neu beginnen
+                </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </div>
   );
