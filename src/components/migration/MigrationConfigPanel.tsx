@@ -87,7 +87,7 @@ const MigrationConfigPanel = ({ migrationId, projectId, onClose, onUpdate }: Mig
           apiToken: targetConnector?.api_key || "",
           email: targetConnector?.username || "",
         },
-        scopeConfig: migration.scope_config || {},
+        scopeConfig: (migration.scope_config as any) || {},
       };
 
       setInitialData(loadedData);

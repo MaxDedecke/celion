@@ -303,22 +303,131 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
     return parts.length > 0 ? parts : [text];
   };
 
+  const renderMarkdownTable = (content: string) => {
+    const lines = content.trim().split('\n');
+    if (lines.length < 3) return null;
+
+    // Check for header separator line (must contain | and ---)
+    if (!lines[1].includes('---') || !lines[1].includes('|')) return null;
+
+    const headers = lines[0].split('|').filter((c, i, arr) => {
+        // Filter empty strings resulting from leading/trailing pipes if they are empty
+        if (i === 0 && c.trim() === '') return false;
+        if (i === arr.length - 1 && c.trim() === '') return false;
+        return true;
+    }).map(c => c.trim());
+
+    const rows = lines.slice(2).map(line => 
+      line.split('|').filter((c, i, arr) => {
+          if (i === 0 && c.trim() === '') return false;
+          if (i === arr.length - 1 && c.trim() === '') return false;
+          return true;
+      }).map(c => c.trim())
+    );
+
+    return (
+      <div className="my-2 rounded-md border overflow-hidden bg-card/50">
+          <Table>
+              <TableHeader className="bg-muted/50">
+                  <TableRow>
+                      {headers.map((h, i) => (
+                          <TableHead key={i} className="h-8 text-xs font-bold px-2">{h}</TableHead>
+                      ))}
+                  </TableRow>
+              </TableHeader>
+              <TableBody>
+                  {rows.map((row, i) => (
+                      <TableRow key={i} className="hover:bg-muted/30 border-b last:border-0">
+                          {row.map((cell, j) => (
+                              <TableCell key={j} className="py-2 text-xs px-2">{renderFormattedContent(cell)}</TableCell>
+                          ))}
+                      </TableRow>
+                  ))}
+              </TableBody>
+          </Table>
+      </div>
+    );
+  };
+
   const renderFormattedContent = (text: string) => {
     if (text === null || text === undefined) return null;
     const safeText = String(text);
-    // Split by **text** markers
-    const parts = safeText.split(/(\*\*.*?\*\*)/g);
-    return parts.map((part, i) => {
-      if (part.startsWith("**") && part.endsWith("**")) {
-        const content = part.slice(2, -2);
-        // Check if content is a URL
-        if (content.match(/^https?:\/\//)) {
-             return <a key={i} href={content} target="_blank" rel="noopener noreferrer" className="font-bold text-primary underline hover:text-primary/80">{content}</a>;
+
+    // Check for Markdown Table (simple detection: looks for lines with |)
+    // We split by potential table blocks.
+    // A table block starts with a line containing | and is followed by a line containing | and ---
+    
+    // Regex is tricky, so we'll do line-by-line processing
+    const lines = safeText.split('\n');
+    const parts: React.ReactNode[] = [];
+    let currentTextLines: string[] = [];
+    let currentTableLines: string[] = [];
+    let inTable = false;
+
+    for (let i = 0; i < lines.length; i++) {
+        const line = lines[i];
+        const isTableLine = line.trim().startsWith('|') || (line.trim().includes('|') && line.trim().includes('---')); // Simplistic
+
+        if (inTable) {
+            if (isTableLine) {
+                currentTableLines.push(line);
+            } else {
+                // Table ended
+                parts.push(renderTextSegment(currentTextLines.join('\n')));
+                currentTextLines = [];
+                
+                parts.push(renderMarkdownTable(currentTableLines.join('\n')));
+                currentTableLines = [];
+                inTable = false;
+                
+                // Process current line as text (unless empty)
+                if (line.trim() !== '') currentTextLines.push(line);
+            }
+        } else {
+            // Check start of table: Current line has pipes, Next line has pipes and ---
+            const nextLine = lines[i+1];
+            if (line.trim().includes('|') && nextLine && nextLine.trim().includes('---') && nextLine.trim().includes('|')) {
+                 // Push accumulated text
+                 if (currentTextLines.length > 0) {
+                     parts.push(renderTextSegment(currentTextLines.join('\n')));
+                     currentTextLines = [];
+                 }
+                 inTable = true;
+                 currentTableLines.push(line);
+            } else {
+                currentTextLines.push(line);
+            }
         }
-        return <span key={i} className="font-bold text-primary">{content}</span>;
-      }
-      return <span key={i}>{processLinks(part)}</span>;
-    });
+    }
+
+    // Flush remaining
+    if (inTable && currentTableLines.length > 0) {
+        parts.push(renderMarkdownTable(currentTableLines.join('\n')));
+    } else if (currentTextLines.length > 0) {
+        parts.push(renderTextSegment(currentTextLines.join('\n')));
+    }
+
+    return <div className="flex flex-col gap-1">{parts}</div>;
+  };
+
+  const renderTextSegment = (text: string) => {
+    // Split by **text** markers
+    const parts = text.split(/(\*\*.*?\*\*)/g);
+    return (
+      <span className="whitespace-pre-wrap">
+        {parts.map((part, i) => {
+          if (part.startsWith("**") && part.endsWith("**")) {
+            const content = part.slice(2, -2);
+            // Check if content is a URL
+            if (content.match(/^https?:\/\//)) {
+                return <a key={i} href={content} target="_blank" rel="noopener noreferrer" className="font-bold text-primary underline hover:text-primary/80">{content}</a>;
+            }
+            return <span key={i} className="font-bold text-primary">{content}</span>;
+          }
+          return <span key={i}>{processLinks(part)}</span>;
+        })}
+      </span>
+    );
   };
 
   // Hilfsvariable für den Zeitstempel: API sendet created_at

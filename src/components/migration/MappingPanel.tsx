@@ -923,7 +923,7 @@ const MappingPanel = ({ migrationId, onClose, onTriggerStep }: MappingPanelProps
                    <div ref={chatScrollRef} onScroll={handleScroll} className="absolute inset-0 overflow-y-auto px-4 py-4 scroll-smooth">
                       <ChatMessageList 
                         messages={chatMessages} 
-                        isAgentRunning={false} 
+                        isAgentRunning={chatMessages.length > 0 && chatMessages[chatMessages.length - 1].role === 'user'} 
                       />
                       <div ref={bottomSpacerRef} className="h-2" />
                    </div>
