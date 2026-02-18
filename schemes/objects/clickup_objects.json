@@ -3,7 +3,7 @@
   "objects": [
     {
       "key": "team",
-      "displayName": "Team",
+      "displayName": "Workspace",
       "endpoint": "/api/v2/team",
       "fields": [
         { "id": "id", "name": "Workspace ID", "type": "text" },
