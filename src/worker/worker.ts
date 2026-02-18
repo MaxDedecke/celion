@@ -4,6 +4,7 @@ import { runSystemDetection, runAuthFlow, runSourceDiscovery, runTargetDiscovery
 import { AGENT_WORKFLOW_STEPS } from '../constants/agentWorkflow';
 import { loadScheme, loadObjectScheme } from '../lib/scheme-loader';
 import { resolveOpenAiConfig, buildOpenAiHeaders } from '../agents/openai/openaiClient';
+import { smartDiscovery } from '../tools/smartDiscovery';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -441,37 +442,379 @@ async function processJob(job: any) {
         const detailMsg = `Ich analysiere die Struktur von **${sourceSystem}** und ermittle die Datenmengen${scopeConfig?.sourceScope ? ` (Fokus: **${scopeConfig.sourceScope}**)` : ''}.`;
         await writeChatMessage(migrationId, 'assistant', detailMsg, currentStepNumber);
 
-        const messageGenerator = runSourceDiscovery(sourceUrl, discoveryScheme, { email: connector.username, apiToken: connector.api_key }, scopeConfig);
-        let lastMessageText: string | undefined;
-        for await (const message of messageGenerator) {
-          if (message.content && message.content.length > 0 && message.content[0].text) {
-            lastMessageText = message.content[0].text;
-            if (!lastMessageText.trim().startsWith('{')) {
-              await writeChatMessage(migrationId, 'assistant', lastMessageText, currentStepNumber);
+        // --- Phase 1: Exploration ---
+        await writeChatMessage(migrationId, 'assistant', 'Phase 1: Exploration der API-Endpunkte...', currentStepNumber);
+        
+        const { apiKey, baseUrl, projectId } = resolveOpenAiConfig();
+        const openAiHeaders = buildOpenAiHeaders(apiKey, projectId);
+        const openaiClient = {
+            chat: {
+                completions: {
+                    create: async (params: any) => {
+                        const response = await fetch(`${baseUrl}/chat/completions`, {
+                            method: 'POST',
+                            headers: openAiHeaders,
+                            body: JSON.stringify(params)
+                        });
+                        if (!response.ok) {
+                             const errorText = await response.text();
+                             throw new Error(`OpenAI API request failed: ${response.status} ${response.statusText} ${errorText}`);
+                        }
+                        return await response.json();
+                    }
+                }
+            }
+        };
+
+        const email = connector.username || "";
+        const token = connector.api_key || "";
+        const base64Credentials = btoa(`${email}:${token}`);
+        const endpointKeys = Object.keys(discoveryScheme?.discovery?.endpoints || {});
+
+        const SYSTEM_PROMPT = `
+Du bist eine Data Discovery Engine. Dein Ziel ist eine vollständige Bestandsaufnahme der Systemstruktur.
+
+### PHASE 1: EXPLORATION (Tool use)
+- **STRIKTE VOLLSTÄNDIGKEIT:** Du MUSST jeden Endpunkt in 'discovery.endpoints' mindestens einmal prüfen. Ein leeres Ergebnis (z.B. bei 'search') ist KEIN Grund, andere unabhängige Endpunkte (z.B. 'users') zu überspringen.
+- **URL KONSTRUKTION:** Nutze IMMER die 'apiBaseUrl' aus dem Scheme als Basis für alle URLs. Konstruiere vollständige URLs (z.B. 'https://api.notion.com/v1/users').
+- **HIERARCHIE & TOP-LEVEL:** Endpunkte OHNE Platzhalter (z.B. '/v1/users') sind Top-Level. Rufe diese IMMER auf, unabhängig von den Ergebnissen anderer Endpunkte.
+- **ABDECKUNG:** Wenn ein Endpunkt IDs benötigt ({...}), finde diese in den Ergebnissen der Top-Level-Aufrufe.
+- **METHODEN:** Beachte die 'agentInstructions' im Scheme bezüglich HTTP-Methoden (z.B. POST für search). Sende für POST-Anfragen immer einen Body (mindestens '{}').
+- **ORCHESTRIERUNG:** Du entscheidest die Reihenfolge. Nutze 'discoveryBrake: true' für Struktur-Erkennung und 'discoveryBrake: false' für Mengen-Erfassung.
+- Antworte während der Exploration nur mit kurzen Status-Updates auf Deutsch.
+
+### PHASE 2: FINAL REPORT (Keine Tool-Calls mehr)
+- Erstelle ein valides JSON-Objekt mit der Zusammenfassung.
+- Dokumentiere im 'coverage' Bereich EHRLICH, welche Endpunkte aufgerufen wurden.
+
+### KOMPLEXITÄTS-BEWERTUNG (1-10):
+Bewerte die Komplexität basierend auf der Gesamtanzahl der Elemente (Summe aller Entities):
+- **1-3 (Low):** < 1.000 Elemente (z.B. 92 Tasks sind SEHR geringe Komplexität).
+- **4-6 (Medium):** 1.000 - 10.000 Elemente.
+- **7-9 (High):** 10.000 - 100.000 Elemente (Big Migration).
+- **10 (Critical):** > 100.000 Elemente.
+
+### FINAL JSON FORMAT:
+{
+  "entities": [
+    { "name": "string", "count": number, "complexity": "low" | "medium" | "high" }
+  ],
+  "coverage": {
+    "totalEndpoints": number,
+    "checkedEndpoints": ["string"],
+    "missedEndpoints": [
+      { "name": "string", "reason": "string" }
+    ]
+  },
+  "estimatedDurationMinutes": number,
+  "complexityScore": number, // 1-10
+  "executedCalls": ["string"],
+  "scope": { "identified": boolean, "name": string | null, "id": string | null, "type": string | null },
+  "summary": "Kurze deutsche Zusammenfassung.",
+  "rawOutput": "Technischer Bericht."
+}
+        `;
+
+        const TOOLS = [
+          {
+            type: "function",
+            function: {
+              name: "smart_discovery",
+              description: "Führt eine intelligente Discovery-Anfrage durch, inklusive automatischer Pagination.",
+              parameters: {
+                type: "object",
+                properties: {
+                  url: { type: "string", description: "Die vollständige URL zum Endpunkt." },
+                  method: { type: "string", enum: ["GET", "POST"], description: "HTTP Methode." },
+                  headers: { type: "object", description: "Header (Authentifizierung wird automatisch ergänzt)." },
+                  body: { type: "object", description: "Optionaler Body." },
+                  discoveryBrake: { type: "boolean", description: "Wenn true, wird nur die erste Seite geladen (kostensparend für Struktur-Erkennung)." }
+                },
+                required: ["url"]
+              }
             }
           }
+        ];
+
+        const userContext = `
+Source URL: ${sourceUrl}
+Credentials: ${connector.username ? 'Email provided' : 'No email'}, Token provided
+System Scheme: ${JSON.stringify(discoveryScheme, null, 2)}
+Scope Config: ${JSON.stringify(scopeConfig || {}, null, 2)}
+
+### REQUIRED ENDPOINTS TO CHECK:
+${endpointKeys.map(k => `- ${k}`).join('\n')}
+
+Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben, ob er geprüft wurde oder warum er übersprungen wurde.
+        `;
+
+        let messages: any[] = [
+            { role: "system", content: SYSTEM_PROMPT },
+            { role: "user", content: userContext }
+        ];
+
+        let phase1Result: any = null;
+        let lastMessageText: string | undefined;
+
+        // Loop for Phase 1
+        for (let turn = 0; turn < 25; turn++) {
+             const response = await openaiClient.chat.completions.create({
+                 model: process.env.OPENAI_MODEL || "gpt-4o",
+                 messages,
+                 tools: TOOLS,
+                 response_format: { type: "json_object" }
+             });
+             const message = response.choices[0].message;
+             messages.push(message);
+
+             if (message.content) {
+                 lastMessageText = message.content;
+                 // Try to parse partial results or check if it's the final JSON
+                 if (message.content.trim().startsWith('{')) {
+                     try {
+                         phase1Result = JSON.parse(message.content);
+                         if (phase1Result.entities) {
+                             // It seems like a final result
+                             break; 
+                         }
+                     } catch (e) {
+                         // Not JSON yet
+                     }
+                 } else {
+                     await writeChatMessage(migrationId, 'assistant', message.content, currentStepNumber);
+                 }
+             }
+
+             if (message.tool_calls && message.tool_calls.length > 0) {
+                 for (const toolCall of message.tool_calls) {
+                     const functionName = toolCall.function.name;
+                     const args = JSON.parse(toolCall.function.arguments);
+                     let toolResult: any;
+
+                     if (functionName === 'smart_discovery') {
+                         const requestHeaders: Record<string, string> = { ...args.headers };
+                         const auth = discoveryScheme?.authentication;
+                         
+                         if (auth) {
+                             if (auth.type === 'bearer') {
+                                 const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : 'Bearer ';
+                                 requestHeaders['Authorization'] = `${prefix}${token}`;
+                             } else if (auth.type === 'header') {
+                                 const name = auth.headerName || 'Authorization';
+                                 const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : '';
+                                 requestHeaders[name] = `${prefix}${token}`;
+                             } else if (auth.type === 'basic') {
+                                 requestHeaders['Authorization'] = `Basic ${base64Credentials}`;
+                             }
+                         }
+                         
+                         if (discoveryScheme?.headers) {
+                             Object.assign(requestHeaders, discoveryScheme.headers);
+                         }
+
+                         try {
+                           toolResult = await smartDiscovery({
+                               url: args.url,
+                               method: args.method || 'GET',
+                               headers: requestHeaders,
+                               body: args.body,
+                               paginationConfig: discoveryScheme?.discovery?.pagination,
+                               discoveryBrake: args.discoveryBrake ?? false
+                           });
+
+                           if (toolResult.sampleData) {
+                               const sampleStr = JSON.stringify(toolResult.sampleData);
+                               if (sampleStr.length > 10000) {
+                                   toolResult.sampleData = sampleStr.slice(0, 10000) + '...[TRUNCATED]';
+                               }
+                           }
+                         } catch (toolErr: any) {
+                           toolResult = { error: toolErr.message };
+                         }
+
+                     } else {
+                         toolResult = { error: `Unknown tool: ${functionName}` };
+                     }
+
+                     messages.push({
+                         tool_call_id: toolCall.id,
+                         role: "tool",
+                         name: functionName,
+                         content: JSON.stringify(toolResult)
+                     });
+                 }
+             } else {
+                 // No tool calls, likely finished
+                 break;
+             }
+        }
+        
+        // --- Phase 2: Validation ---
+        await writeChatMessage(migrationId, 'assistant', 'Phase 2: Validierung der Abdeckung...', currentStepNumber);
+        
+        let validationResult: any = null;
+        if (phase1Result) {
+            // Check if all endpoints were covered
+            const checkedEndpoints = phase1Result.coverage?.checkedEndpoints || [];
+            // const missedEndpoints = endpointKeys.filter(k => !checkedEndpoints.includes(k) && !checkedEndpoints.includes(discoveryScheme.discovery.endpoints[k]?.url)); // Loose check
+            
+            // Simple validation logic or LLM based? 
+            // The user wants an agent to validate.
+            
+            const validationPrompt = `
+            Du bist der Quality Assurance Agent. Überprüfe das Ergebnis der Discovery Phase.
+            
+            REQUIRED ENDPOINTS:
+            ${endpointKeys.join(', ')}
+            
+            CHECKED ENDPOINTS (from Phase 1 Report):
+            ${JSON.stringify(checkedEndpoints)}
+            
+            MISSED ACCORDING TO REPORT:
+            ${JSON.stringify(phase1Result.coverage?.missedEndpoints || [])}
+            
+            AUFGABE:
+            Analysiere, ob die Abdeckung ausreichend ist. 
+            Antworte mit einem JSON Objekt:
+            {
+                "is_sufficient": boolean,
+                "missing_critical_endpoints": ["string"],
+                "validation_message": "string"
+            }
+            `;
+            
+            const validationResponse = await openaiClient.chat.completions.create({
+                model: process.env.OPENAI_MODEL || "gpt-4o",
+                messages: [
+                    { role: "system", content: "Du bist ein strenger QA Agent." },
+                    { role: "user", content: validationPrompt }
+                ],
+                response_format: { type: "json_object" }
+            });
+            
+            const valContent = validationResponse.choices[0].message.content;
+            if (valContent) {
+                validationResult = JSON.parse(valContent);
+                await writeChatMessage(migrationId, 'assistant', `Validierungsergebnis: ${validationResult.validation_message}`, currentStepNumber);
+            }
         }
 
-        if (lastMessageText) {
-          try {
-            const parsed = JSON.parse(lastMessageText);
-            result = parsed;
-            resultMessageText = JSON.stringify(parsed);
-            if (result.error || (!result.entities || result.entities.length === 0)) {
-              isLogicalFailure = true;
-              failureMessage = result.error || "Keine Daten zur Migration gefunden (Discovery leer).";
-            }
-          } catch (e) {
-            result = { text: lastMessageText };
-            resultMessageText = JSON.stringify(result);
-            isLogicalFailure = true;
-            failureMessage = "Agent lieferte kein gültiges JSON Ergebnis.";
-          }
+        // --- Phase 3: Retry / Gap Filling ---
+        if (validationResult && !validationResult.is_sufficient && phase1Result) {
+             await writeChatMessage(migrationId, 'assistant', 'Phase 3: Versuche, fehlende Endpunkte abzurufen...', currentStepNumber);
+             
+             const phase3Prompt = `
+             ### QA VALIDATION FAILED
+             The following endpoints were missed: ${JSON.stringify(validationResult.missing_critical_endpoints || [])}
+             Validation Message: ${validationResult.validation_message}
+             
+             ### INSTRUCTION
+             1. Use the IDs and data you found in Phase 1 to construct valid URLs for these missing endpoints.
+             2. Fetch them using 'smart_discovery'.
+             3. Update your findings and provide a NEW, MERGED final report (JSON).
+             `;
+             
+             messages.push({ role: "user", content: phase3Prompt });
+             
+             for (let turn = 0; turn < 15; turn++) {
+                 const response = await openaiClient.chat.completions.create({
+                     model: process.env.OPENAI_MODEL || "gpt-4o",
+                     messages,
+                     tools: TOOLS,
+                     response_format: { type: "json_object" }
+                 });
+                 const message = response.choices[0].message;
+                 messages.push(message);
+
+                 if (message.content) {
+                     if (message.content.trim().startsWith('{')) {
+                         try {
+                             const newResult = JSON.parse(message.content);
+                             if (newResult.entities) {
+                                 phase1Result = newResult;
+                                 phase1Result.validation = validationResult;
+                                 phase1Result.phase3_executed = true;
+                                 await writeChatMessage(migrationId, 'assistant', 'Phase 3 abgeschlossen. Bericht aktualisiert.', currentStepNumber);
+                                 break; 
+                             }
+                         } catch (e) { }
+                     } else {
+                        await writeChatMessage(migrationId, 'assistant', message.content, currentStepNumber);
+                     }
+                 }
+
+                 if (message.tool_calls && message.tool_calls.length > 0) {
+                     for (const toolCall of message.tool_calls) {
+                         const functionName = toolCall.function.name;
+                         const args = JSON.parse(toolCall.function.arguments);
+                         let toolResult: any;
+
+                         if (functionName === 'smart_discovery') {
+                             const requestHeaders: Record<string, string> = { ...args.headers };
+                             const auth = discoveryScheme?.authentication;
+                             
+                             if (auth) {
+                                 if (auth.type === 'bearer') {
+                                     const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : 'Bearer ';
+                                     requestHeaders['Authorization'] = `${prefix}${token}`;
+                                 } else if (auth.type === 'header') {
+                                     const name = auth.headerName || 'Authorization';
+                                     const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : '';
+                                     requestHeaders[name] = `${prefix}${token}`;
+                                 } else if (auth.type === 'basic') {
+                                     requestHeaders['Authorization'] = `Basic ${base64Credentials}`;
+                                 }
+                             }
+                             
+                             if (discoveryScheme?.headers) {
+                                 Object.assign(requestHeaders, discoveryScheme.headers);
+                             }
+
+                             try {
+                               toolResult = await smartDiscovery({
+                                   url: args.url,
+                                   method: args.method || 'GET',
+                                   headers: requestHeaders,
+                                   body: args.body,
+                                   paginationConfig: discoveryScheme?.discovery?.pagination,
+                                   discoveryBrake: args.discoveryBrake ?? false
+                               });
+
+                               if (toolResult.sampleData) {
+                                   const sampleStr = JSON.stringify(toolResult.sampleData);
+                                   if (sampleStr.length > 10000) {
+                                       toolResult.sampleData = sampleStr.slice(0, 10000) + '...[TRUNCATED]';
+                                   }
+                               }
+                             } catch (toolErr: any) {
+                               toolResult = { error: toolErr.message };
+                             }
+                         } else {
+                             toolResult = { error: `Unknown tool: ${functionName}` };
+                         }
+
+                         messages.push({
+                             tool_call_id: toolCall.id,
+                             role: "tool",
+                             name: functionName,
+                             content: JSON.stringify(toolResult)
+                         });
+                     }
+                 } else {
+                     break;
+                 }
+             }
         } else {
-          result = { error: 'Discovery agent produced no output' };
-          resultMessageText = JSON.stringify(result);
-          isLogicalFailure = true;
-          failureMessage = "Discovery agent produced no output.";
+            await writeChatMessage(migrationId, 'assistant', 'Phase 3: Keine kritischen Lücken gefunden. Überspringe Retry.', currentStepNumber);
+        }
+
+        // Use phase1Result as final result
+        result = phase1Result;
+        resultMessageText = JSON.stringify(result);
+
+        if (!result || result.error || (!result.entities || result.entities.length === 0)) {
+            isLogicalFailure = true;
+            failureMessage = result?.error || "Keine Daten zur Migration gefunden (Discovery leer).";
         }
       }
 
