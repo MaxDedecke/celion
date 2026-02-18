@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, forwardRef, useImperativeHandle } fro
 import MigrationChatCard from "./migration/MigrationChatCard";
 import WorkflowPanel from "./migration/WorkflowPanel";
 import MappingPanel from "./migration/MappingPanel";
+import MigrationConfigPanel from "./migration/MigrationConfigPanel";
 import { toast } from "sonner";
 import type { MigrationDetailsProps } from "./migration/migrationDetails.types";
 import { cn } from "@/lib/utils";
@@ -139,6 +140,16 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
               migrationId={project.id} 
               onClose={() => onViewChange?.('chat')}
               onTriggerStep={() => handleNextWorkflowStep(6)}
+            />
+          </div>
+        )}
+        {activeView === 'config' && (
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <MigrationConfigPanel
+              migrationId={project.id}
+              projectId={project.projectId}
+              onClose={() => onViewChange?.('chat')}
+              onUpdate={onRefresh}
             />
           </div>
         )}

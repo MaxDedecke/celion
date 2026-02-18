@@ -1,7 +1,6 @@
 import {
   Plus,
   Trash2,
-  Pencil,
   PanelLeftClose,
   PanelLeft,
   Plug,
@@ -28,7 +27,6 @@ interface SidebarProps {
   onNewMigration: () => void;
   onNewProjectMigration?: (projectId: string) => void;
   onDeleteMigration?: (id: string) => void;
-  onEditMigration?: (id: string) => void;
   onDuplicateMigration?: (id: string) => void;
   // Lazy loading props
   onLoadMoreMigrations?: () => Promise<void>;
@@ -46,7 +44,6 @@ const Sidebar = ({
   onNewMigration,
   onNewProjectMigration,
   onDeleteMigration,
-  onEditMigration,
   onDuplicateMigration,
   onLoadMoreMigrations,
   hasMoreMigrations = false,
@@ -276,10 +273,6 @@ const Sidebar = ({
                                         </Button>
                                       </DropdownMenuTrigger>
                                       <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                                        <DropdownMenuItem onSelect={() => onEditMigration?.(migration.id)}>
-                                          <Pencil className="mr-2 h-4 w-4" />
-                                          <span>Bearbeiten</span>
-                                        </DropdownMenuItem>
                                         <DropdownMenuItem onSelect={() => onDuplicateMigration?.(migration.id)}>
                                           <Copy className="mr-2 h-4 w-4" />
                                           <span>Duplizieren</span>
@@ -358,10 +351,6 @@ const Sidebar = ({
                               </Button>
                             </DropdownMenuTrigger>
                             <DropdownMenuContent align="end" onClick={(e) => e.stopPropagation()}>
-                              <DropdownMenuItem onSelect={() => onEditMigration?.(migration.id)}>
-                                <Pencil className="mr-2 h-4 w-4" />
-                                <span>Bearbeiten</span>
-                              </DropdownMenuItem>
                               <DropdownMenuItem onSelect={() => onDuplicateMigration?.(migration.id)}>
                                 <Copy className="mr-2 h-4 w-4" />
                                 <span>Duplizieren</span>

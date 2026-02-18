@@ -104,7 +104,7 @@ const Dashboard = () => {
   const [selectedMigration, setSelectedMigration] = useState<string | null>(migrationId || null);
   const [showAccountDialog, setShowAccountDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
-  const [activeView, setActiveView] = useState<'chat' | 'workflow' | 'mapping'>('chat');
+  const [activeView, setActiveView] = useState<'chat' | 'workflow' | 'mapping' | 'config'>('chat');
   
   const [migrations, setMigrations] = useState<any[]>([]);
   const [standaloneMigrations, setStandaloneMigrations] = useState<any[]>([]);
@@ -112,8 +112,6 @@ const Dashboard = () => {
   const [loading, setLoading] = useState(true);
   const [editingMigration, setEditingMigration] = useState<any>(null);
   const [showEditDialog, setShowEditDialog] = useState(false);
-  const [showEditConfigDialog, setShowEditConfigDialog] = useState(false);
-  const [editConfigData, setEditConfigData] = useState<NewMigrationInput | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [migrationToDelete, setMigrationToDelete] = useState<{ id: string; name: string } | null>(null);
   const [isNotesPopoverOpen, setIsNotesPopoverOpen] = useState(false);
@@ -575,112 +573,7 @@ const Dashboard = () => {
     }
   };
 
-  const handleOpenEditConfig = async () => {
-    if (!currentMigration) return;
 
-    try {
-      // Load connector data for both source and target
-      const { data: sourceConnectorData, error: sourceConnectorError } = await databaseClient.fetchConnectorByType(
-        currentMigration.id,
-        'in'
-      );
-
-      if (sourceConnectorError) throw sourceConnectorError;
-
-      const { data: targetConnectorData, error: targetConnectorError } = await databaseClient.fetchConnectorByType(
-        currentMigration.id,
-        'out'
-      );
-
-      if (targetConnectorError) throw targetConnectorError;
-
-      setEditConfigData({
-        name: currentMigration.name,
-        sourceUrl: sourceConnectorData?.api_url || currentMigration.sourceUrl || "",
-        targetUrl: targetConnectorData?.api_url || currentMigration.targetUrl || "",
-        sourceSystem: currentMigration.sourceSystem,
-        targetSystem: currentMigration.targetSystem,
-        sourceAuth: {
-          authType: "token",
-          apiToken: sourceConnectorData?.api_key || "",
-          email: sourceConnectorData?.username || "",
-          password: sourceConnectorData?.password || "",
-        },
-        targetAuth: {
-          authType: "token",
-          apiToken: targetConnectorData?.api_key || "",
-          email: targetConnectorData?.username || "",
-          password: targetConnectorData?.password || "",
-        },
-        scopeConfig: currentMigration.scopeConfig,
-      });
-      setShowEditConfigDialog(true);
-    } catch (error: any) {
-      toast.error("Fehler beim Laden der Konfigurationsdaten");
-      console.error(error);
-    }
-  };
-
-  const handleUpdateMigrationConfig = async (data: NewMigrationInput) => {
-    const migrationToUpdate = editingMigration || currentMigration;
-    if (!migrationToUpdate) return;
-
-    try {
-      // Update migration
-      const { error: migrationError } = await databaseClient.updateMigration(migrationToUpdate.id, {
-        name: data.name,
-        source_system: data.sourceSystem,
-        target_system: data.targetSystem,
-        source_url: data.sourceUrl,
-        target_url: data.targetUrl,
-        in_connector_detail: data.sourceUrl,
-        out_connector_detail: AUTH_DETAIL_TOKEN,
-        scope_config: data.scopeConfig,
-      });
-
-      if (migrationError) throw migrationError;
-
-      const sourceConnectorUpdates: Record<string, any> = {
-        api_url: data.sourceUrl,
-        auth_type: "api_key",
-        api_key: data.sourceAuth.apiToken ?? null,
-        username: data.sourceAuth.email ?? null,
-      };
-
-      const targetConnectorUpdates: Record<string, any> = {
-        api_url: data.targetUrl,
-        auth_type: "api_key",
-        api_key: data.targetAuth.apiToken ?? null,
-        username: data.targetAuth.email ?? null,
-      };
-
-      // Update source connector
-      const { error: sourceConnectorError } = await databaseClient.updateConnectorByType(
-        migrationToUpdate.id,
-        'in',
-        sourceConnectorUpdates
-      );
-
-      if (sourceConnectorError) throw sourceConnectorError;
-
-      // Update target connector
-      const { error: targetConnectorError } = await databaseClient.updateConnectorByType(
-        migrationToUpdate.id,
-        'out',
-        targetConnectorUpdates
-      );
-
-      if (targetConnectorError) throw targetConnectorError;
-
-      toast.success("Konfiguration erfolgreich aktualisiert");
-      setShowEditConfigDialog(false);
-      setEditingMigration(null);
-      await loadAllData();
-    } catch (error: any) {
-      toast.error("Fehler beim Aktualisieren der Konfiguration");
-      console.error(error);
-    }
-  };
 
   const currentMigration = selectedMigration 
     ? [...migrations, ...standaloneMigrations].find((m) => m.id === selectedMigration)
@@ -906,13 +799,13 @@ const Dashboard = () => {
                     )}
                   </Button>
                   <Button
-                    variant="ghost"
+                    variant={activeView === 'config' ? 'secondary' : 'ghost'}
                     size="icon"
-                    onClick={handleOpenEditConfig}
+                    onClick={() => setActiveView('config')}
                     className="h-8 w-8 relative"
                     title={configVerificationStatus === 'verified' ? "Konfiguration - verifiziert" : "Konfiguration"}
                   >
-                    <Settings className="h-4 w-4" />
+                    <Settings className={cn("h-4 w-4 transition-colors", activeView === 'config' && "text-primary")} />
                     <div className="absolute -top-1 -right-1 pointer-events-none bg-background rounded-full ring-2 ring-background">
                         {configVerificationStatus === 'verified' ? (
                           <CheckCircle2 className="h-3 w-3 text-green-500 fill-background" /> 
@@ -1216,17 +1109,6 @@ const Dashboard = () => {
         onUpdate={handleUpdateMigration}
         currentName={editingMigration?.name || ""}
       />
-      {editConfigData && (
-        <AddMigrationDialog
-          open={showEditConfigDialog}
-          onOpenChange={setShowEditConfigDialog}
-          onSubmit={handleUpdateMigrationConfig}
-          mode="edit"
-          initialData={editConfigData}
-          title="Migration konfigurieren"
-          submitLabel="Änderungen speichern"
-        />
-      )}
 
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
