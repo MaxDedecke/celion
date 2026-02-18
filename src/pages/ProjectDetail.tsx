@@ -1,10 +1,9 @@
-import { useCallback, useEffect, useMemo, useState, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { useNavigate, useParams } from "react-router-dom";
 import Sidebar from "@/components/Sidebar";
 import UserMenu from "@/components/UserMenu";
 import AccountDialog from "@/components/dialogs/AccountDialog";
 import AddMigrationDialog from "@/components/dialogs/AddMigrationDialog";
-import EditMigrationDialog from "@/components/dialogs/EditMigrationDialog";
 import DataFlowLoader from "@/components/DataFlowLoader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -71,8 +70,6 @@ const ProjectDetail = () => {
   const [showAccountDialog, setShowAccountDialog] = useState(false);
   
   const [showAddMigrationDialog, setShowAddMigrationDialog] = useState(false);
-  const [showEditMigrationDialog, setShowEditMigrationDialog] = useState(false);
-  const [editingMigration, setEditingMigration] = useState<SidebarMigration | null>(null);
   const [projectIdForNewMigration, setProjectIdForNewMigration] = useState<string | null>(null);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [migrationToDelete, setMigrationToDelete] = useState<{ id: string; name: string } | null>(null);
@@ -389,32 +386,6 @@ const ProjectDetail = () => {
     }
   };
 
-  const handleEditMigration = (migrationId: string) => {
-    const migration = [...sidebarMigrations, ...standaloneMigrations].find((m) => m.id === migrationId);
-    if (migration) {
-      setEditingMigration(migration);
-      setShowEditMigrationDialog(true);
-    }
-  };
-
-  const handleUpdateMigration = async (name: string) => {
-    if (!editingMigration) return;
-
-    try {
-      const { error } = await databaseClient.updateMigration(editingMigration.id, { name });
-
-      if (error) throw error;
-
-      toast.success(`Migration aktualisiert auf "${name}"`);
-      setShowEditMigrationDialog(false);
-      setEditingMigration(null);
-      await Promise.all([loadSidebarData(), loadProjectData(projectId!)]);
-    } catch (error) {
-      console.error(error);
-      toast.error("Fehler beim Aktualisieren der Migration");
-    }
-  };
-
   if (loaderVisible) {
     return (
       <div className="app-shell flex h-screen items-center justify-center p-6 overflow-hidden">
@@ -452,7 +423,6 @@ const ProjectDetail = () => {
               setShowDeleteDialog(true);
             }
           }}
-          onEditMigration={handleEditMigration}
           onDuplicateMigration={handleDuplicateMigration}
           onLoadMoreMigrations={handleLoadMoreMigrations}
           hasMoreMigrations={hasMoreMigrations}
@@ -615,18 +585,6 @@ const ProjectDetail = () => {
         open={showAddMigrationDialog}
         onOpenChange={setShowAddMigrationDialog}
         onSubmit={handleAddMigration}
-      />
-
-      <EditMigrationDialog
-        open={showEditMigrationDialog}
-        onOpenChange={(open) => {
-          setShowEditMigrationDialog(open);
-          if (!open) {
-            setEditingMigration(null);
-          }
-        }}
-        onUpdate={handleUpdateMigration}
-        currentName={editingMigration?.name || ""}
       />
 
       <AlertDialog

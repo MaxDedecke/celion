@@ -4,7 +4,6 @@ import Sidebar from "@/components/Sidebar";
 import UserMenu from "@/components/UserMenu";
 import AccountDialog from "@/components/dialogs/AccountDialog";
 import AddMigrationDialog from "@/components/dialogs/AddMigrationDialog";
-import EditMigrationDialog from "@/components/dialogs/EditMigrationDialog";
 import MigrationDetails, { type MigrationDetailsRef } from "@/components/MigrationDetails";
 import DataFlowLoader from "@/components/DataFlowLoader";
 import { Button } from "@/components/ui/button";
@@ -110,8 +109,6 @@ const Dashboard = () => {
   const [standaloneMigrations, setStandaloneMigrations] = useState<any[]>([]);
   const [allProjects, setAllProjects] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editingMigration, setEditingMigration] = useState<any>(null);
-  const [showEditDialog, setShowEditDialog] = useState(false);
   const [showDeleteDialog, setShowDeleteDialog] = useState(false);
   const [migrationToDelete, setMigrationToDelete] = useState<{ id: string; name: string } | null>(null);
   const [isNotesPopoverOpen, setIsNotesPopoverOpen] = useState(false);
@@ -510,71 +507,6 @@ const Dashboard = () => {
     }
   };
 
-  const handleEditMigration = async (migrationId: string) => {
-    const migration = [...migrations, ...standaloneMigrations].find((m) => m.id === migrationId);
-    if (!migration) return;
-
-    try {
-      // Load connector data for both source and target
-      const { data: sourceConnectorData, error: sourceConnectorError } = await databaseClient.fetchConnectorByType(
-        migrationId,
-        'in'
-      );
-
-      if (sourceConnectorError) throw sourceConnectorError;
-
-      const { data: targetConnectorData, error: targetConnectorError } = await databaseClient.fetchConnectorByType(
-        migrationId,
-        'out'
-      );
-
-      if (targetConnectorError) throw targetConnectorError;
-
-      setEditingMigration(migration);
-      setEditConfigData({
-        name: migration.name,
-        sourceUrl: sourceConnectorData?.api_url || migration.sourceUrl || "",
-        targetUrl: targetConnectorData?.api_url || migration.targetUrl || "",
-        sourceSystem: migration.sourceSystem,
-        targetSystem: migration.targetSystem,
-        sourceAuth: {
-          authType: "token",
-          apiToken: sourceConnectorData?.api_key || "",
-          email: sourceConnectorData?.username || "",
-          password: sourceConnectorData?.password || "",
-        },
-                  targetAuth: {
-                  authType: "token",
-                  apiToken: targetConnectorData?.api_key || "",
-                  email: targetConnectorData?.username || "",
-                  password: targetConnectorData?.password || "",
-                },
-                scopeConfig: migration.scopeConfig || migration.scope_config,
-              });
-              setShowEditConfigDialog(true);    } catch (error: any) {
-      toast.error("Fehler beim Laden der Konfigurationsdaten");
-      console.error(error);
-    }
-  };
-
-  const handleUpdateMigration = async (name: string) => {
-    try {
-      const { error } = await databaseClient.updateMigration(editingMigration.id, { name });
-
-      if (error) throw error;
-
-      toast.success(`Migration aktualisiert auf "${name}"`);
-      setShowEditDialog(false);
-      setEditingMigration(null);
-      await refreshCurrentMigration();
-    } catch (error: any) {
-      toast.error("Fehler beim Aktualisieren der Migration");
-      console.error(error);
-    }
-  };
-
-
-
   const currentMigration = selectedMigration 
     ? [...migrations, ...standaloneMigrations].find((m) => m.id === selectedMigration)
     : null;
@@ -702,7 +634,6 @@ const Dashboard = () => {
             setShowAddDialog(true);
           }}
           onDeleteMigration={handleDeleteMigration}
-          onEditMigration={handleEditMigration}
           onDuplicateMigration={handleDuplicateMigration}
           onLoadMoreMigrations={handleLoadMoreMigrations}
           hasMoreMigrations={hasMoreMigrations}
@@ -1103,13 +1034,7 @@ const Dashboard = () => {
         onOpenChange={setShowAddDialog}
         onSubmit={handleAddMigration}
       />
-      <EditMigrationDialog
-        open={showEditDialog}
-        onOpenChange={setShowEditDialog}
-        onUpdate={handleUpdateMigration}
-        currentName={editingMigration?.name || ""}
-      />
-
+      
       <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
         <AlertDialogContent>
           <AlertDialogHeader>
