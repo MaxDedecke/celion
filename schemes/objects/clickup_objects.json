@@ -2,8 +2,8 @@
   "system": "ClickUp",
   "objects": [
     {
-      "key": "workspace",
-      "displayName": "Workspace / Arbeitsbereich",
+      "key": "team",
+      "displayName": "Team",
       "endpoint": "/api/v2/team",
       "fields": [
         { "id": "id", "name": "Workspace ID", "type": "text" },
