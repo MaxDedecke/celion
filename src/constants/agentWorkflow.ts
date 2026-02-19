@@ -50,7 +50,7 @@ export const AGENT_WORKFLOW_STEPS = [
   {
     id: "quality-enhancement",
     title: "Quality Enhancement",
-    description: "Überprüft das vorgeschlagene Mapping auf Typinkonsistenzen, Pflichtfelder, mögliche Datenverluste und optimiert die Datenqualität.",
+    description: "Optimiert die Datenqualität durch KI-gestützte Veredelungen wie Übersetzung, Zusammenfassung oder PII-Schwärzung basierend auf den konfigurierten Regeln.",
     phase: "Quality Enhancement",
     agentType: "quality-enhancement",
     color: "violet",

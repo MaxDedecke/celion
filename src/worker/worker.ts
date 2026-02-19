@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import neo4j from 'neo4j-driver';
-import { runSystemDetection, runAuthFlow, runSourceDiscovery, runTargetDiscovery, runAnswerAgent, runMapping, runMappingVerification, runMappingRules, runEnhancementRules } from '../agents/agentService';
+import { runSystemDetection, runAuthFlow, runSourceDiscovery, runTargetDiscovery, runAnswerAgent, runMapping, runMappingVerification, runMappingRules, runEnhancementRules, runEnhancementVerification } from '../agents/agentService';
 import { AGENT_WORKFLOW_STEPS } from '../constants/agentWorkflow';
 import { loadScheme, loadObjectScheme } from '../lib/scheme-loader';
 import { resolveOpenAiConfig, buildOpenAiHeaders } from '../agents/openai/openaiClient';
@@ -1884,20 +1884,64 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
 
     } else if (agentName === 'runQualityEnhancement') {
       console.log(`[Worker] Running Quality Enhancement for migration ${migrationId}`);
+      await writeChatMessage(migrationId, 'assistant', 'Analysiere und verifiziere Qualitäts-Enhancements...', currentStepNumber);
+      
+      const { rows: migRows7 } = await pool.query('SELECT source_system, target_system FROM migrations WHERE id = $1', [migrationId]);
+      const sSys7 = migRows7[0]?.source_system;
+      const tSys7 = migRows7[0]?.target_system;
+
+      // Fetch all rules with enhancements
+      const { rows: ruleRows7 } = await pool.query('SELECT * FROM public.mapping_rules WHERE migration_id = $1', [migrationId]);
+      const rulesWithEnhancements = ruleRows7.filter(r => r.enhancements && r.enhancements.length > 0);
+      
+      if (rulesWithEnhancements.length > 0) {
+        const messageGenerator = runEnhancementVerification(ruleRows7, sSys7, tSys7);
+        let lastMessageText: string | undefined;
+        for await (const message of messageGenerator) {
+          if (message.content && message.content.length > 0 && message.content[0].text) {
+            lastMessageText = message.content[0].text;
+          }
+        }
+
+        if (lastMessageText) {
+          try {
+            const verificationResult = JSON.parse(lastMessageText);
+            const report = verificationResult.verification_report;
+            
+            if (report) {
+               if (report.summary) {
+                 await writeChatMessage(migrationId, 'assistant', report.summary, currentStepNumber);
+               }
+
+               // If there are warnings, list them
+               const warnings = report.analysis?.filter((a: any) => a.status === 'warning' || a.status === 'info') || [];
+               if (warnings.length > 0) {
+                  let warningMsg = "**Hinweise zur Überprüfung:**\n";
+                  warnings.forEach((w: any) => {
+                    warningMsg += `- Feld \`${w.field}\`: ${w.message}\n`;
+                  });
+                  await writeChatMessage(migrationId, 'assistant', warningMsg, currentStepNumber);
+               }
+            }
+          } catch (e) {
+            console.error("Failed to parse enhancement verification result", e);
+          }
+        }
+      } else {
+        await writeChatMessage(migrationId, 'assistant', 'Keine spezifischen Enhancements konfiguriert. Der Inhalt wird 1:1 übernommen.', currentStepNumber);
+      }
+
       await writeChatMessage(migrationId, 'assistant', 'Wende Qualitäts-Enhancements auf die staged Daten an...', currentStepNumber);
       
       // MOCK: Simulate processing
-      await new Promise(r => setTimeout(r, 2000));
+      await new Promise(r => setTimeout(r, 1500));
       
-      const { rows: ruleRows } = await pool.query('SELECT count(*) FROM public.mapping_rules WHERE migration_id = $1 AND enhancements IS NOT NULL AND jsonb_array_length(enhancements) > 0', [migrationId]);
-      const rulesWithEnhancements = parseInt(ruleRows[0].count);
-      
-      await writeChatMessage(migrationId, 'assistant', `Qualitäts-Veredelung abgeschlossen. ${rulesWithEnhancements} Mapping-Regeln mit Enhancements verarbeitet.`, currentStepNumber);
+      await writeChatMessage(migrationId, 'assistant', `Qualitäts-Veredelung abgeschlossen. ${rulesWithEnhancements.length} Mapping-Regeln mit Enhancements verarbeitet.`, currentStepNumber);
 
       result = { 
           status: 'success', 
           message: 'Quality Enhancement erfolgreich abgeschlossen.',
-          processedRules: rulesWithEnhancements
+          processedRules: rulesWithEnhancements.length
       };
 
       const finishClientEnhance = await pool.connect();

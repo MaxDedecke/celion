@@ -7,3 +7,4 @@ export { runMapping } from './mapping/runMapping';
 export { runMappingVerification } from './mapping/runMappingVerification';
 export { runMappingRules } from './mappingRules/runMappingRules';
 export { runEnhancementRules } from './enhancementRules/runEnhancementRules';
+export { runEnhancementVerification } from './enhancementRules/runEnhancementVerification';

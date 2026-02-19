@@ -217,15 +217,26 @@ const MigrationChatCard = ({
     // Special case for Step 7: Quality Enhancement
     if (currentStepNumber === 7) {
        return (
-        <Button 
-          onClick={() => onAction && onAction('open-enhancement-ui')} 
-          variant="default" 
-          size="sm"
-          className="h-8 text-xs gap-1.5 animate-fade-in"
-        >
-          Enhancements konfigurieren
-          <ArrowRight className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button 
+            onClick={() => onAction && onAction('open-enhancement-ui')} 
+            variant="default" 
+            size="sm"
+            className="h-8 text-xs gap-1.5 animate-fade-in"
+          >
+            Enhancements konfigurieren
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Button>
+          <Button 
+            onClick={() => onContinue()} 
+            variant="outline" 
+            size="sm"
+            className="h-8 text-xs gap-1.5 animate-fade-in border-primary/20 hover:bg-primary/5 text-primary"
+          >
+            Überspringen
+            <ArrowRight className="h-3.5 w-3.5 opacity-50" />
+          </Button>
+        </div>
       );
     }
 
