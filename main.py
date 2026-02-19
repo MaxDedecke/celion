@@ -1115,6 +1115,27 @@ async def delete_mapping_rule(id: str, rule_id: str) -> dict[str, str]:
         raise HTTPException(status_code=500, detail="Failed to delete mapping rule.") from exc
 
 
+def _filter_id_fields(schema: dict[str, Any]) -> dict[str, Any]:
+    """Remove fields that look like IDs from the schema to focus mapping on content."""
+    if not schema or "objects" not in schema:
+        return schema
+    
+    id_suffixes = ("_id", "Id", "Guid", "Uuid", "_guid", "_uuid")
+    id_exact = ("id", "uuid", "guid", "pk", "_id", "external_id")
+    
+    filtered_objects = []
+    for obj in schema["objects"]:
+        filtered_obj = obj.copy()
+        if "fields" in obj:
+            filtered_obj["fields"] = [
+                f for f in obj["fields"] 
+                if f.get("id", "").lower() not in id_exact and 
+                not f.get("id", "").endswith(id_suffixes)
+            ]
+        filtered_objects.append(filtered_obj)
+    
+    return {**schema, "objects": filtered_objects}
+
 @app.post("/api/migrations/{id}/mapping-chat", response_model=MappingChatMessage)
 async def create_mapping_chat_message(id: str, payload: CreateMappingChatMessagePayload) -> MappingChatMessage:
     """Create a new mapping chat message for a given migration."""
@@ -1152,7 +1173,7 @@ async def create_mapping_chat_message(id: str, payload: CreateMappingChatMessage
                 source_path = os.path.join(os.getcwd(), "schemes", "objects", f"{norm_source}_objects.json")
                 if os.path.exists(source_path):
                     with open(source_path, "r", encoding="utf-8") as f:
-                        source_schema = json.load(f)
+                        source_schema = _filter_id_fields(json.load(f))
 
             target_schema = {}
             if target_system:
@@ -1160,7 +1181,7 @@ async def create_mapping_chat_message(id: str, payload: CreateMappingChatMessage
                 target_path = os.path.join(os.getcwd(), "schemes", "objects", f"{norm_target}_objects.json")
                 if os.path.exists(target_path):
                     with open(target_path, "r", encoding="utf-8") as f:
-                        target_schema = json.load(f)
+                        target_schema = _filter_id_fields(json.load(f))
 
             # Source Entities from Step 3
             cur.execute("SELECT entity_name as name, count FROM public.step_3_results WHERE migration_id = %s", (id,))

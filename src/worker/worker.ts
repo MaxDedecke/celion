@@ -198,6 +198,26 @@ const incrementGlobalStats = async (client: any, data: { steps?: number, success
   }
 };
 
+const filterIdFields = (schema: any): any => {
+  if (!schema || !schema.objects) return schema;
+  
+  const idSuffixes = ["_id", "Id", "Guid", "Uuid", "_guid", "_uuid"];
+  const idExact = ["id", "uuid", "guid", "pk", "_id", "external_id"];
+  
+  const filteredObjects = schema.objects.map((obj: any) => {
+    if (!obj.fields) return obj;
+    return {
+      ...obj,
+      fields: obj.fields.filter((f: any) => {
+        const fid = (f.id || "").toLowerCase();
+        return !idExact.includes(fid) && !idSuffixes.some(suffix => f.id.endsWith(suffix));
+      })
+    };
+  });
+  
+  return { ...schema, objects: filteredObjects };
+};
+
 const updateWorkflowForStep = (state: any, workflowStepId: string, result: any, isError: boolean) => {
   const nextState = ensureWorkflowState(state);
   const nodes = nextState.nodes.map((node: any) => ({ ...node }));

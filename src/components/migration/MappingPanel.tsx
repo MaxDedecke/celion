@@ -141,11 +141,20 @@ const MappingPanel = ({ migrationId, onClose, onTriggerStep }: MappingPanelProps
         if (sSpecs?.objects) {
           setSourceEntities(sSpecs.objects.map((obj: any) => {
             const inventoryItem = inventoryResults.find((r: any) => r.entity_name === obj.key || r.entity_name === obj.displayName);
+            
+            // Filter ID fields
+            const idSuffixes = ["_id", "Id", "Guid", "Uuid", "_guid", "_uuid"];
+            const idExact = ["id", "uuid", "guid", "pk", "_id", "external_id"];
+            const filteredFields = (obj.fields || []).filter((f: any) => {
+                const fid = f.id.toLowerCase();
+                return !idExact.includes(fid) && !idSuffixes.some(suffix => f.id.endsWith(suffix));
+            });
+
             return {
               id: obj.key,
               name: obj.displayName || obj.key,
               isIgnored: inventoryItem?.is_ignored || false,
-              fields: (obj.fields || []).map((f: any) => ({
+              fields: filteredFields.map((f: any) => ({
                 id: f.id,
                 name: f.name || f.id,
                 type: f.type || "text"
@@ -155,15 +164,25 @@ const MappingPanel = ({ migrationId, onClose, onTriggerStep }: MappingPanelProps
         }
 
         if (tSpecs?.objects) {
-          setTargetEntities(tSpecs.objects.map((obj: any) => ({
-            id: obj.key,
-            name: obj.displayName || obj.key,
-            fields: (obj.fields || []).map((f: any) => ({
-              id: f.id,
-              name: f.name || f.id,
-              type: f.type || "text"
-            }))
-          })));
+          setTargetEntities(tSpecs.objects.map((obj: any) => {
+            // Filter ID fields
+            const idSuffixes = ["_id", "Id", "Guid", "Uuid", "_guid", "_uuid"];
+            const idExact = ["id", "uuid", "guid", "pk", "_id", "external_id"];
+            const filteredFields = (obj.fields || []).filter((f: any) => {
+                const fid = f.id.toLowerCase();
+                return !idExact.includes(fid) && !idSuffixes.some(suffix => f.id.endsWith(suffix));
+            });
+
+            return {
+              id: obj.key,
+              name: obj.displayName || obj.key,
+              fields: filteredFields.map((f: any) => ({
+                id: f.id,
+                name: f.name || f.id,
+                type: f.type || "text"
+              }))
+            };
+          }));
         }
 
         const rulesResponse = await fetch(`/api/migrations/${migrationId}/mapping-rules`);
