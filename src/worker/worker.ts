@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import neo4j from 'neo4j-driver';
-import { runSystemDetection, runAuthFlow, runSourceDiscovery, runTargetDiscovery, runAnswerAgent, runMapping, runMappingVerification, runMappingRules } from '../agents/agentService';
+import { runSystemDetection, runAuthFlow, runSourceDiscovery, runTargetDiscovery, runAnswerAgent, runMapping, runMappingVerification, runMappingRules, runEnhancementRules } from '../agents/agentService';
 import { AGENT_WORKFLOW_STEPS } from '../constants/agentWorkflow';
 import { loadScheme, loadObjectScheme } from '../lib/scheme-loader';
 import { resolveOpenAiConfig, buildOpenAiHeaders } from '../agents/openai/openaiClient';
@@ -1823,6 +1823,29 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
       const context = agentParams?.context;
 
       const messageGenerator = runMappingRules(userMessage, {
+          ...context,
+          migrationId
+      });
+
+      let assistantResponse = "";
+      for await (const message of messageGenerator) {
+        if (message.content && message.content.length > 0 && message.content[0].text) {
+          assistantResponse = message.content[0].text;
+        }
+      }
+
+      if (assistantResponse) {
+        await writeMappingChatMessage(migrationId, 'assistant', assistantResponse);
+      }
+
+      await pool.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+      return;
+
+    } else if (agentName === 'runEnhancementRules') {
+      const userMessage = agentParams?.userMessage;
+      const context = agentParams?.context;
+
+      const messageGenerator = runEnhancementRules(userMessage, {
           ...context,
           migrationId
       });

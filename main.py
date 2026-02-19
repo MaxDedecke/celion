@@ -1173,8 +1173,38 @@ async def create_mapping_chat_message(id: str, payload: CreateMappingChatMessage
             )
             history = [{"role": r["role"], "content": r["content"]} for r in reversed(cur.fetchall())]
 
-            # 3. Enqueue Job for Mapping Rules Agent
+            # 3. Fetch current migration step to decide which agent to run
+            cur.execute("SELECT current_step FROM public.migrations WHERE id = %s", (id,))
+            mig_row = cur.fetchone()
+            current_step = mig_row["current_step"] if mig_row else 0
+
+            # 4. Enqueue Job for Rules Agent
             if payload.role == 'user':
+                agent_name = "runEnhancementRules" if current_step == 7 else "runMappingRules"
+                
+                # Fetch current rules for context if it's step 7
+                current_enhancements = []
+                if current_step == 7:
+                    cur.execute("SELECT * FROM public.mapping_rules WHERE migration_id = %s AND rule_type = 'ENHANCE'", (id,))
+                    current_enhancements = [dict(r) for r in cur.fetchall()]
+
+                agent_params = {
+                    "userMessage": payload.content,
+                    "context": {
+                        "sourceEntities": source_entities,
+                        "sourceSchema": source_schema,
+                        "history": history,
+                        "migrationId": id
+                    }
+                }
+
+                if current_step == 7:
+                    agent_params["context"]["currentEnhancements"] = current_enhancements
+                else:
+                    agent_params["context"]["currentMappings"] = current_mappings
+                    agent_params["context"]["targetEntities"] = target_entities
+                    agent_params["context"]["targetSchema"] = target_schema
+
                 cur.execute(
                     """
                     INSERT INTO public.jobs (step_id, payload, status)
@@ -1183,19 +1213,8 @@ async def create_mapping_chat_message(id: str, payload: CreateMappingChatMessage
                     """,
                     (json_dumps({
                         "migrationId": id,
-                        "agentName": "runMappingRules",
-                        "agentParams": {
-                            "userMessage": payload.content,
-                            "context": {
-                                "currentMappings": current_mappings,
-                                "sourceEntities": source_entities,
-                                "targetEntities": target_entities,
-                                "sourceSchema": source_schema,
-                                "targetSchema": target_schema,
-                                "history": history,
-                                "migrationId": id
-                            }
-                        }
+                        "agentName": agent_name,
+                        "agentParams": agent_params
                     }),),
                 )
                 job_row = cur.fetchone()

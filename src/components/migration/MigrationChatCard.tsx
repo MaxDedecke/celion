@@ -214,6 +214,21 @@ const MigrationChatCard = ({
       );
     }
 
+    // Special case for Step 7: Quality Enhancement
+    if (currentStepNumber === 7) {
+       return (
+        <Button 
+          onClick={() => onAction && onAction('open-enhancement-ui')} 
+          variant="default" 
+          size="sm"
+          className="h-8 text-xs gap-1.5 animate-fade-in"
+        >
+          Enhancements konfigurieren
+          <ArrowRight className="h-3.5 w-3.5" />
+        </Button>
+      );
+    }
+
     if (lastActionMessage) {
       try {
         const jsonContent = JSON.parse(lastActionMessage.content);

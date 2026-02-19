@@ -6,3 +6,4 @@ export { runAnswerAgent } from './answerAgent/runAnswerAgent';
 export { runMapping } from './mapping/runMapping';
 export { runMappingVerification } from './mapping/runMappingVerification';
 export { runMappingRules } from './mappingRules/runMappingRules';
+export { runEnhancementRules } from './enhancementRules/runEnhancementRules';

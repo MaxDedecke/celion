@@ -25,7 +25,8 @@ import {
   Activity as ActivityIcon,
   TrendingUp,
   TrendingDown,
-  Network
+  Network,
+  Zap
 } from "lucide-react";
 import { AreaChart, Area, ResponsiveContainer, XAxis, YAxis, Tooltip } from "recharts";
 import { toast } from "sonner";
@@ -103,7 +104,7 @@ const Dashboard = () => {
   const [selectedMigration, setSelectedMigration] = useState<string | null>(migrationId || null);
   const [showAccountDialog, setShowAccountDialog] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
-  const [activeView, setActiveView] = useState<'chat' | 'workflow' | 'mapping' | 'config'>('chat');
+  const [activeView, setActiveView] = useState<'chat' | 'workflow' | 'mapping' | 'enhancement' | 'config'>('chat');
   
   const [migrations, setMigrations] = useState<any[]>([]);
   const [standaloneMigrations, setStandaloneMigrations] = useState<any[]>([]);
@@ -546,6 +547,15 @@ const Dashboard = () => {
     return completedCount >= 5;
   }, [currentMigration]);
 
+  const isEnhancementEnabled = useMemo(() => {
+    if (!currentMigration) return false;
+    const rawStep = currentMigration.current_step || 0;
+    const isStepRunning = currentMigration.step_status === 'running' || currentMigration.step_status === 'pending';
+    const hasCurrentStepFailed = currentMigration.step_status === 'failed';
+    const completedCount = (isStepRunning || hasCurrentStepFailed) ? Math.max(0, rawStep - 1) : rawStep;
+    return completedCount >= 6;
+  }, [currentMigration]);
+
   const isStep6Verified = useMemo(() => {
     if (!currentMigration?.workflowState?.nodes) return false;
     const step6Node = currentMigration.workflowState.nodes.find((n: any) => n.id === "mapping-verification" || n.id === "step-6");
@@ -553,6 +563,14 @@ const Dashboard = () => {
     
     // Check for success: status='done' AND no error
     return step6Node.status === 'done' && step6Node.agentResult && !step6Node.agentResult.error;
+  }, [currentMigration]);
+
+  const isStep7Verified = useMemo(() => {
+    if (!currentMigration?.workflowState?.nodes) return false;
+    const step7Node = currentMigration.workflowState.nodes.find((n: any) => n.id === "quality-enhancement" || n.id === "step-7");
+    if (!step7Node) return false;
+    
+    return step7Node.status === 'done' && step7Node.agentResult && !step7Node.agentResult.error;
   }, [currentMigration]);
 
   const configVerificationStatus = useMemo(() => {
@@ -725,6 +743,25 @@ const Dashboard = () => {
                            <CheckCircle2 className="h-3 w-3 text-green-500 fill-background" /> 
                          ) : (
                            <XCircle className="h-3 w-3 text-red-500 fill-background" />
+                         )}
+                      </div>
+                    )}
+                  </Button>
+                  <Button
+                    variant={activeView === 'enhancement' ? 'secondary' : 'ghost'}
+                    size="icon"
+                    onClick={() => setActiveView('enhancement')}
+                    className="h-8 w-8 relative"
+                    disabled={!isEnhancementEnabled}
+                    title={isEnhancementEnabled ? (isStep7Verified ? "Enhancements - abgeschlossen" : "Enhancements") : "Enhancements erst nach Mapping verfügbar"}
+                  >
+                    <Zap className={cn("h-4 w-4 transition-colors", activeView === 'enhancement' && "text-primary")} />
+                    {isEnhancementEnabled && (
+                      <div className="absolute -top-1 -right-1 pointer-events-none bg-background rounded-full ring-2 ring-background">
+                         {isStep7Verified ? (
+                           <CheckCircle2 className="h-3 w-3 text-green-500 fill-background" /> 
+                         ) : (
+                           <Circle className="h-3 w-3 text-muted-foreground fill-background" />
                          )}
                       </div>
                     )}

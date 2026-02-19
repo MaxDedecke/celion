@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, forwardRef, useImperativeHandle } fro
 import MigrationChatCard from "./migration/MigrationChatCard";
 import WorkflowPanel from "./migration/WorkflowPanel";
 import MappingPanel from "./migration/MappingPanel";
+import EnhancementPanel from "./migration/EnhancementPanel";
 import MigrationConfigPanel from "./migration/MigrationConfigPanel";
 import { toast } from "sonner";
 import type { MigrationDetailsProps } from "./migration/migrationDetails.types";
@@ -76,6 +77,8 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
       }
     } else if (action === 'open-mapping-ui') {
       onViewChange?.('mapping');
+    } else if (action === 'open-enhancement-ui') {
+      onViewChange?.('enhancement');
     }
   }, [handleNextWorkflowStep, onViewChange]);
 
@@ -140,6 +143,15 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
               migrationId={project.id} 
               onClose={() => onViewChange?.('chat')}
               onTriggerStep={() => handleNextWorkflowStep(6)}
+            />
+          </div>
+        )}
+        {activeView === 'enhancement' && (
+          <div className="flex-1 overflow-hidden flex flex-col">
+            <EnhancementPanel 
+              migrationId={project.id} 
+              onClose={() => onViewChange?.('chat')}
+              onTriggerStep={() => handleNextWorkflowStep(7)}
             />
           </div>
         )}
