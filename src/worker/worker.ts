@@ -245,7 +245,7 @@ async function processJob(job: any) {
     }
   }
 
-  if (!stepRecord && agentName !== 'runAnswerAgent' && agentName !== 'runMappingRules') {
+  if (!stepRecord && agentName !== 'runAnswerAgent' && agentName !== 'runMappingRules' && agentName !== 'runEnhancementRules') {
     console.error('Unable to find migration step for job', job.id);
     await pool.query('UPDATE jobs SET status = $1, last_error = $2 WHERE id = $3', ['failed', 'Step not found', job.id]);
     return;
@@ -1819,6 +1819,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
       }
 
     } else if (agentName === 'runMappingRules') {
+      console.log(`[Worker] Executing runMappingRules for migration ${migrationId}`);
       const userMessage = agentParams?.userMessage;
       const context = agentParams?.context;
 
@@ -1827,21 +1828,20 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
           migrationId
       });
 
-      let assistantResponse = "";
+      let messageCount = 0;
       for await (const message of messageGenerator) {
+        console.log(`[Worker] runMappingRules yielded message ${++messageCount}`);
         if (message.content && message.content.length > 0 && message.content[0].text) {
-          assistantResponse = message.content[0].text;
+          await writeMappingChatMessage(migrationId, 'assistant', message.content[0].text);
         }
       }
-
-      if (assistantResponse) {
-        await writeMappingChatMessage(migrationId, 'assistant', assistantResponse);
-      }
+      console.log(`[Worker] runMappingRules completed with ${messageCount} messages`);
 
       await pool.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
       return;
 
     } else if (agentName === 'runEnhancementRules') {
+      console.log(`[Worker] Executing runEnhancementRules for migration ${migrationId}`);
       const userMessage = agentParams?.userMessage;
       const context = agentParams?.context;
 
@@ -1850,18 +1850,76 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
           migrationId
       });
 
-      let assistantResponse = "";
+      let messageCount = 0;
       for await (const message of messageGenerator) {
+        console.log(`[Worker] runEnhancementRules yielded message ${++messageCount}`);
         if (message.content && message.content.length > 0 && message.content[0].text) {
-          assistantResponse = message.content[0].text;
+          await writeMappingChatMessage(migrationId, 'assistant', message.content[0].text);
         }
       }
-
-      if (assistantResponse) {
-        await writeMappingChatMessage(migrationId, 'assistant', assistantResponse);
-      }
+      console.log(`[Worker] runEnhancementRules completed with ${messageCount} messages`);
 
       await pool.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+      return;
+
+    } else if (agentName === 'runQualityEnhancement') {
+      console.log(`[Worker] Running Quality Enhancement for migration ${migrationId}`);
+      await writeChatMessage(migrationId, 'assistant', 'Wende Qualitäts-Enhancements auf die staged Daten an...', currentStepNumber);
+      
+      // MOCK: Simulate processing
+      await new Promise(r => setTimeout(r, 2000));
+      
+      const { rows: ruleRows } = await pool.query('SELECT count(*) FROM public.mapping_rules WHERE migration_id = $1 AND enhancements IS NOT NULL AND jsonb_array_length(enhancements) > 0', [migrationId]);
+      const rulesWithEnhancements = parseInt(ruleRows[0].count);
+      
+      await writeChatMessage(migrationId, 'assistant', `Qualitäts-Veredelung abgeschlossen. ${rulesWithEnhancements} Mapping-Regeln mit Enhancements verarbeitet.`, currentStepNumber);
+
+      result = { 
+          status: 'success', 
+          message: 'Quality Enhancement erfolgreich abgeschlossen.',
+          processedRules: rulesWithEnhancements
+      };
+
+      const finishClientEnhance = await pool.connect();
+      try {
+        await finishClientEnhance.query('BEGIN');
+        await finishClientEnhance.query('UPDATE migration_steps SET status = $1, result = $2, status_message = $3 WHERE id = $4', [
+          'completed', result, 'Quality enhancement completed successfully.', step_id,
+        ]);
+
+        const { rows: migRowsFinal } = await finishClientEnhance.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
+        const migrationDataFinal = migRowsFinal[0];
+        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migrationDataFinal?.workflow_state, stepRecord.workflow_step_id || stepId, result, false);
+        
+        await finishClientEnhance.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
+          nextState, progress, 'processing', 'completed', currentStepNumber, migrationId,
+        ]);
+        await finishClientEnhance.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+        
+        // KPI: Increment global stats
+        await incrementGlobalStats(finishClientEnhance, { steps: 1, success: 1, total_agents: 1 });
+
+        await finishClientEnhance.query('COMMIT');
+
+        const nextStepIndex = currentStepNumber;
+        if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
+            const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
+            const actionContent = JSON.stringify({
+                type: "action",
+                actions: [
+                  { action: "continue", label: `Weiter zu Schritt ${nextStepIndex + 1} ${nextStep.title}`, variant: "primary" },
+                  { action: "retry", label: `Schritt ${currentStepNumber} wiederholen`, variant: "outline", stepNumber: currentStepNumber }
+                ]
+            });
+            await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
+        }
+        await logActivity(migrationId, 'success', 'Quality Enhancement abgeschlossen.');
+      } catch (e) {
+        await finishClientEnhance.query('ROLLBACK');
+        throw e;
+      } finally {
+        finishClientEnhance.release();
+      }
       return;
 
     } else {

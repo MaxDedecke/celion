@@ -1192,11 +1192,10 @@ async def create_mapping_chat_message(id: str, payload: CreateMappingChatMessage
             if payload.role == 'user':
                 agent_name = "runEnhancementRules" if current_step == 7 else "runMappingRules"
                 
-                # Fetch current rules for context if it's step 7
-                current_enhancements = []
-                if current_step == 7:
-                    cur.execute("SELECT * FROM public.mapping_rules WHERE migration_id = %s AND rule_type = 'ENHANCE'", (id,))
-                    current_enhancements = [dict(r) for r in cur.fetchall()]
+                # Fetch current rules for context
+                # If step 7, we need MAP rules to enhance them
+                cur.execute("SELECT * FROM public.mapping_rules WHERE migration_id = %s", (id,))
+                current_rules = [dict(r) for r in cur.fetchall()]
 
                 agent_params = {
                     "userMessage": payload.content,
@@ -1209,7 +1208,8 @@ async def create_mapping_chat_message(id: str, payload: CreateMappingChatMessage
                 }
 
                 if current_step == 7:
-                    agent_params["context"]["currentEnhancements"] = current_enhancements
+                    # Filter only MAP rules for enhancement context
+                    agent_params["context"]["currentEnhancements"] = [r for r in current_rules if r.get("rule_type") == 'MAP']
                 else:
                     agent_params["context"]["currentMappings"] = current_mappings
                     agent_params["context"]["targetEntities"] = target_entities
@@ -2321,6 +2321,20 @@ async def duplicate_migration(id: str, user_id: str) -> Migration:
                 (new_migration_id, id)
             )
 
+            # 3d. Duplicate Mapping Rules
+            cur.execute(
+                """
+                INSERT INTO public.mapping_rules (
+                    migration_id, source_system, source_object, source_property, 
+                    target_system, target_object, target_property, note, rule_type, enhancements
+                )
+                SELECT %s, source_system, source_object, source_property, 
+                       target_system, target_object, target_property, note, rule_type, enhancements
+                FROM public.mapping_rules WHERE migration_id = %s
+                """,
+                (new_migration_id, id)
+            )
+
             # 4. Duplicate pipelines, mappings, and agent states
             cur.execute(
                 """
@@ -2411,6 +2425,18 @@ async def duplicate_migration(id: str, user_id: str) -> Migration:
                 )
                 SELECT %s, role, content, step_number, created_at
                 FROM public.migration_chat_messages WHERE migration_id = %s
+                """,
+                (new_migration_id, id)
+            )
+
+            # 6b. Duplicate mapping_chat_messages (Step 6/7 History)
+            cur.execute(
+                """
+                INSERT INTO public.mapping_chat_messages (
+                    migration_id, role, content, created_at
+                )
+                SELECT %s, role, content, created_at
+                FROM public.mapping_chat_messages WHERE migration_id = %s
                 """,
                 (new_migration_id, id)
             )
