@@ -59,7 +59,7 @@ const TOOLS = [
           target_object: { type: "string" },
           target_property: { type: "string", description: "Die technische ID des Ziel-Feldes" },
           note: { type: "string", description: "Optional: Notiz oder Begründung" },
-          rule_type: { type: "string", enum: ["MAP", "POLISH", "SUMMARY", "IGNORE"], description: "Art der Regel: MAP (Standard), POLISH (Nachbearbeitung), SUMMARY (Zusammenfassung/Doku), IGNORE (Ignorieren)" }
+          rule_type: { type: "string", enum: ["MAP", "POLISH", "SUMMARY", "IGNORE", "ENHANCE"], description: "Art der Regel: MAP (Standard), POLISH (Nachbearbeitung), SUMMARY (Zusammenfassung/Doku), IGNORE (Ignorieren), ENHANCE (Qualitätsverbesserung)" }
         },
         required: ["source_system", "source_object", "source_property", "target_system", "target_object", "target_property", "rule_type"]
       }

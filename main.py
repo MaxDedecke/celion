@@ -951,7 +951,8 @@ class MappingRule(BaseModel):
     target_object: str
     target_property: Optional[str] = None
     note: Optional[str] = None
-    rule_type: str # 'MAP', 'POLISH', 'SUMMARY', 'IGNORE'
+    rule_type: str # 'MAP', 'POLISH', 'SUMMARY', 'IGNORE', 'ENHANCE'
+    enhancements: Optional[list[str]] = []
     created_at: str
 
 class CreateMappingRulePayload(BaseModel):
@@ -963,10 +964,12 @@ class CreateMappingRulePayload(BaseModel):
     target_property: str
     note: Optional[str] = None
     rule_type: str
+    enhancements: Optional[list[str]] = []
 
 class UpdateMappingRulePayload(BaseModel):
     note: Optional[str] = None
     rule_type: Optional[str] = None
+    enhancements: Optional[list[str]] = None
 
 @app.get("/api/migrations/{id}/mapping-rules", response_model=list[MappingRule])
 async def get_mapping_rules(id: str) -> list[MappingRule]:
@@ -990,6 +993,7 @@ async def get_mapping_rules(id: str) -> list[MappingRule]:
                     target_property=row.get("target_property"),
                     note=row.get("note"),
                     rule_type=row["rule_type"],
+                    enhancements=row.get("enhancements") or [],
                     created_at=row["created_at"].isoformat(),
                 )
                 for row in rows
@@ -1006,8 +1010,8 @@ async def create_mapping_rule(id: str, payload: CreateMappingRulePayload) -> Map
             cur.execute(
                 """
                 INSERT INTO public.mapping_rules 
-                (migration_id, source_system, source_object, source_property, target_system, target_object, target_property, note, rule_type)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                (migration_id, source_system, source_object, source_property, target_system, target_object, target_property, note, rule_type, enhancements)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING *
                 """,
                 (
@@ -1019,7 +1023,8 @@ async def create_mapping_rule(id: str, payload: CreateMappingRulePayload) -> Map
                     payload.target_object, 
                     payload.target_property,
                     payload.note,
-                    payload.rule_type
+                    payload.rule_type,
+                    json.dumps(payload.enhancements) if payload.enhancements is not None else '[]'
                 ),
             )
             row = cur.fetchone()
@@ -1036,6 +1041,7 @@ async def create_mapping_rule(id: str, payload: CreateMappingRulePayload) -> Map
                 target_property=row.get("target_property"),
                 note=row.get("note"),
                 rule_type=row["rule_type"],
+                enhancements=row.get("enhancements") or [],
                 created_at=row["created_at"].isoformat(),
             )
     except Exception as exc:
@@ -1055,6 +1061,9 @@ async def patch_mapping_rule(id: str, rule_id: str, payload: UpdateMappingRulePa
             if payload.rule_type is not None:
                 updates.append("rule_type = %s")
                 params.append(payload.rule_type)
+            if payload.enhancements is not None:
+                updates.append("enhancements = %s")
+                params.append(json.dumps(payload.enhancements))
             
             if not updates:
                 raise HTTPException(status_code=400, detail="No fields to update.")
@@ -1079,6 +1088,7 @@ async def patch_mapping_rule(id: str, rule_id: str, payload: UpdateMappingRulePa
                 target_property=row.get("target_property"),
                 note=row.get("note"),
                 rule_type=row["rule_type"],
+                enhancements=row.get("enhancements") or [],
                 created_at=row["created_at"].isoformat(),
             )
     except HTTPException:

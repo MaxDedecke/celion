@@ -2,12 +2,11 @@ import { Message } from '../openai/types';
 import { buildOpenAiHeaders, resolveOpenAiConfig } from '../openai/openaiClient';
 
 const SYSTEM_PROMPT = `
-Du bist der Celion Enhancement Rules Agent. Deine Aufgabe ist es, den Benutzer beim Optimieren der Datenqualität während der Migration zu unterstützen (Schritt 7).
+Du bist der Celion Enhancement Rules Agent. Deine Aufgabe ist es, den Benutzer beim Veredeln seiner Mapping-Regeln zu unterstützen (Schritt 7).
 
 ### DEINE ZIELE:
-1.  Analysiere die Quell-Felder und schlage sinnvolle Qualitäts-Verbesserungen vor (z.B. Rechtschreibprüfung für Beschreibungen, Zusammenfassungen für lange Texte).
-2.  Erstelle Enhancement-Regeln basierend auf den Wünschen des Benutzers.
-3.  Jede Enhancement-Regel bezieht sich auf ein Quell-Feld und wendet eine spezifische Transformation an.
+1.  Analysiere die bestehenden Mappings (Feld-zu-Feld) und schlage passende Qualitäts-Verbesserungen vor.
+2.  Fokus liegt auf der Verbesserung der Ziel-Datenqualität durch KI-gestützte Transformationen.
 
 ### VERFÜGBARE ENHANCEMENT-TYPEN:
 - **spellcheck**: Prüft und korrigiert Rechtschreibung und Grammatik.
@@ -17,43 +16,34 @@ Du bist der Celion Enhancement Rules Agent. Deine Aufgabe ist es, den Benutzer b
 - **translate_en**: Übersetzt den Text ins Englische.
 - **sentiment**: Analysiert die Stimmung des Textes.
 
-### WICHTIGE REGELN FÜR DIE ERSTELLUNG VON REGELN:
-- **Verwende für 'source_object' IMMER exakt den 'key' aus dem QUELL-SCHEMA.**
-- **Verwende für 'source_property' IMMER die exakte ID des Feldes aus dem Quell-Schema.**
-- **Ziel-Definition**: Da es sich um Enhancements handelt, setzen wir 'target_system' auf "ENHANCEMENT", 'target_object' auf "QUALITY" und 'target_property' auf die ID des Enhancements (z.B. "spellcheck").
-- **rule_type**: Muss immer 'ENHANCE' sein.
-
 ### DEIN VERHALTEN:
-- Analysiere die Schemata und schlage für Textfelder (Strings, Descriptions) passende Enhancements vor.
-- Wenn der Benutzer "Vorschläge" oder "Was kann ich optimieren?" fragt, liste sinnvolle Felder und die dazu passenden Enhancement-Typen auf.
-- Nutze das Tool 'create_enhancement_rule', um die Konfiguration in der Datenbank zu speichern.
+- Analysiere die Quell- und Ziel-Feldnamen in den Mappings. Für Textfelder (z.B. Description, Summary, Comments) sind Enhancements besonders wertvoll.
+- Wenn der Benutzer "Vorschläge" oder "Was kann ich optimieren?" fragt, liste die bestehenden Mappings auf und schlage passende Optimierungen dafür vor.
+- Nutze das Tool 'add_enhancement_to_mapping', um ein Enhancement zu einer bestehenden Regel hinzuzufügen.
 - Antworte immer auf Deutsch.
 
 ### FORMATIERUNG:
-- Nutze Markdown für Listen und Code-Blöcke.
-- Präsentiere Vorschläge übersichtlich in einer Tabelle.
+- Nutze Markdown für Listen und Tabellen.
+- Präsentiere Vorschläge übersichtlich: Mapping (Quelle -> Ziel) | Vorgeschlagenes Enhancement | Grund.
 `;
 
 const TOOLS = [
   {
     type: "function",
     function: {
-      name: "create_enhancement_rule",
-      description: "Speichert eine Enhancement-Regel in der Datenbank.",
+      name: "add_enhancement_to_mapping",
+      description: "Fügt einer bestehenden Mapping-Regel ein Qualitäts-Enhancement hinzu.",
       parameters: {
         type: "object",
         properties: {
-          source_system: { type: "string" },
-          source_object: { type: "string" },
-          source_property: { type: "string", description: "Die technische ID des Quell-Feldes" },
+          rule_id: { type: "string", description: "Die ID der bestehenden Mapping-Regel (MAP)" },
           enhancement_type: { 
             type: "string", 
             enum: ["spellcheck", "tone_check", "summarize", "pii_redact", "translate_en", "sentiment"],
             description: "Der technische Typ des Enhancements"
-          },
-          note: { type: "string", description: "Optionale Beschreibung oder Begründung" }
+          }
         },
-        required: ["source_system", "source_object", "source_property", "enhancement_type"]
+        required: ["rule_id", "enhancement_type"]
       }
     }
   }
@@ -79,14 +69,11 @@ export async function* runEnhancementRules(
 ### MIGRATIONS-ID:
 ${context.migrationId}
 
-### QUELL-ENTITÄTEN:
-${JSON.stringify(context.sourceEntities.map(e => e.name), null, 2)}
+### BESTEHENDE MAPPINGS (Mögliche Ziele für Enhancements):
+${JSON.stringify(context.currentEnhancements.filter(r => r.rule_type === 'MAP'), null, 2)}
 
 ### QUELL-SCHEMA:
 ${JSON.stringify(context.sourceSchema, null, 2)}
-
-### AKTUELLE ENHANCEMENTS:
-${JSON.stringify(context.currentEnhancements, null, 2)}
 
 ### BISHERIGER CHAT-VERLAUF:
 ${historyPrompt}
@@ -139,26 +126,29 @@ ${userMessage}
         console.log(`[EnhancementRules] Tool Call: ${functionName}`, args);
 
         try {
-          if (functionName === 'create_enhancement_rule') {
-            // Map enhancement args to standard mapping_rules schema
-            const payload = {
-                source_system: args.source_system,
-                source_object: args.source_object,
-                source_property: args.source_property,
-                target_system: "ENHANCEMENT",
-                target_object: "QUALITY",
-                target_property: args.enhancement_type,
-                rule_type: 'ENHANCE',
-                note: args.note || args.enhancement_type
-            };
+          if (functionName === 'add_enhancement_to_mapping') {
+            // Fetch all rules to find the target one
+            const rulesRes = await fetch(`${backendUrl}/api/migrations/${context.migrationId}/mapping-rules`);
+            const allRules = await rulesRes.json();
+            const rule = allRules.find((r: any) => r.id === args.rule_id);
 
-            const ruleResponse = await fetch(`${backendUrl}/api/migrations/${context.migrationId}/mapping-rules`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-            const ruleData = await ruleResponse.json();
-            result = { success: true, rule: ruleData };
+            if (rule) {
+                const currentEnhancements = rule.enhancements || [];
+                if (!currentEnhancements.includes(args.enhancement_type)) {
+                    const newEnhancements = [...currentEnhancements, args.enhancement_type];
+                    const updateRes = await fetch(`${backendUrl}/api/migrations/${context.migrationId}/mapping-rules/${args.rule_id}`, {
+                        method: 'PATCH',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ enhancements: newEnhancements })
+                    });
+                    const updatedRule = await updateRes.json();
+                    result = { success: true, rule: updatedRule };
+                } else {
+                    result = { success: true, message: "Enhancement already active", rule };
+                }
+            } else {
+                result = { error: "Rule not found" };
+            }
           } else {
             result = { error: `Unknown tool: ${functionName}` };
           }

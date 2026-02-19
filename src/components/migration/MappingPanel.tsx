@@ -76,7 +76,8 @@ interface MappingRule {
   target_object: string;
   target_property: string;
   note?: string;
-  rule_type: 'MAP' | 'POLISH' | 'SUMMARY' | 'IGNORE';
+  rule_type: 'MAP' | 'POLISH' | 'SUMMARY' | 'IGNORE' | 'ENHANCE';
+  enhancements?: string[];
 }
 
 const MappingPanel = ({ migrationId, onClose, onTriggerStep }: MappingPanelProps) => {

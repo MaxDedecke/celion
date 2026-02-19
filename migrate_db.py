@@ -24,6 +24,47 @@ def migrate():
         );
         """)
         
+        print("Creating mapping_rules table...")
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS public.mapping_rules (
+          id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+          migration_id uuid NOT NULL REFERENCES public.migrations(id) ON DELETE CASCADE,
+          source_system text NOT NULL,
+          source_object text NOT NULL,
+          source_property text,
+          target_system text NOT NULL,
+          target_object text NOT NULL,
+          target_property text,
+          note text,
+          rule_type text NOT NULL,
+          enhancements jsonb DEFAULT '[]'::jsonb,
+          created_at timestamp with time zone NOT NULL DEFAULT now()
+        );
+        """)
+
+        print("Adding enhancements column to mapping_rules if not exists...")
+        cur.execute("""
+        DO $$
+        BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name='mapping_rules' AND column_name='enhancements') THEN
+                ALTER TABLE public.mapping_rules ADD COLUMN enhancements jsonb DEFAULT '[]'::jsonb;
+            END IF;
+        END $$;
+        """)
+
+        print("Updating rule_type constraint in mapping_rules...")
+        cur.execute("""
+        DO $$
+        BEGIN
+            ALTER TABLE public.mapping_rules DROP CONSTRAINT IF EXISTS mapping_rules_rule_type_check;
+            ALTER TABLE public.mapping_rules ADD CONSTRAINT mapping_rules_rule_type_check 
+            CHECK (rule_type = ANY (ARRAY['MAP'::text, 'POLISH'::text, 'SUMMARY'::text, 'IGNORE'::text, 'ENHANCE'::text]));
+        EXCEPTION
+            WHEN OTHERS THEN
+                NULL; -- Handle cases where table might not exist yet if CREATE TABLE above fails
+        END $$;
+        """)
+        
         print("Creating index...")
         cur.execute("""
         CREATE INDEX IF NOT EXISTS idx_mapping_chat_messages_migration_id ON public.mapping_chat_messages(migration_id);

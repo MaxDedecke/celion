@@ -14,7 +14,9 @@ import {
   MessageSquare,
   Pencil,
   Check,
-  Zap
+  Zap,
+  Target,
+  ArrowRight
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { databaseClient } from "@/api/databaseClient";
@@ -43,19 +45,6 @@ interface EnhancementPanelProps {
   onTriggerStep?: () => void;
 }
 
-interface EntityField {
-  id: string;
-  name: string;
-  type: string;
-}
-
-interface Entity {
-  id: string;
-  name: string;
-  fields: EntityField[];
-  isIgnored?: boolean;
-}
-
 interface MappingRule {
   id: string;
   source_system: string;
@@ -66,6 +55,7 @@ interface MappingRule {
   target_property: string;
   note?: string;
   rule_type: string;
+  enhancements?: string[];
 }
 
 const ENHANCEMENT_TYPES = [
@@ -79,23 +69,13 @@ const ENHANCEMENT_TYPES = [
 
 const EnhancementPanel = ({ migrationId, onClose, onTriggerStep }: EnhancementPanelProps) => {
   const [loading, setLoading] = useState(true);
-  const [sourceEntities, setSourceEntities] = useState<Entity[]>([]);
   const [sourceSystemName, setSourceSystemName] = useState("Source");
-  
-  const [currentSourceIdx, setCurrentSourceIdx] = useState(0);
+  const [targetSystemName, setTargetSystemName] = useState("Target");
   
   const [mappingRules, setMappingRules] = useState<MappingRule[]>([]);
   const [selectedRuleId, setSelectedRuleId] = useState<string | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [showSaveDialog, setShowSaveDialog] = useState(false);
-
-  // Field selection for rule creation
-  const [selectedSourceFieldId, setSelectedSourceFieldId] = useState<string | null>(null);
-  const [selectedEnhancementId, setSelectedEnhancementId] = useState<string | null>(null);
-
-  // Editing State
-  const [editingRuleId, setEditingRuleId] = useState<string | null>(null);
-  const [editingNote, setEditingNote] = useState("");
 
   // Chat State
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
@@ -115,33 +95,7 @@ const EnhancementPanel = ({ migrationId, onClose, onTriggerStep }: EnhancementPa
         if (!migration) throw new Error("Migration not found");
 
         setSourceSystemName(migration.source_system);
-
-        const [sourceSpecsRes, resultsRes] = await Promise.all([
-          databaseClient.fetchObjectSpecs(migration.source_system),
-          databaseClient.fetchMigrationResults(migrationId)
-        ]);
-
-        const sSpecs = sourceSpecsRes.data;
-        const results = resultsRes.data;
-
-        const inventoryResults = results?.step_3 || [];
-
-        if (sSpecs?.objects) {
-          setSourceEntities(sSpecs.objects
-            .filter((obj: any) => {
-                const inventoryItem = inventoryResults.find((r: any) => r.entity_name === obj.key || r.entity_name === obj.displayName);
-                return !inventoryItem?.is_ignored;
-            })
-            .map((obj: any) => ({
-              id: obj.key,
-              name: obj.displayName || obj.key,
-              fields: (obj.fields || []).map((f: any) => ({
-                id: f.id,
-                name: f.name || f.id,
-                type: f.type || "text"
-              }))
-            })));
-        }
+        setTargetSystemName(migration.target_system);
 
         const rulesResponse = await fetch(`/api/migrations/${migrationId}/mapping-rules`);
         if (rulesResponse.ok) {
@@ -217,7 +171,7 @@ const EnhancementPanel = ({ migrationId, onClose, onTriggerStep }: EnhancementPa
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ 
-                      content: "Willkommen im Enhancement-Editor! Hier kannst du festlegen, wie deine Daten während der Migration optimiert werden sollen, z. B. durch Rechtschreibprüfung oder automatische Zusammenfassungen.", 
+                      content: "Willkommen im Quality Enhancement Editor! Hier kannst du deine Mappings durch KI-gestützte Optimierungen veredeln, z.B. durch Rechtschreibprüfung oder PII-Schwärzung.", 
                       role: 'assistant' 
                     })
                   });
@@ -273,15 +227,9 @@ const EnhancementPanel = ({ migrationId, onClose, onTriggerStep }: EnhancementPa
     }
   };
 
-  const activeSource = sourceEntities[currentSourceIdx];
-
-  const currentRules = useMemo(() => {
-    if (!activeSource) return [];
-    return mappingRules.filter(r => 
-        (r.source_object === activeSource.id || r.source_object === activeSource.name) && 
-        (r.rule_type === 'ENHANCE' || r.rule_type === 'POLISH' || r.rule_type === 'SUMMARY')
-    );
-  }, [mappingRules, activeSource]);
+  const mapRules = useMemo(() => {
+    return mappingRules.filter(r => r.rule_type === 'MAP');
+  }, [mappingRules]);
 
   const handleSaveClick = () => {
     setShowSaveDialog(true);
@@ -310,99 +258,37 @@ const EnhancementPanel = ({ migrationId, onClose, onTriggerStep }: EnhancementPa
   };
 
   const handleRuleSelect = (ruleId: string) => {
-      if (selectedRuleId === ruleId) {
-          setSelectedRuleId(null);
-          return;
-      }
-
-      const rule = mappingRules.find(r => r.id === ruleId);
-      if (!rule) return;
-      
-      setSelectedRuleId(ruleId);
-
-      const sIdx = sourceEntities.findIndex(e => e.id === rule.source_object || e.name === rule.source_object);
-      if (sIdx !== -1) setCurrentSourceIdx(sIdx);
+      setSelectedRuleId(ruleId === selectedRuleId ? null : ruleId);
   };
 
-  const handleRuleUpdate = async (ruleId: string, payload: Partial<{ note: string, rule_type: string }>) => {
+  const toggleEnhancement = async (ruleId: string, enhancementId: string) => {
+    const rule = mappingRules.find(r => r.id === ruleId);
+    if (!rule) return;
+
+    const enhancements = rule.enhancements || [];
+    const newEnhancements = enhancements.includes(enhancementId)
+        ? enhancements.filter(id => id !== enhancementId)
+        : [...enhancements, enhancementId];
+
     try {
         const response = await fetch(`/api/migrations/${migrationId}/mapping-rules/${ruleId}`, {
             method: 'PATCH',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
+            body: JSON.stringify({ enhancements: newEnhancements })
         });
         if (!response.ok) throw new Error("Update failed");
         const updatedRule = await response.json();
         setMappingRules(prev => prev.map(r => r.id === ruleId ? updatedRule : r));
-        setEditingRuleId(null);
-        toast.success("Enhancement aktualisiert");
+        toast.success(enhancements.includes(enhancementId) ? "Enhancement entfernt" : "Enhancement aktiviert");
     } catch (error) {
-        console.error("Failed to update rule:", error);
-        toast.error("Fehler beim Aktualisieren des Enhancements");
+        console.error("Failed to update enhancements:", error);
+        toast.error("Fehler beim Aktualisieren der Enhancements");
     }
   };
 
-  const handleDeleteRule = async (ruleId: string) => {
-    try {
-        const response = await fetch(`/api/migrations/${migrationId}/mapping-rules/${ruleId}`, {
-            method: 'DELETE'
-        });
-        if (!response.ok) throw new Error("Delete failed");
-        
-        setMappingRules(prev => prev.filter(r => r.id !== ruleId));
-        if (selectedRuleId === ruleId) setSelectedRuleId(null);
-        toast.success("Enhancement gelöscht");
-    } catch (error) {
-        console.error("Failed to delete rule:", error);
-        toast.error("Fehler beim Löschen des Enhancements");
-    }
-  };
-
-  const handleCreateRule = async () => {
-    if (!activeSource) {
-        toast.error("Wählen Sie zuerst ein Quellobjekt aus");
-        return;
-    }
-
-    if (!selectedSourceFieldId || !selectedEnhancementId) {
-        toast.error("Bitte wählen Sie zuerst ein Quellfeld und ein Enhancement aus");
-        return;
-    }
-
-    try {
-        const enhancement = ENHANCEMENT_TYPES.find(e => e.id === selectedEnhancementId);
-        const payload = {
-            source_system: sourceSystemName,
-            source_object: activeSource.id,
-            source_property: selectedSourceFieldId,
-            target_system: "ENHANCEMENT",
-            target_object: "QUALITY",
-            target_property: selectedEnhancementId,
-            rule_type: 'ENHANCE',
-            note: enhancement?.name || ""
-        };
-
-        const response = await fetch(`/api/migrations/${migrationId}/mapping-rules`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload)
-        });
-
-        if (!response.ok) throw new Error("Creation failed");
-
-        const newRule = await response.json();
-        setMappingRules(prev => [newRule, ...prev]);
-        
-        toast.success(`Enhancement erstellt`);
-        setSelectedSourceFieldId(null);
-        setSelectedEnhancementId(null);
-        setEditingRuleId(newRule.id);
-        setEditingNote(newRule.note || "");
-    } catch (error) {
-        console.error("Failed to create rule:", error);
-        toast.error("Fehler beim Erstellen des Enhancements");
-    }
-  };
+  const selectedRule = useMemo(() => {
+    return mappingRules.find(r => r.id === selectedRuleId);
+  }, [mappingRules, selectedRuleId]);
 
   if (loading) {
     return (
@@ -424,20 +310,19 @@ const EnhancementPanel = ({ migrationId, onClose, onTriggerStep }: EnhancementPa
                 <div className="h-4 w-px bg-border hidden sm:block" />
                 
                 <div className="flex items-center gap-2 flex-1 max-w-md">
-                    <span className="text-[10px] font-bold uppercase text-muted-foreground whitespace-nowrap">Fokus:</span>
-                    <Select value={selectedRuleId || ""} onValueChange={handleRuleSelect} disabled={currentRules.length === 0}>
+                    <span className="text-[10px] font-bold uppercase text-muted-foreground whitespace-nowrap">Mapping-Fokus:</span>
+                    <Select value={selectedRuleId || ""} onValueChange={handleRuleSelect} disabled={mapRules.length === 0}>
                         <SelectTrigger className="h-8 w-full bg-muted/30 border-none shadow-none text-xs font-medium">
-                            <SelectValue placeholder={currentRules.length > 0 ? "Enhancement auswählen..." : "Keine Enhancements"} />
+                            <SelectValue placeholder={mapRules.length > 0 ? "Mapping auswählen..." : "Keine Mappings"} />
                         </SelectTrigger>
                         <SelectContent>
-                            {currentRules.map(rule => (
+                            {mapRules.map(rule => (
                                 <SelectItem key={rule.id} value={rule.id}>
                                     <div className="flex items-center gap-2">
-                                        <Badge variant="outline" className="text-[9px] h-4 min-w-[45px] justify-center px-1">
-                                            {rule.target_property}
-                                        </Badge>
                                         <div className="flex items-center gap-1 text-[11px]">
                                             <span className="font-semibold">{rule.source_object}.{rule.source_property}</span>
+                                            <ArrowRight className="w-2 h-2 opacity-50" />
+                                            <span className="font-semibold text-emerald-600">{rule.target_object}.{rule.target_property}</span>
                                         </div>
                                     </div>
                                 </SelectItem>
@@ -456,73 +341,53 @@ const EnhancementPanel = ({ migrationId, onClose, onTriggerStep }: EnhancementPa
 
         <div className="flex-1 flex overflow-hidden">
             <ResizablePanelGroup direction="horizontal">
-              <ResizablePanel defaultSize={60} minSize={50} className="flex flex-col min-h-0">
-                <div className="grid grid-cols-2 shrink-0">
-                  <div className={cn(
-                    "bg-background p-4 flex items-center justify-between gap-4 transition-all border-b",
-                    activeSource && currentRules.some(r => r.source_object === activeSource.id) ? "border-b-primary shadow-[0_2px_8px_-2px_rgba(59,130,246,0.1)]" : "border-b-border"
-                  )}>
-                    <Button 
-                      variant="ghost" size="icon" 
-                      onClick={() => setCurrentSourceIdx(prev => (prev > 0 ? prev - 1 : sourceEntities.length - 1))}
-                      disabled={sourceEntities.length <= 1}
-                    >
-                      <ChevronLeft className="w-5 h-5" />
-                    </Button>
-                    <div className="flex-1 text-center">
-                      <div className="flex items-center justify-center gap-2 mb-1">
-                        <Database className={cn("w-4 h-4 transition-colors", activeSource && currentRules.some(r => r.source_object === activeSource.id) ? "text-primary" : "text-muted-foreground")} />
-                        <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Source: {sourceSystemName}</span>
-                      </div>
-                      <h3 className="font-bold text-lg">
-                        {activeSource?.name || "Keine Entitäten"}
-                      </h3>
-                    </div>
-                    <Button 
-                      variant="ghost" size="icon" 
-                      onClick={() => setCurrentSourceIdx(prev => (prev < sourceEntities.length - 1 ? prev + 1 : 0))}
-                      disabled={sourceEntities.length <= 1}
-                    >
-                      <ChevronRight className="w-5 h-5" />
-                    </Button>
+              <ResizablePanel defaultSize={65} minSize={50} className="flex flex-col min-h-0">
+                <div className="grid grid-cols-3 shrink-0">
+                  <div className="bg-background p-4 flex items-center justify-center gap-2 transition-all border-b border-r">
+                    <ArrowLeftRight className="w-4 h-4 text-primary" />
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Aktive Mappings</span>
                   </div>
 
-                  <div className="bg-background p-4 flex items-center justify-between gap-4 transition-all border-b border-b-primary shadow-[0_2px_8px_-2px_rgba(59,130,246,0.1)]">
-                    <div className="flex-1 text-center">
-                      <div className="flex items-center justify-center gap-2 mb-1">
-                        <Sparkles className="w-4 h-4 text-primary" />
-                        <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Verfügbare Enhancements</span>
-                      </div>
-                      <h3 className="font-bold text-lg">Optimierungen</h3>
-                    </div>
+                  <div className="bg-background p-4 flex items-center justify-center gap-2 transition-all border-b border-r">
+                    <Sparkles className="w-4 h-4 text-primary" />
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Optionen</span>
+                  </div>
+
+                  <div className="bg-background p-4 flex items-center justify-center gap-2 transition-all border-b">
+                    <Check className="w-4 h-4 text-emerald-500" />
+                    <span className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground">Aktive Veredelung</span>
                   </div>
                 </div>
 
-                <div className="flex-1 grid grid-cols-2 overflow-hidden min-h-0">
-                  <div className="flex flex-col min-h-0 border-r">
+                <div className="flex-1 grid grid-cols-3 overflow-hidden min-h-0">
+                  <div className="flex flex-col min-h-0 border-r bg-muted/5">
                     <ScrollArea className="flex-1">
                       <div className="p-4 space-y-2">
-                        {(activeSource?.fields || []).map((field) => {
-                          const hasRule = currentRules.some(r => r.source_object === activeSource.id && r.source_property === field.id);
-                          const isSelected = selectedSourceFieldId === field.id;
+                        {mapRules.map((rule) => {
+                          const isSelected = selectedRuleId === rule.id;
+                          const hasEnhancements = (rule.enhancements?.length || 0) > 0;
                           
                           return (
                             <div 
-                              key={field.id}
+                              key={rule.id}
                               className={cn(
-                                "group flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer shadow-sm",
-                                hasRule 
+                                "group flex flex-col p-3 rounded-xl border transition-all cursor-pointer shadow-sm",
+                                isSelected 
                                   ? "bg-primary/10 border-primary ring-1 ring-primary/20 shadow-primary/5" 
                                   : "bg-card border-border hover:border-primary/50",
-                                isSelected && "ring-2 ring-primary ring-offset-2 bg-primary/20 shadow-lg"
+                                hasEnhancements && !isSelected && "border-l-4 border-l-emerald-500"
                               )}
-                              onClick={() => setSelectedSourceFieldId(isSelected ? null : field.id)}
+                              onClick={() => handleRuleSelect(rule.id)}
                             >
-                              <div className="flex flex-col">
-                                <span className={cn("text-sm font-medium transition-colors", hasRule ? "text-primary" : "text-foreground")}>{field.name}</span>
-                                <span className="text-[10px] text-muted-foreground uppercase">{field.type}</span>
+                              <div className="flex items-center justify-between mb-1">
+                                <span className="text-[10px] text-muted-foreground font-bold uppercase">{rule.source_object}</span>
+                                {hasEnhancements && <Badge className="h-4 text-[8px] px-1 bg-emerald-500 text-white">{rule.enhancements?.length} aktiv</Badge>}
                               </div>
-                              {isSelected && <Badge className="h-4 text-[8px] px-1 bg-primary text-white">Feld ausgewählt</Badge>}
+                              <div className="flex items-center gap-2 text-xs font-medium">
+                                <span className="text-foreground truncate">{rule.source_property}</span>
+                                <ArrowRight className="w-3 h-3 text-muted-foreground shrink-0" />
+                                <span className="text-emerald-600 truncate">{rule.target_property}</span>
+                              </div>
                             </div>
                           );
                         })}
@@ -530,162 +395,93 @@ const EnhancementPanel = ({ migrationId, onClose, onTriggerStep }: EnhancementPa
                     </ScrollArea>
                   </div>
 
-                  <div className="flex flex-col min-h-0">
+                  <div className="flex flex-col min-h-0 border-r">
                     <ScrollArea className="flex-1">
-                      <div className="p-4 space-y-3">
-                        {ENHANCEMENT_TYPES.map((enhancement) => {
-                          const rule = currentRules.find(r => r.source_object === activeSource.id && r.source_property === selectedSourceFieldId && r.target_property === enhancement.id);
-                          const isSelected = selectedEnhancementId === enhancement.id;
-                          
-                          return (
-                            <div 
-                              key={enhancement.id}
-                              className={cn(
-                                "flex items-center gap-4 p-3 rounded-xl border transition-all cursor-pointer group",
-                                rule 
-                                  ? "bg-emerald-500/10 border-emerald-500 ring-1 ring-emerald-500/20 shadow-emerald-500/5" 
-                                  : "bg-card border-dashed hover:border-primary/30",
-                                isSelected && "ring-2 ring-primary ring-offset-2 bg-primary/10 shadow-lg opacity-100"
-                              )}
-                              onClick={() => setSelectedEnhancementId(isSelected ? null : enhancement.id)}
-                            >
-                              <div className="flex-1 flex flex-col">
-                                <div className="flex items-center justify-between">
-                                    <span className={cn("text-sm font-semibold transition-colors", rule ? "text-emerald-600" : "text-foreground")}>{enhancement.name}</span>
-                                    {isSelected && <Badge className="h-4 text-[8px] px-1 bg-primary text-white">Aktiviert</Badge>}
+                      {selectedRule ? (
+                        <div className="p-4 space-y-3">
+                          {ENHANCEMENT_TYPES.map((enhancement) => {
+                            const isActive = selectedRule.enhancements?.includes(enhancement.id);
+                            
+                            return (
+                              <div 
+                                key={enhancement.id}
+                                className={cn(
+                                  "flex items-center gap-4 p-3 rounded-xl border transition-all cursor-pointer group",
+                                  isActive 
+                                    ? "bg-emerald-500/10 border-emerald-500 ring-1 ring-emerald-500/20 shadow-emerald-500/5" 
+                                    : "bg-card border-dashed hover:border-primary/30"
+                                )}
+                                onClick={() => toggleEnhancement(selectedRule.id, enhancement.id)}
+                              >
+                                <div className="flex-1 flex flex-col">
+                                  <div className="flex items-center justify-between">
+                                      <span className={cn("text-sm font-semibold transition-colors", isActive ? "text-emerald-600" : "text-foreground")}>{enhancement.name}</span>
+                                      {isActive && <Check className="w-3 h-3 text-emerald-600" />}
+                                  </div>
+                                  <span className="text-[10px] text-muted-foreground mt-0.5">{enhancement.description}</span>
                                 </div>
-                                <span className="text-[10px] text-muted-foreground mt-0.5">{enhancement.description}</span>
+                                {!isActive && <Plus className="w-4 h-4 text-muted-foreground opacity-0 group-hover:opacity-100" />}
                               </div>
-                              <Plus className={cn("w-4 h-4 text-muted-foreground transition-opacity", isSelected || rule ? "opacity-0" : "opacity-0 group-hover:opacity-100")} />
-                            </div>
-                          );
-                        })}
-                      </div>
+                            );
+                          })}
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center justify-center h-full p-8 text-center opacity-40">
+                            <ArrowLeftRight className="w-12 h-12 mb-4 text-muted-foreground" />
+                            <p className="text-sm font-medium">Wählen Sie links ein Mapping aus, um Optionen zu sehen.</p>
+                        </div>
+                      )}
                     </ScrollArea>
                   </div>
-                </div>
 
-                <div className="shrink-0 bg-muted/5 p-4 flex flex-col gap-3 min-h-[100px] max-h-[300px] overflow-y-auto">
-                    <div className="flex items-center justify-between sticky top-0 bg-muted/5 pb-2 z-10">
-                        <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Konfigurierte Enhancements</span>
-                            <Badge variant="outline" className="text-[10px] h-5">
-                                {currentRules.length}
-                            </Badge>
-                            
-                            <div className="flex items-center gap-2 ml-4">
-                                <Button 
-                                    variant={selectedSourceFieldId && selectedEnhancementId ? "default" : "outline"}
-                                    size="sm" 
-                                    className={cn(
-                                        "h-7 px-3 text-[10px] font-bold transition-all border-dashed",
-                                        selectedSourceFieldId && selectedEnhancementId ? "bg-primary text-white scale-105 border-solid" : "text-muted-foreground"
-                                    )}
-                                    onClick={handleCreateRule}
-                                >
-                                    <Zap className="w-3 h-3 mr-1" />
-                                    Hinzufügen {selectedSourceFieldId && selectedEnhancementId && `(${selectedSourceFieldId} → ${selectedEnhancementId})`}
-                                </Button>
-                                {!(selectedSourceFieldId && selectedEnhancementId) && (
-                                    <span className="text-[9px] text-muted-foreground animate-pulse">Wähle links ein Feld und rechts eine Optimierung</span>
-                                )}
-                            </div>
-                        </div>
-                    </div>
-                    
-                    {currentRules.length > 0 ? (
-                        <div className="flex flex-col gap-2">
-                            {currentRules.map(rule => (
-                                <div 
-                                    key={rule.id} 
-                                    className={cn(
-                                        "p-2 rounded border flex flex-col gap-1 group/rule border-l-4 transition-all cursor-pointer",
-                                        selectedRuleId === rule.id 
-                                            ? "bg-primary/5 border-primary border-l-primary shadow-sm" 
-                                            : "bg-background/50 border-border border-l-primary/30 hover:bg-muted/20"
-                                    )}
-                                    onClick={() => handleRuleSelect(rule.id)}
-                                >
-                                    <div className="flex items-center justify-between">
-                                        <div className="flex items-center gap-2 text-sm">
-                                            <div className="flex items-center gap-1">
-                                                <span className="font-bold text-foreground">
-                                                    {rule.source_object}.<span className="text-primary">{rule.source_property}</span>
-                                                </span>
+                  <div className="flex flex-col min-h-0 bg-muted/5">
+                    <ScrollArea className="flex-1">
+                        {selectedRule && selectedRule.enhancements && selectedRule.enhancements.length > 0 ? (
+                            <div className="p-4 space-y-3">
+                                {selectedRule.enhancements.map(id => {
+                                    const enh = ENHANCEMENT_TYPES.find(e => e.id === id);
+                                    if (!enh) return null;
+                                    return (
+                                        <div key={id} className="p-3 bg-background rounded-xl border border-emerald-500/30 flex items-center justify-between group shadow-sm">
+                                            <div className="flex flex-col">
+                                                <span className="text-sm font-bold text-emerald-600">{enh.name}</span>
+                                                <span className="text-[10px] text-muted-foreground italic">Wird auf '{selectedRule.target_property}' angewendet</span>
                                             </div>
-                                            <ArrowLeftRight className="w-3 h-3 text-muted-foreground shrink-0" />
-                                            <div className="flex items-center gap-1">
-                                                <span className="font-bold text-emerald-600 uppercase text-[10px] tracking-widest">
-                                                    {rule.target_property}
-                                                </span>
-                                            </div>
-                                        </div>
-                                        
-                                        <div className="flex items-center gap-2">
                                             <Button 
-                                                size="icon" variant="ghost" 
-                                                className="h-6 w-6 text-muted-foreground hover:text-destructive opacity-0 group-hover/rule:opacity-100 transition-opacity"
-                                                onClick={(e) => {
-                                                    e.stopPropagation();
-                                                    handleDeleteRule(rule.id);
-                                                }}
+                                                variant="ghost" size="icon" 
+                                                className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                                                onClick={() => toggleEnhancement(selectedRule.id, id)}
                                             >
-                                                <Trash2 className="w-3.5 h-3.5" />
+                                                <Trash2 className="w-4 h-4" />
                                             </Button>
                                         </div>
-                                    </div>
-                                    
-                                    <div className="flex items-start gap-2 min-h-[20px]">
-                                        {editingRuleId === rule.id ? (
-                                            <div className="flex-1 flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
-                                                <Input 
-                                                    value={editingNote} 
-                                                    onChange={(e) => setEditingNote(e.target.value)}
-                                                    className="h-7 text-xs"
-                                                    autoFocus
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter') handleRuleUpdate(rule.id, { note: editingNote });
-                                                        if (e.key === 'Escape') setEditingRuleId(null);
-                                                    }}
-                                                />
-                                                <Button size="icon" variant="ghost" className="h-7 w-7" onClick={() => handleRuleUpdate(rule.id, { note: editingNote })}>
-                                                    <Check className="w-3 h-3" />
-                                                </Button>
-                                            </div>
-                                        ) : (
-                                            <div className="flex-1 flex items-center justify-between group/note">
-                                                <span className="text-xs text-muted-foreground italic truncate">
-                                                    {rule.note ? `"${rule.note}"` : "Keine Notiz vorhanden."}
-                                                </span>
-                                                <Button 
-                                                    size="icon" variant="ghost" 
-                                                    className="h-6 w-6 opacity-0 group-hover/rule:opacity-100 transition-opacity"
-                                                    onClick={(e) => {
-                                                        e.stopPropagation();
-                                                        setEditingRuleId(rule.id);
-                                                        setEditingNote(rule.note || "");
-                                                    }}
-                                                >
-                                                    <Pencil className="w-3 h-3" />
-                                                </Button>
-                                            </div>
-                                        )}
+                                    );
+                                })}
+                                <div className="mt-8 p-4 rounded-xl border border-dashed border-primary/20 bg-primary/5">
+                                    <h4 className="text-[10px] font-bold uppercase text-primary mb-2 flex items-center gap-1.5">
+                                        <Sparkles className="w-3 h-3" />
+                                        KI-Vorschau
+                                    </h4>
+                                    <div className="text-[11px] text-muted-foreground leading-relaxed">
+                                        Die gewählten Optimierungen werden in Schritt 8 (Datentransfer) automatisch auf alle Datensätze angewendet.
                                     </div>
                                 </div>
-                            ))}
-                        </div>
-                    ) : (
-                        <div className="flex items-center justify-center py-4 text-xs text-muted-foreground italic">
-                            Keine Enhancements für dieses Objekt konfiguriert.
-                        </div>
-                    )}
+                            </div>
+                        ) : (
+                            <div className="flex flex-col items-center justify-center h-full p-8 text-center opacity-40">
+                                <Sparkles className="w-12 h-12 mb-4 text-muted-foreground" />
+                                <p className="text-sm font-medium">Keine aktiven Veredelungen für dieses Mapping.</p>
+                            </div>
+                        )}
+                    </ScrollArea>
+                  </div>
                 </div>
               </ResizablePanel>
 
               <ResizableHandle withHandle />
 
-              <ResizablePanel defaultSize={40} maxSize={50} minSize={25} className="flex flex-col min-h-0 bg-muted/10">
-                 <div className="px-4 py-3 bg-background/50 flex items-center gap-2 shrink-0">
+              <ResizablePanel defaultSize={35} maxSize={50} minSize={25} className="flex flex-col min-h-0 bg-muted/10">
+                 <div className="px-4 py-3 bg-background/50 flex items-center gap-2 shrink-0 border-b">
                   <MessageSquare className="w-4 h-4 text-primary" />
                   <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Enhancement Assistent</span>
                 </div>
@@ -704,7 +500,7 @@ const EnhancementPanel = ({ migrationId, onClose, onTriggerStep }: EnhancementPa
                       variant="outline" 
                       size="sm" 
                       className="text-xs h-7 gap-1.5 text-primary border-primary/20 hover:bg-primary/5"
-                      onClick={() => handleSendMessage("Schlage mir passende Optimierungen für die aktuellen Felder vor.")}
+                      onClick={() => handleSendMessage("Analysiere meine aktuellen Mappings und schlage passende Qualitäts-Enhancements vor, besonders für Textfelder.")}
                     >
                       <Sparkles className="w-3.5 h-3.5" />
                       Vorschläge anfordern

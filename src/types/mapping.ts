@@ -5,6 +5,7 @@ interface BaseFieldMapping {
   targetFieldId: string;
   mappingType: MappingType;
   description?: string;
+  enhancements?: string[];
   updatedAt?: string;
 }
 

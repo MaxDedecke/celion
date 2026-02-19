@@ -57,58 +57,80 @@ export async function applyMappingsToRecord(
   const errors: PipelineLogEntry[] = [];
 
   for (const mapping of mappings) {
+    let value: unknown;
+
     if (mapping.mappingType === "direct") {
-      output[mapping.targetFieldId] = sourceRecord[mapping.sourceFieldId];
+      value = sourceRecord[mapping.sourceFieldId];
       logs.push({
         level: "info",
         message: `Direct mapping ${mapping.sourceFieldId} → ${mapping.targetFieldId}`,
         mappingId: mapping.id,
-        detail: { value: sourceRecord[mapping.sourceFieldId] },
+        detail: { value },
       });
-      continue;
-    }
+    } else {
+      const rawValue = sourceRecord[mapping.sourceFieldId];
 
-    const value = sourceRecord[mapping.sourceFieldId];
+      if (!Array.isArray(rawValue)) {
+        errors.push({
+          level: "error",
+          message: `Sammlung ${mapping.sourceFieldId} ist nicht als Array verfügbar`,
+          mappingId: mapping.id,
+        });
+        continue;
+      }
 
-    if (!Array.isArray(value)) {
-      errors.push({
-        level: "error",
-        message: `Sammlung ${mapping.sourceFieldId} ist nicht als Array verfügbar`,
-        mappingId: mapping.id,
-      });
-      continue;
-    }
+      const extracted = rawValue
+        .map((entry) => {
+          if (isObject(entry)) {
+            const nested = entry[mapping.collectionItemFieldId];
+            if (nested === undefined || nested === null) {
+              return null;
+            }
+            return String(nested);
+          }
 
-    const extracted = value
-      .map((entry) => {
-        if (isObject(entry)) {
-          const nested = entry[mapping.collectionItemFieldId];
-          if (nested === undefined || nested === null) {
+          if (entry && typeof entry === "object") {
             return null;
           }
-          return String(nested);
-        }
 
-        if (entry && typeof entry === "object") {
+          if (typeof entry === "string" || typeof entry === "number") {
+            return String(entry);
+          }
+
           return null;
-        }
+        })
+        .filter((item): item is string => Boolean(item && item.length));
 
-        if (typeof entry === "string" || typeof entry === "number") {
-          return String(entry);
-        }
+      value = extracted.join(getJoinValue(mapping));
 
-        return null;
-      })
-      .filter((item): item is string => Boolean(item && item.length));
+      logs.push({
+        level: "info",
+        message: `Collection mapping ${mapping.sourceFieldId}[].${mapping.collectionItemFieldId} → ${mapping.targetFieldId}`,
+        mappingId: mapping.id,
+        detail: { values: extracted },
+      });
+    }
 
-    output[mapping.targetFieldId] = extracted.join(getJoinValue(mapping));
+    // Apply Enhancements if present
+    if (mapping.enhancements && mapping.enhancements.length > 0 && typeof value === 'string') {
+      let enhancedValue = value;
+      for (const enhancement of mapping.enhancements) {
+        logs.push({
+          level: "info",
+          message: `Applying enhancement '${enhancement}' to ${mapping.targetFieldId}`,
+          mappingId: mapping.id
+        });
+        
+        // MOCK enhancement logic - in reality this would call an AI service
+        if (enhancement === 'spellcheck') enhancedValue = `[Spellchecked] ${enhancedValue}`;
+        if (enhancement === 'summarize') enhancedValue = `[Summary] ${enhancedValue.substring(0, 50)}...`;
+        if (enhancement === 'translate_en') enhancedValue = `[Translated] ${enhancedValue}`;
+        if (enhancement === 'pii_redact') enhancedValue = enhancedValue.replace(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g, "[REDACTED EMAIL]");
+      }
+      value = enhancedValue;
+    }
 
-    logs.push({
-      level: "info",
-      message: `Collection mapping ${mapping.sourceFieldId}[].${mapping.collectionItemFieldId} → ${mapping.targetFieldId}`,
-      mappingId: mapping.id,
-      detail: { values: extracted },
-    });
+    output[mapping.targetFieldId] = value;
   }
 
   return { result: output, logs, errors };
