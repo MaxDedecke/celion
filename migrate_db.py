@@ -42,6 +42,31 @@ def migrate():
         );
         """)
 
+        print("Creating step_6_results and step_7_results tables...")
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS public.step_6_results (
+          id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+          migration_id uuid NOT NULL REFERENCES public.migrations(id) ON DELETE CASCADE,
+          summary text,
+          raw_json jsonb DEFAULT '{}'::jsonb,
+          created_at timestamp with time zone NOT NULL DEFAULT now(),
+          updated_at timestamp with time zone DEFAULT now(),
+          UNIQUE(migration_id)
+        );
+        """)
+
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS public.step_7_results (
+          id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+          migration_id uuid NOT NULL REFERENCES public.migrations(id) ON DELETE CASCADE,
+          summary text,
+          raw_json jsonb DEFAULT '{}'::jsonb,
+          created_at timestamp with time zone NOT NULL DEFAULT now(),
+          updated_at timestamp with time zone DEFAULT now(),
+          UNIQUE(migration_id)
+        );
+        """)
+
         print("Adding enhancements column to mapping_rules if not exists...")
         cur.execute("""
         DO $$

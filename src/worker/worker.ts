@@ -174,6 +174,18 @@ async function saveStep6Result(migrationId: string, result: any) {
   );
 }
 
+async function saveStep7Result(migrationId: string, result: any) {
+  await pool.query(
+    `INSERT INTO public.step_7_results (migration_id, summary, raw_json)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (migration_id) DO UPDATE SET
+       summary = EXCLUDED.summary,
+       raw_json = EXCLUDED.raw_json,
+       created_at = now()`,
+    [migrationId, result.summary || 'Quality Enhancement abgeschlossen.', result]
+  );
+}
+
 const ensureWorkflowState = (state: any = {}) => {
   const safeState = state || {};
   const nodes = Array.isArray(safeState.nodes) ? [...safeState.nodes] : [];
@@ -1943,6 +1955,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
           message: 'Quality Enhancement erfolgreich abgeschlossen.',
           processedRules: rulesWithEnhancements.length
       };
+      await saveStep7Result(migrationId, result);
 
       const finishClientEnhance = await pool.connect();
       try {

@@ -272,7 +272,7 @@ const WorkflowPanel = ({ migrationId }: WorkflowPanelProps) => {
                   <p className="text-sm text-muted-foreground">
                     {currentResult.system_mode 
                       ? `${currentResult.system_mode === 'source' ? 'Quellsystem' : 'Zielsystem'} Konfiguration`
-                      : `Inventar: ${currentResult.entity_name}`}
+                      : `Schritt ${selectedStepIndex + 1}: ${currentResult.entity_name || AGENT_WORKFLOW_STEPS[selectedStepIndex].title}`}
                   </p>
                 </div>
               </div>
