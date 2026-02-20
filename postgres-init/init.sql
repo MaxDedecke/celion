@@ -418,7 +418,7 @@ EXECUTE FUNCTION public.handle_updated_at();
 -- Jobs table for worker queue processing
 CREATE TABLE IF NOT EXISTS public.jobs (
   id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
-  step_id uuid NOT NULL REFERENCES public.migration_steps(id) ON DELETE CASCADE,
+  step_id uuid REFERENCES public.migration_steps(id) ON DELETE CASCADE,
   payload jsonb NOT NULL,
   status text NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'running', 'completed', 'failed')),
   last_error text,

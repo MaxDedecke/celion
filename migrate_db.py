@@ -108,6 +108,11 @@ def migrate():
         CREATE INDEX IF NOT EXISTS idx_mapping_chat_messages_migration_id ON public.mapping_chat_messages(migration_id);
         """)
         
+        print("Updating jobs table to make step_id nullable...")
+        cur.execute("""
+        ALTER TABLE public.jobs ALTER COLUMN step_id DROP NOT NULL;
+        """)
+        
         conn.commit()
         print("Migration successful.")
         conn.close()
