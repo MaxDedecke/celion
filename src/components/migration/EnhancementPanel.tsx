@@ -242,7 +242,6 @@ const EnhancementPanel = ({ migrationId, onClose, onTriggerStep }: EnhancementPa
       // Step 7 trigger
       await fetch(`/api/migrations/${migrationId}/action/7`, { method: 'POST' });
       toast.success("Enhancements erfolgreich gespeichert");
-      onTriggerStep?.();
       onClose?.();
     } catch (error) {
       console.error("Failed to save enhancements:", error);
