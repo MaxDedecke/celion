@@ -1,0 +1,161 @@
+{
+  "system": "Asana",
+  "objects": [
+    {
+      "key": "workspace",
+      "displayName": "Workspace",
+      "endpoint": "/api/1.0/workspaces",
+      "fields": [
+        { "id": "gid", "name": "Workspace ID", "type": "text" },
+        { "id": "name", "name": "Workspace Name", "type": "text" },
+        { "id": "email_domains", "name": "Email Domains", "type": "array" }
+      ]
+    },
+    {
+      "key": "team",
+      "displayName": "Team",
+      "endpoint": "/api/1.0/workspaces/{workspace_gid}/teams",
+      "fields": [
+        { "id": "gid", "name": "Team ID", "type": "text" },
+        { "id": "name", "name": "Team Name", "type": "text" },
+        { "id": "description", "name": "Description", "type": "text" }
+      ]
+    },
+    {
+      "key": "project",
+      "displayName": "Project / Projekt",
+      "endpoint": "/api/1.0/teams/{team_gid}/projects",
+      "fields": [
+        { "id": "gid", "name": "Project ID", "type": "text" },
+        { "id": "name", "name": "Project Name", "type": "text" },
+        { "id": "notes", "name": "Description", "type": "text" },
+        { "id": "archived", "name": "Is Archived", "type": "boolean" },
+        { "id": "color", "name": "Color", "type": "text" }
+      ]
+    },
+    {
+      "key": "section",
+      "displayName": "Section / Abschnitt (in Project)",
+      "endpoint": "/api/1.0/projects/{project_gid}/sections",
+      "fields": [
+        { "id": "gid", "name": "Section ID", "type": "text" },
+        { "id": "name", "name": "Section Name", "type": "text" }
+      ]
+    },
+    {
+      "key": "task",
+      "displayName": "Task / Aufgabe",
+      "endpoint": "/api/1.0/projects/{project_gid}/tasks?opt_fields=name,notes,completed,due_on,assignee,custom_fields",
+      "fields": [
+        { "id": "gid", "name": "ID", "type": "text" },
+        { "id": "name", "name": "Task Name", "type": "text" },
+        { "id": "notes", "name": "Description / Notes", "type": "text" },
+        { "id": "completed", "name": "Is Completed", "type": "boolean" },
+        { "id": "due_on", "name": "Due Date", "type": "date" },
+        { "id": "assignee", "name": "Assignee", "type": "object" },
+        { "id": "parent", "name": "Parent Task GID", "type": "text" },
+        { "id": "custom_fields", "name": "Custom Field Values", "type": "array" }
+      ]
+    },
+    {
+      "key": "subtask",
+      "displayName": "Subtask / Unteraufgabe",
+      "endpoint": "/api/1.0/tasks/{task_gid}/subtasks",
+      "fields": [
+        { "id": "gid", "name": "ID", "type": "text" },
+        { "id": "name", "name": "Subtask Name", "type": "text" }
+      ]
+    },
+    {
+      "key": "custom_field_definition",
+      "displayName": "Custom Field Definition",
+      "endpoint": "/api/1.0/workspaces/{workspace_gid}/custom_fields",
+      "fields": [
+        { "id": "gid", "name": "Field ID", "type": "text" },
+        { "id": "name", "name": "Field Name", "type": "text" },
+        { "id": "type", "name": "Field Type", "type": "text" },
+        { "id": "enum_options", "name": "Dropdown Options", "type": "array" }
+      ]
+    },
+    {
+      "key": "user",
+      "displayName": "User / Nutzer",
+      "endpoint": "/api/1.0/users",
+      "fields": [
+        { "id": "gid", "name": "User ID", "type": "text" },
+        { "id": "name", "name": "Name", "type": "text" },
+        { "id": "email", "name": "Email", "type": "text" }
+      ]
+    },
+    {
+      "key": "tag",
+      "displayName": "Tag / Schlagwort",
+      "endpoint": "/api/1.0/workspaces/{workspace_gid}/tags",
+      "fields": [
+        { "id": "gid", "name": "Tag ID", "type": "text" },
+        { "id": "name", "name": "Tag Name", "type": "text" },
+        { "id": "color", "name": "Color", "type": "text" }
+      ]
+    },
+    {
+      "key": "goal",
+      "displayName": "Goal / Ziel",
+      "endpoint": "/api/1.0/goals",
+      "fields": [
+        { "id": "gid", "name": "Goal ID", "type": "text" },
+        { "id": "name", "name": "Goal Name", "type": "text" },
+        { "id": "current_display_value", "name": "Current Progress", "type": "text" },
+        { "id": "target_value", "name": "Target Value", "type": "number" }
+      ]
+    },
+    {
+      "key": "time_entry",
+      "displayName": "Time Tracking Entry / Zeiterfassung",
+      "endpoint": "/api/1.0/tasks/{task_gid}/time_tracking_entries",
+      "fields": [
+        { "id": "gid", "name": "Entry ID", "type": "text" },
+        { "id": "duration_minutes", "name": "Duration (min)", "type": "number" },
+        { "id": "created_at", "name": "Created At", "type": "date" }
+      ]
+    },
+    {
+      "key": "story",
+      "displayName": "Comment / Kommentar (Story)",
+      "endpoint": "/api/1.0/tasks/{task_gid}/stories",
+      "fields": [
+        { "id": "gid", "name": "Comment ID", "type": "text" },
+        { "id": "text", "name": "Text", "type": "text" },
+        { "id": "created_at", "name": "Date", "type": "date" }
+      ]
+    },
+    {
+      "key": "attachment",
+      "displayName": "Attachment / Anhang",
+      "endpoint": "/api/1.0/tasks/{task_gid}/attachments",
+      "fields": [
+        { "id": "gid", "name": "Attachment ID", "type": "text" },
+        { "id": "name", "name": "Filename", "type": "text" },
+        { "id": "download_url", "name": "Download URL", "type": "text" }
+      ]
+    },
+    {
+      "key": "portfolio",
+      "displayName": "Portfolio",
+      "endpoint": "/api/1.0/portfolios",
+      "fields": [
+        { "id": "gid", "name": "Portfolio ID", "type": "text" },
+        { "id": "name", "name": "Portfolio Name", "type": "text" },
+        { "id": "color", "name": "Color", "type": "text" }
+      ]
+    },
+    {
+      "key": "project_template",
+      "displayName": "Project Template",
+      "endpoint": "/api/1.0/project_templates",
+      "fields": [
+        { "id": "gid", "name": "Template ID", "type": "text" },
+        { "id": "name", "name": "Template Name", "type": "text" }
+      ]
+    }
+  ]
+}

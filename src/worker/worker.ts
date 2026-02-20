@@ -2079,9 +2079,10 @@ async function _ingestToNeo4j(driver: any, systemLabel: string, entityType: stri
                           sanitized[k] = v;
                       } else if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
                           // Flatten simple nested IDs (e.g., list: { id: "123" } -> list_id: "123")
-                          if (v.id) sanitized[`${k}_id`] = String(v.id);
+                          const vObj = v as any;
+                          if (vObj.id) sanitized[`${k}_id`] = String(vObj.id);
                           // Also keep common name fields if they exist
-                          if (v.name) sanitized[`${k}_name`] = String(v.name);
+                          if (vObj.name) sanitized[`${k}_name`] = String(vObj.name);
                       }
                   }
                   return sanitized;

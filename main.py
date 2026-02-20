@@ -2342,6 +2342,17 @@ async def duplicate_migration(id: str, user_id: str) -> Migration:
                 (new_migration_id, id)
             )
 
+            cur.execute(
+                """
+                INSERT INTO public.step_7_results (
+                    migration_id, summary, raw_json
+                )
+                SELECT %s, summary, raw_json
+                FROM public.step_7_results WHERE migration_id = %s
+                """,
+                (new_migration_id, id)
+            )
+
             # 3d. Duplicate Mapping Rules
             cur.execute(
                 """

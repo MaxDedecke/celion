@@ -67,6 +67,19 @@ def migrate():
         );
         """)
 
+        print("Creating global_stats table...")
+        cur.execute("""
+        CREATE TABLE IF NOT EXISTS public.global_stats (
+          day date PRIMARY KEY DEFAULT CURRENT_DATE,
+          steps_completed integer NOT NULL DEFAULT 0,
+          objects_migrated integer NOT NULL DEFAULT 0,
+          agent_success_count integer NOT NULL DEFAULT 0,
+          agent_total_count integer NOT NULL DEFAULT 0,
+          reconciliation_accuracy_sum numeric NOT NULL DEFAULT 0.0,
+          reconciliation_count integer NOT NULL DEFAULT 0
+        );
+        """)
+
         print("Adding enhancements column to mapping_rules if not exists...")
         cur.execute("""
         DO $$

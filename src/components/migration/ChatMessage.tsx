@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, Fragment } from "react";
 import { User, SquareArrowOutUpRight, CheckCircle2, XCircle, Play, Copy, Rocket, FileJson, ArrowRight, Clock, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -286,12 +286,12 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
       if (match[1] && match[2]) {
         // Markdown link [text](url)
         parts.push(
-          <a key={index} href={match[2]} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">{match[1]}</a>
+          <a key={`link-${index}`} href={match[2]} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">{match[1]}</a>
         );
       } else if (match[3]) {
         // Raw URL
         parts.push(
-          <a key={index} href={match[3]} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">{match[3]}</a>
+          <a key={`url-${index}`} href={match[3]} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">{match[3]}</a>
         );
       }
       lastIndex = index + match[0].length;
@@ -326,20 +326,20 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
     );
 
     return (
-      <div className="my-2 rounded-md border overflow-hidden bg-card/50">
+      <div key="table-container" className="my-2 rounded-md border overflow-hidden bg-card/50">
           <Table>
               <TableHeader className="bg-muted/50">
                   <TableRow>
                       {headers.map((h, i) => (
-                          <TableHead key={i} className="h-8 text-xs font-bold px-2">{h}</TableHead>
+                          <TableHead key={`head-${i}`} className="h-8 text-xs font-bold px-2">{h}</TableHead>
                       ))}
                   </TableRow>
               </TableHeader>
               <TableBody>
                   {rows.map((row, i) => (
-                      <TableRow key={i} className="hover:bg-muted/30 border-b last:border-0">
+                      <TableRow key={`row-${i}`} className="hover:bg-muted/30 border-b last:border-0">
                           {row.map((cell, j) => (
-                              <TableCell key={j} className="py-2 text-xs px-2">{renderFormattedContent(cell)}</TableCell>
+                              <TableCell key={`cell-${i}-${j}`} className="py-2 text-xs px-2">{renderFormattedContent(cell)}</TableCell>
                           ))}
                       </TableRow>
                   ))}
@@ -373,10 +373,10 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
                 currentTableLines.push(line);
             } else {
                 // Table ended
-                parts.push(renderTextSegment(currentTextLines.join('\n')));
+                parts.push(<Fragment key={`text-pre-${i}`}>{renderTextSegment(currentTextLines.join('\n'))}</Fragment>);
                 currentTextLines = [];
                 
-                parts.push(renderMarkdownTable(currentTableLines.join('\n')));
+                parts.push(<Fragment key={`table-${i}`}>{renderMarkdownTable(currentTableLines.join('\n'))}</Fragment>);
                 currentTableLines = [];
                 inTable = false;
                 
@@ -389,7 +389,7 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
             if (line.trim().includes('|') && nextLine && nextLine.trim().includes('---') && nextLine.trim().includes('|')) {
                  // Push accumulated text
                  if (currentTextLines.length > 0) {
-                     parts.push(renderTextSegment(currentTextLines.join('\n')));
+                     parts.push(<Fragment key={`text-pre-${i}`}>{renderTextSegment(currentTextLines.join('\n'))}</Fragment>);
                      currentTextLines = [];
                  }
                  inTable = true;
@@ -402,9 +402,9 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
 
     // Flush remaining
     if (inTable && currentTableLines.length > 0) {
-        parts.push(renderMarkdownTable(currentTableLines.join('\n')));
+        parts.push(<Fragment key={`table-end`}>{renderMarkdownTable(currentTableLines.join('\n'))}</Fragment>);
     } else if (currentTextLines.length > 0) {
-        parts.push(renderTextSegment(currentTextLines.join('\n')));
+        parts.push(<Fragment key={`text-end`}>{renderTextSegment(currentTextLines.join('\n'))}</Fragment>);
     }
 
     return <div className="flex flex-col gap-1">{parts}</div>;
@@ -420,11 +420,11 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
             const content = part.slice(2, -2);
             // Check if content is a URL
             if (content.match(/^https?:\/\//)) {
-                return <a key={i} href={content} target="_blank" rel="noopener noreferrer" className="font-bold text-primary underline hover:text-primary/80">{content}</a>;
+                return <a key={`bold-link-${i}`} href={content} target="_blank" rel="noopener noreferrer" className="font-bold text-primary underline hover:text-primary/80">{content}</a>;
             }
-            return <span key={i} className="font-bold text-primary">{content}</span>;
+            return <span key={`bold-${i}`} className="font-bold text-primary">{content}</span>;
           }
-          return <span key={i}>{processLinks(part)}</span>;
+          return <Fragment key={`segment-${i}`}>{processLinks(part)}</Fragment>;
         })}
       </span>
     );

@@ -70,10 +70,10 @@ export async function smartDiscovery(params: SmartDiscoveryParams): Promise<Smar
     };
   } catch (error) {
     return {
-      totalCount,
+      totalCount: uniqueIds.size,
       pagesFetched,
       sampleData,
-      status: null,
+      status: 0,
       error: error instanceof Error ? error.message : String(error)
     };
   }
@@ -94,7 +94,7 @@ function injectPaginationParams(url: string, config: DiscoveryPaginationConfig |
     case 'page_limit':
     case 'page_per_page':
       const paramPage = config.paramPage || 'page';
-      urlObj.searchParams.set(paramPage, (pageIndex + firstPage).toString());
+      urlObj.searchParams.set(paramPage, (pageIndex + Number(firstPage || 0)).toString());
       if (config.paramLimit) urlObj.searchParams.set(config.paramLimit, limit.toString());
       break;
     case 'offset':
@@ -114,6 +114,10 @@ function injectPaginationParams(url: string, config: DiscoveryPaginationConfig |
     case 'skip_top':
         urlObj.searchParams.set('$skip', (pageIndex * limit).toString());
         urlObj.searchParams.set('$top', limit.toString());
+        break;
+    case 'cursor':
+    case 'continuationToken':
+        if (config.paramLimit) urlObj.searchParams.set(config.paramLimit, limit.toString());
         break;
   }
 
@@ -141,7 +145,17 @@ function extractItems(body: any): any[] {
 function shouldContinue(response: HttpResponse, items: any[], config: DiscoveryPaginationConfig | null | undefined, pagesFetched: number, limit: number): boolean {
   if (!config || config.type === 'none') return false;
   if (items.length === 0) return false;
-  if (items.length < limit) return false; // Likely last page
+  
+  // For numeric/index based pagination, if we got fewer items than requested, it's the last page.
+  // This avoids an extra request that would return 0 items.
+  const isNumericPagination = config.type && (
+    config.type.includes('page') || 
+    config.type.includes('offset') || 
+    config.type.includes('startAt') || 
+    config.type.includes('skip')
+  );
+
+  if (isNumericPagination && items.length < limit) return false;
   
   return true;
 }
@@ -149,9 +163,12 @@ function shouldContinue(response: HttpResponse, items: any[], config: DiscoveryP
 function extractNextCursor(response: HttpResponse, config: DiscoveryPaginationConfig): string | null {
     const body = response.body as any;
     const cursorKey = config.responseCursorKey || config.paramCursor;
-    if (cursorKey && body && body[cursorKey]) {
-        return body[cursorKey];
-    }
+    if (!cursorKey || !body) return null;
+
+    // Support nested keys like 'next_page.offset'
+    const value = cursorKey.split('.').reduce((o, i) => (o ? o[i] : undefined), body);
+    if (value) return String(value);
+
     // Header based continuation?
     if (config.headerContinuation && response.headers[config.headerContinuation]) {
         return response.headers[config.headerContinuation];

@@ -558,5 +558,50 @@ CREATE TABLE IF NOT EXISTS public.step_5_results (
   created_at timestamp with time zone NOT NULL DEFAULT now(),
   UNIQUE(migration_id)
 );
+
+-- Step 6: Data Fetching Results
+CREATE TABLE IF NOT EXISTS public.step_6_results (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  migration_id uuid NOT NULL REFERENCES public.migrations(id) ON DELETE CASCADE,
+  summary text,
+  raw_json jsonb DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  UNIQUE(migration_id)
+);
+
+-- Step 7: Data Transformation Results
+CREATE TABLE IF NOT EXISTS public.step_7_results (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  migration_id uuid NOT NULL REFERENCES public.migrations(id) ON DELETE CASCADE,
+  summary text,
+  raw_json jsonb DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  UNIQUE(migration_id)
+);
+
+-- Global Statistics
+CREATE TABLE IF NOT EXISTS public.global_stats (
+  day date PRIMARY KEY DEFAULT CURRENT_DATE,
+  steps_completed integer NOT NULL DEFAULT 0,
+  objects_migrated integer NOT NULL DEFAULT 0,
+  agent_success_count integer NOT NULL DEFAULT 0,
+  agent_total_count integer NOT NULL DEFAULT 0,
+  reconciliation_accuracy_sum numeric NOT NULL DEFAULT 0.0,
+  reconciliation_count integer NOT NULL DEFAULT 0
+);
+
+-- Mapping Chat Messages
+CREATE TABLE IF NOT EXISTS public.mapping_chat_messages (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  migration_id uuid NOT NULL REFERENCES public.migrations(id) ON DELETE CASCADE,
+  role text NOT NULL CHECK (role IN ('user', 'assistant', 'system')),
+  content text NOT NULL,
+  created_at timestamp with time zone NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_mapping_chat_messages_migration_id ON public.mapping_chat_messages(migration_id);
+
 -- Add consultant_status column to migrations table
 ALTER TABLE public.migrations ADD COLUMN IF NOT EXISTS consultant_status text DEFAULT 'idle';

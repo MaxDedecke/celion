@@ -1,10 +1,11 @@
 {
   "system": "Asana",
   "apiType": "REST",
-  "baseUrlPattern": "*.asana.com",
   "apiBaseUrl": "https://app.asana.com",
+  "baseUrlPattern": "app.asana.com",
   "authentication": {
-    "type": "bearer",
+    "type": "header",
+    "headerName": "Authorization",
     "tokenPrefix": "Bearer ",
     "emailRequired": false,
     "whoami": {
@@ -15,19 +16,33 @@
   },
   "discovery": {
     "endpoints": {
-      "projects": "/api/1.0/projects",
-      "tasks": "/api/1.0/tasks",
-      "users": "/api/1.0/users"
+      "workspaces": "/api/1.0/workspaces",
+      "projects": "/api/1.0/projects?workspace={workspace_id}",
+      "sections": "/api/1.0/projects/{project_id}/sections",
+      "tasks": "/api/1.0/workspaces/{workspace_id}/tasks/search?completed_since=now&opt_fields=name,completed,assignee,due_on",
+      "completed_tasks": "/api/1.0/workspaces/{workspace_id}/tasks/search?completed_since=2000-01-01T00:00:00.000Z",
+      "project_tasks": "/api/1.0/projects/{project_id}/tasks",
+      "users": "/api/1.0/users?workspace={workspace_id}",
+      "custom_fields": "/api/1.0/workspaces/{workspace_id}/custom_fields",
+      "tags": "/api/1.0/tags?workspace={workspace_id}",
+      "teams": "/api/1.0/workspaces/{workspace_id}/teams",
+      "portfolios": "/api/1.0/portfolios?workspace={workspace_id}",
+      "task_details": "/api/1.0/tasks/{task_id}",
+      "task_stories": "/api/1.0/tasks/{task_id}/stories",
+      "task_attachments": "/api/1.0/tasks/{task_id}/attachments",
+      "project_templates": "/api/1.0/project_templates?workspace={workspace_id}"
     },
     "pagination": {
-      "type": "offset",
-      "paramStart": "offset",
+      "type": "cursor",
+      "paramCursor": "offset",
+      "responseCursorKey": "next_page.offset",
       "paramLimit": "limit",
-      "defaultLimit": 50
+      "defaultLimit": 100
     }
   },
   "headers": {
-    "contentType": "application/json",
-    "accept": "application/json"
-  }
+    "accept": "application/json",
+    "contentType": "application/json"
+  },
+  "agentInstructions": "Führe die Inventur primär auf Workspace-Ebene durch. Beachte, dass die Asana-API standardmäßig nur kompakte Objekte zurückgibt; nutze 'opt_fields', um spezifische Details abzufragen. Da Tasks in Asana mehreren Projekten oder Sections zugeordnet sein können (Multi-homing), verlasse dich auf das Tool smart_discovery zur ID-basierten Deduplizierung. Bei der Abfrage von Tasks ist zu beachten, dass 'completed_since' genutzt werden muss, um sowohl offene als auch abgeschlossene Aufgaben effizient zu erfassen. Falls ein Workspace sehr groß ist, priorisiere die projektspezifische Abfrage, um API-Limits zu schonen."
 }
