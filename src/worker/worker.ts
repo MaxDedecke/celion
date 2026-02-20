@@ -1943,11 +1943,6 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
         await writeChatMessage(migrationId, 'assistant', 'Keine spezifischen Enhancements konfiguriert. Der Inhalt wird 1:1 übernommen.', currentStepNumber);
       }
 
-      await writeChatMessage(migrationId, 'assistant', 'Wende Qualitäts-Enhancements auf die staged Daten an...', currentStepNumber);
-      
-      // MOCK: Simulate processing
-      await new Promise(r => setTimeout(r, 1500));
-      
       await writeChatMessage(migrationId, 'assistant', `Qualitäts-Veredelung abgeschlossen. ${rulesWithEnhancements.length} Mapping-Regeln mit Enhancements verarbeitet.`, currentStepNumber);
 
       result = { 
