@@ -2004,7 +2004,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
 
       // 2. Fetch rules with enhancements
       const { rows: ruleRows8 } = await pool.query(
-        'SELECT * FROM mapping_rules WHERE migration_id = $1 AND enhancements IS NOT NULL AND array_length(enhancements, 1) > 0', 
+        'SELECT * FROM mapping_rules WHERE migration_id = $1 AND enhancements IS NOT NULL AND jsonb_array_length(enhancements) > 0', 
         [migrationId]
       );
 
@@ -2027,10 +2027,11 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
             
             const session = driver.session();
             try {
-              // Fetch nodes
+              // Fetch nodes - more robust query handling common pluralization
               const nodeRes = await session.run(
                 `MATCH (n:\`${sourceSystem}\`) 
-                 WHERE n.migration_id = $migrationId AND n.entity_type = $entityType
+                 WHERE n.migration_id = $migrationId 
+                 AND (n.entity_type = $entityType OR n.entity_type = $entityType + "s" OR n.entity_type = $entityType + "es")
                  RETURN n`,
                 { migrationId, entityType }
               );
@@ -2038,20 +2039,53 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
               const nodes = nodeRes.records.map(r => r.get('n').properties);
               
               if (nodes.length > 0) {
+                console.log(`[Worker] Found ${nodes.length} nodes for transformation of ${entityType}`);
                 const BATCH_SIZE = 5; // Smaller batch size for better LLM focus
                 for (let i = 0; i < nodes.length; i += BATCH_SIZE) {
                   const batch = nodes.slice(i, i + BATCH_SIZE);
                   const transformedBatch = await runDataTransformation(batch, config);
                   
+                  // Ensure external_id is present in each item, fallback to original if missing
+                  const finalItems = transformedBatch.map((item: any, idx: number) => {
+                    let processedItem = item;
+                    // Handle case where LLM returns a string instead of an object
+                    if (typeof item === 'string') {
+                      // We don't know which field it belongs to if multiple, but usually it's the main one
+                      // This is a safety fallback. Better to try to match by index.
+                      processedItem = { 
+                        external_id: batch[idx]?.external_id,
+                        // We guess the field name from config if only one enhancement is configured
+                        [Object.keys(config)[0] || 'transformed_content']: item 
+                      };
+                    } else if (typeof item === 'object' && item !== null) {
+                      if (!item.external_id && batch[idx]?.external_id) {
+                        processedItem = { ...item, external_id: batch[idx].external_id };
+                      }
+                    }
+                    return processedItem;
+                  }).filter((item: any) => item && typeof item === 'object' && item.external_id);
+
+                  if (finalItems.length === 0) {
+                    console.log(`[Worker] Skipping batch ${Math.floor(i / BATCH_SIZE) + 1} - No valid items returned`);
+                    continue;
+                  }
+
+                  console.log(`[Worker] Entity: ${entityType}, Batch ${Math.floor(i / BATCH_SIZE) + 1}, First Item ID: ${finalItems[0]?.external_id}`);
+                  
                   // Update Neo4j
-                  await session.run(
+                  const updateRes = await session.run(
                     `UNWIND $items AS item
-                     MATCH (n:\`${sourceSystem}\` { migration_id: $migrationId, external_id: item.external_id })
+                     MATCH (n:\`${sourceSystem}\` { migration_id: $migrationId, external_id: toString(item.external_id) })
                      SET n += item`,
-                    { items: transformedBatch, migrationId }
+                    { items: finalItems, migrationId }
                   );
-                  console.log(`[Worker] Transformed batch ${Math.floor(i / BATCH_SIZE) + 1} for ${entityType}`);
+                  console.log(`[Worker] Transformed batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(nodes.length / BATCH_SIZE)} for ${entityType}. Updated nodes: ${updateRes.summary.counters.updates().propertiesSet}`);
+                  
+                  // Small delay between batches to stabilize network/API pressure
+                  await new Promise(resolve => setTimeout(resolve, 500));
                 }
+              } else {
+                console.log(`[Worker] No nodes found in Neo4j for entity type: ${entityType} (or plurals)`);
               }
             } finally {
               await session.close();

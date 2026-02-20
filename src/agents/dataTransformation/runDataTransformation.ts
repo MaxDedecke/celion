@@ -24,10 +24,12 @@ Du bist ein Data Transformation Agent. Deine Aufgabe ist es, Qualitäts-Verbesse
 - Wenn mehrere Enhancements für ein Feld konfiguriert sind, wende sie nacheinander an.
 
 ### OUTPUT FORMAT:
-Antworte NUR mit dem JSON-Array:
+Antworte NUR mit dem JSON-Array von Objekten. Jedes Objekt MUSS die ursprüngliche 'external_id' und die transformierten Felder enthalten.
+
+Beispiel:
 [
-  { "id": "...", "field1": "verbesserter text", ... },
-  ...
+  { "external_id": "123", "name": "Translated Name", "name_sentiment": "positive" },
+  { "external_id": "456", "name": "Another Translation", "name_sentiment": "neutral" }
 ]
 `;
 
@@ -53,40 +55,61 @@ Bitte verarbeite die Datensätze jetzt und gib das resultierende JSON-Array zur�
     { role: "user", content: userContext }
   ];
 
-  const response = await fetch(`${baseUrl}/chat/completions`, {
-    method: 'POST',
-    headers,
-    body: JSON.stringify({
-      model: "gpt-4o",
-      messages,
-      response_format: { type: "json_object" }
-    }),
-  });
+  const maxRetries = 3;
+  let lastError: any = null;
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`OpenAI API request failed: ${response.status} ${response.statusText} ${errorText}`);
-  }
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      if (attempt > 0) {
+        const delay = Math.pow(2, attempt) * 1000;
+        console.log(`[DataTransformation] Retry attempt ${attempt}/${maxRetries} after ${delay}ms...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
 
-  const data = await response.json();
-  const content = data.choices[0].message.content;
+      const response = await fetch(`${baseUrl}/chat/completions`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({
+          model: "gpt-4o",
+          messages,
+          response_format: { type: "json_object" }
+        }),
+      });
 
-  try {
-    const parsed = JSON.parse(content);
-    // If the LLM wraps it in a key like "items" or "results", extract it
-    if (Array.isArray(parsed)) return parsed;
-    if (parsed.items && Array.isArray(parsed.items)) return parsed.items;
-    if (parsed.results && Array.isArray(parsed.results)) return parsed.results;
-    if (parsed.data && Array.isArray(parsed.data)) return parsed.data;
-    
-    // Fallback: search for the first array found in the object
-    for (const key in parsed) {
-        if (Array.isArray(parsed[key])) return parsed[key];
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`OpenAI API request failed: ${response.status} ${response.statusText} ${errorText}`);
+      }
+
+      const data = await response.json();
+      const content = data.choices[0].message.content;
+
+      try {
+        const parsed = JSON.parse(content);
+        let result = parsed;
+        if (parsed.items && Array.isArray(parsed.items)) result = parsed.items;
+        else if (parsed.results && Array.isArray(parsed.results)) result = parsed.results;
+        else if (parsed.data && Array.isArray(parsed.data)) result = parsed.data;
+        else if (!Array.isArray(parsed)) {
+            // Find first array if not found yet
+            for (const key in parsed) {
+                if (Array.isArray(parsed[key])) {
+                    result = parsed[key];
+                    break;
+                }
+            }
+        }
+        
+        return Array.isArray(result) ? result : [result];
+      } catch (e) {
+        console.error("Failed to parse transformation result", e, content);
+        throw new Error("Invalid transformation result format");
+      }
+    } catch (error) {
+      lastError = error;
+      console.error(`[DataTransformation] Attempt ${attempt} failed:`, error instanceof Error ? error.message : String(error));
     }
-    
-    return [parsed]; // Single object case
-  } catch (e) {
-    console.error("Failed to parse transformation result", e, content);
-    throw new Error("Invalid transformation result format");
   }
+
+  throw lastError || new Error("Data transformation failed after multiple retries");
 }
