@@ -256,6 +256,34 @@ const updateWorkflowForStep = (state: any, workflowStepId: string, result: any, 
   return { nextState, progress, completedCount, totalSteps };
 };
 
+function flattenObject(obj: any, prefix = ''): any {
+  return Object.keys(obj).reduce((acc: any, k: string) => {
+    const pre = prefix.length ? prefix + '_' : '';
+    if (typeof obj[k] === 'object' && obj[k] !== null && !Array.isArray(obj[k])) {
+      Object.assign(acc, flattenObject(obj[k], pre + k));
+    } else {
+      acc[pre + k] = obj[k];
+    }
+    return acc;
+  }, {});
+}
+
+function sanitizeForNeo4j(obj: any): any {
+  const sanitized: any = {};
+  for (const [key, value] of Object.entries(obj)) {
+    // Neo4j only accepts primitives or arrays of primitives
+    if (Array.isArray(value)) {
+      sanitized[key] = value.filter(v => typeof v !== 'object').map(v => String(v));
+    } else if (typeof value === 'object' && value !== null) {
+      // Should have been flattened, but if anything remains, stringify it
+      sanitized[key] = JSON.stringify(value);
+    } else {
+      sanitized[key] = value;
+    }
+  }
+  return sanitized;
+}
+
 async function processJob(job: any) {
   console.log(`Processing job ${job.id} for step ${job.step_id}`);
 
@@ -2022,73 +2050,96 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
             rulesByEntity[rule.source_object][rule.source_property] = rule.enhancements;
           }
 
-          for (const [entityType, config] of Object.entries(rulesByEntity)) {
-            await writeChatMessage(migrationId, 'assistant', `Veredele Entität: **${entityType}**...`, currentStepNumber);
-            
-            const session = driver.session();
-            try {
-              // Fetch nodes - more robust query handling common pluralization
-              const nodeRes = await session.run(
+          // 1. INITIALIZATION: Set _enhanced = false for all nodes that NEED enhancement
+          const initSession = driver.session();
+          try {
+            for (const entityType of Object.keys(rulesByEntity)) {
+              await initSession.run(
                 `MATCH (n:\`${sourceSystem}\`) 
                  WHERE n.migration_id = $migrationId 
                  AND (n.entity_type = $entityType OR n.entity_type = $entityType + "s" OR n.entity_type = $entityType + "es")
-                 RETURN n`,
+                 SET n._enhanced = false`,
                 { migrationId, entityType }
               );
+            }
+            console.log(`[Worker] Initialization complete: All target nodes marked with _enhanced = false`);
+          } finally {
+            await initSession.close();
+          }
 
-              const nodes = nodeRes.records.map(r => r.get('n').properties);
-              
-              if (nodes.length > 0) {
-                console.log(`[Worker] Found ${nodes.length} nodes for transformation of ${entityType}`);
-                const BATCH_SIZE = 5; // Smaller batch size for better LLM focus
+          // 2. PROCESSING: Loop until no more _enhanced = false nodes exist
+          for (const [entityType, config] of Object.entries(rulesByEntity)) {
+            await writeChatMessage(migrationId, 'assistant', `Veredele Entität: **${entityType}**...`, currentStepNumber);
+            
+            let processedInEntity = 0;
+            while (true) {
+              const session = driver.session();
+              try {
+                // Fetch ONLY nodes that are explicitly set to false
+                const nodeRes = await session.run(
+                  `MATCH (n:\`${sourceSystem}\`) 
+                   WHERE n.migration_id = $migrationId 
+                   AND (n.entity_type = $entityType OR n.entity_type = $entityType + "s" OR n.entity_type = $entityType + "es")
+                   AND n._enhanced = false
+                   RETURN n LIMIT 25`, 
+                  { migrationId, entityType }
+                );
+
+                const nodes = nodeRes.records.map(r => r.get('n').properties);
+                if (nodes.length === 0) break; 
+
+                const BATCH_SIZE = 5; 
                 for (let i = 0; i < nodes.length; i += BATCH_SIZE) {
                   const batch = nodes.slice(i, i + BATCH_SIZE);
                   const transformedBatch = await runDataTransformation(batch, config);
                   
-                  // Ensure external_id is present in each item, fallback to original if missing
                   const finalItems = transformedBatch.map((item: any, idx: number) => {
                     let processedItem = item;
-                    // Handle case where LLM returns a string instead of an object
                     if (typeof item === 'string') {
-                      // We don't know which field it belongs to if multiple, but usually it's the main one
-                      // This is a safety fallback. Better to try to match by index.
                       processedItem = { 
                         external_id: batch[idx]?.external_id,
-                        // We guess the field name from config if only one enhancement is configured
                         [Object.keys(config)[0] || 'transformed_content']: item 
                       };
                     } else if (typeof item === 'object' && item !== null) {
-                      if (!item.external_id && batch[idx]?.external_id) {
-                        processedItem = { ...item, external_id: batch[idx].external_id };
+                      // FLATTEN and SANITIZE for Neo4j
+                      processedItem = sanitizeForNeo4j(flattenObject(item));
+                      
+                      if (!processedItem.external_id && batch[idx]?.external_id) {
+                        processedItem.external_id = batch[idx].external_id;
                       }
                     }
                     return processedItem;
                   }).filter((item: any) => item && typeof item === 'object' && item.external_id);
 
                   if (finalItems.length === 0) {
-                    console.log(`[Worker] Skipping batch ${Math.floor(i / BATCH_SIZE) + 1} - No valid items returned`);
+                    // Safety: If LLM fails to return data, mark these specific nodes as 'failed' or skip to avoid infinite loop
+                    // For now, we just mark them as 'true' to continue, but log a warning
+                    console.warn(`[Worker] LLM returned no valid data for a batch of ${entityType}. Marking as processed to avoid infinite loop.`);
+                    await session.run(
+                        `UNWIND $ids AS id
+                         MATCH (n:\`${sourceSystem}\` { migration_id: $migrationId, external_id: toString(id) })
+                         SET n._enhanced = true`,
+                        { ids: batch.map(b => b.external_id), migrationId }
+                    );
                     continue;
                   }
 
-                  console.log(`[Worker] Entity: ${entityType}, Batch ${Math.floor(i / BATCH_SIZE) + 1}, First Item ID: ${finalItems[0]?.external_id}`);
-                  
-                  // Update Neo4j
+                  // Update Neo4j and mark as enhanced = true
                   const updateRes = await session.run(
                     `UNWIND $items AS item
                      MATCH (n:\`${sourceSystem}\` { migration_id: $migrationId, external_id: toString(item.external_id) })
-                     SET n += item`,
+                     SET n += item, n._enhanced = true`,
                     { items: finalItems, migrationId }
                   );
-                  console.log(`[Worker] Transformed batch ${Math.floor(i / BATCH_SIZE) + 1}/${Math.ceil(nodes.length / BATCH_SIZE)} for ${entityType}. Updated nodes: ${updateRes.summary.counters.updates().propertiesSet}`);
                   
-                  // Small delay between batches to stabilize network/API pressure
+                  processedInEntity += finalItems.length;
+                  console.log(`[Worker] Entity: ${entityType}, Updated: ${updateRes.summary.counters.updates().propertiesSet} props. Total: ${processedInEntity}`);
+                  
                   await new Promise(resolve => setTimeout(resolve, 500));
                 }
-              } else {
-                console.log(`[Worker] No nodes found in Neo4j for entity type: ${entityType} (or plurals)`);
+              } finally {
+                await session.close();
               }
-            } finally {
-              await session.close();
             }
           }
           await writeChatMessage(migrationId, 'assistant', 'Datenveredelung in Neo4j erfolgreich abgeschlossen.', currentStepNumber);
