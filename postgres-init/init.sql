@@ -581,6 +581,39 @@ CREATE TABLE IF NOT EXISTS public.step_7_results (
   UNIQUE(migration_id)
 );
 
+-- Step 8: Data Transfer Results
+CREATE TABLE IF NOT EXISTS public.step_8_results (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  migration_id uuid NOT NULL REFERENCES public.migrations(id) ON DELETE CASCADE,
+  summary text,
+  raw_json jsonb DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  UNIQUE(migration_id)
+);
+
+-- Step 9: Verification Results
+CREATE TABLE IF NOT EXISTS public.step_9_results (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  migration_id uuid NOT NULL REFERENCES public.migrations(id) ON DELETE CASCADE,
+  summary text,
+  raw_json jsonb DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  UNIQUE(migration_id)
+);
+
+-- Step 10: Report Results
+CREATE TABLE IF NOT EXISTS public.step_10_results (
+  id uuid NOT NULL DEFAULT gen_random_uuid() PRIMARY KEY,
+  migration_id uuid NOT NULL REFERENCES public.migrations(id) ON DELETE CASCADE,
+  summary text,
+  raw_json jsonb DEFAULT '{}'::jsonb,
+  created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
+  UNIQUE(migration_id)
+);
+
 -- Global Statistics
 CREATE TABLE IF NOT EXISTS public.global_stats (
   day date PRIMARY KEY DEFAULT CURRENT_DATE,

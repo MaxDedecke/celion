@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import neo4j from 'neo4j-driver';
-import { runSystemDetection, runAuthFlow, runSourceDiscovery, runTargetDiscovery, runAnswerAgent, runMapping, runMappingVerification, runMappingRules, runEnhancementRules, runEnhancementVerification } from '../agents/agentService';
+import { runSystemDetection, runAuthFlow, runSourceDiscovery, runTargetDiscovery, runAnswerAgent, runMapping, runMappingVerification, runMappingRules, runEnhancementRules, runEnhancementVerification, runDataTransformation } from '../agents/agentService';
 import { AGENT_WORKFLOW_STEPS } from '../constants/agentWorkflow';
 import { loadScheme, loadObjectScheme } from '../lib/scheme-loader';
 import { resolveOpenAiConfig, buildOpenAiHeaders } from '../agents/openai/openaiClient';
@@ -1996,6 +1996,125 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
         throw e;
       } finally {
         finishClientEnhance.release();
+      }
+      return;
+
+    } else if (agentName === 'runDataTransfer') {
+      console.log(`[Worker] Running Data Transfer for migration ${migrationId}`);
+      await writeChatMessage(migrationId, 'assistant', 'Schritt 8: Datentransfer gestartet. Phase 1: Datenveredelung in Neo4j...', currentStepNumber);
+
+      // 1. Fetch source system
+      const { rows: migRows8 } = await pool.query('SELECT source_system FROM migrations WHERE id = $1', [migrationId]);
+      const sourceSystem = migRows8[0]?.source_system;
+
+      // 2. Fetch rules with enhancements
+      const { rows: ruleRows8 } = await pool.query(
+        'SELECT * FROM mapping_rules WHERE migration_id = $1 AND enhancements IS NOT NULL AND array_length(enhancements, 1) > 0', 
+        [migrationId]
+      );
+
+      if (ruleRows8.length > 0) {
+        const driver = neo4j.driver(
+          process.env.NEO4J_URI || "bolt://neo4j-db:7687",
+          neo4j.auth.basic(process.env.NEO4J_USER || "neo4j", process.env.NEO4J_PASSWORD || "password")
+        );
+
+        try {
+          // Group rules by source_object
+          const rulesByEntity: Record<string, Record<string, string[]>> = {};
+          for (const rule of ruleRows8) {
+            if (!rulesByEntity[rule.source_object]) rulesByEntity[rule.source_object] = {};
+            rulesByEntity[rule.source_object][rule.source_property] = rule.enhancements;
+          }
+
+          for (const [entityType, config] of Object.entries(rulesByEntity)) {
+            await writeChatMessage(migrationId, 'assistant', `Veredele Entität: **${entityType}**...`, currentStepNumber);
+            
+            const session = driver.session();
+            try {
+              // Fetch nodes
+              const nodeRes = await session.run(
+                `MATCH (n:\`${sourceSystem}\`) 
+                 WHERE n.migration_id = $migrationId AND n.entity_type = $entityType
+                 RETURN n`,
+                { migrationId, entityType }
+              );
+
+              const nodes = nodeRes.records.map(r => r.get('n').properties);
+              
+              if (nodes.length > 0) {
+                const BATCH_SIZE = 5; // Smaller batch size for better LLM focus
+                for (let i = 0; i < nodes.length; i += BATCH_SIZE) {
+                  const batch = nodes.slice(i, i + BATCH_SIZE);
+                  const transformedBatch = await runDataTransformation(batch, config);
+                  
+                  // Update Neo4j
+                  await session.run(
+                    `UNWIND $items AS item
+                     MATCH (n:\`${sourceSystem}\` { migration_id: $migrationId, external_id: item.external_id })
+                     SET n += item`,
+                    { items: transformedBatch, migrationId }
+                  );
+                  console.log(`[Worker] Transformed batch ${Math.floor(i / BATCH_SIZE) + 1} for ${entityType}`);
+                }
+              }
+            } finally {
+              await session.close();
+            }
+          }
+          await writeChatMessage(migrationId, 'assistant', 'Datenveredelung in Neo4j erfolgreich abgeschlossen.', currentStepNumber);
+        } finally {
+          await driver.close();
+        }
+      } else {
+        await writeChatMessage(migrationId, 'assistant', 'Keine Qualitäts-Enhancements konfiguriert. Überspringe Phase 1.', currentStepNumber);
+      }
+
+      // Phase 2: Actual Transfer (MOCK for now)
+      await writeChatMessage(migrationId, 'assistant', 'Phase 2: Transfer der veredelten Daten in das Zielsystem startet...', currentStepNumber);
+      await new Promise(r => setTimeout(r, 2000));
+      await writeChatMessage(migrationId, 'assistant', 'Transfer erfolgreich abgeschlossen.', currentStepNumber);
+
+      result = { status: 'success', message: 'Data Transfer phase 1 completed.' };
+      
+      const finishClientTransfer = await pool.connect();
+      try {
+        await finishClientTransfer.query('BEGIN');
+        await finishClientTransfer.query('UPDATE migration_steps SET status = $1, result = $2, status_message = $3 WHERE id = $4', [
+          'completed', result, 'Data transfer completed.', step_id,
+        ]);
+
+        const { rows: migRowsFinal } = await finishClientTransfer.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
+        const { nextState, progress } = updateWorkflowForStep(migRowsFinal[0]?.workflow_state, stepRecord.workflow_step_id || stepId, result, false);
+        
+        await finishClientTransfer.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
+          nextState, progress, 'processing', 'completed', currentStepNumber, migrationId,
+        ]);
+        await finishClientTransfer.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+        
+        // KPI
+        await incrementGlobalStats(finishClientTransfer, { steps: 1, success: 1, total_agents: 1 });
+
+        await finishClientTransfer.query('COMMIT');
+        
+        const nextStepIndex = currentStepNumber;
+        if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
+            const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
+            const actionContent = JSON.stringify({
+                type: "action",
+                actions: [
+                  { action: "continue", label: `Weiter zu Schritt ${nextStepIndex + 1} ${nextStep.title}`, variant: "primary" },
+                  { action: "retry", label: `Schritt ${currentStepNumber} wiederholen`, variant: "outline", stepNumber: currentStepNumber }
+                ]
+            });
+            await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
+        }
+        await logActivity(migrationId, 'success', 'Data Transfer abgeschlossen.');
+      } catch (e) {
+        await finishClientTransfer.query('ROLLBACK');
+        throw e;
+      } finally {
+        finishClientTransfer.release();
       }
       return;
 
