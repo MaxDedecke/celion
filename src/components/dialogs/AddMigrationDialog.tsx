@@ -19,12 +19,11 @@ import {
 import { DATA_SOURCE_TYPE_OPTIONS } from "@/constants/sourceTypes";
 import type { NewMigrationInput } from "@/types/migration";
 import InfoTooltip from "@/components/InfoTooltip";
-import ConfigAgentChat from "./ConfigAgentChat";
 
 interface AddMigrationDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSubmit: (migration: NewMigrationInput) => void;
+  onSubmit: (migration: Partial<NewMigrationInput>) => void;
   mode?: "create" | "edit";
   initialData?: Partial<NewMigrationInput>;
   title?: string;
@@ -56,8 +55,6 @@ const AddMigrationDialog = ({
   const [targetName, setTargetName] = useState(initialData?.scopeConfig?.targetName ?? "");
   const [error, setError] = useState<string | null>(null);
 
-  const [stepInfo, setStepInfo] = useState<{ current: number; total: number } | null>(null);
-
   const resetForm = useCallback(() => {
     if (isEditMode && initialData) {
       setName(initialData.name ?? "");
@@ -83,38 +80,37 @@ const AddMigrationDialog = ({
       setTargetEmail("");
       setSourceScope("");
       setTargetName("");
-      // Reset step info when opening in create mode (will be updated by agent)
-      setStepInfo(null);
     }
     setError(null);
   }, [initialData, isEditMode]);
 
   useEffect(() => {
     if (open) {
-      // Always reset form state when dialog opens, specifically for Edit Mode
-      if (isEditMode) {
-        resetForm();
-      } else {
-          // Reset for create mode too to clear previous steps if any
-          setStepInfo(null);
-      }
+      resetForm();
     }
-  }, [open, isEditMode, resetForm]);
+  }, [open, resetForm]);
 
   const handleSubmit = () => {
-    if (!name.trim() || !sourceUrl.trim() || !targetUrl.trim() || !sourceSystem || !targetSystem) {
-      setError("Bitte fülle alle Pflichtfelder aus.");
+    if (!name.trim()) {
+      setError("Bitte gib einen Namen für die Migration ein.");
       return;
     }
 
-    if (!sourceApiToken.trim()) {
-      setError("Bitte hinterlege einen API Token für das Quellsystem.");
-      return;
-    }
-
-    if (!targetApiToken.trim()) {
-      setError("Bitte hinterlege einen API Token für das Zielsystem.");
-      return;
+    if (isEditMode) {
+        if (!sourceUrl.trim() || !targetUrl.trim() || !sourceSystem || !targetSystem) {
+          setError("Bitte fülle alle Pflichtfelder aus.");
+          return;
+        }
+    
+        if (!sourceApiToken.trim()) {
+          setError("Bitte hinterlege einen API Token für das Quellsystem.");
+          return;
+        }
+    
+        if (!targetApiToken.trim()) {
+          setError("Bitte hinterlege einen API Token für das Zielsystem.");
+          return;
+        }
     }
 
     onSubmit({
@@ -150,14 +146,9 @@ const AddMigrationDialog = ({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent 
-        className="bg-popover border-border w-full sm:max-w-5xl p-0 overflow-hidden"
+        className="bg-popover border-border w-full sm:max-w-2xl p-0 overflow-hidden"
         onInteractOutside={(e) => e.preventDefault()}
       >
-        {!isEditMode && stepInfo && (
-          <div className="absolute right-12 top-4 z-50 text-xs text-muted-foreground bg-background/80 px-2 py-1 rounded pointer-events-none">
-            Schritt {stepInfo.current} von {stepInfo.total}
-          </div>
-        )}
         <div className="border-b border-border bg-muted/30 px-6 py-4">
           <DialogHeader className="space-y-1">
             <DialogTitle className="text-xl">
@@ -166,9 +157,7 @@ const AddMigrationDialog = ({
           </DialogHeader>
         </div>
 
-        {isEditMode ? (
-          /* Manual Form for Edit Mode */
-          <div className="grid gap-6 px-6 py-5">
+        <div className="grid gap-6 px-6 py-5">
             <div className="space-y-2">
               <Label htmlFor="migration-name">Migrationsname</Label>
               <Input
@@ -180,143 +169,146 @@ const AddMigrationDialog = ({
                   setError(null);
                 }}
                 className="bg-input border-border"
+                autoFocus
               />
             </div>
 
-            <div className="grid gap-4 md:grid-cols-2">
-              {[{
-                title: "Quellsystem",
-                systemId: "source-system",
-                systemValue: sourceSystem,
-                onSystemChange: setSourceSystem,
-                urlId: "source-url",
-                urlValue: sourceUrl,
-                onUrlChange: setSourceUrl,
-                tokenId: "source-api-token",
-                tokenValue: sourceApiToken,
-                onTokenChange: setSourceApiToken,
-                emailId: "source-email",
-                emailValue: sourceEmail,
-                onEmailChange: setSourceEmail,
-                scopeId: "source-scope",
-                scopeValue: sourceScope,
-                onScopeChange: setSourceScope,
-                scopeLabel: "Quell-Projekt/ID",
-                scopeTooltip: "Geben Sie eine spezifische Projekt-ID oder einen Namen an, um nur diesen Bereich zu migrieren. Leer lassen für einen vollständigen Scan.",
-                tooltipSide: "right" as const
-              }, {
-                title: "Zielsystem",
-                systemId: "target-system",
-                systemValue: targetSystem,
-                onSystemChange: setTargetSystem,
-                urlId: "target-url",
-                urlValue: targetUrl,
-                onUrlChange: setTargetUrl,
-                tokenId: "target-api-token",
-                tokenValue: targetApiToken,
-                onTokenChange: setTargetApiToken,
-                emailId: "target-email",
-                emailValue: targetEmail,
-                onEmailChange: setTargetEmail,
-                scopeId: "target-name",
-                scopeValue: targetName,
-                onScopeChange: setTargetName,
-                scopeLabel: "Ziel-Name",
-                scopeTooltip: "Name des Projekts im Zielsystem. Leer lassen, um die Benennung der Quelle beizubehalten.",
-                tooltipSide: "left" as const
-              }].map((section) => (
-                <div key={section.title} className="space-y-4 rounded-xl border border-border/70 bg-card/60 p-4 shadow-sm">
-                  <div className="flex items-center justify-between gap-2">
-                    <h3 className="text-sm font-semibold">{section.title}</h3>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-2">
-                      <Label htmlFor={section.systemId}>System</Label>
-                      <Select
-                        value={section.systemValue}
-                        onValueChange={(value) => {
-                          section.onSystemChange(value);
-                          setError(null);
-                        }}
-                      >
-                        <SelectTrigger id={section.systemId} className="bg-input border-border">
-                          <SelectValue placeholder="Wählen" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {DATA_SOURCE_TYPE_OPTIONS.map((option) => (
-                            <SelectItem key={option} value={option}>
-                              {option}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
+            {isEditMode && (
+                <div className="grid gap-4 md:grid-cols-2">
+                {[{
+                    title: "Quellsystem",
+                    systemId: "source-system",
+                    systemValue: sourceSystem,
+                    onSystemChange: setSourceSystem,
+                    urlId: "source-url",
+                    urlValue: sourceUrl,
+                    onUrlChange: setSourceUrl,
+                    tokenId: "source-api-token",
+                    tokenValue: sourceApiToken,
+                    onTokenChange: setSourceApiToken,
+                    emailId: "source-email",
+                    emailValue: sourceEmail,
+                    onEmailChange: setSourceEmail,
+                    scopeId: "source-scope",
+                    scopeValue: sourceScope,
+                    onScopeChange: setSourceScope,
+                    scopeLabel: "Quell-Projekt/ID",
+                    scopeTooltip: "Geben Sie eine spezifische Projekt-ID oder einen Namen an, um nur diesen Bereich zu migrieren. Leer lassen für einen vollständigen Scan.",
+                    tooltipSide: "right" as const
+                }, {
+                    title: "Zielsystem",
+                    systemId: "target-system",
+                    systemValue: targetSystem,
+                    onSystemChange: setTargetSystem,
+                    urlId: "target-url",
+                    urlValue: targetUrl,
+                    onUrlChange: setTargetUrl,
+                    tokenId: "target-api-token",
+                    tokenValue: targetApiToken,
+                    onTokenChange: setTargetApiToken,
+                    emailId: "target-email",
+                    emailValue: targetEmail,
+                    onEmailChange: setTargetEmail,
+                    scopeId: "target-name",
+                    scopeValue: targetName,
+                    onScopeChange: setTargetName,
+                    scopeLabel: "Ziel-Name",
+                    scopeTooltip: "Name des Projekts im Zielsystem. Leer lassen, um die Benennung der Quelle beizubehalten.",
+                    tooltipSide: "left" as const
+                }].map((section) => (
+                    <div key={section.title} className="space-y-4 rounded-xl border border-border/70 bg-card/60 p-4 shadow-sm">
+                    <div className="flex items-center justify-between gap-2">
+                        <h3 className="text-sm font-semibold">{section.title}</h3>
                     </div>
 
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-1.5">
-                        <Label htmlFor={section.scopeId}>{section.scopeLabel}</Label>
-                        <InfoTooltip content={section.scopeTooltip} side={section.tooltipSide} />
-                      </div>
-                      <Input
-                        id={section.scopeId}
-                        placeholder="Optional"
-                        value={section.scopeValue}
-                        onChange={(e) => section.onScopeChange(e.target.value)}
-                        className="bg-input border-border"
-                      />
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                        <Label htmlFor={section.systemId}>System</Label>
+                        <Select
+                            value={section.systemValue}
+                            onValueChange={(value) => {
+                            section.onSystemChange(value);
+                            setError(null);
+                            }}
+                        >
+                            <SelectTrigger id={section.systemId} className="bg-input border-border">
+                            <SelectValue placeholder="Wählen" />
+                            </SelectTrigger>
+                            <SelectContent>
+                            {DATA_SOURCE_TYPE_OPTIONS.map((option) => (
+                                <SelectItem key={option} value={option}>
+                                {option}
+                                </SelectItem>
+                            ))}
+                            </SelectContent>
+                        </Select>
+                        </div>
+
+                        <div className="space-y-3">
+                        <div className="flex items-center gap-1.5">
+                            <Label htmlFor={section.scopeId}>{section.scopeLabel}</Label>
+                            <InfoTooltip content={section.scopeTooltip} side={section.tooltipSide} />
+                        </div>
+                        <Input
+                            id={section.scopeId}
+                            placeholder="Optional"
+                            value={section.scopeValue}
+                            onChange={(e) => section.onScopeChange(e.target.value)}
+                            className="bg-input border-border"
+                        />
+                        </div>
                     </div>
-                  </div>
 
-                  <div className="space-y-2">
-                    <Label htmlFor={section.urlId}>API URL</Label>
-                    <Input
-                      id={section.urlId}
-                      type="url"
-                      placeholder="https://api.system.com"
-                      value={section.urlValue}
-                      onChange={(e) => {
-                        section.onUrlChange(e.target.value);
-                        setError(null);
-                      }}
-                      className="bg-input border-border"
-                    />
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-2">
-                      <Label htmlFor={section.tokenId}>API-Token</Label>
-                      <Input
-                        id={section.tokenId}
-                        type="password"
-                        placeholder="Token"
-                        value={section.tokenValue}
+                        <Label htmlFor={section.urlId}>API URL</Label>
+                        <Input
+                        id={section.urlId}
+                        type="url"
+                        placeholder="https://api.system.com"
+                        value={section.urlValue}
                         onChange={(e) => {
-                          section.onTokenChange(e.target.value);
-                          setError(null);
+                            section.onUrlChange(e.target.value);
+                            setError(null);
                         }}
                         className="bg-input border-border"
-                      />
+                        />
                     </div>
 
-                    <div className="space-y-2">
-                      <Label htmlFor={section.emailId}>E-Mail</Label>
-                      <Input
-                        id={section.emailId}
-                        type="email"
-                        placeholder="Admin Mail"
-                        value={section.emailValue}
-                        onChange={(e) => {
-                          section.onEmailChange(e.target.value);
-                          setError(null);
-                        }}
-                        className="bg-input border-border"
-                      />
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-2">
+                        <Label htmlFor={section.tokenId}>API-Token</Label>
+                        <Input
+                            id={section.tokenId}
+                            type="password"
+                            placeholder="Token"
+                            value={section.tokenValue}
+                            onChange={(e) => {
+                            section.onTokenChange(e.target.value);
+                            setError(null);
+                            }}
+                            className="bg-input border-border"
+                        />
+                        </div>
+
+                        <div className="space-y-2">
+                        <Label htmlFor={section.emailId}>E-Mail</Label>
+                        <Input
+                            id={section.emailId}
+                            type="email"
+                            placeholder="Admin Mail"
+                            value={section.emailValue}
+                            onChange={(e) => {
+                            section.onEmailChange(e.target.value);
+                            setError(null);
+                            }}
+                            className="bg-input border-border"
+                        />
+                        </div>
                     </div>
-                  </div>
+                    </div>
+                ))}
                 </div>
-              ))}
-            </div>
+            )}
 
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-end">
               {error && (
@@ -335,24 +327,12 @@ const AddMigrationDialog = ({
 
               <Button
                 onClick={handleSubmit}
-                className="w-full bg-secondary hover:bg-secondary/90 text-secondary-foreground md:w-auto"
+                className="w-full bg-primary hover:bg-primary/90 text-primary-foreground md:w-auto"
               >
-                {submitLabel ?? "Änderungen speichern"}
+                {submitLabel ?? (isEditMode ? "Änderungen speichern" : "Migration erstellen")}
               </Button>
             </div>
-          </div>
-        ) : (
-          /* Agent Chat for Create Mode */
-          <ConfigAgentChat 
-            onComplete={(config) => {
-              onSubmit(config);
-              onOpenChange(false);
-            }} 
-            onCancel={() => onOpenChange(false)}
-            onStepChange={(current, total) => setStepInfo({ current, total })}
-            initialData={initialData}
-          />
-        )}
+        </div>
       </DialogContent>
     </Dialog>
   );

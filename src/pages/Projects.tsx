@@ -1,18 +1,14 @@
-﻿import { useState, useEffect, useRef } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import Sidebar from "@/components/Sidebar";
 import UserMenu from "@/components/UserMenu";
 import AccountDialog from "@/components/dialogs/AccountDialog";
-import AddProjectDialog from "@/components/dialogs/AddProjectDialog";
 import AddMigrationDialog from "@/components/dialogs/AddMigrationDialog";
-import EditProjectDialog from "@/components/dialogs/EditProjectDialog";
 import EditMigrationDialog from "@/components/dialogs/EditMigrationDialog";
 import DataFlowLoader from "@/components/DataFlowLoader";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { Folder, FolderOpen, Plus, Trash2, ClipboardList, Users } from "lucide-react";
-import { toast } from "sonner";
-import { databaseClient } from "@/api/databaseClient";
+import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +20,8 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { useMinimumLoader } from "@/hooks/useMinimumLoader";
+import { databaseClient } from "@/api/databaseClient";
+import { toast } from "sonner";
 import type { NewMigrationInput } from "@/types/migration";
 import {
   AUTH_DETAIL_CREDENTIALS,
@@ -31,92 +29,108 @@ import {
   CONNECTOR_AUTH_LABEL,
   CONNECTOR_ENDPOINT_LABEL,
 } from "@/constants/migrations";
+import { ArrowRight, Plus, Trash2, FolderKanban, Copy, Settings2 } from "lucide-react";
+import { duplicateMigration } from "@/lib/migrationDuplication";
+
+interface SidebarMigration {
+  id: string;
+  name: string;
+  projectId: string | null;
+}
+
+interface ProjectMigrationCard {
+  id: string;
+  name: string;
+  createdAt: string | null;
+  sourceSystem?: string | null;
+  targetSystem?: string | null;
+  updatedAt?: string | null;
+  progress?: number;
+}
+
+interface ProjectSummary {
+  id: string;
+  name: string;
+  description: string | null;
+}
 
 const MIGRATIONS_PAGE_SIZE = 20;
 
 const Projects = () => {
   const navigate = useNavigate();
-  const [selectedProject, setSelectedProject] = useState<string | null>(null);
-  const [showAccountDialog, setShowAccountDialog] = useState(false);
-  const [showAddDialog, setShowAddDialog] = useState(false);
-  const [showAddMigrationDialog, setShowAddMigrationDialog] = useState(false);
-  
-  const [projects, setProjects] = useState<any[]>([]);
-  const [migrations, setMigrations] = useState<any[]>([]);
-  const [standaloneMigrations, setStandaloneMigrations] = useState<any[]>([]);
+
+  const [projects, setProjects] = useState<ProjectSummary[]>([]);
+  const [migrations, setMigrations] = useState<ProjectMigrationCard[]>([]);
+  const [standaloneMigrations, setStandaloneMigrations] = useState<ProjectMigrationCard[]>([]);
   const [loading, setLoading] = useState(true);
-  const [editingProject, setEditingProject] = useState<any>(null);
-  const [editingMigration, setEditingMigration] = useState<any>(null);
-  const [showEditDialog, setShowEditDialog] = useState(false);
-  const [showEditMigrationDialog, setShowEditMigrationDialog] = useState(false);
-  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
-  const [projectToDelete, setProjectToDelete] = useState<string | null>(null);
-  const [migrationToDelete, setMigrationToDelete] = useState<string | null>(null);
-  const [projectIdForNewMigration, setProjectIdForNewMigration] = useState<string | null>(null);
   const [transitioning, setTransitioning] = useState(false);
-  const loaderVisible = useMinimumLoader(loading || transitioning, 1000);
-  
+  const [duplicating, setDuplicating] = useState(false);
+  const loaderVisible = useMinimumLoader(loading || transitioning || duplicating, 900);
+
+  const [showAccountDialog, setShowAccountDialog] = useState(false);
+  const [showAddMigrationDialog, setShowAddMigrationDialog] = useState(false);
+  const [showEditMigrationDialog, setShowEditMigrationDialog] = useState(false);
+  const [editingMigration, setEditingMigration] = useState<any>(null);
+  const [projectIdForNewMigration, setProjectIdForNewMigration] = useState<string | null>(null);
+  const [showDeleteDialog, setShowDeleteDialog] = useState(false);
+  const [migrationToDelete, setMigrationToDelete] = useState<{ id: string; name: string } | null>(null);
+
   // Lazy loading state for standalone migrations
   const [hasMoreMigrations, setHasMoreMigrations] = useState(true);
   const [isLoadingMoreMigrations, setIsLoadingMoreMigrations] = useState(false);
   const [totalMigrationsCount, setTotalMigrationsCount] = useState(0);
   const migrationsPageRef = useRef(0);
 
-  useEffect(() => {
-    checkAuth();
-    loadAllData();
-  }, []);
-
-  const checkAuth = async () => {
-    const { data: { session } } = await databaseClient.getSession();
+  const checkAuth = useCallback(async () => {
+    const {
+      data: { session },
+    } = await databaseClient.getSession();
     if (!session) {
       navigate("/");
     }
-  };
+  }, [navigate]);
 
-  const loadAllData = async () => {
+  useEffect(() => {
+    void checkAuth();
+  }, [checkAuth]);
+
+  const loadAllData = useCallback(async () => {
     try {
-      setLoading(true);
-      
-      // Load all projects
       const { data: projectsData, error: projectsError } = await databaseClient.fetchProjects();
 
       if (projectsError) throw projectsError;
 
-      // Load migrations count for each project
-      const projectsWithCounts = await Promise.all(
-        (projectsData || []).map(async (project) => {
-          const { count } = await databaseClient.countMigrationsByProject(project.id);
-
-          return {
-            id: project.id,
-            name: project.name,
-            description: project.description,
-            migrationsCount: count || 0,
-            created_at: project.created_at,
-          };
-        })
+      setProjects(
+        (projectsData || []).map((p) => ({
+          id: p.id,
+          name: p.name,
+          description: p.description,
+        }))
       );
 
-      setProjects(projectsWithCounts);
+      const allMigrations: ProjectMigrationCard[] = [];
 
-      // Load all migrations with project_id
-      const allMigrationsWithProjects: any[] = [];
       for (const project of projectsData || []) {
-        const { data: migrationsData, error: migrationsError } = await databaseClient.fetchMigrationsByProject(project.id);
+        const { data: projectMigrationsData, error: projectMigrationsError } = await databaseClient.fetchMigrationsByProject(project.id);
 
-        if (migrationsError) throw migrationsError;
-        
-        const migrationsFormatted = (migrationsData || []).map(m => ({
-          id: m.id,
-          name: m.name,
-          projectId: m.project_id
-        }));
-        allMigrationsWithProjects.push(...migrationsFormatted);
+        if (projectMigrationsError) throw projectMigrationsError;
+
+        allMigrations.push(
+          ...(projectMigrationsData || []).map((migration) => ({
+            id: migration.id,
+            name: migration.name,
+            createdAt: migration.created_at,
+            sourceSystem: migration.source_system,
+            targetSystem: migration.target_system,
+            updatedAt: migration.updated_at,
+            progress: migration.progress,
+          }))
+        );
       }
-      setMigrations(allMigrationsWithProjects);
 
-      // Load standalone migrations with pagination (initial load)
+      setMigrations(allMigrations);
+
+      // Reset standalone pagination
       migrationsPageRef.current = 0;
       const { data: standaloneData, error: standaloneError, count } = await databaseClient.fetchStandaloneMigrationsPaginated(MIGRATIONS_PAGE_SIZE, 0);
 
@@ -124,23 +138,27 @@ const Projects = () => {
 
       setTotalMigrationsCount(count || 0);
       setHasMoreMigrations((standaloneData?.length || 0) === MIGRATIONS_PAGE_SIZE);
-
-      const standaloneFormatted = (standaloneData || []).map(m => ({
-        id: m.id,
-        name: m.name
-      }));
-      setStandaloneMigrations(standaloneFormatted);
       migrationsPageRef.current = 1;
-    } catch (error: any) {
-      toast.error("Fehler beim Laden der Daten");
+
+      setStandaloneMigrations(
+        (standaloneData || []).map((migration) => ({
+          id: migration.id,
+          name: migration.name,
+          createdAt: migration.created_at,
+          sourceSystem: migration.source_system,
+          targetSystem: migration.target_system,
+          updatedAt: migration.updated_at,
+          progress: migration.progress,
+        }))
+      );
+    } catch (error) {
       console.error(error);
-    } finally {
-      setLoading(false);
+      toast.error("Fehler beim Laden der Daten");
     }
-  };
+  }, []);
 
   // Load more migrations (infinite scroll)
-  const handleLoadMoreMigrations = async () => {
+  const handleLoadMoreMigrations = useCallback(async () => {
     if (isLoadingMoreMigrations || !hasMoreMigrations) return;
 
     setIsLoadingMoreMigrations(true);
@@ -152,7 +170,12 @@ const Projects = () => {
 
       const newMigrations = (standaloneData || []).map(m => ({
         id: m.id,
-        name: m.name
+        name: m.name,
+        createdAt: m.created_at,
+        sourceSystem: m.source_system,
+        targetSystem: m.target_system,
+        updatedAt: m.updated_at,
+        progress: m.progress,
       }));
       setStandaloneMigrations(prev => [...prev, ...newMigrations]);
       setHasMoreMigrations((standaloneData?.length || 0) === MIGRATIONS_PAGE_SIZE);
@@ -162,7 +185,20 @@ const Projects = () => {
     } finally {
       setIsLoadingMoreMigrations(false);
     }
-  };
+  }, [isLoadingMoreMigrations, hasMoreMigrations]);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        setLoading(true);
+        await loadAllData();
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    void fetchData();
+  }, [loadAllData]);
 
   const handleLogout = async () => {
     try {
@@ -170,93 +206,39 @@ const Projects = () => {
       await databaseClient.signOut();
       navigate("/");
     } catch (error) {
-      toast.error("Abmeldung fehlgeschlagen");
       console.error(error);
+      toast.error("Abmeldung fehlgeschlagen");
     } finally {
       setTransitioning(false);
     }
   };
 
-  const handleAddProject = async (data: { name: string; description: string }) => {
-    try {
-      const { data: { user } } = await databaseClient.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      const { error } = await databaseClient.insertProject({
-        user_id: user.id,
-        name: data.name,
-        description: data.description,
-      });
-
-      if (error) throw error;
-
-      toast.success("Projekt erfolgreich erstellt");
-      await loadAllData();
-    } catch (error: any) {
-      toast.error(error.message || "Fehler beim Erstellen des Projekts");
-      console.error(error);
+  const handleSelectMigration = (id: string) => {
+    const migration = [...migrations, ...standaloneMigrations].find((m) => m.id === id);
+    if (migration) {
+      const projId = projects.find(p => migrations.some(m => m.id === id))?.id;
+      if (projId) {
+        navigate(`/projects/${projId}/migration/${id}`);
+      } else {
+        navigate(`/migration/${id}`);
+      }
     }
   };
 
-  const handleEditProject = async (data: { name: string; description: string }) => {
-    if (!editingProject) return;
-
+  const handleAddMigration = async (migrationData: Partial<NewMigrationInput>) => {
     try {
-      const { error } = await databaseClient.updateProject(editingProject.id, {
-        name: data.name,
-        description: data.description,
-      });
-
-      if (error) throw error;
-
-      toast.success("Projekt aktualisiert");
-      await loadAllData();
-      setEditingProject(null);
-    } catch (error: any) {
-      toast.error(error.message || "Fehler beim Aktualisieren");
-      console.error(error);
-    }
-  };
-
-  const handleDeleteProject = async () => {
-    if (!projectToDelete) return;
-
-    try {
-      const { error } = await databaseClient.deleteProject(projectToDelete);
-
-      if (error) throw error;
-
-      toast.success("Projekt gelöscht");
-      setShowDeleteDialog(false);
-      setProjectToDelete(null);
-      await loadAllData();
-    } catch (error: any) {
-      toast.error("Fehler beim Löschen");
-      console.error(error);
-    }
-  };
-
-  const handleProjectClick = (projectId: string) => {
-    navigate(`/projects/${projectId}`);
-  };
-
-  const handleAddMigration = async (migrationData: NewMigrationInput) => {
-    try {
-      const { data: { user } } = await databaseClient.getUser();
+      const {
+        data: { user },
+      } = await databaseClient.getUser();
       if (!user) throw new Error("Nicht authentifiziert");
 
-      const {
-        name,
-        sourceUrl,
-        targetUrl,
-        sourceSystem,
-        targetSystem,
-        sourceAuth,
-        targetAuth,
-      } = migrationData;
+      const name = migrationData.name || "Neue Migration";
+      const sourceUrl = migrationData.sourceUrl || "";
+      const targetUrl = migrationData.targetUrl || "";
+      const sourceSystem = migrationData.sourceSystem || "TBD";
+      const targetSystem = migrationData.targetSystem || "TBD";
+      
       const targetAuthDetail = AUTH_DETAIL_TOKEN;
-      const sourceConnectorAuthType = "api_key";
-      const targetConnectorAuthType = "api_key";
 
       const { data: migration, error: migrationError } = await databaseClient.insertMigration({
         user_id: user.id,
@@ -267,35 +249,37 @@ const Projects = () => {
         source_url: sourceUrl,
         target_url: targetUrl,
         in_connector: CONNECTOR_ENDPOINT_LABEL,
-        in_connector_detail: sourceUrl,
+        in_connector_detail: sourceUrl || "TBD",
         out_connector: CONNECTOR_AUTH_LABEL,
         out_connector_detail: targetAuthDetail,
       });
 
       if (migrationError) throw migrationError;
 
-      const sourceConnectorPayload = {
-        migration_id: migration.id,
-        api_url: sourceUrl,
-        auth_type: sourceConnectorAuthType,
-        api_key: sourceAuth.apiToken ?? null,
-        username: sourceAuth.email ?? null,
-      };
-
-      const targetConnectorPayload = {
-        migration_id: migration.id,
-        api_url: targetUrl,
-        auth_type: targetConnectorAuthType,
-        api_key: targetAuth.apiToken ?? null,
-        username: targetAuth.email ?? null,
-      };
-
-      const { error: connectorError } = await databaseClient.insertConnectors([
-        { ...sourceConnectorPayload, connector_type: 'in' },
-        { ...targetConnectorPayload, connector_type: 'out' },
-      ]);
-
-      if (connectorError) throw connectorError;
+      if (migrationData.sourceAuth && migrationData.targetAuth) {
+          const sourceConnectorPayload = {
+            migration_id: migration.id,
+            api_url: sourceUrl,
+            auth_type: "api_key",
+            api_key: migrationData.sourceAuth.apiToken ?? null,
+            username: migrationData.sourceAuth.email ?? null,
+          };
+    
+          const targetConnectorPayload = {
+            migration_id: migration.id,
+            api_url: targetUrl,
+            auth_type: "api_key",
+            api_key: migrationData.targetAuth.apiToken ?? null,
+            username: migrationData.targetAuth.email ?? null,
+          };
+    
+          const { error: connectorError } = await databaseClient.insertConnectors([
+            { ...sourceConnectorPayload, connector_type: 'in' },
+            { ...targetConnectorPayload, connector_type: 'out' },
+          ]);
+    
+          if (connectorError) throw connectorError;
+      }
 
       // Create initial activity
       await databaseClient.insertMigrationActivity({
@@ -350,7 +334,7 @@ const Projects = () => {
 
       if (error) throw error;
 
-      toast.success(`Migration aktualisiert auf "${name}"`);
+      toast.success("Migration aktualisiert");
       setShowEditMigrationDialog(false);
       setEditingMigration(null);
       loadAllData();
@@ -360,10 +344,32 @@ const Projects = () => {
     }
   };
 
+  const handleDuplicateMigration = async (migrationId: string) => {
+    try {
+      setDuplicating(true);
+      const existingNames = [...migrations, ...standaloneMigrations].map((migration) => migration.name);
+      const duplicated = await duplicateMigration(migrationId, { existingNames });
+
+      toast.success(`Migration "${duplicated.name}" dupliziert`);
+      await loadAllData();
+
+      if (duplicated.project_id) {
+        navigate(`/projects/${duplicated.project_id}/migration/${duplicated.id}`);
+      } else {
+        navigate(`/migration/${duplicated.id}`);
+      }
+    } catch (error: any) {
+      toast.error(error instanceof Error ? error.message : "Migration konnte nicht dupliziert werden");
+      console.error(error);
+    } finally {
+      setDuplicating(false);
+    }
+  };
+
   if (loaderVisible) {
     return (
       <div className="app-shell flex h-screen items-center justify-center p-6 overflow-hidden">
-        <DataFlowLoader size="lg" />
+        <DataFlowLoader size="lg" message={duplicating ? "Dupliziere Migration..." : undefined} />
       </div>
     );
   }
@@ -373,16 +379,9 @@ const Projects = () => {
       <div className="flex flex-1 gap-6 min-h-0">
         <Sidebar
           projects={projects}
-          projectMigrations={migrations}
-          standaloneMigrations={standaloneMigrations}
-          onSelectMigration={(id) => {
-            const migration = [...migrations, ...standaloneMigrations].find(m => m.id === id);
-            if (migration && migration.projectId) {
-              navigate(`/projects/${migration.projectId}/migration/${id}`);
-            } else {
-              navigate(`/migration/${id}`);
-            }
-          }}
+          projectMigrations={migrations.map(m => ({ ...m, projectId: projects.find(p => migrations.some(mig => mig.id === m.id))?.id || null }))}
+          standaloneMigrations={standaloneMigrations.map(m => ({ ...m, projectId: null }))}
+          onSelectMigration={handleSelectMigration}
           onNewMigration={() => {
             setProjectIdForNewMigration(null);
             setShowAddMigrationDialog(true);
@@ -391,8 +390,16 @@ const Projects = () => {
             setProjectIdForNewMigration(projectId);
             setShowAddMigrationDialog(true);
           }}
-          onDeleteMigration={handleDeleteMigration}
-          onEditMigration={handleEditMigration}
+          onDeleteMigration={(migrationId) => {
+            const migration = [...migrations, ...standaloneMigrations].find(
+              (m) => m.id === migrationId
+            );
+            if (migration) {
+              setMigrationToDelete({ id: migration.id, name: migration.name });
+              setShowDeleteDialog(true);
+            }
+          }}
+          onDuplicateMigration={handleDuplicateMigration}
           onLoadMoreMigrations={handleLoadMoreMigrations}
           hasMoreMigrations={hasMoreMigrations}
           isLoadingMoreMigrations={isLoadingMoreMigrations}
@@ -404,100 +411,138 @@ const Projects = () => {
             data-sidebar-anchor
             className="app-surface flex items-center justify-between rounded-3xl px-6 py-5"
           >
-            <div className="flex items-center gap-4">
-              <div className="flex h-12 w-12 items-center justify-center rounded-full bg-foreground/5">
-                <Folder className="h-6 w-6 text-foreground" />
-              </div>
-              <div>
-                <h1 className="text-xl font-semibold text-foreground">Projekte</h1>
-                <p className="text-sm text-muted-foreground">Behalte den Überblick über deine Migrationsvorhaben.</p>
-              </div>
+            <div>
+              <h1 className="text-xl font-semibold text-foreground">Migrationen</h1>
+              <p className="text-sm text-muted-foreground">Verwalte deine Migrationsprojekte und erstelle neue.</p>
             </div>
-            <UserMenu
-              onSettingsClick={() => setShowAccountDialog(true)}
-              onLogout={handleLogout}
-            />
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={() => {
+                  setProjectIdForNewMigration(null);
+                  setShowAddMigrationDialog(true);
+                }}
+                className="gap-2 rounded-full px-5 py-2 text-sm font-medium"
+              >
+                <Plus className="h-4 w-4" />
+                Neue Migration
+              </Button>
+              <UserMenu
+                onSettingsClick={() => setShowAccountDialog(true)}
+                onLogout={handleLogout}
+              />
+            </div>
           </header>
 
           <div className="flex-1 overflow-hidden">
             <div className="app-surface flex h-full flex-col overflow-hidden rounded-3xl">
-              <div className="flex flex-wrap items-center justify-between gap-4 border-b border-border/60 px-6 py-5">
+              <div className="flex items-center justify-between border-b border-border/60 px-6 py-5">
                 <div>
+                  <h2 className="text-lg font-semibold text-foreground">Alle Migrationen</h2>
                   <p className="text-sm text-muted-foreground">
-                    Lege neue Projekte an oder öffne bestehende Migrationen.
+                    Eine Übersicht über alle deine Migrationsprojekte.
                   </p>
                 </div>
-                <Button
-                  onClick={() => setShowAddDialog(true)}
-                  className="gap-2 rounded-full px-5 py-2 text-sm font-medium"
-                >
-                  <Plus className="h-4 w-4" />
-                  Neues Projekt
-                </Button>
               </div>
 
               <div className="flex-1 overflow-auto px-6 py-6">
-                {loading ? (
-                  <div className="flex h-full items-center justify-center text-muted-foreground">
-                    Projekte werden geladen...
-                  </div>
-                ) : projects.length === 0 ? (
-                  <div className="app-subtle flex h-full flex-col items-center justify-center gap-4 px-10 py-12 text-center">
-                    <FolderOpen className="h-12 w-12 text-muted-foreground" />
+                {[...migrations, ...standaloneMigrations].length === 0 ? (
+                  <div className="app-subtle flex h-full flex-col items-center justify-center gap-4 text-center">
+                    <div className="flex h-16 w-16 items-center justify-center rounded-full bg-foreground/5">
+                      <FolderKanban className="h-7 w-7 text-muted-foreground" />
+                    </div>
                     <div className="space-y-2">
-                      <h3 className="text-lg font-semibold text-foreground">Noch keine Projekte</h3>
+                      <h3 className="text-lg font-semibold text-foreground">Keine Migrationen vorhanden</h3>
                       <p className="text-sm text-muted-foreground">
-                        Erstelle dein erstes Projekt, um Migrationen zu verwalten.
+                        Lege deine erste Migration an um zu starten.
                       </p>
                     </div>
                     <Button
-                      onClick={() => setShowAddDialog(true)}
+                      onClick={() => {
+                        setProjectIdForNewMigration(null);
+                        setShowAddMigrationDialog(true);
+                      }}
                       variant="outline"
                       className="rounded-full px-5"
                     >
                       <Plus className="mr-2 h-4 w-4" />
-                      Projekt erstellen
+                      Migration erstellen
                     </Button>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                    {projects.map((project) => (
+                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+                    {[...migrations, ...standaloneMigrations]
+                      .sort((a, b) => new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime())
+                      .map((migration) => (
                       <Card
-                        key={project.id}
+                        key={migration.id}
                         className="group relative cursor-pointer overflow-hidden border-border/60 bg-gradient-to-br from-background/95 to-background/80 transition-all duration-200 hover:-translate-y-1 hover:border-primary/40 hover:shadow-[0_24px_48px_-28px_rgba(15,23,42,0.45)]"
-                        onClick={() => handleProjectClick(project.id)}
+                        onClick={() => handleSelectMigration(migration.id)}
                       >
-                        <CardHeader>
-                          <Button
-                            variant="ghost"
-                            size="icon"
-                            className="absolute right-4 top-4 h-8 w-8 rounded-full text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setProjectToDelete(project.id);
-                              setShowDeleteDialog(true);
-                            }}
-                          >
-                            <Trash2 className="h-4 w-4" />
-                          </Button>
+                        <CardHeader className="space-y-3 pb-6">
+                          <div className="absolute right-4 top-4 flex items-center gap-2">
+                            <button
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                handleEditMigration(migration.id);
+                              }}
+                              className="rounded-full bg-background/80 p-2 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+                              aria-label="Migration bearbeiten"
+                            >
+                              <Settings2 className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void handleDuplicateMigration(migration.id);
+                              }}
+                              className="rounded-full bg-background/80 p-2 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+                              aria-label="Migration duplizieren"
+                            >
+                              <Copy className="h-4 w-4" />
+                            </button>
+                            <button
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                setMigrationToDelete({ id: migration.id, name: migration.name });
+                                setShowDeleteDialog(true);
+                              }}
+                              className="rounded-full bg-background/80 p-2 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                              aria-label="Migration löschen"
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </button>
+                          </div>
                           <div className="flex items-start gap-3 pr-10">
-                            <div className="mt-1 flex h-9 w-9 items-center justify-center rounded-full bg-foreground/5 text-foreground transition-all duration-300 group-hover:bg-primary/10 group-hover:text-primary">
-                              <ClipboardList className="h-4 w-4" />
+                            <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-foreground/5 text-foreground transition-all duration-300 group-hover:bg-primary/10 group-hover:text-primary">
+                              <ArrowRight className="h-5 w-5" />
                             </div>
                             <div>
-                              <CardTitle className="text-xl text-foreground group-hover:text-primary">{project.name}</CardTitle>
-                              <CardDescription className="text-sm text-muted-foreground">
-                                {project.description || "Keine Beschreibung"}
+                              <CardTitle className="text-lg font-semibold text-foreground group-hover:text-primary">
+                                {migration.name}
+                              </CardTitle>
+                              <CardDescription className="text-xs uppercase tracking-wide text-muted-foreground">
+                                {migration.createdAt
+                                  ? new Date(migration.createdAt).toLocaleDateString("de-DE")
+                                  : "Kein Datum verfügbar"}
                               </CardDescription>
                             </div>
                           </div>
                         </CardHeader>
-                        <CardContent>
-                          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                            <Users className="h-4 w-4 text-foreground/80" />
-                            <span>
-                              {project.migrationsCount} {project.migrationsCount === 1 ? "Migration" : "Migrationen"}
-                            </span>
+                        <CardContent className="space-y-4 pb-6">
+                          <div className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
+                            {migration.sourceSystem && (
+                              <Badge variant="outline" className="border-primary/30 bg-primary/5 text-primary">
+                                {migration.sourceSystem}
+                              </Badge>
+                            )}
+                            {migration.sourceSystem && migration.targetSystem && (
+                              <ArrowRight className="h-3 w-3 text-muted-foreground" aria-hidden="true" />
+                            )}
+                            {migration.targetSystem && (
+                              <Badge variant="outline" className="border-emerald-400/30 bg-emerald-400/5 text-emerald-600 dark:text-emerald-300">
+                                {migration.targetSystem}
+                              </Badge>
+                            )}
                           </div>
                         </CardContent>
                       </Card>
@@ -510,16 +555,7 @@ const Projects = () => {
         </div>
       </div>
 
-      <AccountDialog
-        open={showAccountDialog}
-        onOpenChange={setShowAccountDialog}
-      />
-
-      <AddProjectDialog
-        open={showAddDialog}
-        onOpenChange={setShowAddDialog}
-        onSave={handleAddProject}
-      />
+      <AccountDialog open={showAccountDialog} onOpenChange={setShowAccountDialog} />
 
       <AddMigrationDialog
         open={showAddMigrationDialog}
@@ -527,34 +563,38 @@ const Projects = () => {
         onSubmit={handleAddMigration}
       />
 
-      <EditProjectDialog
-        open={showEditDialog}
-        onOpenChange={setShowEditDialog}
-        project={editingProject}
-        onSave={handleEditProject}
-      />
-
       <EditMigrationDialog
         open={showEditMigrationDialog}
         onOpenChange={setShowEditMigrationDialog}
-        onUpdate={handleUpdateMigration}
-        currentName={editingMigration?.name || ""}
+        migrationName={editingMigration?.name || ""}
+        onSubmit={handleUpdateMigration}
       />
 
-      <AlertDialog open={showDeleteDialog} onOpenChange={setShowDeleteDialog}>
+      <AlertDialog
+        open={showDeleteDialog}
+        onOpenChange={(open) => {
+          setShowDeleteDialog(open);
+          if (!open) {
+            setMigrationToDelete(null);
+          }
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Projekt löschen</AlertDialogTitle>
+            <AlertDialogTitle>Migration löschen</AlertDialogTitle>
             <AlertDialogDescription>
-              Sind Sie sicher, dass Sie dieses Projekt löschen möchten? Alle zugehörigen Migrationen werden ebenfalls gelöscht.
-              Diese Aktion kann nicht rückgängig gemacht werden.
+              Möchtest du die Migration "{migrationToDelete?.name}" wirklich löschen? Diese Aktion kann nicht rückgängig gemacht werden.
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel>Abbrechen</AlertDialogCancel>
-            <AlertDialogAction onClick={handleDeleteProject}>
-              Löschen
-            </AlertDialogAction>
+            <AlertDialogAction onClick={() => {
+              if (migrationToDelete) {
+                void handleDeleteMigration(migrationToDelete.id);
+                setShowDeleteDialog(false);
+                setMigrationToDelete(null);
+              }
+            }}>Löschen</AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
@@ -563,5 +603,3 @@ const Projects = () => {
 };
 
 export default Projects;
-
-

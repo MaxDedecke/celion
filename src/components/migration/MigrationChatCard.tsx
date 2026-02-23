@@ -272,22 +272,38 @@ const MigrationChatCard = ({
     }
 
     if (migrationData.status !== "completed") {
-      const label = migrationData.status === "not_started" 
+      const isStartButton = migrationData.status === "not_started";
+      const label = isStartButton 
         ? "Starten" 
         : hasCurrentStepFailed 
           ? `Schritt wiederholen: ${runningStep?.title}` 
           : `Weiter zu Schritt ${currentStepNumber}: ${activeStep?.title}`;
       
       return (
-        <Button 
-          onClick={() => onContinue()} 
-          variant="default" 
-          size="sm"
-          className="h-8 text-xs gap-1.5 animate-fade-in"
-        >
-          {label}
-          <ArrowRight className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button 
+            onClick={() => onContinue()} 
+            variant="default" 
+            size="sm"
+            className="h-8 text-xs gap-1.5 animate-fade-in"
+          >
+            {label}
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Button>
+          
+          {/* Permanent Retry Button for the current technical step (if already started once) */}
+          {!isStartButton && rawStep > 0 && (
+            <Button 
+              onClick={() => onAction && onAction(`retry:${rawStep}`)} 
+              variant="outline" 
+              size="sm"
+              className="h-8 text-xs gap-1.5 animate-fade-in border-primary/20 hover:bg-primary/5 text-primary"
+            >
+              <Play className="h-3 w-3" />
+              Schritt {rawStep} zurücksetzen & neu starten
+            </Button>
+          )}
+        </div>
       );
     }
 

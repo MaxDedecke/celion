@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import neo4j from 'neo4j-driver';
-import { runSystemDetection, runAuthFlow, runSourceDiscovery, runTargetDiscovery, runAnswerAgent, runMapping, runMappingVerification, runMappingRules, runEnhancementRules, runEnhancementVerification, runDataTransformation } from '../agents/agentService';
+import { runIntroductionAgent, runSystemDetection, runAuthFlow, runSourceDiscovery, runTargetDiscovery, runAnswerAgent, runMapping, runMappingVerification, runMappingRules, runEnhancementRules, runEnhancementVerification, runDataTransformation } from '../agents/agentService';
 import { AGENT_WORKFLOW_STEPS } from '../constants/agentWorkflow';
 import { loadScheme, loadObjectScheme } from '../lib/scheme-loader';
 import { resolveOpenAiConfig, buildOpenAiHeaders } from '../agents/openai/openaiClient';
@@ -285,13 +285,25 @@ function sanitizeForNeo4j(obj: any): any {
 }
 
 async function processJob(job: any) {
-  console.log(`Processing job ${job.id} for step ${job.step_id}`);
+  let { step_id, payload } = job;
+  
+  // Defensive parsing of payload
+  if (typeof payload === 'string') {
+    try {
+      payload = JSON.parse(payload);
+    } catch (e) {
+      console.error(`[Worker] Failed to parse payload for job ${job.id}:`, e);
+    }
+  }
 
-  const { step_id, payload } = job;
-  const { agentName, agentParams, stepId } = payload;
+  const agentName = payload?.agentName;
+  const agentParams = payload?.agentParams;
+  const stepIdFromPayload = payload?.stepId;
+
+  console.log(`[Worker] Processing job ${job.id}. agentName: "${agentName}", step_id: ${step_id}, migrationId: ${payload?.migrationId}`);
 
   // 1. Step Record laden (Read-only)
-  let migrationId = payload.migrationId;
+  let migrationId = payload?.migrationId;
   let stepRecord: any = null;
 
   if (step_id) {
@@ -305,9 +317,11 @@ async function processJob(job: any) {
     }
   }
 
-  if (!stepRecord && agentName !== 'runAnswerAgent' && agentName !== 'runMappingRules' && agentName !== 'runEnhancementRules') {
-    console.error('Unable to find migration step for job', job.id);
-    await pool.query('UPDATE jobs SET status = $1, last_error = $2 WHERE id = $3', ['failed', 'Step not found', job.id]);
+  const conversationalAgents = ['runAnswerAgent', 'runMappingRules', 'runEnhancementRules', 'runIntroductionAgent'];
+
+  if (!stepRecord && !conversationalAgents.includes(agentName)) {
+    console.error(`[Worker] [CRITICAL] Job ${job.id} failed: No stepRecord and agent "${agentName}" is not in conversationalAgents list [${conversationalAgents.join(', ')}]`);
+    await pool.query('UPDATE jobs SET status = $1, last_error = $2 WHERE id = $3', ['failed', `Step not found for agent ${agentName}`, job.id]);
     return;
   }
 
@@ -322,8 +336,8 @@ async function processJob(job: any) {
     if (step_id) {
       await startClient.query('UPDATE migration_steps SET status = $1 WHERE id = $2', ['running', step_id]);
     }
-    // Update migration status only for process-relevant agents (not for Consultant or MappingRules)
-    if (agentName !== 'runAnswerAgent' && agentName !== 'runMappingRules') {
+    // Update migration status only for process-relevant agents (not for Consultant, MappingRules or Introduction)
+    if (!conversationalAgents.includes(agentName)) {
       await startClient.query('UPDATE migrations SET status = $1, step_status = $2 WHERE id = $3', ['processing', 'running', migrationId]);
     }
     await startClient.query('COMMIT');
@@ -336,8 +350,8 @@ async function processJob(job: any) {
 
   // Start-Nachricht im Chat (Sofort sichtbar)
   // MODIFIED: Only show for non-split agents or the first part of split agents (source)
-  // Skip for Consultant and MappingRules
-  if (agentName !== 'runAnswerAgent' && agentName !== 'runMappingRules' && (agentParams?.mode || 'source') === 'source') {
+  // Skip for Conversational Agents
+  if (!conversationalAgents.includes(agentName) && (agentParams?.mode || 'source') === 'source') {
     await writeChatMessage(migrationId, 'assistant', `Starte Schritt ${currentStepNumber} ${stepTitle}...`, currentStepNumber);
   }
 
@@ -1213,6 +1227,86 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
       await pool.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
       return;
 
+    } else if (agentName === 'runIntroductionAgent') {
+      const userMessage = agentParams?.userMessage;
+      const context = agentParams?.context;
+      
+      // Set status to thinking
+      await pool.query('UPDATE migrations SET consultant_status = $1 WHERE id = $2', ['thinking', migrationId]);
+      
+      const messageGenerator = runIntroductionAgent(userMessage, {
+          ...context,
+          migrationId
+      });
+      
+      for await (const message of messageGenerator) {
+        if (message.content && message.content.length > 0 && message.content[0].text) {
+          const text = message.content[0].text;
+          if (text.startsWith("AUSGABE_TOOL_CALL:FINISH_ONBOARDING:")) {
+              const argsStr = text.replace("AUSGABE_TOOL_CALL:FINISH_ONBOARDING:", "");
+              const args = JSON.parse(argsStr);
+              
+              // 1. Update Migration
+              await pool.query(
+                `UPDATE migrations SET 
+                  name = $1, 
+                  source_system = $2, 
+                  source_url = $3, 
+                  target_system = $4, 
+                  target_url = $5,
+                  current_step = 0,
+                  status = 'not_started',
+                  step_status = 'idle',
+                  scope_config = $6
+                WHERE id = $7`,
+                [
+                  args.name, 
+                  args.source.system, 
+                  args.source.url, 
+                  args.target.system, 
+                  args.target.url,
+                  JSON.stringify({
+                    sourceScope: args.source.scope,
+                    targetName: args.target.scope
+                  }),
+                  migrationId
+                ]
+              );
+
+              // 2. Update Connectors
+              // Source
+              await pool.query(
+                `INSERT INTO connectors (migration_id, connector_type, api_url, api_key, username, auth_type)
+                 VALUES ($1, 'in', $2, $3, $4, 'api_key')
+                 ON CONFLICT (migration_id, connector_type) DO UPDATE SET
+                   api_url = EXCLUDED.api_url,
+                   api_key = EXCLUDED.api_key,
+                   username = EXCLUDED.username`,
+                [migrationId, args.source.url, args.source.apiToken, args.source.email]
+              );
+              // Target
+              await pool.query(
+                `INSERT INTO connectors (migration_id, connector_type, api_url, api_key, username, auth_type)
+                 VALUES ($1, 'out', $2, $3, $4, 'api_key')
+                 ON CONFLICT (migration_id, connector_type) DO UPDATE SET
+                   api_url = EXCLUDED.api_url,
+                   api_key = EXCLUDED.api_key,
+                   username = EXCLUDED.username`,
+                [migrationId, args.target.url, args.target.apiToken, args.target.email]
+              );
+
+              await writeChatMessage(migrationId, 'assistant', "Perfekt! Ich habe alles konfiguriert. Wir können jetzt mit der System-Erkennung (Schritt 1) starten.", 0);
+          } else {
+              await writeChatMessage(migrationId, 'assistant', text, 0);
+          }
+        }
+      }
+      
+      // Reset status to idle
+      await pool.query('UPDATE migrations SET consultant_status = $1 WHERE id = $2', ['idle', migrationId]);
+      await pool.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+      return;
+
     } else if (agentName === 'runDataStaging') {
       // Step 5: Data Staging
       // Technical preparation step with Agent-driven Rate-Limit Calibration and Ingestion
@@ -1330,6 +1424,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
       const entities = step3Rows.map(r => ({ name: r.entity_name, count: r.count }));
       
       let totalImported = 0;
+      let validationErrors = 0;
       const driver = neo4j.driver(
         process.env.NEO4J_URI || "bolt://neo4j-db:7687",
         neo4j.auth.basic(process.env.NEO4J_USER || "neo4j", process.env.NEO4J_PASSWORD || "password")
@@ -1357,11 +1452,13 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
         ANWEISUNGEN: ${scheme?.agentInstructions || 'Keine speziellen Anweisungen.'}
         
         REGELN:
-        1. Beginne beim Top-Level.
-        2. Nutze IDs aus den Ergebnissen, um Platzhalter in URLs (z.B. {database_id}) zu ersetzen.
-        3. Die URLs müssen IMMER mit der BASE_URL beginnen.
-        4. Nutze das Tool 'fetch_and_ingest'. Es speichert die Daten und gibt dir gefundene IDs zurück.
-        5. Beende den Prozess, wenn alle Ziele erreicht sind oder keine neuen Daten gefunden werden.
+        1. Beginne beim Top-Level (Endpunkte OHNE Platzhalter wie /workspaces oder /me).
+        2. Nutze ECHTE IDs aus den vorherigen Tool-Antworten, um Platzhalter in URLs (z.B. {workspace_gid}) zu ersetzen.
+        3. **KEINE HALLUZINATIONEN:** Erfinde NIEMALS IDs (wie '12345' oder 'my-workspace'). Wenn du eine ID noch nicht hast, rufe zuerst den Parent-Endpunkt auf.
+        4. Die URLs müssen IMMER mit der BASE_URL beginnen.
+        5. Nutze das Tool 'fetch_and_ingest'. Es speichert die Daten und gibt dir eine Liste der gefundenen IDs zurück.
+        6. **VOLLSTÄNDIGKEIT:** Versuche alle ZIELE zu erreichen. Wenn ein Ziel (z.B. 'portfolios') in diesem Account nicht existiert (404 oder leer), dokumentiere dies und mache mit dem nächsten Ziel weiter.
+        7. Beende den Prozess mit einer kurzen Zusammenfassung als Text, wenn du alle erreichbaren Daten gesammelt hast.
       `;
 
       let messages: any[] = [{ role: "system", content: agentSystemPrompt }];
@@ -1447,7 +1544,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
                               // USE sourceSystem as label for consistency
                               await _ingestToNeo4j(driver, sourceSystem, entity_name, items, migrationId);
                               totalImported += items.length;
-                              const sampleIds = items.slice(0, 5).map((i: any) => i.id);
+                              const sampleIds = items.slice(0, 5).map((i: any) => i.gid || i.id || i.key || i.uuid);
                               messages.push({ role: "tool", tool_call_id: toolCall.id, content: `Success. Imported ${items.length} items. Sample IDs: ${JSON.stringify(sampleIds)}` });
                               addStagingLog(`${items.length} ${entity_name} importiert.`);
                           } else {
@@ -1635,8 +1732,6 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
               validationLogs.push(`[${new Date().toLocaleTimeString('de-DE')}] ${msg}`);
           };
           
-          let validationErrors = 0;
-          
           const validationSession = driver.session();
           try {
               for (const entity of entities) {
@@ -1681,16 +1776,26 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
 
       // Send bundled logs as a single structured message
       const protocolResult = {
-          status: "success", // Changed from 'info' to 'success' for green coloring
+          status: totalImported > 0 ? "success" : "error",
           phase: "Data Ingestion Protocol",
           summary: `Daten-Import und Graph-Strukturierung abgeschlossen: ${totalImported} Objekte geladen.`,
           rawOutput: stagingLogs.join('\n')
       };
       await writeChatMessage(migrationId, 'assistant', JSON.stringify(protocolResult), currentStepNumber);
 
+      // Logical failure if NO data was imported at all
+      if (totalImported === 0) {
+          isLogicalFailure = true;
+          failureMessage = "Es konnten keine Daten aus dem Quellsystem geladen werden. Bitte überprüfen Sie die Berechtigungen und die Quell-URL.";
+      } else if (validationErrors > (entities.length * 0.2)) { 
+          // If more than 20% of entity types had mismatches, consider it a partial failure
+          isLogicalFailure = true;
+          failureMessage = `Datenerfassung unvollständig: ${validationErrors} Abweichungen bei der Validierung gefunden.`;
+      }
+
       result = { 
-          status: 'success', 
-          message: 'Data Staging erfolgreich abgeschlossen.', 
+          status: isLogicalFailure ? 'failed' : 'success', 
+          message: isLogicalFailure ? failureMessage : 'Data Staging erfolgreich abgeschlossen.', 
           stagedCount: totalImported, 
           urls: Array.from(attemptedUrls), 
           logs: stagingLogs,
@@ -1701,39 +1806,53 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
       const finishClientStaging = await pool.connect();
       try {
         await finishClientStaging.query('BEGIN');
+        const finalStepStatus = isLogicalFailure ? 'failed' : 'completed';
         await finishClientStaging.query('UPDATE migration_steps SET status = $1, result = $2, status_message = $3 WHERE id = $4', [
-          'completed', result, 'Data staging completed successfully.', step_id,
+          finalStepStatus, result, isLogicalFailure ? failureMessage : 'Data staging completed successfully.', step_id,
         ]);
 
         const { rows: migRowsStaging } = await finishClientStaging.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
         const migrationDataStaging = migRowsStaging[0];
-        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migrationDataStaging?.workflow_state, stepRecord.workflow_step_id || stepId, result, false);
+        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migrationDataStaging?.workflow_state, stepRecord.workflow_step_id || stepId, result, isLogicalFailure);
         
+        const migrationStatus = isLogicalFailure ? 'paused' : 'processing';
+        const stepStatusForMigration = isLogicalFailure ? 'failed' : 'completed';
+
         await finishClientStaging.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
-          nextState, progress, 'processing', 'completed', currentStepNumber, migrationId,
+          nextState, progress, migrationStatus, stepStatusForMigration, currentStepNumber, migrationId,
         ]);
         await finishClientStaging.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
         
         // KPI: Increment global steps and agent metrics
-        await incrementGlobalStats(finishClientStaging, { steps: 1, success: 1, total_agents: 1 });
+        if (!isLogicalFailure) {
+          await incrementGlobalStats(finishClientStaging, { steps: 1, success: 1, total_agents: 1 });
+        } else {
+          await incrementGlobalStats(finishClientStaging, { total_agents: 1 });
+        }
 
         await finishClientStaging.query('COMMIT');
 
-        await writeChatMessage(migrationId, 'assistant', 'Die Daten-Bereitstellung (Data Staging) wurde erfolgreich abgeschlossen. Wir können nun mit dem Model Mapping fortfahren.', currentStepNumber);
-        
-        const nextStepIndex = currentStepNumber;
-        if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
-            const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
-            const actionContent = JSON.stringify({
-                type: "action",
-                actions: [
-                  { action: "continue", label: `Weiter zu Schritt ${nextStepIndex + 1} ${nextStep.title}`, variant: "primary" },
-                  { action: "retry", label: `Schritt ${currentStepNumber} wiederholen`, variant: "outline", stepNumber: currentStepNumber }
-                ]
-            });
-            await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
+        if (isLogicalFailure) {
+          await writeChatMessage(migrationId, 'assistant', `Schritt 5 Data Staging fehlgeschlagen: ${failureMessage}`, currentStepNumber);
+          await writeRetryAction(migrationId, currentStepNumber);
+          await logActivity(migrationId, 'warning', 'Data Staging unvollständig oder fehlgeschlagen.');
+        } else {
+          await writeChatMessage(migrationId, 'assistant', 'Die Daten-Bereitstellung (Data Staging) wurde erfolgreich abgeschlossen. Wir können nun mit dem Model Mapping fortfahren.', currentStepNumber);
+          
+          const nextStepIndex = currentStepNumber;
+          if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
+              const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
+              const actionContent = JSON.stringify({
+                  type: "action",
+                  actions: [
+                    { action: "continue", label: `Weiter zu Schritt ${nextStepIndex + 1} ${nextStep.title}`, variant: "primary" },
+                    { action: "retry", label: `Schritt ${currentStepNumber} wiederholen`, variant: "outline", stepNumber: currentStepNumber }
+                  ]
+              });
+              await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
+          }
+          await logActivity(migrationId, 'success', 'Data Staging abgeschlossen.');
         }
-        await logActivity(migrationId, 'success', 'Data Staging abgeschlossen.');
       } catch (e) {
         await finishClientStaging.query('ROLLBACK');
         throw e;
@@ -2267,7 +2386,7 @@ async function _ingestToNeo4j(driver: any, systemLabel: string, entityType: stri
   try {
       await session.run(
           `UNWIND $items AS item 
-           MERGE (n:\`${systemLabel}\` { external_id: toString(COALESCE(item.id, item.key, item.uuid)), migration_id: $migrationId }) 
+           MERGE (n:\`${systemLabel}\` { external_id: toString(COALESCE(item.gid, item.id, item.key, item.uuid)), migration_id: $migrationId }) 
            SET n.entity_type = $entityType 
            SET n += item`,
           { 

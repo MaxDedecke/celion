@@ -371,20 +371,17 @@ const Dashboard = () => {
     }
   };
 
-  const handleAddMigration = async (migrationData: NewMigrationInput) => {
+  const handleAddMigration = async (migrationData: Partial<NewMigrationInput>) => {
     try {
       const { data: { user } } = await databaseClient.getUser();
       if (!user) throw new Error("Nicht authentifiziert");
 
-      const {
-        name,
-        sourceUrl,
-        targetUrl,
-        sourceSystem,
-        targetSystem,
-        sourceAuth,
-        targetAuth,
-      } = migrationData;
+      const name = migrationData.name || "Neue Migration";
+      const sourceUrl = migrationData.sourceUrl || "";
+      const targetUrl = migrationData.targetUrl || "";
+      const sourceSystem = migrationData.sourceSystem || "TBD";
+      const targetSystem = migrationData.targetSystem || "TBD";
+      
       const targetAuthDetail = AUTH_DETAIL_TOKEN;
 
       const { data: migration, error: migrationError } = await databaseClient.insertMigration({
@@ -396,37 +393,39 @@ const Dashboard = () => {
         source_url: sourceUrl,
         target_url: targetUrl,
         in_connector: CONNECTOR_ENDPOINT_LABEL,
-        in_connector_detail: sourceUrl,
+        in_connector_detail: sourceUrl || "TBD",
         out_connector: CONNECTOR_AUTH_LABEL,
         out_connector_detail: targetAuthDetail,
-        status: "not_started",
+        status: "processing",
         scope_config: migrationData.scopeConfig,
       });
 
       if (migrationError) throw migrationError;
 
-      const sourceConnectorPayload = {
-        migration_id: migration.id,
-        api_url: sourceUrl,
-        auth_type: "api_key",
-        api_key: sourceAuth.apiToken ?? null,
-        username: sourceAuth.email ?? null,
-      };
-
-      const targetConnectorPayload = {
-        migration_id: migration.id,
-        api_url: targetUrl,
-        auth_type: "api_key",
-        api_key: targetAuth.apiToken ?? null,
-        username: targetAuth.email ?? null,
-      };
-
-      const { error: connectorError } = await databaseClient.insertConnectors([
-        { ...sourceConnectorPayload, connector_type: 'in' },
-        { ...targetConnectorPayload, connector_type: 'out' },
-      ]);
-
-      if (connectorError) throw connectorError;
+      if (migrationData.sourceAuth && migrationData.targetAuth) {
+          const sourceConnectorPayload = {
+            migration_id: migration.id,
+            api_url: sourceUrl,
+            auth_type: "api_key",
+            api_key: migrationData.sourceAuth.apiToken ?? null,
+            username: migrationData.sourceAuth.email ?? null,
+          };
+    
+          const targetConnectorPayload = {
+            migration_id: migration.id,
+            api_url: targetUrl,
+            auth_type: "api_key",
+            api_key: migrationData.targetAuth.apiToken ?? null,
+            username: migrationData.targetAuth.email ?? null,
+          };
+    
+          const { error: connectorError } = await databaseClient.insertConnectors([
+            { ...sourceConnectorPayload, connector_type: 'in' },
+            { ...targetConnectorPayload, connector_type: 'out' },
+          ]);
+    
+          if (connectorError) throw connectorError;
+      }
 
       // Create initial activity
         await databaseClient.insertMigrationActivity({
@@ -447,9 +446,11 @@ const Dashboard = () => {
       }
       
       loadAllData();
+      return migration;
     } catch (error: any) {
       toast.error(error.message || "Fehler beim Erstellen der Migration");
       console.error(error);
+      return null;
     }
   };
 
@@ -521,10 +522,27 @@ const Dashboard = () => {
     const isStepRunning = currentMigration.step_status === 'running' || currentMigration.step_status === 'pending';
     const hasCurrentStepFailed = currentMigration.step_status === 'failed';
     
+    // Calculate completed steps
     const completedCount = (isStepRunning || hasCurrentStepFailed) ? Math.max(0, rawStep - 1) : rawStep;
     const progress = (completedCount / totalSteps) * 100;
+    
+    // Determine the current display step (clamped to range 1-10)
     const currentStepNumber = completedCount + 1 > totalSteps ? totalSteps : completedCount + 1;
     const activeStep = AGENT_WORKFLOW_STEPS[currentStepNumber - 1];
+
+    if (rawStep === 0 && !isStepRunning && currentMigration.status !== 'not_started') {
+      return {
+        progress: 0,
+        step: {
+          number: 0,
+          title: "Einrichtung",
+          isRunning: false,
+          hasFailed: false,
+          label: "Onboarding"
+        }
+      };
+    }
+
     const title = activeStep?.title || (completedCount === totalSteps ? "Abgeschlossen" : "Bereit");
 
     return {
@@ -533,7 +551,8 @@ const Dashboard = () => {
         number: currentStepNumber,
         title,
         isRunning: isStepRunning,
-        hasFailed: hasCurrentStepFailed
+        hasFailed: hasCurrentStepFailed,
+        label: activeStep?.phase || "Phase"
       }
     };
   }, [currentMigration]);

@@ -795,9 +795,17 @@ class AnswerAgentRequest(BaseModel):
 
 @app.post("/api/migrations/{id}/chat/answer")
 async def ask_consultant(id: str, payload: AnswerAgentRequest) -> dict[str, Any]:
-    """Ask the AI consultant a question about the migration."""
+    """Ask the AI consultant or onboarding agent a question."""
     try:
         with _get_db_connection() as conn, conn.cursor() as cur:
+            # 0. Check current step
+            cur.execute("SELECT current_step FROM public.migrations WHERE id = %s", (id,))
+            mig_row = cur.fetchone()
+            if not mig_row:
+                raise HTTPException(status_code=404, detail="Migration not found.")
+            
+            current_step = mig_row["current_step"]
+
             # 1. Save user message
             cur.execute(
                 """
@@ -837,7 +845,16 @@ async def ask_consultant(id: str, payload: AnswerAgentRequest) -> dict[str, Any]
             history = [{"role": row["role"], "content": row["content"]} for row in reversed(cur.fetchall())]
 
             # 4. Enqueue Job
-            # For the AnswerAgent, we create a specialized job without a fixed step
+            agent_name = "runIntroductionAgent" if current_step == 0 else "runAnswerAgent"
+            agent_params = {
+                "userMessage": payload.content,
+                "context": {
+                    "history": history
+                }
+            }
+            if current_step != 0:
+                agent_params["context"]["stepResults"] = step_results
+
             cur.execute(
                 """
                 INSERT INTO public.jobs (step_id, payload, status)
@@ -846,24 +863,18 @@ async def ask_consultant(id: str, payload: AnswerAgentRequest) -> dict[str, Any]
                 """,
                 (json_dumps({
                     "migrationId": id,
-                    "agentName": "runAnswerAgent",
-                    "agentParams": {
-                        "userMessage": payload.content,
-                        "context": {
-                            "stepResults": step_results,
-                            "history": history
-                        }
-                    }
+                    "agentName": agent_name,
+                    "agentParams": agent_params
                 }),),
             )
             job_row = cur.fetchone()
             publish_to_rabbitmq(job_row["id"])
             
             conn.commit()
-            return {"message": "Frage wurde an den Consultant übermittelt.", "jobId": job_row["id"]}
+            return {"message": "Anfrage wurde übermittelt.", "jobId": job_row["id"]}
 
     except Exception as exc:
-        print(f"Error enqueuing consultant question: {exc}")
+        print(f"Error enqueuing agent job: {exc}")
         raise HTTPException(status_code=500, detail="Fehler beim Senden der Anfrage.")
 
 
@@ -1368,6 +1379,7 @@ async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
                 """
                 DELETE FROM public.migration_steps 
                 WHERE migration_id = %s 
+                AND workflow_step_id ~ '^step-[0-9]+$'
                 AND CAST(substring(workflow_step_id from 6) AS INTEGER) >= %s
                 """,
                 (id, step),
@@ -1543,9 +1555,10 @@ async def create_migration(payload: CreateMigrationPayload) -> Migration:
                 INSERT INTO public.migrations (
                     name, source_system, target_system, source_url, target_url, 
                     project_id, user_id, in_connector, in_connector_detail, 
-                    out_connector, out_connector_detail, status, scope_config
+                    out_connector, out_connector_detail, status, scope_config,
+                    current_step, step_status
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, 'idle')
                 RETURNING id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, current_step, step_status, consultant_status, status, created_at, updated_at, scope_config
                 """,
                 (
@@ -1560,7 +1573,7 @@ async def create_migration(payload: CreateMigrationPayload) -> Migration:
                     payload.in_connector_detail,
                     payload.out_connector,
                     payload.out_connector_detail,
-                    payload.status,
+                    "processing",
                     json.dumps(payload.scope_config) if payload.scope_config else None,
                 ),
             )
@@ -1571,17 +1584,47 @@ async def create_migration(payload: CreateMigrationPayload) -> Migration:
 
             migration_id = str(row["id"])
 
-            # Add initial welcome messages to the chat
-            welcome_msg_1 = f"Neue Migration zwischen **{payload.source_system}** und **{payload.target_system}** wurde erfolgreich erstellt."
-            welcome_msg_2 = "Einfach auf **Starten** drücken und wir legen los!"
-            
+            # 1. Create a dedicated onboarding step record
+            cur.execute(
+                """
+                INSERT INTO public.migration_steps (migration_id, workflow_step_id, name, status)
+                VALUES (%s, 'onboarding', 'Einrichtung', 'running')
+                RETURNING id
+                """,
+                (migration_id,),
+            )
+            onboarding_step_id = cur.fetchone()["id"]
+
+            # 2. Insert initial user message into chat so it's not empty
             cur.execute(
                 """
                 INSERT INTO public.migration_chat_messages (migration_id, role, content, step_number)
-                VALUES (%s, 'system', %s, 0), (%s, 'system', %s, 0)
+                VALUES (%s, 'user', 'Hallo! Ich möchte eine neue Migration starten.', 0)
                 """,
-                (migration_id, welcome_msg_1, migration_id, welcome_msg_2)
+                (migration_id,),
             )
+
+            # 3. Enqueue Job for Introduction
+            cur.execute(
+                """
+                INSERT INTO public.jobs (step_id, payload, status)
+                VALUES (%s, %s, 'pending')
+                RETURNING id
+                """,
+                (onboarding_step_id, json_dumps({
+                    "migrationId": migration_id,
+                    "agentName": "runIntroductionAgent",
+                    "agentParams": {
+                        "userMessage": "Hallo! Ich möchte eine neue Migration starten.",
+                        "context": {
+                            "history": []
+                        }
+                    }
+                }),),
+            )
+            job_row = cur.fetchone()
+            if job_row:
+                publish_to_rabbitmq(job_row["id"])
 
             conn.commit()
 

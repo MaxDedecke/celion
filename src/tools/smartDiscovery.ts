@@ -40,8 +40,9 @@ export async function smartDiscovery(params: SmartDiscoveryParams): Promise<Smar
       
       // Deduplicate by ID
       items.forEach((item: any) => {
-        if (item && item.id) {
-          uniqueIds.add(String(item.id));
+        const id = item?.gid || item?.id || item?.key || item?.uuid;
+        if (id !== undefined && id !== null) {
+          uniqueIds.add(String(id));
         } else {
           // Fallback for items without ID: use index if needed or just count them?
           // For now, if no ID is present, we count it as a unique entry based on its position

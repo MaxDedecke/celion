@@ -256,22 +256,19 @@ const ProjectDetail = () => {
     }
   };
 
-  const handleAddMigration = async (migrationData: NewMigrationInput) => {
+  const handleAddMigration = async (migrationData: Partial<NewMigrationInput>) => {
     try {
       const {
         data: { user },
       } = await databaseClient.getUser();
       if (!user) throw new Error("Nicht authentifiziert");
 
-      const {
-        name,
-        sourceUrl,
-        targetUrl,
-        sourceSystem,
-        targetSystem,
-        sourceAuth,
-        targetAuth,
-      } = migrationData;
+      const name = migrationData.name || "Neue Migration";
+      const sourceUrl = migrationData.sourceUrl || "";
+      const targetUrl = migrationData.targetUrl || "";
+      const sourceSystem = migrationData.sourceSystem || "TBD";
+      const targetSystem = migrationData.targetSystem || "TBD";
+
       const targetAuthDetail = AUTH_DETAIL_TOKEN;
 
       const { data: migration, error: migrationError } = await databaseClient.insertMigration({
@@ -283,7 +280,7 @@ const ProjectDetail = () => {
         source_url: sourceUrl,
         target_url: targetUrl,
         in_connector: CONNECTOR_ENDPOINT_LABEL,
-        in_connector_detail: sourceUrl,
+        in_connector_detail: sourceUrl || "TBD",
         out_connector: CONNECTOR_AUTH_LABEL,
         out_connector_detail: targetAuthDetail,
         scope_config: migrationData.scopeConfig,
@@ -291,28 +288,30 @@ const ProjectDetail = () => {
 
       if (migrationError) throw migrationError;
 
-      const sourceConnectorPayload = {
-        migration_id: migration.id,
-        api_url: sourceUrl,
-        auth_type: "api_key",
-        api_key: sourceAuth.apiToken ?? null,
-        username: sourceAuth.email ?? null,
-      };
-
-      const targetConnectorPayload = {
-        migration_id: migration.id,
-        api_url: targetUrl,
-        auth_type: "api_key",
-        api_key: targetAuth.apiToken ?? null,
-        username: targetAuth.email ?? null,
-      };
-
-      const { error: connectorError } = await databaseClient.insertConnectors([
-        { ...sourceConnectorPayload, connector_type: "in" },
-        { ...targetConnectorPayload, connector_type: "out" },
-      ]);
-
-      if (connectorError) throw connectorError;
+      if (migrationData.sourceAuth && migrationData.targetAuth) {
+          const sourceConnectorPayload = {
+            migration_id: migration.id,
+            api_url: sourceUrl,
+            auth_type: "api_key",
+            api_key: migrationData.sourceAuth.apiToken ?? null,
+            username: migrationData.sourceAuth.email ?? null,
+          };
+    
+          const targetConnectorPayload = {
+            migration_id: migration.id,
+            api_url: targetUrl,
+            auth_type: "api_key",
+            api_key: migrationData.targetAuth.apiToken ?? null,
+            username: migrationData.targetAuth.email ?? null,
+          };
+    
+          const { error: connectorError } = await databaseClient.insertConnectors([
+            { ...sourceConnectorPayload, connector_type: "in" },
+            { ...targetConnectorPayload, connector_type: "out" },
+          ]);
+    
+          if (connectorError) throw connectorError;
+      }
 
       await databaseClient.insertMigrationActivity({
         migration_id: migration.id,
