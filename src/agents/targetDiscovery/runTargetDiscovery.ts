@@ -44,15 +44,14 @@ const TOOLS = [
     type: "function",
     function: {
       name: "smart_discovery",
-      description: "Führt eine intelligente Discovery-Anfrage durch, inklusive automatischer Pagination.",
+      description: "Führt eine intelligente Discovery-Anfrage durch, inklusive automatischer Pagination über alle Seiten.",
       parameters: {
         type: "object",
         properties: {
           url: { type: "string", description: "Die vollständige URL zum Endpunkt." },
           method: { type: "string", enum: ["GET", "POST"], description: "HTTP Methode." },
           headers: { type: "object", description: "Header (Authentifizierung wird automatisch ergänzt)." },
-          body: { type: "object", description: "Optionaler Body." },
-          discoveryBrake: { type: "boolean", description: "Wenn true, wird nur die erste Seite geladen (kostensparend für Struktur-Erkennung)." }
+          body: { type: "object", description: "Optionaler Body." }
         },
         required: ["url"]
       }
@@ -154,8 +153,7 @@ ${scopeConfig?.targetName ? `Besonderer Fokus: Ziel-Projekt/Workspace soll "**${
               method: args.method || 'GET',
               headers: requestHeaders,
               body: args.body,
-              paginationConfig: systemScheme?.discovery?.pagination,
-              discoveryBrake: args.discoveryBrake ?? false
+              paginationConfig: systemScheme?.discovery?.pagination
             });
             
             if (result.sampleData) {

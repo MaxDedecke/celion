@@ -546,26 +546,26 @@ async function processJob(job: any) {
         const endpointKeys = Object.keys(discoveryScheme?.discovery?.endpoints || {});
 
         const SYSTEM_PROMPT = `
-Du bist eine Data Discovery Engine. Dein Ziel ist eine vollständige Bestandsaufnahme der Systemstruktur.
+Du bist eine Data Discovery Engine. Dein Ziel ist eine vollständige und wahrheitsgetreue Bestandsaufnahme der Systemstruktur und der Datenmengen.
 
 ### PHASE 1: EXPLORATION (Tool use)
-- **STRIKTE VOLLSTÄNDIGKEIT:** Du MUSST jeden Endpunkt in 'discovery.endpoints' mindestens einmal prüfen. Ein leeres Ergebnis (z.B. bei 'search') ist KEIN Grund, andere unabhängige Endpunkte (z.B. 'users') zu überspringen.
-- **URL KONSTRUKTION:** Nutze IMMER die 'apiBaseUrl' aus dem Scheme als Basis für alle URLs. Konstruiere vollständige URLs (z.B. 'https://api.notion.com/v1/users').
-- **HIERARCHIE & TOP-LEVEL:** Endpunkte OHNE Platzhalter (z.B. '/v1/users') sind Top-Level. Rufe diese IMMER auf, unabhängig von den Ergebnissen anderer Endpunkte.
-- **ABDECKUNG:** Wenn ein Endpunkt IDs benötigt ({...}), finde diese in den Ergebnissen der Top-Level-Aufrufe.
-- **METHODEN:** Beachte die 'agentInstructions' im Scheme bezüglich HTTP-Methoden (z.B. POST für search). Sende für POST-Anfragen immer einen Body (mindestens '{}').
-- **ORCHESTRIERUNG:** Du entscheidest die Reihenfolge. Nutze 'discoveryBrake: true' für Struktur-Erkennung und 'discoveryBrake: false' für Mengen-Erfassung.
+- **VOLLSTÄNDIGE ZÄHLUNG:** Rufe 'smart_discovery' für jeden Endpunkt auf. Das Tool scannt automatisch alle Seiten und liefert dir den exakten 'totalCount'.
+- **STRIKTE VOLLSTÄNDIGKEIT:** Du MUSST jeden Endpunkt in 'discovery.endpoints' mindestens einmal prüfen.
+- **URL KONSTRUKTION:** Nutze IMMER die 'apiBaseUrl' aus dem Scheme als Basis für alle URLs. Konstruiere vollständige URLs.
+- **EFFIZIENZ:** Das Tool liefert dir im Feld 'sampleData' nur maximal 3 Beispieldatensätze zurück, um deinen Kontext sauber zu halten. Das reicht aus, um die Struktur zu verstehen.
+- **HALLUZINATIONS-VERBOT:** Erfinde NIEMALS Datenmengen (Counts). Nutze ausschließlich die 'totalCount' Rückgaben der Tool-Calls.
 - Antworte während der Exploration nur mit kurzen Status-Updates auf Deutsch.
 
 ### PHASE 2: FINAL REPORT (Keine Tool-Calls mehr)
 - Erstelle ein valides JSON-Objekt mit der Zusammenfassung.
+- Die 'entities[].count' Werte MÜSSEN exakt den 'totalCount' Rückgaben der Tool-Calls entsprechen.
 - Dokumentiere im 'coverage' Bereich EHRLICH, welche Endpunkte aufgerufen wurden.
 
 ### KOMPLEXITÄTS-BEWERTUNG (1-10):
-Bewerte die Komplexität basierend auf der Gesamtanzahl der Elemente (Summe aller Entities):
-- **1-3 (Low):** < 1.000 Elemente (z.B. 92 Tasks sind SEHR geringe Komplexität).
+Bewerte die Komplexität basierend auf der tatsächlichen Gesamtanzahl der Elemente:
+- **1-3 (Low):** < 1.000 Elemente.
 - **4-6 (Medium):** 1.000 - 10.000 Elemente.
-- **7-9 (High):** 10.000 - 100.000 Elemente (Big Migration).
+- **7-9 (High):** 10.000 - 100.000 Elemente.
 - **10 (Critical):** > 100.000 Elemente.
 
 ### FINAL JSON FORMAT:
@@ -594,15 +594,14 @@ Bewerte die Komplexität basierend auf der Gesamtanzahl der Elemente (Summe alle
             type: "function",
             function: {
               name: "smart_discovery",
-              description: "Führt eine intelligente Discovery-Anfrage durch, inklusive automatischer Pagination.",
+              description: "Führt eine intelligente Discovery-Anfrage durch, inklusive automatischer Pagination über alle Seiten um den exakten totalCount zu ermitteln.",
               parameters: {
                 type: "object",
                 properties: {
                   url: { type: "string", description: "Die vollständige URL zum Endpunkt." },
                   method: { type: "string", enum: ["GET", "POST"], description: "HTTP Methode." },
                   headers: { type: "object", description: "Header (Authentifizierung wird automatisch ergänzt)." },
-                  body: { type: "object", description: "Optionaler Body." },
-                  discoveryBrake: { type: "boolean", description: "Wenn true, wird nur die erste Seite geladen (kostensparend für Struktur-Erkennung)." }
+                  body: { type: "object", description: "Optionaler Body." }
                 },
                 required: ["url"]
               }
@@ -692,8 +691,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
                                method: args.method || 'GET',
                                headers: requestHeaders,
                                body: args.body,
-                               paginationConfig: discoveryScheme?.discovery?.pagination,
-                               discoveryBrake: args.discoveryBrake ?? false
+                               paginationConfig: discoveryScheme?.discovery?.pagination
                            });
 
                            if (toolResult.sampleData) {
@@ -850,8 +848,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
                                    method: args.method || 'GET',
                                    headers: requestHeaders,
                                    body: args.body,
-                                   paginationConfig: discoveryScheme?.discovery?.pagination,
-                                   discoveryBrake: args.discoveryBrake ?? false
+                                   paginationConfig: discoveryScheme?.discovery?.pagination
                                });
 
                                if (toolResult.sampleData) {
@@ -1234,9 +1231,14 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
       // Set status to thinking
       await pool.query('UPDATE migrations SET consultant_status = $1 WHERE id = $2', ['thinking', migrationId]);
       
+      // Fetch current migration name
+      const { rows: migRows } = await pool.query('SELECT name FROM migrations WHERE id = $1', [migrationId]);
+      const migrationName = migRows[0]?.name;
+
       const messageGenerator = runIntroductionAgent(userMessage, {
           ...context,
-          migrationId
+          migrationId,
+          migrationName
       });
       
       for await (const message of messageGenerator) {
@@ -1318,9 +1320,10 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
       
       const { rows: connectorRows } = await pool.query('SELECT api_url, api_key, username, auth_type FROM connectors WHERE migration_id = $1 AND connector_type = $2', [migrationId, 'in']);
       const connector = connectorRows[0];
-      const { rows: migrationRowsInfo } = await pool.query('SELECT source_system, notes FROM migrations WHERE id = $1', [migrationId]);
+      const { rows: migrationRowsInfo } = await pool.query('SELECT source_system, notes, scope_config FROM migrations WHERE id = $1', [migrationId]);
       const sourceSystem = migrationRowsInfo[0]?.source_system;
       const instructions = migrationRowsInfo[0]?.notes;
+      const scopeConfig = migrationRowsInfo[0]?.scope_config;
       const scheme = await loadScheme(sourceSystem);
 
       let effectiveApiUrl = scheme?.apiBaseUrl || connector?.api_url || "";
@@ -1449,6 +1452,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
         ZIELE: ${JSON.stringify(entities)}
         ENDPUNKTE: ${JSON.stringify(scheme?.discovery?.endpoints || {})}
         BASE_URL: ${effectiveApiUrl}
+        SCOPE: ${JSON.stringify(scopeConfig || {})}
         ANWEISUNGEN: ${scheme?.agentInstructions || 'Keine speziellen Anweisungen.'}
         
         REGELN:
@@ -1458,7 +1462,9 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
         4. Die URLs müssen IMMER mit der BASE_URL beginnen.
         5. Nutze das Tool 'fetch_and_ingest'. Es speichert die Daten und gibt dir eine Liste der gefundenen IDs zurück.
         6. **VOLLSTÄNDIGKEIT:** Versuche alle ZIELE zu erreichen. Wenn ein Ziel (z.B. 'portfolios') in diesem Account nicht existiert (404 oder leer), dokumentiere dies und mache mit dem nächsten Ziel weiter.
-        7. Beende den Prozess mit einer kurzen Zusammenfassung als Text, wenn du alle erreichbaren Daten gesammelt hast.
+        7. **SCOPE:** Falls ein SCOPE (z.B. 'sourceScope') definiert ist, beschränke dich auf dieses Projekt/diesen Bereich, sofern möglich.
+        8. Beende den Prozess mit einer kurzen Zusammenfassung als Text, wenn du alle erreichbaren Daten gesammelt hast.
+        9. **METHODEN:** Beachte die HTTP-Methode für jeden Endpunkt. Wenn eine Suche (z.B. Notion search) POST erfordert, gib dies im Tool-Call an. Standard ist GET.
       `;
 
       let messages: any[] = [{ role: "system", content: agentSystemPrompt }];
@@ -1471,7 +1477,9 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
                   type: "object",
                   properties: {
                       entity_name: { type: "string" },
-                      url: { type: "string", description: "Vollständige URL mit aufgelösten Platzhaltern." }
+                      url: { type: "string", description: "Vollständige URL mit aufgelösten Platzhaltern." },
+                      method: { type: "string", enum: ["GET", "POST"], description: "HTTP Methode. Standard: GET." },
+                      body: { type: "object", description: "Request Body für POST Anfragen (z.B. Filter)." }
                   },
                   required: ["entity_name", "url"]
               }
@@ -1527,12 +1535,12 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
                   }
 
                   try {
-                      // Determine method (Notion search needs POST)
-                      let method = 'GET';
-                      let body = undefined;
+                      // Use method and body from tool arguments if provided, default to GET
+                      const method = args.method || 'GET';
+                      let body = args.body ? JSON.stringify(args.body) : undefined;
                       
-                      if (url.includes('/search') || url.includes('/query')) {
-                          method = 'POST';
+                      // For POST requests without a body, default to empty object if needed (e.g. some search endpoints)
+                      if (method === 'POST' && !body) {
                           body = JSON.stringify({});
                       }
 

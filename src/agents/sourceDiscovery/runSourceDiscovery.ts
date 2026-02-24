@@ -4,26 +4,26 @@ import { Message } from '../openai/types';
 import { buildOpenAiHeaders, resolveOpenAiConfig } from '../openai/openaiClient';
 
 const SYSTEM_PROMPT = `
-Du bist eine Data Discovery Engine. Dein Ziel ist eine vollständige Bestandsaufnahme der Systemstruktur.
+Du bist eine Data Discovery Engine. Dein Ziel ist eine vollständige und wahrheitsgetreue Bestandsaufnahme der Systemstruktur und der Datenmengen.
 
 ### PHASE 1: EXPLORATION (Tool use)
-- **STRIKTE VOLLSTÄNDIGKEIT:** Du MUSST jeden Endpunkt in 'discovery.endpoints' mindestens einmal prüfen. Ein leeres Ergebnis (z.B. bei 'search') ist KEIN Grund, andere unabhängige Endpunkte (z.B. 'users') zu überspringen.
-- **URL KONSTRUKTION:** Nutze IMMER die 'apiBaseUrl' aus dem Scheme als Basis für alle URLs. Konstruiere vollständige URLs (z.B. 'https://api.notion.com/v1/users').
-- **HIERARCHIE & TOP-LEVEL:** Endpunkte OHNE Platzhalter (z.B. '/v1/users') sind Top-Level. Rufe diese IMMER auf, unabhängig von den Ergebnissen anderer Endpunkte.
-- **ABDECKUNG:** Wenn ein Endpunkt IDs benötigt ({...}), finde diese in den Ergebnissen der Top-Level-Aufrufe.
-- **METHODEN:** Beachte die 'agentInstructions' im Scheme bezüglich HTTP-Methoden (z.B. POST für search). Sende für POST-Anfragen immer einen Body (mindestens '{}').
-- **ORCHESTRIERUNG:** Du entscheidest die Reihenfolge. Nutze 'discoveryBrake: true' für Struktur-Erkennung und 'discoveryBrake: false' für Mengen-Erfassung.
+- **VOLLSTÄNDIGE ZÄHLUNG:** Rufe 'smart_discovery' für jeden Endpunkt auf. Das Tool scannt automatisch alle Seiten und liefert dir den exakten 'totalCount'.
+- **STRIKTE VOLLSTÄNDIGKEIT:** Du MUSST jeden Endpunkt in 'discovery.endpoints' mindestens einmal prüfen.
+- **URL KONSTRUKTION:** Nutze IMMER die 'apiBaseUrl' aus dem Scheme als Basis für alle URLs. Konstruiere vollständige URLs.
+- **EFFIZIENZ:** Das Tool liefert dir im Feld 'sampleData' nur maximal 3 Beispieldatensätze zurück, um deinen Kontext sauber zu halten. Das reicht aus, um die Struktur zu verstehen.
+- **HALLUZINATIONS-VERBOT:** Erfinde NIEMALS Datenmengen (Counts). Nutze ausschließlich die 'totalCount' Rückgaben der Tool-Calls.
 - Antworte während der Exploration nur mit kurzen Status-Updates auf Deutsch.
 
 ### PHASE 2: FINAL REPORT (Keine Tool-Calls mehr)
 - Erstelle ein valides JSON-Objekt mit der Zusammenfassung.
+- Die 'entities[].count' Werte MÜSSEN exakt den 'totalCount' Rückgaben der Tool-Calls entsprechen.
 - Dokumentiere im 'coverage' Bereich EHRLICH, welche Endpunkte aufgerufen wurden.
 
 ### KOMPLEXITÄTS-BEWERTUNG (1-10):
-Bewerte die Komplexität basierend auf der Gesamtanzahl der Elemente (Summe aller Entities):
-- **1-3 (Low):** < 1.000 Elemente (z.B. 92 Tasks sind SEHR geringe Komplexität).
+Bewerte die Komplexität basierend auf der tatsächlichen Gesamtanzahl der Elemente:
+- **1-3 (Low):** < 1.000 Elemente.
 - **4-6 (Medium):** 1.000 - 10.000 Elemente.
-- **7-9 (High):** 10.000 - 100.000 Elemente (Big Migration).
+- **7-9 (High):** 10.000 - 100.000 Elemente.
 - **10 (Critical):** > 100.000 Elemente.
 
 ### FINAL JSON FORMAT:
@@ -59,8 +59,7 @@ const TOOLS = [
           url: { type: "string", description: "Die vollständige URL zum Endpunkt." },
           method: { type: "string", enum: ["GET", "POST"], description: "HTTP Methode." },
           headers: { type: "object", description: "Header (Authentifizierung wird automatisch ergänzt)." },
-          body: { type: "object", description: "Optionaler Body." },
-          discoveryBrake: { type: "boolean", description: "Wenn true, wird nur die erste Seite geladen (kostensparend für Struktur-Erkennung)." }
+          body: { type: "object", description: "Optionaler Body." }
         },
         required: ["url"]
       }
@@ -164,15 +163,14 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
               method: args.method || 'GET',
               headers: requestHeaders,
               body: args.body,
-              paginationConfig: systemScheme?.discovery?.pagination,
-              discoveryBrake: args.discoveryBrake ?? false
+              paginationConfig: systemScheme?.discovery?.pagination
             });
             
             // Truncate sampleData if too large
             if (result.sampleData) {
               const sampleStr = JSON.stringify(result.sampleData);
-              if (sampleStr.length > 10000) {
-                result.sampleData = sampleStr.slice(0, 10000) + '...[TRUNCATED]';
+              if (sampleStr.length > 4000) {
+                result.sampleData = sampleStr.slice(0, 4000) + '...[TRUNCATED]';
               }
             }
           } else {

@@ -3,15 +3,15 @@ import { HttpResponse, SmartDiscoveryParams, SmartDiscoveryResponse } from "@/ty
 import { httpClient } from "./httpRequest";
 
 export async function smartDiscovery(params: SmartDiscoveryParams): Promise<SmartDiscoveryResponse> {
-  const { url, method, headers, body, paginationConfig, discoveryBrake } = params;
+  const { url, method, headers, body, paginationConfig } = params;
   
   const uniqueIds = new Set<string>();
   let pagesFetched = 0;
   let sampleData: any = null;
   let currentUrl = url;
 
-  const maxPages = discoveryBrake ? 1 : 100; // Safety limit
-  const limit = discoveryBrake ? 1 : (paginationConfig?.defaultLimit || 100);
+  const maxPages = 100; // Safety limit
+  const limit = paginationConfig?.defaultLimit || 100;
 
   try {
     while (pagesFetched < maxPages) {
@@ -51,7 +51,7 @@ export async function smartDiscovery(params: SmartDiscoveryParams): Promise<Smar
       });
 
       // Check if we should continue
-      if (discoveryBrake || !shouldContinue(response, items, paginationConfig, pagesFetched, limit)) {
+      if (!shouldContinue(response, items, paginationConfig, pagesFetched, limit)) {
         break;
       }
 
@@ -66,7 +66,7 @@ export async function smartDiscovery(params: SmartDiscoveryParams): Promise<Smar
     return {
       totalCount: uniqueIds.size,
       pagesFetched,
-      sampleData: discoveryBrake && Array.isArray(sampleData) ? sampleData.slice(0, 1) : sampleData,
+      sampleData: Array.isArray(sampleData) ? sampleData.slice(0, 3) : sampleData,
       status: 200,
     };
   } catch (error) {

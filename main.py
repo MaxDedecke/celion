@@ -854,6 +854,12 @@ async def ask_consultant(id: str, payload: AnswerAgentRequest) -> dict[str, Any]
             }
             if current_step != 0:
                 agent_params["context"]["stepResults"] = step_results
+            else:
+                # For onboarding, include name
+                cur.execute("SELECT name FROM public.migrations WHERE id = %s", (id,))
+                name_row = cur.fetchone()
+                if name_row:
+                    agent_params["context"]["migrationName"] = name_row["name"]
 
             cur.execute(
                 """
@@ -1617,7 +1623,8 @@ async def create_migration(payload: CreateMigrationPayload) -> Migration:
                     "agentParams": {
                         "userMessage": "Hallo! Ich möchte eine neue Migration starten.",
                         "context": {
-                            "history": []
+                            "history": [],
+                            "migrationName": payload.name
                         }
                     }
                 }),),

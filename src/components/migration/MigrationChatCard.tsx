@@ -273,6 +273,13 @@ const MigrationChatCard = ({
 
     if (migrationData.status !== "completed") {
       const isStartButton = migrationData.status === "not_started";
+      
+      // Don't show the default button during onboarding (Step 0) 
+      // until it officially switches to "not_started" (Start button)
+      if (rawStep === 0 && !isStartButton) {
+        return null;
+      }
+
       const label = isStartButton 
         ? "Starten" 
         : hasCurrentStepFailed 

@@ -16,33 +16,33 @@
   },
   "discovery": {
     "endpoints": {
-      "workspaces": "/api/1.0/workspaces",
-      "projects": "/api/1.0/projects?workspace={workspace_id}",
-      "sections": "/api/1.0/projects/{project_id}/sections",
-      "tasks": "/api/1.0/workspaces/{workspace_id}/tasks/search?completed_since=now&opt_fields=name,completed,assignee,due_on",
-      "completed_tasks": "/api/1.0/workspaces/{workspace_id}/tasks/search?completed_since=2000-01-01T00:00:00.000Z",
-      "project_tasks": "/api/1.0/projects/{project_id}/tasks",
-      "users": "/api/1.0/users?workspace={workspace_id}",
-      "custom_fields": "/api/1.0/workspaces/{workspace_id}/custom_fields",
-      "tags": "/api/1.0/tags?workspace={workspace_id}",
-      "teams": "/api/1.0/workspaces/{workspace_id}/teams",
-      "portfolios": "/api/1.0/portfolios?workspace={workspace_id}",
-      "task_details": "/api/1.0/tasks/{task_id}",
-      "task_stories": "/api/1.0/tasks/{task_id}/stories",
-      "task_attachments": "/api/1.0/tasks/{task_id}/attachments",
-      "project_templates": "/api/1.0/project_templates?workspace={workspace_id}"
+      "workspaces": "/api/1.0/workspaces?opt_fields=gid,name",
+      "projects": "/api/1.0/projects?workspace={workspace_id}&opt_fields=gid,name",
+      "sections": "/api/1.0/projects/{project_id}/sections?opt_fields=gid,name",
+      "tasks": "/api/1.0/workspaces/{workspace_id}/tasks/search?opt_fields=gid,name,completed,assignee",
+      "completed_tasks": "/api/1.0/workspaces/{workspace_id}/tasks/search?completed_since=2010-01-01T00:00:00.000Z&opt_fields=gid,name,completed",
+      "project_tasks": "/api/1.0/projects/{project_id}/tasks?opt_fields=gid,name",
+      "users": "/api/1.0/users?workspace={workspace_id}&opt_fields=gid,name,email",
+      "custom_fields": "/api/1.0/workspaces/{workspace_id}/custom_fields?opt_fields=gid,name,type",
+      "tags": "/api/1.0/tags?workspace={workspace_id}&opt_fields=gid,name",
+      "teams": "/api/1.0/workspaces/{workspace_id}/teams?opt_fields=gid,name",
+      "portfolios": "/api/1.0/portfolios?workspace={workspace_id}&opt_fields=gid,name",
+      "task_details": "/api/1.0/tasks/{task_id}?opt_fields=gid,name,notes,assignee,completed,custom_fields",
+      "task_stories": "/api/1.0/tasks/{task_id}/stories?opt_fields=gid,type,text",
+      "task_attachments": "/api/1.0/tasks/{task_id}/attachments?opt_fields=gid,name",
+      "project_templates": "/api/1.0/project_templates?workspace={workspace_id}&opt_fields=gid,name"
     },
     "pagination": {
       "type": "cursor",
       "paramCursor": "offset",
       "responseCursorKey": "next_page.offset",
       "paramLimit": "limit",
-      "defaultLimit": 100
+      "defaultLimit": 50
     }
   },
   "headers": {
     "accept": "application/json",
     "contentType": "application/json"
   },
-  "agentInstructions": "Führe die Inventur primär auf Workspace-Ebene durch. Beachte, dass die Asana-API standardmäßig nur kompakte Objekte zurückgibt; nutze 'opt_fields', um spezifische Details abzufragen. Da Tasks in Asana mehreren Projekten oder Sections zugeordnet sein können (Multi-homing), verlasse dich auf das Tool smart_discovery zur ID-basierten Deduplizierung. Bei der Abfrage von Tasks ist zu beachten, dass 'completed_since' genutzt werden muss, um sowohl offene als auch abgeschlossene Aufgaben effizient zu erfassen. Falls ein Workspace sehr groß ist, priorisiere die projektspezifische Abfrage, um API-Limits zu schonen."
+  "agentInstructions": "STRIKTE HIERARCHIE: 1. Rufe '/workspaces' auf. 2. Extrahiere die 'gid' des Workspaces. 3. Nutze diese 'gid' für ALLE anderen Endpunkte als '{workspace_id}'. Asana nutzt 'gid' als primären Identifikator. Hänge an JEDE URL manuell 'opt_fields=gid,name' an, falls nicht bereits im Schema vorhanden. Verlasse dich bei der Deduplizierung auf das Feld 'gid'. Falls 'tasks/search' keine Ergebnisse liefert, priorisiere 'project_tasks' für einzelne Projekte."
 }
