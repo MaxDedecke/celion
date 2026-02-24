@@ -1601,16 +1601,7 @@ async def create_migration(payload: CreateMigrationPayload) -> Migration:
             )
             onboarding_step_id = cur.fetchone()["id"]
 
-            # 2. Insert initial user message into chat so it's not empty
-            cur.execute(
-                """
-                INSERT INTO public.migration_chat_messages (migration_id, role, content, step_number)
-                VALUES (%s, 'user', 'Hallo! Ich möchte eine neue Migration starten.', 0)
-                """,
-                (migration_id,),
-            )
-
-            # 3. Enqueue Job for Introduction
+            # 2. Enqueue Job for Introduction
             cur.execute(
                 """
                 INSERT INTO public.jobs (step_id, payload, status)
