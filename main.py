@@ -1222,16 +1222,18 @@ async def create_mapping_chat_message(id: str, payload: CreateMappingChatMessage
             history = [{"role": r["role"], "content": r["content"]} for r in reversed(cur.fetchall())]
 
             # 3. Fetch current migration step to decide which agent to run
-            cur.execute("SELECT current_step FROM public.migrations WHERE id = %s", (id,))
+            cur.execute("SELECT current_step, step_status FROM public.migrations WHERE id = %s", (id,))
             mig_row = cur.fetchone()
             current_step = mig_row["current_step"] if mig_row else 0
+            step_status = mig_row["step_status"] if mig_row else "idle"
 
             # 4. Enqueue Job for Rules Agent
             if payload.role == 'user':
-                agent_name = "runEnhancementRules" if current_step == 7 else "runMappingRules"
+                # Use Enhancement Agent if we are at step 7 OR if step 6 is completed (meaning we are ready for 7)
+                is_enhancement_phase = (current_step == 7) or (current_step == 6 and step_status == 'completed')
+                agent_name = "runEnhancementRules" if is_enhancement_phase else "runMappingRules"
                 
                 # Fetch current rules for context
-                # If step 7, we need MAP rules to enhance them
                 cur.execute("SELECT * FROM public.mapping_rules WHERE migration_id = %s", (id,))
                 current_rules = [dict(r) for r in cur.fetchall()]
 
@@ -1245,7 +1247,7 @@ async def create_mapping_chat_message(id: str, payload: CreateMappingChatMessage
                     }
                 }
 
-                if current_step == 7:
+                if is_enhancement_phase:
                     # Filter only MAP rules for enhancement context
                     agent_params["context"]["currentEnhancements"] = [r for r in current_rules if r.get("rule_type") == 'MAP']
                 else:
