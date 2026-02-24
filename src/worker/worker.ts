@@ -2472,6 +2472,7 @@ WICHTIG FÜR NOTION:
 - Nutze \${GLOBAL_ROOT_ID} als Fallback für die Parent-ID: {"parent": {"page_id": "\${GLOBAL_ROOT_ID}"}}
 - In "properties" ist bei Pages NUR der "title" erlaubt: {"title": {"title": [{"text": {"content": "\${name}"}}]}}
 - JEDER WEITERE INHALT (wie eine Description) muss in das "children" Array als Block-Objekt.
+- WICHTIG: Der "content" String darf NIEMALS leer oder null sein. Falls ein Feld leer ist, nutze einen Fallback-String wie "---" oder "Keine Information".
 - Beispiel für Description als Paragraph-Block: 
   "children": [{
     "object": "block",
@@ -2517,12 +2518,13 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                   while (true) {
                       const session = driver.session();
                       try {
-                          // Fetch nodes that haven't been transferred yet (target_id is NULL)
+                          // Fetch nodes that haven't been transferred yet (target_id is NULL) and haven't exceeded retry limit
                           const nodeRes = await session.run(
                               `MATCH (n:\`${sourceSystem}\`) 
                                WHERE n.migration_id = $migrationId 
                                AND (n.entity_type = $sourceObjectType OR n.entity_type = $sourceObjectType + "s" OR n.entity_type = $sourceObjectType + "es")
                                AND n.target_id IS NULL
+                               AND (n.transfer_attempts IS NULL OR n.transfer_attempts < 3)
                                OPTIONAL MATCH (n)-[r]->(p) 
                                WHERE p.target_id IS NOT NULL
                                RETURN n, collect({ type: type(r), target_id: p.target_id, entity_type: p.entity_type }) as parents
@@ -2566,7 +2568,8 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                                           if (val.startsWith('${') && val.endsWith('}')) {
                                               const propName = val.slice(2, -1);
                                               if (propName === 'GLOBAL_ROOT_ID') return targetScopeId;
-                                              return node[propName] !== undefined ? node[propName] : null;
+                                              const nodeVal = node[propName];
+                                              return (nodeVal !== undefined && nodeVal !== null) ? nodeVal : "---"; 
                                           }
                                           
                                           // Inline string replacement
@@ -2577,7 +2580,8 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                                                   const parent = parents.find(p => p.type === parts[1]);
                                                   return parent ? parent[parts[2]] : (targetScopeId || '');
                                               }
-                                              return node[propName] !== undefined ? String(node[propName]) : '';
+                                              const nodeVal = node[propName];
+                                              return (nodeVal !== undefined && nodeVal !== null) ? String(nodeVal) : "---";
                                           });
                                       };
 
@@ -2652,15 +2656,34 @@ Du bist ein Data Export Agent. Erstelle den exakten API-Call für dieses Objekt.
                                               await writeChatMessage(migrationId, 'assistant', `Transfer-Fortschritt ${targetEntityType}: **${totalTransferred}** Objekte übertragen...`, currentStepNumber);
                                           }
                                       } else {
+                                          console.error(`[Worker] API Response OK but no ID found for ${node.external_id}`);
+                                          await session.run(
+                                              `MATCH (n { migration_id: $migrationId, external_id: $extId }) 
+                                               SET n.transfer_attempts = coalesce(n.transfer_attempts, 0) + 1, 
+                                                   n.transfer_error = 'No ID in response'`,
+                                              { migrationId, extId: node.external_id }
+                                          );
                                           transferErrors++;
                                       }
                                   } else {
                                       const errText = await apiRes.text();
                                       console.error(`[Worker] API Transfer failed: ${apiRes.status} ${errText}`);
+                                      await session.run(
+                                          `MATCH (n { migration_id: $migrationId, external_id: $extId }) 
+                                           SET n.transfer_attempts = coalesce(n.transfer_attempts, 0) + 1, 
+                                               n.transfer_error = $errText`,
+                                          { migrationId, extId: node.external_id, errText: `${apiRes.status}: ${errText.substring(0, 200)}` }
+                                      );
                                       transferErrors++;
                                   }
                               } catch (apiErr) {
                                   console.error(`[Worker] API Error:`, apiErr);
+                                  await session.run(
+                                      `MATCH (n { migration_id: $migrationId, external_id: $extId }) 
+                                       SET n.transfer_attempts = coalesce(n.transfer_attempts, 0) + 1, 
+                                           n.transfer_error = $errText`,
+                                      { migrationId, extId: node.external_id, errText: String(apiErr).substring(0, 200) }
+                                  );
                                   transferErrors++;
                               }
                               
