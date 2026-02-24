@@ -26,6 +26,20 @@ type StepKey =
   | "targetScope"
   | "confirmation";
 
+interface ChatConfig {
+  name?: string;
+  sourceSystem?: string;
+  sourceUrl?: string;
+  sourceApiToken?: string;
+  sourceEmail?: string;
+  sourceScope?: string;
+  targetSystem?: string;
+  targetUrl?: string;
+  targetApiToken?: string;
+  targetEmail?: string;
+  targetScope?: string;
+}
+
 interface StepConfig {
   key: StepKey;
   question: string;
@@ -37,9 +51,28 @@ interface StepConfig {
 const ConfigAgentChat = ({ onComplete, onCancel, onStepChange, initialData }: ConfigAgentChatProps) => {
   const [messages, setMessages] = useState<ChatMessageType[]>([]);
   const [currentStepIndex, setCurrentStepIndex] = useState(0);
-  const [config, setConfig] = useState<Partial<NewMigrationInput>>(initialData || {});
+  const [config, setConfig] = useState<ChatConfig>({});
   const [isProcessing, setIsProcessing] = useState(false);
   const scrollAreaRef = useRef<HTMLDivElement>(null);
+
+  // Initialize from initialData if provided
+  useEffect(() => {
+    if (initialData) {
+      setConfig({
+        name: initialData.name,
+        sourceSystem: initialData.sourceSystem,
+        sourceUrl: initialData.sourceUrl,
+        targetSystem: initialData.targetSystem,
+        targetUrl: initialData.targetUrl,
+        sourceApiToken: initialData.sourceAuth?.apiToken,
+        sourceEmail: initialData.sourceAuth?.email,
+        targetApiToken: initialData.targetAuth?.apiToken,
+        targetEmail: initialData.targetAuth?.email,
+        sourceScope: initialData.scopeConfig?.sourceScope,
+        targetScope: initialData.scopeConfig?.targetName
+      });
+    }
+  }, [initialData]);
 
   const steps: StepConfig[] = [
     {

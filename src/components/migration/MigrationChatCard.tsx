@@ -169,7 +169,7 @@ const MigrationChatCard = ({
 
   // Continuous scroll while running (if user hasn't scrolled away)
   useEffect(() => {
-    let intervalId: NodeJS.Timeout | null = null;
+    let intervalId: ReturnType<typeof setInterval> | null = null;
     
     if (isStepRunning || isConsultantThinking) {
       intervalId = setInterval(() => {
@@ -202,15 +202,26 @@ const MigrationChatCard = ({
     // Special case for Step 6: If no mappings exist, show "Create Mappings" button
     if (currentStepNumber === 6 && mappingRules.length === 0) {
        return (
-        <Button 
-          onClick={() => onAction && onAction('open-mapping-ui')} 
-          variant="default" 
-          size="sm"
-          className="h-8 text-xs gap-1.5 animate-fade-in"
-        >
-          Mapping erstellen
-          <ArrowRight className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          <Button 
+            onClick={() => onAction && onAction('open-mapping-ui')} 
+            variant="default" 
+            size="sm"
+            className="h-8 text-xs gap-1.5 animate-fade-in"
+          >
+            Mapping erstellen
+            <ArrowRight className="h-3.5 w-3.5" />
+          </Button>
+          <Button 
+            onClick={() => onAction && onAction(`retry:5`)} 
+            variant="outline" 
+            size="sm"
+            className="h-8 text-xs gap-1.5 animate-fade-in border-primary/20 hover:bg-primary/5 text-primary"
+          >
+            <Play className="h-3 w-3" />
+            Schritt 5 wiederholen
+          </Button>
+        </div>
       );
     }
 

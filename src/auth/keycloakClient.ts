@@ -1,3 +1,4 @@
+// @ts-ignore
 import Keycloak, { type KeycloakConfig, type KeycloakProfile, type KeycloakTokenParsed } from "keycloak-js";
 
 const keycloakConfig: KeycloakConfig | null = (() => {

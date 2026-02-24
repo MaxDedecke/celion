@@ -1,5 +1,6 @@
-import { readFile } from 'fs/promises';
-import { join } from 'path';
+// @ts-ignore
+import { readFile } from 'node:fs/promises';
+import { join } from 'node:path';
 
 export const loadScheme = async (systemName: string): Promise<any | null> => {
   if (!systemName) return null;

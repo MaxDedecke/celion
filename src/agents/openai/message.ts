@@ -9,8 +9,8 @@ import { OpenAiResponse, Message } from './types';
  */
 export const extractTextFromResponse = (response: OpenAiResponse): string => {
   return response.output
-    .filter((item): item is Message => item.type === 'message' && item.message.role === 'assistant')
-    .map(item => item.message.content.text)
+    .filter((item): item is Message => item.type === 'message' && item.role === 'assistant')
+    .map(item => item.content.map(c => c.text).join(''))
     .join('\n')
     .trim();
 };

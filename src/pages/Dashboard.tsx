@@ -121,7 +121,7 @@ const Dashboard = () => {
   const loaderVisible = useMinimumLoader(loading || transitioning || duplicating, 1000);
   const migrationDetailsRef = useRef<MigrationDetailsRef>(null);
   const [processingMigrationId, setProcessingMigrationId] = useState<string | null>(null);
-  const pollingIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollingIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null);
   
   // Lazy loading state for standalone migrations
   const [hasMoreMigrations, setHasMoreMigrations] = useState(true);

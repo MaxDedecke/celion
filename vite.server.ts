@@ -1,5 +1,6 @@
 import type { Plugin, ViteDevServer } from 'vite';
 import { Pool } from 'pg';
+import { IncomingMessage, ServerResponse } from 'http';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -74,7 +75,7 @@ async function getStepStatus(stepId: string) {
 }
 
 function agentRunnerMiddleware(server: ViteDevServer) {
-  server.middlewares.use('/api/v2/migrations/run-step', async (req, res, next) => {
+  server.middlewares.use('/api/v2/migrations/run-step', async (req: any, res: any, next) => {
     if (req.method !== 'POST') {
       return next();
     }
@@ -108,12 +109,13 @@ function agentRunnerMiddleware(server: ViteDevServer) {
 }
 
 function agentStatusMiddleware(server: ViteDevServer) {
-  server.middlewares.use('/api/v2/migrations/step-status', async (req, res, next) => {
+  server.middlewares.use('/api/v2/migrations/step-status', async (req: any, res: any, next) => {
     if (req.method !== 'GET') {
       return next();
     }
 
-    const url = new URL(req.originalUrl, `http://${req.headers.host}`);
+    const host = req.headers.host || 'localhost';
+    const url = new URL(req.url || '', `http://${host}`);
     const stepId = url.searchParams.get('stepId');
 
     if (!stepId) {

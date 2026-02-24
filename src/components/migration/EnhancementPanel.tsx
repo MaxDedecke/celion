@@ -228,7 +228,7 @@ const EnhancementPanel = ({ migrationId, onClose, onTriggerStep }: EnhancementPa
   };
 
   const mapRules = useMemo(() => {
-    return mappingRules.filter(r => r.rule_type === 'MAP');
+    return mappingRules.filter(r => ['MAP', 'POLISH', 'ENHANCE'].includes(r.rule_type));
   }, [mappingRules]);
 
   const handleSaveClick = () => {
@@ -318,6 +318,11 @@ const EnhancementPanel = ({ migrationId, onClose, onTriggerStep }: EnhancementPa
                             {mapRules.map(rule => (
                                 <SelectItem key={rule.id} value={rule.id}>
                                     <div className="flex items-center gap-2">
+                                        {rule.rule_type !== 'MAP' && (
+                                            <Badge variant="outline" className="text-[9px] h-4 px-1 bg-primary/5 text-primary border-primary/20">
+                                                {rule.rule_type}
+                                            </Badge>
+                                        )}
                                         <div className="flex items-center gap-1 text-[11px]">
                                             <span className="font-semibold">{rule.source_object}.{rule.source_property}</span>
                                             <ArrowRight className="w-2 h-2 opacity-50" />
@@ -379,7 +384,14 @@ const EnhancementPanel = ({ migrationId, onClose, onTriggerStep }: EnhancementPa
                               onClick={() => handleRuleSelect(rule.id)}
                             >
                               <div className="flex items-center justify-between mb-1">
-                                <span className="text-[10px] text-muted-foreground font-bold uppercase">{rule.source_object}</span>
+                                <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] text-muted-foreground font-bold uppercase">{rule.source_object}</span>
+                                    {rule.rule_type !== 'MAP' && (
+                                        <Badge variant="outline" className="h-3.5 text-[7px] px-1 bg-muted/50 text-muted-foreground border-muted-foreground/20 uppercase tracking-tighter">
+                                            {rule.rule_type}
+                                        </Badge>
+                                    )}
+                                </div>
                                 {hasEnhancements && <Badge className="h-4 text-[8px] px-1 bg-emerald-500 text-white">{rule.enhancements?.length} aktiv</Badge>}
                               </div>
                               <div className="flex items-center gap-2 text-xs font-medium">

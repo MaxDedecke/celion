@@ -436,7 +436,7 @@ async function processJob(job: any) {
         const migrationData = migrationRows[0];
         const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(
           migrationData?.workflow_state,
-          stepRecord.workflow_step_id || stepId,
+          stepRecord.workflow_step_id || step_id,
           combinedStepResult,
           (isLogicalFailure || stepHadFailure)
         );
@@ -961,7 +961,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
 
         const { rows: migrationRows } = await finishClient.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
         const migrationData = migrationRows[0];
-        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migrationData?.workflow_state, stepRecord.workflow_step_id || stepId, combinedStepResult, isLogicalFailure);
+        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migrationData?.workflow_state, stepRecord.workflow_step_id || step_id, combinedStepResult, isLogicalFailure);
         const migrationStatus = isLogicalFailure ? 'paused' : (completedCount >= totalSteps ? 'completed' : 'processing');
         const stepStatusForMigration = isLogicalFailure ? 'failed' : 'completed';
 
@@ -1081,7 +1081,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
 
         const { rows: migrationRows } = await finishClient.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
         const migrationData = migrationRows[0];
-        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migrationData?.workflow_state, stepRecord.workflow_step_id || stepId, combinedStepResult, isLogicalFailure);
+        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migrationData?.workflow_state, stepRecord.workflow_step_id || step_id, combinedStepResult, isLogicalFailure);
         const migrationStatus = isLogicalFailure ? 'paused' : (completedCount >= totalSteps ? 'completed' : 'processing');
         const stepStatusForMigration = isLogicalFailure ? 'failed' : 'completed';
 
@@ -1198,7 +1198,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
 
         const { rows: migrationRows } = await finishClient.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
         const migrationData = migrationRows[0];
-        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migrationData?.workflow_state, stepRecord.workflow_step_id || stepId, combinedStepResult, (isLogicalFailure || stepHadFailure));
+        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migrationData?.workflow_state, stepRecord.workflow_step_id || step_id, combinedStepResult, (isLogicalFailure || stepHadFailure));
         const migrationStatus = (isLogicalFailure || stepHadFailure) ? 'paused' : (isLastJob && completedCount >= totalSteps ? 'completed' : 'processing');
         const stepStatusForMigration = (isLogicalFailure || stepHadFailure) ? 'failed' : (isLastJob ? 'completed' : 'running');
 
@@ -1850,15 +1850,15 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
       if (totalImported === 0) {
           isLogicalFailure = true;
           failureMessage = "Es konnten keine Daten aus dem Quellsystem geladen werden. Bitte überprüfen Sie die Berechtigungen und die Quell-URL.";
-      } else if (validationErrors > (entities.length * 0.2)) { 
-          // If more than 20% of entity types had mismatches, consider it a partial failure
+      } else if (validationErrors > (entities.length * 0.5)) { 
+          // If more than 50% of entity types had mismatches, consider it a partial failure
           isLogicalFailure = true;
           failureMessage = `Datenerfassung unvollständig: ${validationErrors} Abweichungen bei der Validierung gefunden.`;
       }
 
       result = { 
-          status: isLogicalFailure ? 'failed' : 'success', 
-          message: isLogicalFailure ? failureMessage : 'Data Staging erfolgreich abgeschlossen.', 
+          status: isLogicalFailure ? 'failed' : (validationErrors > 0 ? 'warning' : 'success'), 
+          message: isLogicalFailure ? failureMessage : 'Data Staging abgeschlossen (mit Warnungen).', 
           stagedCount: totalImported, 
           urls: Array.from(attemptedUrls), 
           logs: stagingLogs,
@@ -1869,17 +1869,20 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
       const finishClientStaging = await pool.connect();
       try {
         await finishClientStaging.query('BEGIN');
-        const finalStepStatus = isLogicalFailure ? 'failed' : 'completed';
+        // If we have data, we mark it as completed to allow continuation, even if isLogicalFailure was true due to warnings
+        const finalStepStatus = totalImported > 0 ? 'completed' : 'failed';
+        
         await finishClientStaging.query('UPDATE migration_steps SET status = $1, result = $2, status_message = $3 WHERE id = $4', [
-          finalStepStatus, result, isLogicalFailure ? failureMessage : 'Data staging completed successfully.', step_id,
+          finalStepStatus, result, isLogicalFailure ? failureMessage : 'Data staging completed.', step_id,
         ]);
 
         const { rows: migRowsStaging } = await finishClientStaging.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
         const migrationDataStaging = migRowsStaging[0];
-        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migrationDataStaging?.workflow_state, stepRecord.workflow_step_id || stepId, result, isLogicalFailure);
+        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migrationDataStaging?.workflow_state, stepRecord.workflow_step_id || step_id, result, (totalImported === 0));
         
-        const migrationStatus = isLogicalFailure ? 'paused' : 'processing';
-        const stepStatusForMigration = isLogicalFailure ? 'failed' : 'completed';
+        // We set status to processing if we have data, to allow the UI to show action buttons
+        const migrationStatus = totalImported > 0 ? 'processing' : 'paused';
+        const stepStatusForMigration = finalStepStatus;
 
         await finishClientStaging.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
           nextState, progress, migrationStatus, stepStatusForMigration, currentStepNumber, migrationId,
@@ -1887,7 +1890,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
         await finishClientStaging.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
         
         // KPI: Increment global steps and agent metrics
-        if (!isLogicalFailure) {
+        if (totalImported > 0) {
           await incrementGlobalStats(finishClientStaging, { steps: 1, success: 1, total_agents: 1 });
         } else {
           await incrementGlobalStats(finishClientStaging, { total_agents: 1 });
@@ -1895,12 +1898,16 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
 
         await finishClientStaging.query('COMMIT');
 
-        if (isLogicalFailure) {
+        if (totalImported === 0) {
           await writeChatMessage(migrationId, 'assistant', `Schritt 5 Data Staging fehlgeschlagen: ${failureMessage}`, currentStepNumber);
           await writeRetryAction(migrationId, currentStepNumber);
-          await logActivity(migrationId, 'warning', 'Data Staging unvollständig oder fehlgeschlagen.');
+          await logActivity(migrationId, 'warning', 'Data Staging fehlgeschlagen (keine Daten).');
         } else {
-          await writeChatMessage(migrationId, 'assistant', 'Die Daten-Bereitstellung (Data Staging) wurde erfolgreich abgeschlossen. Wir können nun mit dem Model Mapping fortfahren.', currentStepNumber);
+          if (validationErrors > 0) {
+            await writeChatMessage(migrationId, 'assistant', `Die Daten-Bereitstellung wurde mit **${validationErrors} Abweichungen** abgeschlossen. Sie können den Schritt wiederholen oder trotzdem mit dem Mapping fortfahren.`, currentStepNumber);
+          } else {
+            await writeChatMessage(migrationId, 'assistant', 'Die Daten-Bereitstellung (Data Staging) wurde erfolgreich abgeschlossen. Wir können nun mit dem Model Mapping fortfahren.', currentStepNumber);
+          }
           
           const nextStepIndex = currentStepNumber;
           if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
@@ -1914,7 +1921,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
               });
               await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
           }
-          await logActivity(migrationId, 'success', 'Data Staging abgeschlossen.');
+          await logActivity(migrationId, 'success', validationErrors > 0 ? 'Data Staging mit Warnungen abgeschlossen.' : 'Data Staging abgeschlossen.');
         }
       } catch (e) {
         await finishClientStaging.query('ROLLBACK');
@@ -1988,7 +1995,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
 
         const { rows: migRowsFinal } = await finishClient6.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
         const migDataFinal = migRowsFinal[0];
-        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migDataFinal?.workflow_state, stepRecord.workflow_step_id || stepId, result, isLogicalFailure);
+        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migDataFinal?.workflow_state, stepRecord.workflow_step_id || step_id, result, isLogicalFailure);
         
         await finishClient6.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
           nextState, progress, isLogicalFailure ? 'paused' : 'processing', isLogicalFailure ? 'failed' : 'completed', currentStepNumber, migrationId,
@@ -2112,12 +2119,16 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
       const sSys7 = migRows7[0]?.source_system;
       const tSys7 = migRows7[0]?.target_system;
 
-      // Fetch all rules with enhancements
+      // Fetch all rules with enhancements OR special types (POLISH, ENHANCE)
       const { rows: ruleRows7 } = await pool.query('SELECT * FROM public.mapping_rules WHERE migration_id = $1', [migrationId]);
-      const rulesWithEnhancements = ruleRows7.filter(r => r.enhancements && r.enhancements.length > 0);
+      const rulesWithEnhancements = ruleRows7.filter(r => 
+        (r.enhancements && r.enhancements.length > 0) || 
+        r.rule_type === 'POLISH' || 
+        r.rule_type === 'ENHANCE'
+      );
       
       if (rulesWithEnhancements.length > 0) {
-        const messageGenerator = runEnhancementVerification(ruleRows7, sSys7, tSys7);
+        const messageGenerator = runEnhancementVerification(rulesWithEnhancements, sSys7, tSys7);
         let lastMessageText: string | undefined;
         for await (const message of messageGenerator) {
           if (message.content && message.content.length > 0 && message.content[0].text) {
@@ -2171,7 +2182,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
 
         const { rows: migRowsFinal } = await finishClientEnhance.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
         const migrationDataFinal = migRowsFinal[0];
-        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migrationDataFinal?.workflow_state, stepRecord.workflow_step_id || stepId, result, false);
+        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migrationDataFinal?.workflow_state, stepRecord.workflow_step_id || step_id, result, false);
         
         await finishClientEnhance.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
           nextState, progress, 'processing', 'completed', currentStepNumber, migrationId,
@@ -2212,9 +2223,15 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
       const { rows: migRows8 } = await pool.query('SELECT source_system FROM migrations WHERE id = $1', [migrationId]);
       const sourceSystem = migRows8[0]?.source_system;
 
-      // 2. Fetch rules with enhancements
+      // 2. Fetch rules with enhancements OR special types (POLISH, ENHANCE)
       const { rows: ruleRows8 } = await pool.query(
-        'SELECT * FROM mapping_rules WHERE migration_id = $1 AND enhancements IS NOT NULL AND jsonb_array_length(enhancements) > 0', 
+        `SELECT * FROM mapping_rules 
+         WHERE migration_id = $1 
+         AND (
+           (enhancements IS NOT NULL AND jsonb_array_length(enhancements) > 0) 
+           OR rule_type = 'POLISH' 
+           OR rule_type = 'ENHANCE'
+         )`, 
         [migrationId]
       );
 
@@ -2229,7 +2246,16 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
           const rulesByEntity: Record<string, Record<string, string[]>> = {};
           for (const rule of ruleRows8) {
             if (!rulesByEntity[rule.source_object]) rulesByEntity[rule.source_object] = {};
-            rulesByEntity[rule.source_object][rule.source_property] = rule.enhancements;
+            
+            const enhancements = Array.isArray(rule.enhancements) ? [...rule.enhancements] : [];
+            // If it's a POLISH or ENHANCE rule with a note, add the note as an instruction
+            if ((rule.rule_type === 'POLISH' || rule.rule_type === 'ENHANCE') && rule.note) {
+              enhancements.push(`INSTRUCTION: ${rule.note}`);
+            }
+            
+            if (enhancements.length > 0) {
+              rulesByEntity[rule.source_object][rule.source_property] = enhancements;
+            }
           }
 
           // 1. INITIALIZATION: Set _enhanced = false for all nodes that NEED enhancement
@@ -2347,7 +2373,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
         ]);
 
         const { rows: migRowsFinal } = await finishClientTransfer.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
-        const { nextState, progress } = updateWorkflowForStep(migRowsFinal[0]?.workflow_state, stepRecord.workflow_step_id || stepId, result, false);
+        const { nextState, progress } = updateWorkflowForStep(migRowsFinal[0]?.workflow_state, stepRecord.workflow_step_id || step_id, result, false);
         
         await finishClientTransfer.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
           nextState, progress, 'processing', 'completed', currentStepNumber, migrationId,
@@ -2394,7 +2420,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
       await errorClient.query('UPDATE migration_steps SET status = $1, status_message = $2 WHERE id = $3', ['failed', errorMessage, step_id]);
       const { rows: migrationRows } = await errorClient.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
       const migrationData = migrationRows[0];
-      const { nextState, progress } = updateWorkflowForStep(migrationData?.workflow_state, stepRecord.workflow_step_id || stepId, errorMessage, true);
+      const { nextState, progress } = updateWorkflowForStep(migrationData?.workflow_state, stepRecord.workflow_step_id || step_id, errorMessage, true);
       await errorClient.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4 WHERE id = $5', [nextState, progress, 'paused', 'failed', migrationId]);
       await errorClient.query('UPDATE jobs SET status = $1, last_error = $2 WHERE id = $3', ['failed', errorMessage, job.id]);
       

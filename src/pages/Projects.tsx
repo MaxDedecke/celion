@@ -566,8 +566,8 @@ const Projects = () => {
       <EditMigrationDialog
         open={showEditMigrationDialog}
         onOpenChange={setShowEditMigrationDialog}
-        migrationName={editingMigration?.name || ""}
-        onSubmit={handleUpdateMigration}
+        currentName={editingMigration?.name || ""}
+        onUpdate={handleUpdateMigration}
       />
 
       <AlertDialog
