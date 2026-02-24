@@ -9,20 +9,28 @@ export async function smartDiscovery(params: SmartDiscoveryParams): Promise<Smar
   let pagesFetched = 0;
   let sampleData: any = null;
   let currentUrl = url;
+  let currentBody = body;
 
   const maxPages = 100; // Safety limit
   const limit = paginationConfig?.defaultLimit || 100;
 
   try {
     while (pagesFetched < maxPages) {
-      // Prepare URL with pagination params
-      const paginatedUrl = injectPaginationParams(currentUrl, paginationConfig, pagesFetched, limit);
+      // Prepare URL and Body with pagination params
+      const { url: paginatedUrl, body: paginatedBody } = injectPaginationParams(
+        currentUrl, 
+        method || 'GET', 
+        currentBody, 
+        paginationConfig, 
+        pagesFetched, 
+        limit
+      );
       
       const response: HttpResponse = await httpClient({
         url: paginatedUrl,
         method,
         headers,
-        body
+        body: paginatedBody
       });
 
       if (response.error) {
@@ -43,10 +51,6 @@ export async function smartDiscovery(params: SmartDiscoveryParams): Promise<Smar
         const id = item?.gid || item?.id || item?.key || item?.uuid;
         if (id !== undefined && id !== null) {
           uniqueIds.add(String(id));
-        } else {
-          // Fallback for items without ID: use index if needed or just count them?
-          // For now, if no ID is present, we count it as a unique entry based on its position
-          // but that's not ideal. However, for most entities (tasks, users, etc.) IDs are mandatory.
         }
       });
 
@@ -55,11 +59,13 @@ export async function smartDiscovery(params: SmartDiscoveryParams): Promise<Smar
         break;
       }
 
-      // Update currentUrl or params for next page if it's cursor-based
+      // Update currentUrl/Body for next page if it's cursor-based
       if (paginationConfig?.type === 'cursor' || paginationConfig?.type === 'continuationToken') {
           const nextCursor = extractNextCursor(response, paginationConfig);
           if (!nextCursor) break;
-          currentUrl = updateUrlWithCursor(currentUrl, paginationConfig, nextCursor);
+          const updated = updateWithCursor(currentUrl, method || 'GET', currentBody, paginationConfig, nextCursor);
+          currentUrl = updated.url;
+          currentBody = updated.body;
       }
     }
 
@@ -80,59 +86,76 @@ export async function smartDiscovery(params: SmartDiscoveryParams): Promise<Smar
   }
 }
 
-function injectPaginationParams(url: string, config: DiscoveryPaginationConfig | null | undefined, pageIndex: number, limit: number): string {
-  if (!config || config.type === 'none') return url;
+function injectPaginationParams(
+  url: string, 
+  method: string, 
+  body: any, 
+  config: DiscoveryPaginationConfig | null | undefined, 
+  pageIndex: number, 
+  limit: number
+): { url: string, body: any } {
+  if (!config || config.type === 'none') return { url, body };
 
+  const isPost = method.toUpperCase() === 'POST';
+  let updatedBody = body;
+  
   // Use a dummy base to handle relative URLs
   const isRelative = !url.startsWith('http');
   const baseUrl = 'http://api-template.internal';
   const urlObj = new URL(url, isRelative ? baseUrl : undefined);
   
   const firstPage = config.firstPage !== undefined ? config.firstPage : 1;
+
+  const setParam = (key: string, value: string | number) => {
+    if (isPost) {
+        if (typeof updatedBody !== 'object' || updatedBody === null) updatedBody = {};
+        updatedBody[key] = value;
+    } else {
+        urlObj.searchParams.set(key, String(value));
+    }
+  };
   
   switch (config.type) {
     case 'page':
     case 'page_limit':
     case 'page_per_page':
       const paramPage = config.paramPage || 'page';
-      urlObj.searchParams.set(paramPage, (pageIndex + Number(firstPage || 0)).toString());
-      if (config.paramLimit) urlObj.searchParams.set(config.paramLimit, limit.toString());
+      setParam(paramPage, (pageIndex + Number(firstPage || 0)));
+      if (config.paramLimit) setParam(config.paramLimit, limit);
       break;
     case 'offset':
     case 'offset_limit':
       const paramOffset = config.paramOffset || 'offset';
-      urlObj.searchParams.set(paramOffset, (pageIndex * limit).toString());
-      if (config.paramLimit) urlObj.searchParams.set(config.paramLimit, limit.toString());
+      setParam(paramOffset, (pageIndex * limit));
+      if (config.paramLimit) setParam(config.paramLimit, limit);
       break;
     case 'startAt_maxResults':
-      if (config.paramStart) urlObj.searchParams.set(config.paramStart, (pageIndex * limit).toString());
-      if (config.paramLimit) urlObj.searchParams.set(config.paramLimit, limit.toString());
+      if (config.paramStart) setParam(config.paramStart, (pageIndex * limit));
+      if (config.paramLimit) setParam(config.paramLimit, limit);
       break;
     case 'page_size_offset':
-        if (config.paramLimit) urlObj.searchParams.set(config.paramLimit, limit.toString());
-        if (config.paramOffset) urlObj.searchParams.set(config.paramOffset, (pageIndex * limit).toString());
+        if (config.paramLimit) setParam(config.paramLimit, limit);
+        if (config.paramOffset) setParam(config.paramOffset, (pageIndex * limit));
         break;
     case 'skip_top':
-        urlObj.searchParams.set('$skip', (pageIndex * limit).toString());
-        urlObj.searchParams.set('$top', limit.toString());
+        setParam('$skip', (pageIndex * limit));
+        setParam('$top', limit);
         break;
     case 'cursor':
     case 'continuationToken':
-        if (config.paramLimit) urlObj.searchParams.set(config.paramLimit, limit.toString());
+        if (config.paramLimit) setParam(config.paramLimit, limit);
         break;
   }
 
-  if (isRelative) {
-    return urlObj.pathname + urlObj.search;
-  }
-  return urlObj.toString();
+  const finalUrl = isRelative ? urlObj.pathname + urlObj.search : urlObj.toString();
+  return { url: finalUrl, body: updatedBody };
 }
 
 function extractItems(body: any): any[] {
   if (Array.isArray(body)) return body;
   if (body && typeof body === 'object') {
     // Common patterns: body.items, body.data, body.tasks, etc.
-    for (const key of ['items', 'data', 'tasks', 'elements', 'values', 'results', 'members', 'users', 'teams', 'spaces', 'folders', 'lists']) {
+    for (const key of ['items', 'results', 'data', 'tasks', 'elements', 'values', 'members', 'users', 'teams', 'spaces', 'folders', 'lists']) {
       if (Array.isArray(body[key])) return body[key];
     }
     // Deep search for first array if no common key matches?
@@ -177,12 +200,27 @@ function extractNextCursor(response: HttpResponse, config: DiscoveryPaginationCo
     return null;
 }
 
-function updateUrlWithCursor(url: string, config: DiscoveryPaginationConfig, cursor: string): string {
+function updateWithCursor(url: string, method: string, body: any, config: DiscoveryPaginationConfig, cursor: string): { url: string, body: any } {
+    const isPost = method.toUpperCase() === 'POST';
+    let updatedBody = body;
     const urlObj = new URL(url.startsWith('http') ? url : `http://dummy.com${url}`);
+    
+    const setCursor = (key: string, value: string) => {
+        if (isPost) {
+            if (typeof updatedBody !== 'object' || updatedBody === null) updatedBody = {};
+            updatedBody[key] = value;
+        } else {
+            urlObj.searchParams.set(key, value);
+        }
+    };
+
     if (config.paramCursor) {
-        urlObj.searchParams.set(config.paramCursor, cursor);
+        setCursor(config.paramCursor, cursor);
     } else if (config.paramContinuation) {
-        urlObj.searchParams.set(config.paramContinuation, cursor);
+        setCursor(config.paramContinuation, cursor);
     }
-    return url.startsWith('http') ? urlObj.toString() : urlObj.pathname + urlObj.search;
+    
+    const finalUrl = url.startsWith('http') ? urlObj.toString() : urlObj.pathname + urlObj.search;
+    return { url: finalUrl, body: updatedBody };
 }
+

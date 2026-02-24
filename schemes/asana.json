@@ -44,5 +44,19 @@
     "accept": "application/json",
     "contentType": "application/json"
   },
-  "agentInstructions": "STRIKTE HIERARCHIE: 1. Rufe '/workspaces' auf. 2. Extrahiere die 'gid' des Workspaces. 3. Nutze diese 'gid' für ALLE anderen Endpunkte als '{workspace_id}'. Asana nutzt 'gid' als primären Identifikator. Hänge an JEDE URL manuell 'opt_fields=gid,name' an, falls nicht bereits im Schema vorhanden. Verlasse dich bei der Deduplizierung auf das Feld 'gid'. Falls 'tasks/search' keine Ergebnisse liefert, priorisiere 'project_tasks' für einzelne Projekte."
+  "agentInstructions": "STRIKTE HIERARCHIE & KEINE PLATZHALTER: 1. Rufe ZUERST '/api/1.0/workspaces' auf. 2. Extrahiere die reale 'gid' des Workspaces. 3. Nutze diese reale ID für alle Endpunkte, die '{workspace_id}' erfordern. 4. Rufe dann '/api/1.0/projects' auf, um 'gid's für '{project_id}' zu erhalten. VERBOT: Nutze NIEMALS geschweifte Klammern wie {workspace_id} in einem Tool-Call. Wenn du eine ID nicht hast, musst du zuerst den Parent-Endpunkt aufrufen. Jede URL muss vollständig aufgelöst sein. Hänge 'opt_fields=gid,name' an, falls nicht vorhanden. Verlasse dich auf 'gid' für die Deduplizierung.",
+  "navigationGuide": {
+    "hierarchy": "Workspace -> Project -> Section -> Task",
+    "phase0_scope_identification": [
+      "1. Rufe '/api/1.0/workspaces' auf, um die 'gid' des Workspaces zu erhalten.",
+      "2. Rufe '/api/1.0/projects?workspace={workspace_id}' auf.",
+      "3. Suche in der Liste nach dem Namen aus 'sourceScope'.",
+      "4. Speichere die 'gid' dieses Projekts als 'project_id' und die Workspace-'gid' als 'workspace_id' in deinem Scope-Report."
+    ],
+    "phase1_exploration_and_staging": [
+      "1. Nutze die 'project_id', um '/api/1.0/projects/{project_id}/sections' für die Sektionen abzufragen.",
+      "2. Nutze die 'project_id', um '/api/1.0/projects/{project_id}/tasks' für die Tasks abzufragen.",
+      "3. Für Details eines Tasks (gid) nutze '/api/1.0/tasks/{task_id}'."
+    ]
+  }
 }

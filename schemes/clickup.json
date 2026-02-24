@@ -15,38 +15,52 @@
     }
   },
   "discovery": {
-        "endpoints": {
-          "teams": "/api/v2/team",
-          "spaces": "/api/v2/team/{team_id}/space",
-          "folders": "/api/v2/space/{space_id}/folder",
-          "lists_in_folders": "/api/v2/folder/{folder_id}/list",
-          "lists_in_spaces": "/api/v2/space/{space_id}/list",
-          "list_details": "/api/v2/list/{list_id}",
-          "tasks": "/api/v2/team/{team_id}/task?include_closed=true&subtasks=true",
-          "archived_tasks": "/api/v2/team/{team_id}/task?archived=true&subtasks=true",
-          "users": "/api/v2/team/{team_id}",
-          "custom_fields": "/api/v2/list/{list_id}/field",
-          "tags": "/api/v2/space/{space_id}/tag",
-          "goals": "/api/v2/team/{team_id}/goal",
-          "time_entries": "/api/v2/team/{team_id}/time_entries",
-          "shared_hierarchy": "/api/v2/team/{team_id}/shared_hierarchy",
-          "task_templates": "/api/v2/team/{team_id}/task_template",
-          "task_comments": "/api/v2/task/{task_id}/comment",
-          "task_attachments": "/api/v2/task/{task_id}/attachment",
-          "view_tasks": "/api/v2/view/{view_id}/task"
-        },
-        "pagination": {
-          "type": "page_limit",
-          "paramPage": "page",
-          "paramLimit": "limit",
-          "defaultLimit": 100,
-          "firstPage": 0
-        }
-      },
-      "headers": {
-        "accept": "application/json",
-        "contentType": "application/json"
-      },
-      "agentInstructions": "Führe die Inventur auf Team-Ebene durch, um maximale Abdeckung zu erreichen. Beachte, dass die ClickUp-API Tasks in mehreren Listen mehrfach zurückgibt. Verlasse dich auf das Tool smart_discovery, welches eine ID-basierte Deduplizierung durchführt, um die reale Anzahl einzigartiger Tasks zu ermitteln. Falls bei 'archived_tasks' auf Team-Ebene 0 Ergebnisse zurückkommen, obwohl archivierte Tasks erwartet werden, führe Stichproben auf Listenebene ('/api/v2/list/{list_id}/task?archived=true&subtasks=true') für mindestens zwei verschiedene Listen durch, um die globale Abfrage zu validieren."
+    "endpoints": {
+      "teams": "/api/v2/team",
+      "spaces": "/api/v2/team/{team_id}/space",
+      "folders": "/api/v2/space/{space_id}/folder",
+      "lists_in_folders": "/api/v2/folder/{folder_id}/list",
+      "lists_in_spaces": "/api/v2/space/{space_id}/list",
+      "list_details": "/api/v2/list/{list_id}",
+      "tasks": "/api/v2/team/{team_id}/task?include_closed=true&subtasks=true",
+      "archived_tasks": "/api/v2/team/{team_id}/task?archived=true&subtasks=true",
+      "users": "/api/v2/team/{team_id}",
+      "custom_fields": "/api/v2/list/{list_id}/field",
+      "tags": "/api/v2/space/{space_id}/tag",
+      "goals": "/api/v2/team/{team_id}/goal",
+      "time_entries": "/api/v2/team/{team_id}/time_entries",
+      "shared_hierarchy": "/api/v2/team/{team_id}/shared_hierarchy",
+      "task_templates": "/api/v2/team/{team_id}/task_template",
+      "task_comments": "/api/v2/task/{task_id}/comment",
+      "task_attachments": "/api/v2/task/{task_id}/attachment",
+      "view_tasks": "/api/v2/view/{view_id}/task"
+    },
+    "pagination": {
+      "type": "page_limit",
+      "paramPage": "page",
+      "paramLimit": "limit",
+      "defaultLimit": 100,
+      "firstPage": 0
     }
-    
+  },
+  "headers": {
+    "accept": "application/json",
+    "contentType": "application/json"
+  },
+  "agentInstructions": "Führe die Inventur unter Berücksichtigung des identifizierten Scopes durch. Nutze bei der Abfrage von Aufgaben über die Team-Ebene ('/api/v2/team/{team_id}/task') zwingend den Parameter 'space_ids[]', falls eine 'space_id' in Phase 0 identifiziert wurde, um nur Daten aus diesem Space zu erfassen. Beachte, dass die ClickUp-API Tasks in mehreren Listen mehrfach zurückgibt. Verlasse dich auf das Tool smart_discovery, welches eine ID-basierte Deduplizierung durchführt, um die reale Anzahl einzigartiger Tasks zu ermitteln.",
+  "navigationGuide": {
+    "hierarchy": "Team -> Space -> Folder -> List -> Task",
+    "phase0_scope_identification": [
+      "1. Rufe '/api/v2/team' auf, um die 'team_id' (Team ID) zu erhalten.",
+      "2. Rufe '/api/v2/team/{team_id}/space' auf.",
+      "3. Falls 'sourceScope' angegeben ist, finde den Space mit diesem Namen und speichere seine 'id' als 'space_id' in deinem Scope-Report.",
+      "4. Falls kein Scope angegeben ist, cache alle gefundenen Space-IDs."
+    ],
+    "phase1_exploration_and_staging": [
+      "1. Rufe '/api/v2/space/{space_id}/folder' auf, um Folder-IDs zu erhalten.",
+      "2. Rufe '/api/v2/folder/{folder_id}/list' für jeden Folder auf.",
+      "3. Rufe '/api/v2/space/{space_id}/list' für listenlose Spaces auf.",
+      "4. Nutze die 'team_id' für globale Abfragen, aber hänge IMMER den Filter '&space_ids[]={space_id}' an, um die Ergebnisse auf deinen Scope zu begrenzen (z.B. '/api/v2/team/{team_id}/task?space_ids[]={space_id}')."
+    ]
+  }
+}

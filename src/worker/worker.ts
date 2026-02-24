@@ -548,25 +548,31 @@ async function processJob(job: any) {
         const SYSTEM_PROMPT = `
 Du bist eine Data Discovery Engine. Dein Ziel ist eine vollständige und wahrheitsgetreue Bestandsaufnahme der Systemstruktur und der Datenmengen.
 
+### PHASE 0: SCOPE ALIGNMENT (Identifizierung via API)
+- **ZIELE IDENTIFIZIEREN:** Falls in der Konfiguration (scopeConfig) ein Projektname (sourceScope) angegeben ist, musst du ZUERST die zugehörige ID (gid, id, uuid) über einen API-Call (z.B. /projects oder /workspaces) finden.
+- **ALLES ERFASSEN:** Falls KEIN Projektname angegeben ist, liste alle verfügbaren Container (Workspaces, Teams, Spaces) über die API auf und erfasse deren IDs.
+- **KEINE FAKE-IDS:** Nutze NIEMALS generische IDs wie '123456789', '23456789' oder '123'. Wenn du keine echte ID über die API findest, STOPPE und melde einen Fehler.
+- **ID-CACHING:** Speichere die verifizierten IDs intern ab. Du darfst für alle weiteren API-Aufrufe NUR noch diese über die API ermittelten IDs verwenden.
+
 ### PHASE 1: EXPLORATION (Tool use)
-- **VOLLSTÄNDIGE ZÄHLUNG:** Rufe 'smart_discovery' für jeden Endpunkt auf. Das Tool scannt automatisch alle Seiten und liefert dir den exakten 'totalCount'.
-- **STRIKTE VOLLSTÄNDIGKEIT:** Du MUSST jeden Endpunkt in 'discovery.endpoints' mindestens einmal prüfen.
-- **URL KONSTRUKTION:** Nutze IMMER die 'apiBaseUrl' aus dem Scheme als Basis für alle URLs. Konstruiere vollständige URLs.
-- **EFFIZIENZ:** Das Tool liefert dir im Feld 'sampleData' nur maximal 3 Beispieldatensätze zurück, um deinen Kontext sauber zu halten. Das reicht aus, um die Struktur zu verstehen.
-- **HALLUZINATIONS-VERBOT:** Erfinde NIEMALS Datenmengen (Counts). Nutze ausschließlich die 'totalCount' Rückgaben der Tool-Calls.
-- Antworte während der Exploration nur mit kurzen Status-Updates auf Deutsch.
+- **BEWEISPFLICHT:** Jeder 'count' im finalen Bericht MUSS auf einem realen 'totalCount' aus einem 'smart_discovery' Tool-Call basieren. Halluziniere NIEMALS Datenmengen.
+- **STRIKTE REGEL: KEINE PLATZHALTER.** Nutze NIEMALS URLs mit geschweiften Klammern. Ersetze diese durch die in Phase 0 identifizierten IDs.
+- **VOLLSTÄNDIGE ZÄHLUNG:** Rufe 'smart_discovery' für jeden Endpunkt auf. 
 
-### PHASE 2: FINAL REPORT (Keine Tool-Calls mehr)
-- Erstelle ein valides JSON-Objekt mit der Zusammenfassung.
-- Die 'entities[].count' Werte MÜSSEN exakt den 'totalCount' Rückgaben der Tool-Calls entsprechen.
-- Dokumentiere im 'coverage' Bereich EHRLICH, welche Endpunkte aufgerufen wurden.
+### PHASE 2: FINAL REPORT
+- Erstelle das JSON-Objekt NUR mit Daten, die du tatsächlich über Tools abgefragt hast.
+- Falls ein Endpunkt nicht abgefragt werden konnte, setze den Count auf 0 und dokumentiere dies unter 'missedEndpoints'.
 
-### KOMPLEXITÄTS-BEWERTUNG (1-10):
-Bewerte die Komplexität basierend auf der tatsächlichen Gesamtanzahl der Elemente:
-- **1-3 (Low):** < 1.000 Elemente.
-- **4-6 (Medium):** 1.000 - 10.000 Elemente.
-- **7-9 (High):** 10.000 - 100.000 Elemente.
-- **10 (Critical):** > 100.000 Elemente.
+### KOMPLEXITÄTS-BEWERTUNG:
+1. **Entitäts-Ebene:** 
+   - 0 Elemente -> IMMER "low"
+   - < 1.000 Elemente -> "low"
+   - 1.000 - 10.000 -> "medium"
+   - > 10.000 -> "high"
+2. **Gesamt-Score (complexityScore):** Gib einen Wert zwischen 1 und 10 an (NIEMALS höher!).
+   - 1-3 (Low): < 5.000 Elemente gesamt.
+   - 4-7 (Medium): 5.000 - 50.000 Elemente gesamt.
+   - 8-10 (High/Critical): > 50.000 Elemente gesamt.
 
 ### FINAL JSON FORMAT:
 {
@@ -576,14 +582,24 @@ Bewerte die Komplexität basierend auf der tatsächlichen Gesamtanzahl der Eleme
   "coverage": {
     "totalEndpoints": number,
     "checkedEndpoints": ["string"],
-    "missedEndpoints": [
-      { "name": "string", "reason": "string" }
-    ]
+    "missedEndpoints": [{ "name": "string", "reason": "string" }]
   },
   "estimatedDurationMinutes": number,
-  "complexityScore": number, // 1-10
+  "complexityScore": number,
   "executedCalls": ["string"],
-  "scope": { "identified": boolean, "name": string | null, "id": string | null, "type": string | null },
+  "scope": { 
+    "identified": boolean, 
+    "name": string | null, 
+    "id": string | null, 
+    "type": string | null,
+    "identified_ids": {
+       "workspace_id": "string",
+       "project_id": "string",
+       "space_id": "string",
+       "team_id": "string",
+       "other_ids": {}
+    }
+  },
   "summary": "Kurze deutsche Zusammenfassung.",
   "rawOutput": "Technischer Bericht."
 }
@@ -594,11 +610,11 @@ Bewerte die Komplexität basierend auf der tatsächlichen Gesamtanzahl der Eleme
             type: "function",
             function: {
               name: "smart_discovery",
-              description: "Führt eine intelligente Discovery-Anfrage durch, inklusive automatischer Pagination über alle Seiten um den exakten totalCount zu ermitteln.",
+              description: "Führt eine intelligente Discovery-Anfrage durch. WICHTIG: Die URL muss vollständig aufgelöst sein (KEINE geschweiften Klammern!).",
               parameters: {
                 type: "object",
                 properties: {
-                  url: { type: "string", description: "Die vollständige URL zum Endpunkt." },
+                  url: { type: "string", description: "Die VOLLSTÄNDIGE URL (inkl. Base URL und ECHTEN IDs statt Platzhaltern)." },
                   method: { type: "string", enum: ["GET", "POST"], description: "HTTP Methode." },
                   headers: { type: "object", description: "Header (Authentifizierung wird automatisch ergänzt)." },
                   body: { type: "object", description: "Optionaler Body." }
@@ -612,13 +628,18 @@ Bewerte die Komplexität basierend auf der tatsächlichen Gesamtanzahl der Eleme
         const userContext = `
 Source URL: ${sourceUrl}
 Credentials: ${connector.username ? 'Email provided' : 'No email'}, Token provided
-System Scheme: ${JSON.stringify(discoveryScheme, null, 2)}
 Scope Config: ${JSON.stringify(scopeConfig || {}, null, 2)}
+
+### NAVIGATION GUIDE (Strikte Befolgung erforderlich):
+${JSON.stringify(discoveryScheme?.navigationGuide || "Kein Guide vorhanden.", null, 2)}
+
+### SYSTEM SCHEME:
+${JSON.stringify(discoveryScheme, null, 2)}
 
 ### REQUIRED ENDPOINTS TO CHECK:
 ${endpointKeys.map(k => `- ${k}`).join('\n')}
 
-Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben, ob er geprüft wurde oder warum er übersprungen wurde.
+Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben, ob er geprüft wurde oder warum er übersprungen wurde. Nutze zwingend den Navigation Guide für die Identifizierung der IDs.
         `;
 
         let messages: any[] = [
@@ -666,42 +687,58 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
 
                      if (functionName === 'smart_discovery') {
                          const requestHeaders: Record<string, string> = { ...args.headers };
-                         const auth = discoveryScheme?.authentication;
-                         
-                         if (auth) {
-                             if (auth.type === 'bearer') {
-                                 const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : 'Bearer ';
-                                 requestHeaders['Authorization'] = `${prefix}${token}`;
-                             } else if (auth.type === 'header') {
-                                 const name = auth.headerName || 'Authorization';
-                                 const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : '';
-                                 requestHeaders[name] = `${prefix}${token}`;
-                             } else if (auth.type === 'basic') {
-                                 requestHeaders['Authorization'] = `Basic ${base64Credentials}`;
-                             }
-                         }
-                         
-                         if (discoveryScheme?.headers) {
-                             Object.assign(requestHeaders, discoveryScheme.headers);
-                         }
 
-                         try {
-                           toolResult = await smartDiscovery({
-                               url: args.url,
-                               method: args.method || 'GET',
-                               headers: requestHeaders,
-                               body: args.body,
-                               paginationConfig: discoveryScheme?.discovery?.pagination
-                           });
+                         // Validierung gegen Platzhalter und generische Dummy-IDs
+                         const isGenericId = (url: string) => {
+                            return /123456789/.test(url) || /23456789/.test(url) || /34567890/.test(url) || /987654321/.test(url);
+                         };
 
-                           if (toolResult.sampleData) {
-                               const sampleStr = JSON.stringify(toolResult.sampleData);
-                               if (sampleStr.length > 10000) {
-                                   toolResult.sampleData = sampleStr.slice(0, 10000) + '...[TRUNCATED]';
-                               }
-                           }
-                         } catch (toolErr: any) {
-                           toolResult = { error: toolErr.message };
+                         if (args.url && (args.url.includes('{') || args.url.includes('}'))) {
+                            toolResult = { 
+                                error: `URL enthält noch unaufgelöste Platzhalter: ${args.url}. Du MUSST diese Platzhalter durch reale IDs aus vorherigen API-Antworten ersetzen, bevor du das Tool aufrufst.` 
+                            };
+                         } else if (args.url && isGenericId(args.url)) {
+                            toolResult = {
+                                error: `URL enthält eine offensichtlich halluzinierte Dummy-ID: ${args.url}. Du darfst KEINE Fake-IDs wie '12345...' verwenden. Ermittle die echten IDs schrittweise über API-Abfragen in Phase 0 (z.B. indem du erst Workspaces/Teams auflistest).`
+                            };
+                         } else {
+                            const auth = discoveryScheme?.authentication;
+                            
+                            if (auth) {
+                                if (auth.type === 'bearer') {
+                                    const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : 'Bearer ';
+                                    requestHeaders['Authorization'] = `${prefix}${token}`;
+                                } else if (auth.type === 'header') {
+                                    const name = auth.headerName || 'Authorization';
+                                    const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : '';
+                                    requestHeaders[name] = `${prefix}${token}`;
+                                } else if (auth.type === 'basic') {
+                                    requestHeaders['Authorization'] = `Basic ${base64Credentials}`;
+                                }
+                            }
+                            
+                            if (discoveryScheme?.headers) {
+                                Object.assign(requestHeaders, discoveryScheme.headers);
+                            }
+
+                            try {
+                              toolResult = await smartDiscovery({
+                                  url: args.url,
+                                  method: args.method || 'GET',
+                                  headers: requestHeaders,
+                                  body: args.body,
+                                  paginationConfig: discoveryScheme?.discovery?.pagination
+                              });
+
+                              if (toolResult.sampleData) {
+                                  const sampleStr = JSON.stringify(toolResult.sampleData);
+                                  if (sampleStr.length > 10000) {
+                                      toolResult.sampleData = sampleStr.slice(0, 10000) + '...[TRUNCATED]';
+                                  }
+                              }
+                            } catch (toolErr: any) {
+                              toolResult = { error: toolErr.message };
+                            }
                          }
 
                      } else {
@@ -823,42 +860,58 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
 
                          if (functionName === 'smart_discovery') {
                              const requestHeaders: Record<string, string> = { ...args.headers };
-                             const auth = discoveryScheme?.authentication;
-                             
-                             if (auth) {
-                                 if (auth.type === 'bearer') {
-                                     const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : 'Bearer ';
-                                     requestHeaders['Authorization'] = `${prefix}${token}`;
-                                 } else if (auth.type === 'header') {
-                                     const name = auth.headerName || 'Authorization';
-                                     const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : '';
-                                     requestHeaders[name] = `${prefix}${token}`;
-                                 } else if (auth.type === 'basic') {
-                                     requestHeaders['Authorization'] = `Basic ${base64Credentials}`;
-                                 }
-                             }
-                             
-                             if (discoveryScheme?.headers) {
-                                 Object.assign(requestHeaders, discoveryScheme.headers);
-                             }
 
-                             try {
-                               toolResult = await smartDiscovery({
-                                   url: args.url,
-                                   method: args.method || 'GET',
-                                   headers: requestHeaders,
-                                   body: args.body,
-                                   paginationConfig: discoveryScheme?.discovery?.pagination
-                               });
+                             // Validierung gegen Platzhalter und generische Dummy-IDs
+                             const isGenericId = (url: string) => {
+                                return /123456789/.test(url) || /23456789/.test(url) || /34567890/.test(url) || /987654321/.test(url);
+                             };
 
-                               if (toolResult.sampleData) {
-                                   const sampleStr = JSON.stringify(toolResult.sampleData);
-                                   if (sampleStr.length > 10000) {
-                                       toolResult.sampleData = sampleStr.slice(0, 10000) + '...[TRUNCATED]';
-                                   }
-                               }
-                             } catch (toolErr: any) {
-                               toolResult = { error: toolErr.message };
+                             if (args.url && (args.url.includes('{') || args.url.includes('}'))) {
+                                toolResult = { 
+                                    error: `URL enthält noch unaufgelöste Platzhalter: ${args.url}. Du MUSST diese Platzhalter durch reale IDs aus vorherigen API-Antworten ersetzen, bevor du das Tool aufrufst.` 
+                                };
+                             } else if (args.url && isGenericId(args.url)) {
+                                toolResult = {
+                                    error: `URL enthält eine offensichtlich halluzinierte Dummy-ID: ${args.url}. Du darfst KEINE Fake-IDs wie '12345...' verwenden. Ermittle die echten IDs schrittweise über API-Abfragen in Phase 0 (z.B. indem du erst Workspaces/Teams auflistest).`
+                                };
+                             } else {
+                                const auth = discoveryScheme?.authentication;
+                                
+                                if (auth) {
+                                    if (auth.type === 'bearer') {
+                                        const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : 'Bearer ';
+                                        requestHeaders['Authorization'] = `${prefix}${token}`;
+                                    } else if (auth.type === 'header') {
+                                        const name = auth.headerName || 'Authorization';
+                                        const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : '';
+                                        requestHeaders[name] = `${prefix}${token}`;
+                                    } else if (auth.type === 'basic') {
+                                        requestHeaders['Authorization'] = `Basic ${base64Credentials}`;
+                                    }
+                                }
+                                
+                                if (discoveryScheme?.headers) {
+                                    Object.assign(requestHeaders, discoveryScheme.headers);
+                                }
+
+                                try {
+                                  toolResult = await smartDiscovery({
+                                      url: args.url,
+                                      method: args.method || 'GET',
+                                      headers: requestHeaders,
+                                      body: args.body,
+                                      paginationConfig: discoveryScheme?.discovery?.pagination
+                                  });
+
+                                  if (toolResult.sampleData) {
+                                      const sampleStr = JSON.stringify(toolResult.sampleData);
+                                      if (sampleStr.length > 10000) {
+                                          toolResult.sampleData = sampleStr.slice(0, 10000) + '...[TRUNCATED]';
+                                      }
+                                  }
+                                } catch (toolErr: any) {
+                                  toolResult = { error: toolErr.message };
+                                }
                              }
                          } else {
                              toolResult = { error: `Unknown tool: ${functionName}` };
@@ -1449,6 +1502,9 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
       const agentSystemPrompt = `
         Du bist ein Data Ingestion Agent für ${sourceSystem}. Deine Aufgabe ist es, Daten über die API zu sammeln und in Neo4j zu speichern.
         
+        ### NAVIGATION GUIDE (Strikte Befolgung erforderlich):
+        ${JSON.stringify(scheme?.navigationGuide || "Kein Guide vorhanden.", null, 2)}
+
         ZIELE: ${JSON.stringify(entities)}
         ENDPUNKTE: ${JSON.stringify(scheme?.discovery?.endpoints || {})}
         BASE_URL: ${effectiveApiUrl}
@@ -1456,15 +1512,14 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
         ANWEISUNGEN: ${scheme?.agentInstructions || 'Keine speziellen Anweisungen.'}
         
         REGELN:
-        1. Beginne beim Top-Level (Endpunkte OHNE Platzhalter wie /workspaces oder /me).
-        2. Nutze ECHTE IDs aus den vorherigen Tool-Antworten, um Platzhalter in URLs (z.B. {workspace_gid}) zu ersetzen.
-        3. **KEINE HALLUZINATIONEN:** Erfinde NIEMALS IDs (wie '12345' oder 'my-workspace'). Wenn du eine ID noch nicht hast, rufe zuerst den Parent-Endpunkt auf.
+        1. **NAVIGATION GUIDE:** Folge strikt dem oben stehenden Navigation Guide, um IDs zu ermitteln.
+        2. **KEINE PLATZHALTER:** Nutze NIEMALS URLs mit geschweiften Klammern. Ersetze diese durch reale IDs aus vorherigen Tool-Antworten.
+        3. **KEINE HALLUZINATIONEN:** Erfinde NIEMALS IDs (wie '12345'). Wenn du eine ID nicht hast, rufe zuerst den Parent-Endpunkt auf.
         4. Die URLs müssen IMMER mit der BASE_URL beginnen.
         5. Nutze das Tool 'fetch_and_ingest'. Es speichert die Daten und gibt dir eine Liste der gefundenen IDs zurück.
-        6. **VOLLSTÄNDIGKEIT:** Versuche alle ZIELE zu erreichen. Wenn ein Ziel (z.B. 'portfolios') in diesem Account nicht existiert (404 oder leer), dokumentiere dies und mache mit dem nächsten Ziel weiter.
-        7. **SCOPE:** Falls ein SCOPE (z.B. 'sourceScope') definiert ist, beschränke dich auf dieses Projekt/diesen Bereich, sofern möglich.
-        8. Beende den Prozess mit einer kurzen Zusammenfassung als Text, wenn du alle erreichbaren Daten gesammelt hast.
-        9. **METHODEN:** Beachte die HTTP-Methode für jeden Endpunkt. Wenn eine Suche (z.B. Notion search) POST erfordert, gib dies im Tool-Call an. Standard ist GET.
+        6. **VOLLSTÄNDIGKEIT:** Versuche alle ZIELE zu erreichen.
+        7. **SCOPE:** Falls ein SCOPE definiert ist, beschränke dich darauf.
+        8. **METHODEN:** Beachte die HTTP-Methode (GET/POST).
       `;
 
       let messages: any[] = [{ role: "system", content: agentSystemPrompt }];

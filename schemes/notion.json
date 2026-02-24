@@ -36,5 +36,18 @@
     "Accept": "application/json",
     "Content-Type": "application/json"
   },
-  "agentInstructions": "1. INITIAL DISCOVERY: Nutze zwingend den 'search' Endpunkt per POST mit einem leeren Body {}, um alle freigegebenen Seiten und Datenbanken zu finden. WICHTIG: Falls 'search' keine Ergebnisse liefert, weise den Nutzer darauf hin, dass die Integration in Notion manuell über '... -> Add connections' zur Seite hinzugefügt werden muss. 2. POST METHODE: 'search' und 'database_query' unterstützen nur POST. Sende immer mindestens einen leeren Body ({}), falls keine Filter aktiv sind. 3. HIERARCHIE: 'users' und 'search' sind Top-Level. Nutze die IDs aus 'search', um 'database_query' (für Datenbank-Inhalte) oder 'block_children' (für Seiten-Details) aufzurufen. 4. PAGINATION: Notion nutzt Cursors. Der Request-Parameter ist 'start_cursor', der Response-Key ist 'next_cursor'. Überprüfe im Code, ob smart_discovery diesen Response-Key korrekt ausliest."
+  "agentInstructions": "1. INITIAL DISCOVERY: Nutze zwingend den 'search' Endpunkt per POST mit einem leeren Body {}, um alle freigegebenen Seiten und Datenbanken zu finden. WICHTIG: Falls 'search' keine Ergebnisse liefert, weise den Nutzer darauf hin, dass die Integration in Notion manuell über '... -> Add connections' zur Seite hinzugefügt werden muss. 2. POST METHODE: 'search' und 'database_query' unterstützen nur POST. Sende immer mindestens einen leeren Body ({}), falls keine Filter aktiv sind. 3. HIERARCHIE: 'users' und 'search' sind Top-Level. Nutze die IDs aus 'search', um 'database_query' (für Datenbank-Inhalte) oder 'block_children' (für Seiten-Details) aufzurufen. 4. PAGINATION: Notion nutzt Cursors. Der Request-Parameter ist 'start_cursor', der Response-Key ist 'next_cursor'.",
+  "navigationGuide": {
+    "hierarchy": "Search -> Workspace Item (Page/Database) -> Content (Blocks/Query)",
+    "phase0_scope_identification": [
+      "1. Rufe '/v1/search' per POST mit Body {} auf.",
+      "2. Identifiziere die 'id' der Seite oder Datenbank, die zum 'sourceScope' passt.",
+      "3. Speichere die 'id' als 'item_id' und merke dir den 'object' Typ (page oder database)."
+    ],
+    "phase1_exploration_and_staging": [
+      "1. Falls Typ 'database': Nutze '/v1/databases/{item_id}/query' per POST mit Body {}, um Einträge zu finden.",
+      "2. Falls Typ 'page': Nutze '/v1/blocks/{item_id}/children', um die Inhalte (Blöcke) zu laden.",
+      "3. Rufe '/v1/users' auf, um die beteiligten Personen zu identifizieren."
+    ]
+  }
 }
