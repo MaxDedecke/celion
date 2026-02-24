@@ -1,105 +1,67 @@
-# Welcome to your Lovable project
+# Celion
 
-## Project info
+Celion ist eine hochperformante, KI-gestützte Migrations-Plattform für den Datentransfer zwischen verschiedenen SaaS-Ökosystemen (z. B. ClickUp, Notion, Asana, Jira). Durch den Einsatz von Graphen-Datenbanken und Large Language Models (LLMs) ermöglicht Celion nicht nur den reinen Transfer, sondern auch die intelligente Veredelung von Daten während des Prozesses.
 
-**URL**: https://lovable.dev/projects/5af5744c-6888-447f-8811-5f10e4549e5e
+## 🚀 Kern-Features
 
-## How can I edit this code?
+- **KI-Driven Data Enhancement:** Automatische Korrektur von Rechtschreibung, Tonalitäts-Anpassung, Zusammenfassungen und PII-Redaktion während der Migration.
+- **Graph-basierte Transformation:** Nutzung von Neo4j als Intermediate Store, um komplexe Relationen (Parent-Child, Verknüpfungen) systemübergreifend abzubilden.
+- **Smart Transfer Recipes:** Dynamische Generierung von API-Transfer-Rezepten durch LLMs, um Zielsystem-spezifische Anforderungen (wie das Block-Modell von Notion) präzise zu erfüllen.
+- **Interaktiver Migrations-Agent:** Ein Chat-basierter Workflow führt den Nutzer durch alle Phasen: System-Detection, Auth-Validierung, Mapping und Transfer.
+- **Surgical Updates:** Minimale API-Last durch punktuelle Transformationen und effiziente Batch-Verarbeitung.
 
-There are several ways of editing your application.
+## 🏗 Architektur
 
-**Use Lovable**
+Celion besteht aus vier Hauptkomponenten:
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/5af5744c-6888-447f-8811-5f10e4549e5e) and start prompting.
+1.  **Frontend (React + Vite):** Eine moderne Single-Page-Application mit Shadcn UI für die Verwaltung von Projekten, Datenquellen und den interaktiven Migrations-Workflow.
+2.  **Backend (FastAPI / Python):** Das zentrale API-Gateway für die Orchestrierung der Migrationen, Benutzerverwaltung und Anbindung an PostgreSQL.
+3.  **Worker (Node.js + tsx):** Ein dedizierter Background-Worker für rechenintensive Aufgaben wie Datenabruf, KI-Transformationen und den finalen API-Transfer.
+4.  **Datenhaltung:**
+    *   **PostgreSQL:** Persistenz für Metadaten, Jobs und Migrations-Konfigurationen.
+    *   **Neo4j:** Graph-Datenbank für die Modellierung und Veredelung der zu migrierenden Entitäten.
 
-Changes made via Lovable will be committed automatically to this repo.
+## 🛠 Tech Stack
 
-**Use your preferred IDE**
+*   **Frontend:** React, TypeScript, Tailwind CSS, Lucide Icons, Shadcn UI
+*   **Backend:** Python 3.9+, FastAPI, SQLAlchemy
+*   **Worker:** Node.js, TypeScript, Neo4j-Driver, OpenAI API
+*   **Infrastructure:** Docker, Docker Compose, PostgreSQL, Neo4j, RabbitMQ
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+## 🚥 Quick Start
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+Stelle sicher, dass Docker und Docker Compose auf deinem System installiert sind.
 
-Follow these steps:
+1.  **Repository klonen:**
+    ```bash
+    git clone https://github.com/your-repo/celion.git
+    cd celion
+    ```
 
-```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+2.  **Umgebungsvariablen konfigurieren:**
+    Erstelle eine `.env` Datei basierend auf der `.env.example` und trage deinen `OPENAI_API_KEY` sowie die Datenbank-Credentials ein.
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+3.  **Anwendung starten:**
+    ```bash
+    docker compose up --build
+    ```
 
-# Step 3: Install the necessary dependencies.
-npm i
+Die Anwendung ist anschließend unter `http://localhost:8080` (Frontend) und `http://localhost:8000` (Backend API) erreichbar.
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
-npm run dev
-```
+## 📋 Migrations-Workflow
 
-**Edit a file directly in GitHub**
+1.  **System Detection:** Celion erkennt Quell- und Zielsysteme automatisch.
+2.  **Authentication:** Validierung der API-Verbindungen.
+3.  **Inventory:** Erfassung aller migrierbaren Objekte (Tasks, Spaces, Pages etc.).
+4.  **Mapping:** Definition der Feld-Zuordnungen.
+5.  **Quality Enhancement:** KI-gestützte Veredelung der Daten in Neo4j.
+6.  **Transfer:** Sicherer Export in das Zielsystem mittels dynamischer Rezepte.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## 🛡 Sicherheitsmechanismen
 
-**Use GitHub Codespaces**
+*   **Retry-Limit:** Automatischer Abbruch nach 3 fehlgeschlagenen Transfer-Versuchen pro Objekt, um Infinite Loops zu vermeiden.
+*   **Error Tracking:** Detaillierte Fehlerspeicherung direkt am betroffenen Datenknoten in Neo4j.
+*   **PII Redaction:** Optionale Anonymisierung sensibler Daten vor dem Export.
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
-
-## What technologies are used for this project?
-
-This project is built with:
-
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
-
-## Lokale Backend-API für Migration-Schritt 2
-
-Um die FastAPI-Bridge für Credential-Checks lokal zu nutzen, installiere die Python-Abhängigkeiten und starte den Server wie folgt:
-
-```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install -r requirements.txt
-uvicorn main:app --reload --host 127.0.0.1 --port 8000
-```
-
-Der Vite-Dev-Server leitet Requests an `/api/*` automatisch an `http://127.0.0.1:8000` weiter. Damit kann Schritt 2 der Migration die Zielsystem-API mit den angegebenen Credentials direkt über `/api/probe` aufrufen.
-
-## How can I deploy this project?
-
-Simply open [Lovable](https://lovable.dev/projects/5af5744c-6888-447f-8811-5f10e4549e5e) and click on Share -> Publish.
-
-## Can I connect a custom domain to my Lovable project?
-
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
-
-## OpenAI Agent Konfiguration
-
-Um den Celion System Detection Agent über die OpenAI Developer API ausführen zu können, werden folgende Umgebungsvariablen benötigt:
-
-```bash
-# OpenAI API Key (Pflicht)
-VITE_OPENAI_API_KEY="sk-..."
-
-# Optional: eigenes Projekt oder Workspace
-VITE_OPENAI_PROJECT_ID="proj_..."
-
-# Optional: alternatives API- oder Modell-Setup
-VITE_OPENAI_API_BASE_URL="https://api.openai.com/v1"
-VITE_OPENAI_SYSTEM_DETECTION_MODEL="gpt-4.1-mini"
-VITE_OPENAI_AUTH_FLOW_MODEL="gpt-4.1"
-```
-
-Trage die Werte in deiner `.env` oder im Deployment-Setup ein. Der Start-Button der Migration erstellt anschließend automatisch einen temporären OpenAI-Agenten, führt ihn aus und zeigt das Ergebnis direkt in der Celion-Oberfläche an.
+---
+© 2026 Celion Migration Tools.
