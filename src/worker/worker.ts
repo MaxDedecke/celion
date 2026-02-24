@@ -1432,10 +1432,16 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
           }
 
           try {
+              console.log(`[Worker] Performing rate-limit probe to: ${probeUrl}`);
               const probeRes = await fetch(probeUrl, { headers });
               const resHeaders: any = {};
               probeRes.headers.forEach((v, k) => { resHeaders[k] = v; });
               const resBody = await probeRes.text();
+              
+              console.log(`[Worker] Probe response headers:`, JSON.stringify(resHeaders));
+
+              // Check if we have common rate-limit headers
+              const hasRateLimitHeaders = Object.keys(resHeaders).some(h => h.toLowerCase().includes('ratelimit') || h.toLowerCase().includes('retry-after'));
 
               // LLM Analysis for Rate Limits
               const calibrationPrompt = `
@@ -1464,7 +1470,9 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
                 phase: "Rate-Limit Calibration",
                 delay: rateLimitResult.delay,
                 batch_size: rateLimitResult.batch_size,
-                summary: `Rate-Limits erfolgreich kalibriert: ${rateLimitResult.delay}s Verzögerung, Batch-Größe ${rateLimitResult.batch_size}.`,
+                summary: hasRateLimitHeaders 
+                    ? `Rate-Limits basierend auf API-Headern kalibriert: ${rateLimitResult.delay}s Verzögerung, Batch-Größe ${rateLimitResult.batch_size}.`
+                    : `Keine Rate-Limit Header gefunden. Nutze geschätzte Sicherheits-Werte: ${rateLimitResult.delay}s Verzögerung, Batch-Größe ${rateLimitResult.batch_size}.`,
                 rawOutput: JSON.stringify(rateLimitResult)
               };
               await writeChatMessage(migrationId, 'assistant', JSON.stringify(frontendResult), currentStepNumber);
