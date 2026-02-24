@@ -58,5 +58,13 @@
       "2. Nutze die 'project_id', um '/api/1.0/projects/{project_id}/tasks' für die Tasks abzufragen.",
       "3. Für Details eines Tasks (gid) nutze '/api/1.0/tasks/{task_id}'."
     ]
+  },
+  "exportInstructions": {
+    "sequence": [
+      "project",
+      "section",
+      "task"
+    ],
+    "logic": "1. Erstelle zuerst das Projekt im Ziel-Workspace über 'POST /api/1.0/projects'. 2. Nutze die neue 'project_gid', um Sektionen über 'POST /api/1.0/projects/{project_id}/sections' zu erstellen. 3. Erstelle Tasks über 'POST /api/1.0/tasks' und ordne sie über das 'projects' Array oder das 'memberships' Objekt der richtigen Sektion zu. 4. Speichere jede neu erstellte GID zwingend als 'target_id' im Graphen über das entsprechende Tool."
   }
 }

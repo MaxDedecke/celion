@@ -62,5 +62,14 @@
       "3. Rufe '/api/v2/space/{space_id}/list' für listenlose Spaces auf.",
       "4. Nutze die 'team_id' für globale Abfragen, aber hänge IMMER den Filter '&space_ids[]={space_id}' an, um die Ergebnisse auf deinen Scope zu begrenzen (z.B. '/api/v2/team/{team_id}/task?space_ids[]={space_id}')."
     ]
+  },
+  "exportInstructions": {
+    "sequence": [
+      "space",
+      "folder",
+      "list",
+      "task"
+    ],
+    "logic": "1. Erstelle den Space im Team über 'POST /api/v2/team/{team_id}/space'. 2. Erstelle Folder innerhalb des Spaces über 'POST /api/v2/space/{space_id}/folder'. 3. Erstelle Listen innerhalb der Folder über 'POST /api/v2/folder/{folder_id}/list' oder direkt im Space über 'POST /api/v2/space/{space_id}/list'. 4. Erstelle Tasks in den Listen über 'POST /api/v2/list/{list_id}/task'. WICHTIG: Nutze die 'id' der neu erstellten Parent-Container aus dem Graphen für die API-Aufrufe der Kinder."
   }
 }

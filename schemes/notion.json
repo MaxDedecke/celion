@@ -36,7 +36,7 @@
     "Accept": "application/json",
     "Content-Type": "application/json"
   },
-  "agentInstructions": "1. INITIAL DISCOVERY: Nutze zwingend den 'search' Endpunkt per POST mit einem leeren Body {}, um alle freigegebenen Seiten und Datenbanken zu finden. WICHTIG: Falls 'search' keine Ergebnisse liefert, weise den Nutzer darauf hin, dass die Integration in Notion manuell über '... -> Add connections' zur Seite hinzugefügt werden muss. 2. POST METHODE: 'search' und 'database_query' unterstützen nur POST. Sende immer mindestens einen leeren Body ({}), falls keine Filter aktiv sind. 3. HIERARCHIE: 'users' und 'search' sind Top-Level. Nutze die IDs aus 'search', um 'database_query' (für Datenbank-Inhalte) oder 'block_children' (für Seiten-Details) aufzurufen. 4. PAGINATION: Notion nutzt Cursors. Der Request-Parameter ist 'start_cursor', der Response-Key ist 'next_cursor'.",
+  "agentInstructions": "1. INITIAL DISCOVERY: Nutze zwingend den 'search' Endpunkt per POST mit einem leeren Body {}, um alle freigegebenen Seiten und Datenbanken zu finden. WICHTIG: Falls 'search' keine Ergebnisse liefert, weise den Nutzer darauf hin, dass die Integration in Notion manuell über '... -> Add connections' zur Seite hinzugefügt werden muss. 2. POST METHODE: 'search' and 'database_query' unterstützen nur POST. Sende immer mindestens einen leeren Body ({}), falls keine Filter aktiv sind. 3. HIERARCHIE: 'users' and 'search' sind Top-Level. Nutze die IDs aus 'search', um 'database_query' (für Datenbank-Inhalte) oder 'block_children' (für Seiten-Details) aufzurufen. 4. PAGINATION: Notion nutzt Cursors. Der Request-Parameter ist 'start_cursor', der Response-Key ist 'next_cursor'.",
   "navigationGuide": {
     "hierarchy": "Search -> Workspace Item (Page/Database) -> Content (Blocks/Query)",
     "phase0_scope_identification": [
@@ -49,5 +49,13 @@
       "2. Falls Typ 'page': Nutze '/v1/blocks/{item_id}/children', um die Inhalte (Blöcke) zu laden.",
       "3. Rufe '/v1/users' auf, um die beteiligten Personen zu identifizieren."
     ]
+  },
+  "exportInstructions": {
+    "sequence": [
+      "page",
+      "database",
+      "block"
+    ],
+    "logic": "1. Erstelle die Hauptseite (Parent) über 'POST /v1/pages'. 2. Erstelle Datenbanken oder Unterseiten innerhalb dieser Seite. 3. Inhalte werden als 'children' Blöcke über 'PATCH /v1/blocks/{block_id}/children' hinzugefügt. Achte STRIKT auf das spezifische Block-JSON-Format von Notion (z.B. { 'type': 'paragraph', 'paragraph': { 'rich_text': [...] } })."
   }
 }
