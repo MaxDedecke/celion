@@ -1330,7 +1330,8 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
                   args.target.url,
                   JSON.stringify({
                     sourceScope: args.source.scope,
-                    targetName: args.target.scope
+                    targetName: args.target.scope,
+                    targetContainerType: args.target.containerType
                   }),
                   migrationId
                 ]
@@ -2269,16 +2270,20 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
       console.log(`[Worker] Running Data Transfer for migration ${migrationId}`);
       
       // Phase 0: Target Container Preparation
-      const { rows: migRowsScope } = await pool.query('SELECT source_system, target_system, scope_config FROM migrations WHERE id = $1', [migrationId]);
+      const { rows: migRowsScope } = await pool.query('SELECT name, source_system, target_system, scope_config FROM migrations WHERE id = $1', [migrationId]);
+      const migrationName = migRowsScope[0]?.name;
       const sourceSystem = migRowsScope[0]?.source_system;
       const targetSystem = migRowsScope[0]?.target_system;
       const scopeConfig = migRowsScope[0]?.scope_config || {};
+      
       const sourceScopeName = scopeConfig.sourceScopeName;
-
+      // Hierarchie: Expliziter Name > Quell-Projekt-Name > Migrations-Name
+      const preferredTargetName = scopeConfig.targetName || sourceScopeName || migrationName || "New Migration Project";
+      
       const { rows: step4Rows } = await pool.query('SELECT target_scope_id FROM step_4_results WHERE migration_id = $1', [migrationId]);
       let targetScopeId = step4Rows[0]?.target_scope_id;
 
-      if (!targetScopeId && sourceScopeName) {
+      if (!targetScopeId) {
           await writeChatMessage(migrationId, 'assistant', `Phase 0: Bereite Ziel-Container in **${targetSystem}** vor...`, currentStepNumber);
           
           const { rows: targetConnectorRows } = await pool.query('SELECT api_url, api_key, username, auth_type FROM connectors WHERE migration_id = $1 AND connector_type = $2', [migrationId, 'out']);
@@ -2289,14 +2294,21 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
               const { apiKey, baseUrl, projectId: openAiProjectId } = resolveOpenAiConfig();
               const openAiHeaders = buildOpenAiHeaders(apiKey, openAiProjectId);
               
+              // Bestimme Container-Typ (Nutzerwahl oder System-Standard)
+              const targetContainerType = scopeConfig.targetContainerType || targetScheme.exportInstructions?.preferredContainerType || "project";
+
               const containerPrompt = `
-Du bist ein Cloud-Integrations-Experte. Erstelle den API-Call, um einen neuen Haupt-Container (z.B. Projekt, Page, Space) im System **${targetSystem}** zu erstellen.
+Du bist ein Cloud-Integrations-Experte. Erstelle den API-Call, um einen neuen Haupt-Container im System **${targetSystem}** zu erstellen.
 
 ### ZIEL-SYSTEM INFOS:
 ${JSON.stringify(targetScheme, null, 2)}
 
+### ZIEL-CONNECTOR URL (enthält ggf. IDs wie Team-ID):
+${targetConnector.api_url}
+
 ### AUFGABE:
-Erstelle ein Projekt/Container mit dem Namen: **"${sourceScopeName}"**.
+Erstelle einen Container vom Typ **"${targetContainerType}"** mit dem Namen: **"${preferredTargetName}"**.
+WICHTIG: Falls du eine Team-ID oder Workspace-ID aus der Connector-URL extrahieren kannst, nutze diese für den API-Call (z.B. in der URL).
 
 ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
 {
@@ -2355,9 +2367,9 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                                      target_scope_id = EXCLUDED.target_scope_id,
                                      target_scope_name = EXCLUDED.target_scope_name,
                                      target_status = EXCLUDED.target_status`,
-                                  [migrationId, targetScopeId, sourceScopeName]
+                                  [migrationId, targetScopeId, preferredTargetName]
                               );
-                              await writeChatMessage(migrationId, 'assistant', `Ziel-Container **"${sourceScopeName}"** erfolgreich erstellt (ID: ${targetScopeId}).`, currentStepNumber);
+                              await writeChatMessage(migrationId, 'assistant', `Ziel-Container **"${preferredTargetName}"** (${targetContainerType}) erfolgreich erstellt (ID: ${targetScopeId}).`, currentStepNumber);
                           }
                       } else {
                           const errText = await apiRes.text();
@@ -2661,7 +2673,12 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                           const nodeRes = await session.run(
                               `MATCH (n:\`${sourceSystem}\`) 
                                WHERE n.migration_id = $migrationId 
-                               AND (n.entity_type = $sourceObjectType OR n.entity_type = $sourceObjectType + "s" OR n.entity_type = $sourceObjectType + "es")
+                               AND (
+                                 toLower(n.entity_type) = toLower($sourceObjectType) OR 
+                                 toLower(n.entity_type) = toLower($sourceObjectType) + "s" OR 
+                                 toLower(n.entity_type) = toLower($sourceObjectType) + "es" OR
+                                 toLower(n.entity_type) CONTAINS toLower($sourceObjectType)
+                               )
                                AND n.target_id IS NULL
                                AND (n.transfer_attempts IS NULL OR n.transfer_attempts < 3)
                                OPTIONAL MATCH (n)-[r]->(p) 

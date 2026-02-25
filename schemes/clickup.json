@@ -64,6 +64,11 @@
     ]
   },
   "exportInstructions": {
+    "preferredContainerType": "space",
+    "availableContainerTypes": [
+      { "id": "team", "name": "Neuer Workspace (Team)" },
+      { "id": "space", "name": "Neuer Space in existierendem Workspace" }
+    ],
     "sequence": [
       "space",
       "folder",

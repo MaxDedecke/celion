@@ -36,12 +36,22 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
   const handleNextWorkflowStep = useCallback(async (explicitStep?: number) => {
     const validatedStep = typeof explicitStep === 'number' ? explicitStep : undefined;
     
+    // Allow proceeding if the current step is completed and we're clicking 'continue'
     if (isStepRunning && !validatedStep) return;
 
     try {
-      const stepToRun = validatedStep || (project.step_status === 'failed' 
-        ? (project.current_step || 1) 
-        : (project.current_step || 0) + 1);
+      let stepToRun = validatedStep;
+      
+      if (!stepToRun) {
+        if (project.step_status === 'failed') {
+          stepToRun = project.current_step || 1;
+        } else if (project.step_status === 'completed' || project.step_status === 'idle') {
+          stepToRun = (project.current_step || 0) + 1;
+        } else {
+          // Fallback
+          stepToRun = (project.current_step || 0) + 1;
+        }
+      }
 
       if (stepToRun > 10) {
         toast.info("Migration bereits abgeschlossen.");

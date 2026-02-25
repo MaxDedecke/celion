@@ -135,7 +135,7 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
         const inventoryResults = results?.step_3 || [];
 
         if (sSpecs?.objects) {
-          setSourceEntities(sSpecs.objects.map((obj: any) => {
+          const specEntities = sSpecs.objects.map((obj: any) => {
             const inventoryItem = inventoryResults.find((r: any) => r.entity_name === obj.key || r.entity_name === obj.displayName);
             
             // Filter ID fields
@@ -156,7 +156,19 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
                 type: f.type || "text"
               }))
             };
-          }));
+          });
+
+          // Add inventory items that are NOT in specs as "Virtual Entities"
+          const virtualEntities = inventoryResults
+            .filter((inv: any) => inv.count > 0 && !specEntities.some(s => s.id === inv.entity_name || s.name === inv.entity_name))
+            .map((inv: any) => ({
+                id: inv.entity_name,
+                name: inv.entity_name,
+                isIgnored: inv.is_ignored || false,
+                fields: [] // Will need to be mapped to a technical object's fields anyway
+            }));
+
+          setSourceEntities([...specEntities, ...virtualEntities]);
         }
 
         if (tSpecs?.objects) {

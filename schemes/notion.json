@@ -51,6 +51,10 @@
     ]
   },
   "exportInstructions": {
+    "preferredContainerType": "page",
+    "availableContainerTypes": [
+      { "id": "page", "name": "Neue Hauptseite (Page)" }
+    ],
     "sequence": [
       "page",
       "database",
