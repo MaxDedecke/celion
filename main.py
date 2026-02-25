@@ -1202,7 +1202,11 @@ async def create_mapping_chat_message(id: str, payload: CreateMappingChatMessage
 
             # Source Entities from Step 3
             cur.execute("SELECT entity_name as name, count FROM public.step_3_results WHERE migration_id = %s", (id,))
-            source_entities = [dict(r) for r in cur.fetchall()]
+            user_related_terms = ['user', 'member', 'participant', 'assignee', 'owner', 'creator', 'author', 'collaborator']
+            source_entities = [
+                dict(r) for r in cur.fetchall() 
+                if r['count'] > 0 and not any(term in r['name'].lower() for term in user_related_terms)
+            ]
             
             # Target Entities (Try Step 4 writable_entities or fallback)
             cur.execute("SELECT writable_entities FROM public.step_4_results WHERE migration_id = %s", (id,))

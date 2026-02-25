@@ -103,7 +103,15 @@ async function saveStep3Result(migrationId: string, result: any) {
     await pool.query('UPDATE public.migrations SET complexity_score = $1 WHERE id = $2', [result.complexityScore, migrationId]);
   }
 
-  // 2. Save entities (Inventory)
+  // 2. Save identified scope name if available
+  if (result.scope && result.scope.name) {
+    await pool.query(
+      "UPDATE public.migrations SET scope_config = jsonb_set(COALESCE(scope_config, '{}'::jsonb), '{sourceScopeName}', to_jsonb($1::text)) WHERE id = $2",
+      [result.scope.name, migrationId]
+    );
+  }
+
+  // 3. Save entities (Inventory)
   if (result.entities && Array.isArray(result.entities)) {
     for (const entity of result.entities) {
       await pool.query(
@@ -1485,7 +1493,14 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
       await writeChatMessage(migrationId, 'assistant', 'Phase 2: Programmatischer Datenimport in Neo4j startet...', currentStepNumber);
       
       const { rows: step3Rows } = await pool.query('SELECT entity_name, count FROM step_3_results WHERE migration_id = $1', [migrationId]);
-      const entities = step3Rows.map(r => ({ name: r.entity_name, count: r.count }));
+      const userRelatedTerms = ['user', 'member', 'participant', 'assignee', 'owner', 'creator', 'author', 'collaborator'];
+      const entities = step3Rows
+        .map(r => ({ name: r.entity_name, count: r.count }))
+        .filter(ent => {
+          const nameLower = ent.name.toLowerCase();
+          const isUserRelated = userRelatedTerms.some(term => nameLower.includes(term));
+          return ent.count > 0 && !isUserRelated;
+        });
       
       let totalImported = 0;
       let validationErrors = 0;
@@ -1950,7 +1965,14 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
       if (!sSys6 || !tSys6) throw new Error('Systemkonfiguration unvollständig.');
 
       const { rows: s3Rows6 } = await pool.query('SELECT entity_name, count, is_ignored FROM step_3_results WHERE migration_id = $1', [migrationId]);
-      const sEnts6 = s3Rows6.map(r => ({ name: r.entity_name, count: r.count, isIgnored: r.is_ignored }));
+      const userRelatedTerms = ['user', 'member', 'participant', 'assignee', 'owner', 'creator', 'author', 'collaborator'];
+      const sEnts6 = s3Rows6
+        .map(r => ({ name: r.entity_name, count: r.count, isIgnored: r.is_ignored }))
+        .filter(ent => {
+          const nameLower = ent.name.toLowerCase();
+          const isUserRelated = userRelatedTerms.some(term => nameLower.includes(term));
+          return ent.count > 0 && !isUserRelated;
+        });
 
       // Fetch Existing Mapping Rules
       const { rows: ruleRows6 } = await pool.query('SELECT * FROM public.mapping_rules WHERE migration_id = $1', [migrationId]);
@@ -2202,17 +2224,37 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
 
         await finishClientEnhance.query('COMMIT');
 
+        // Fetch source scope name for the confirmation message
+        const { rows: scopeNameRows } = await finishClientEnhance.query('SELECT scope_config FROM migrations WHERE id = $1', [migrationId]);
+        const sourceScopeName = scopeNameRows[0]?.scope_config?.sourceScopeName || "Projekt";
+        
         const nextStepIndex = currentStepNumber;
         if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
             const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
-            const actionContent = JSON.stringify({
-                type: "action",
-                actions: [
-                  { action: "continue", label: `Weiter zu Schritt ${nextStepIndex + 1} ${nextStep.title}`, variant: "primary" },
-                  { action: "retry", label: `Schritt ${currentStepNumber} wiederholen`, variant: "outline", stepNumber: currentStepNumber }
-                ]
-            });
-            await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
+            
+            // Special confirmation for Step 8
+            if (nextStep.id === "data-transfer") {
+              const confirmMsg = `Alles ist bereit für den Datentransfer. Ich werde im Zielsystem **${tSys7}** einen neuen Bereich namens **"${sourceScopeName}"** anlegen und alle Daten dorthin übertragen. Sollen wir starten?`;
+              await writeChatMessage(migrationId, 'assistant', confirmMsg, currentStepNumber);
+              
+              const actionContent = JSON.stringify({
+                  type: "action",
+                  actions: [
+                    { action: "continue", label: "Ja, Transfer starten", variant: "primary" },
+                    { action: "retry", label: "Qualitäts-Check wiederholen", variant: "outline", stepNumber: currentStepNumber }
+                  ]
+              });
+              await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
+            } else {
+              const actionContent = JSON.stringify({
+                  type: "action",
+                  actions: [
+                    { action: "continue", label: `Weiter zu Schritt ${nextStepIndex + 1} ${nextStep.title}`, variant: "primary" },
+                    { action: "retry", label: `Schritt ${currentStepNumber} wiederholen`, variant: "outline", stepNumber: currentStepNumber }
+                  ]
+              });
+              await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
+            }
         }
         await logActivity(migrationId, 'success', 'Quality Enhancement abgeschlossen.');
       } catch (e) {
@@ -2225,13 +2267,113 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
 
     } else if (agentName === 'runDataTransfer') {
       console.log(`[Worker] Running Data Transfer for migration ${migrationId}`);
-      await writeChatMessage(migrationId, 'assistant', 'Schritt 8: Datentransfer gestartet. Phase 1: Datenveredelung in Neo4j...', currentStepNumber);
-
-      // 1. Fetch migration details
-      const { rows: migRows8 } = await pool.query('SELECT source_system, target_system FROM migrations WHERE id = $1', [migrationId]);
-      const sourceSystem = migRows8[0]?.source_system;
-      const targetSystem = migRows8[0]?.target_system;
       
+      // Phase 0: Target Container Preparation
+      const { rows: migRowsScope } = await pool.query('SELECT source_system, target_system, scope_config FROM migrations WHERE id = $1', [migrationId]);
+      const sourceSystem = migRowsScope[0]?.source_system;
+      const targetSystem = migRowsScope[0]?.target_system;
+      const scopeConfig = migRowsScope[0]?.scope_config || {};
+      const sourceScopeName = scopeConfig.sourceScopeName;
+
+      const { rows: step4Rows } = await pool.query('SELECT target_scope_id FROM step_4_results WHERE migration_id = $1', [migrationId]);
+      let targetScopeId = step4Rows[0]?.target_scope_id;
+
+      if (!targetScopeId && sourceScopeName) {
+          await writeChatMessage(migrationId, 'assistant', `Phase 0: Bereite Ziel-Container in **${targetSystem}** vor...`, currentStepNumber);
+          
+          const { rows: targetConnectorRows } = await pool.query('SELECT api_url, api_key, username, auth_type FROM connectors WHERE migration_id = $1 AND connector_type = $2', [migrationId, 'out']);
+          const targetConnector = targetConnectorRows[0];
+          const targetScheme = await loadScheme(targetSystem);
+          
+          if (targetConnector && targetScheme) {
+              const { apiKey, baseUrl, projectId: openAiProjectId } = resolveOpenAiConfig();
+              const openAiHeaders = buildOpenAiHeaders(apiKey, openAiProjectId);
+              
+              const containerPrompt = `
+Du bist ein Cloud-Integrations-Experte. Erstelle den API-Call, um einen neuen Haupt-Container (z.B. Projekt, Page, Space) im System **${targetSystem}** zu erstellen.
+
+### ZIEL-SYSTEM INFOS:
+${JSON.stringify(targetScheme, null, 2)}
+
+### AUFGABE:
+Erstelle ein Projekt/Container mit dem Namen: **"${sourceScopeName}"**.
+
+ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
+{
+  "url": "string", // Relativ zur Base-URL oder absolut
+  "method": "POST",
+  "body": { ... }
+}
+              `;
+
+              try {
+                  const containerRes = await fetch(`${baseUrl}/chat/completions`, {
+                      method: 'POST',
+                      headers: openAiHeaders,
+                      body: JSON.stringify({
+                          model: "gpt-4o",
+                          messages: [{ role: "system", content: containerPrompt }],
+                          response_format: { type: "json_object" }
+                      })
+                  });
+                  
+                  if (containerRes.ok) {
+                      const containerData = await containerRes.json();
+                      const callConfig = JSON.parse(containerData.choices[0].message.content);
+                      
+                      const targetHeaders: any = { 
+                          "Accept": "application/json",
+                          "Content-Type": "application/json",
+                          ...(targetScheme.headers || {})
+                      };
+
+                      if (targetConnector.auth_type === 'api_key' && targetConnector.api_key) {
+                          const authConf = targetScheme.authentication;
+                          const prefix = authConf?.tokenPrefix !== undefined ? authConf.tokenPrefix : 'Bearer ';
+                          const headerName = authConf?.headerName || 'Authorization';
+                          targetHeaders[headerName] = `${prefix}${targetConnector.api_key}`;
+                      }
+
+                      const finalUrl = callConfig.url.startsWith('http') ? callConfig.url : (targetScheme.apiBaseUrl || "") + callConfig.url;
+                      const apiRes = await fetch(finalUrl, {
+                          method: callConfig.method,
+                          headers: targetHeaders,
+                          body: JSON.stringify(callConfig.body)
+                      });
+
+                      if (apiRes.ok) {
+                          const apiData = await apiRes.json();
+                          // Try to find ID in common places
+                          const newTargetId = apiData.id || apiData.gid || apiData.key || (apiData.data?.id) || (apiData.data?.gid);
+                          
+                          if (newTargetId) {
+                              targetScopeId = String(newTargetId);
+                              await pool.query(
+                                  `INSERT INTO public.step_4_results (migration_id, target_scope_id, target_scope_name, target_status)
+                                   VALUES ($1, $2, $3, 'ready')
+                                   ON CONFLICT (migration_id) DO UPDATE SET
+                                     target_scope_id = EXCLUDED.target_scope_id,
+                                     target_scope_name = EXCLUDED.target_scope_name,
+                                     target_status = EXCLUDED.target_status`,
+                                  [migrationId, targetScopeId, sourceScopeName]
+                              );
+                              await writeChatMessage(migrationId, 'assistant', `Ziel-Container **"${sourceScopeName}"** erfolgreich erstellt (ID: ${targetScopeId}).`, currentStepNumber);
+                          }
+                      } else {
+                          const errText = await apiRes.text();
+                          console.error(`[Worker] Container creation failed: ${errText}`);
+                          await writeChatMessage(migrationId, 'assistant', `⚠️ Konnte Container nicht automatisch erstellen. Nutze Standard-Scope.`, currentStepNumber);
+                      }
+                  }
+              } catch (err) {
+                  console.error(`[Worker] Error in Phase 0:`, err);
+              }
+          }
+      }
+
+      await writeChatMessage(migrationId, 'assistant', 'Phase 1: Datenveredelung in Neo4j...', currentStepNumber);
+
+      // 1. Fetch migration details (already done above, but keeping structure for minimal changes)
       let rateLimitResult = { delay: 1.0, batch_size: 50 };
 
       // 2. Fetch rules with enhancements OR special types (POLISH, ENHANCE)
@@ -2388,10 +2530,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
       const exportSeq = targetScheme?.exportInstructions?.sequence || [];
       const exportLogic = targetScheme?.exportInstructions?.logic || "Transfer data using provided mappings and endpoints.";
 
-      // Fetch target scope for root objects
-      const { rows: scopeRows } = await pool.query('SELECT target_scope_id FROM step_4_results WHERE migration_id = $1', [migrationId]);
-      const targetScopeId = scopeRows[0]?.target_scope_id;
-      console.log(`[Worker] Loaded targetScopeId for migration: ${targetScopeId}`);
+      console.log(`[Worker] Using targetScopeId for migration: ${targetScopeId}`);
 
       if (exportSeq.length === 0) {
           await writeChatMessage(migrationId, 'assistant', '⚠️ Keine Export-Sequenz im Zielschema definiert. Transfer abgebrochen.', currentStepNumber);
