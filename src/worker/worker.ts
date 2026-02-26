@@ -2380,6 +2380,26 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
         ? scopeConfig.targetName 
         : (sourceScopeName || migrationName || "New Migration Project");
 
+      // --- ALWAYS RESET ATTEMPTS FOR NODES WITHOUT TARGET_ID ---
+      const driverReset = neo4j.driver(
+        process.env.NEO4J_URI || "bolt://neo4j-db:7687",
+        neo4j.auth.basic(process.env.NEO4J_USER || "neo4j", process.env.NEO4J_PASSWORD || "password")
+      );
+      const sessionReset = driverReset.session();
+      try {
+          await sessionReset.run(
+              `MATCH (n) WHERE n.migration_id = $migrationId AND n.target_id IS NULL 
+               SET n.transfer_attempts = null, n.transfer_error = null`,
+              { migrationId }
+          );
+          console.log(`[Worker] Reset transfer attempts for migration ${migrationId}`);
+      } catch (err) {
+          console.error(`[Worker] Failed to reset attempts:`, err);
+      } finally {
+          await sessionReset.close();
+          await driverReset.close();
+      }
+
       // --- PLANNING PHASE ---
       if (!scopeConfig.transferPlanApproved) {
           await writeChatMessage(migrationId, 'assistant', `Erstelle Migrations-Plan für den Transfer zu **${targetSystem}**...`, currentStepNumber);
@@ -2452,7 +2472,8 @@ Antworte prägnant und strukturiert in Markdown.
                       type: "action",
                       actions: [
                         { action: "confirm_transfer_plan", label: "Plan bestätigen & Transfer starten", variant: "primary" },
-                        { action: "retry", label: "Plan neu generieren", variant: "outline", stepNumber: currentStepNumber }
+                        { action: "retry", label: "Plan neu generieren", variant: "outline", stepNumber: currentStepNumber },
+                        { action: "reset_and_retry_transfer", label: "Alles zurücksetzen & von vorne starten", variant: "destructive" }
                       ]
                   });
                   await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
@@ -2934,8 +2955,11 @@ ${JSON.stringify(entityMappingRules, null, 2)}
 ### ZIEL-ENDPUNKTE:
 ${JSON.stringify(targetScheme?.discovery?.endpoints || {}, null, 2)}
 
-### ZIEL-SCOPE:
+### ZIEL-SCOPE (Haupt-Container):
 ID: ${targetScopeId || 'Nicht definiert'}
+
+### ZIEL-CONNECTOR URL (enthält ggf. Team/Workspace-IDs):
+${targetConnector.api_url}
 
 ### AUFGABE:
 Erstelle ein JSON-Rezept, das beschreibt, wie ein API-Call für ein einzelnes Objekt aufgebaut wird. 
@@ -2945,6 +2969,12 @@ Nutze folgende Platzhalter-Syntax:
 - \${property_name}: Wert einer Eigenschaft des Quell-Objekts (z.B. \${name}, \${notes}).
 - \${parent:RELATIONSHIP_TYPE:target_id}: Die im Zielsystem bereits existierende ID eines Parent-Objekts, das über RELATIONSHIP_TYPE verknüpft ist.
 - \${GLOBAL_ROOT_ID}: Die ID des Ziel-Containers (ID: ${targetScopeId}), falls kein spezifisches Parent-Objekt gefunden wird.
+- \${TEAM_ID} / \${WORKSPACE_ID}: Eine aus der ZIEL-CONNECTOR URL extrahierte globale ID (z.B. ClickUp Team-ID).
+
+### REGELN FÜR IDS:
+- Nutze für URLs und Body-Felder, die eine ID erwarten, ENTWEDER einen Platzhalter (wie \${GLOBAL_ROOT_ID}, \${TEAM_ID}) ODER extrahiere eine statische ID aus der ZIEL-CONNECTOR URL.
+- **UNTERSCHEIDUNG:** Beachte, dass \${GLOBAL_ROOT_ID} die ID des in Phase 0 erstellten Containers ist (z.B. ein Space). \${TEAM_ID} ist die übergeordnete Workspace-Ebene.
+- **VERBOT:** Nutze NIEMALS Platzhalter wie "---", "0", "null" oder "undefined" für ID-Felder. Falls du keine ID hast, nutze \${GLOBAL_ROOT_ID} als Fallback oder lasse das Feld weg, falls optional.
 
 ${targetSystem === 'Notion' ? `
 WICHTIG FÜR NOTION:
@@ -3031,11 +3061,17 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                               if (recipe) {
                                   // APPLY RECIPE PROGRAMMATICALLY
                                   try {
+                                      // Extract potential global IDs from connector URL (e.g. ClickUp Team ID)
+                                      const connectorUrl = targetConnector.api_url || "";
+                                      const urlIds = connectorUrl.match(/\d{5,}/g) || [];
+                                      const teamIdFromUrl = urlIds[0] || "";
+
                                       const resolveValue = (val: string): any => {
                                           if (typeof val !== 'string') return val;
                                           
                                           // Global Root fallback
                                           if (val === '${GLOBAL_ROOT_ID}') return targetScopeId;
+                                          if (val === '${TEAM_ID}' || val === '${WORKSPACE_ID}') return teamIdFromUrl;
 
                                           // Parent lookup: ${parent:TYPE:target_id}
                                           if (val.startsWith('${parent:')) {
@@ -3054,20 +3090,22 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                                           if (val.startsWith('${') && val.endsWith('}')) {
                                               const propName = val.slice(2, -1);
                                               if (propName === 'GLOBAL_ROOT_ID') return targetScopeId;
+                                              if (propName === 'TEAM_ID' || propName === 'WORKSPACE_ID') return teamIdFromUrl;
                                               const nodeVal = node[propName];
-                                              return (nodeVal !== undefined && nodeVal !== null) ? nodeVal : "---"; 
+                                              return (nodeVal !== undefined && nodeVal !== null) ? nodeVal : null; 
                                           }
                                           
                                           // Inline string replacement
                                           return val.replace(/\${([^}]+)}/g, (_, propName) => {
                                               if (propName === 'GLOBAL_ROOT_ID') return targetScopeId || '';
+                                              if (propName === 'TEAM_ID' || propName === 'WORKSPACE_ID') return teamIdFromUrl;
                                               if (propName.startsWith('parent:')) {
                                                   const parts = propName.split(':');
                                                   const parent = parents.find(p => p.type === parts[1]);
                                                   return parent ? parent[parts[2]] : (targetScopeId || '');
                                               }
                                               const nodeVal = node[propName];
-                                              return (nodeVal !== undefined && nodeVal !== null) ? String(nodeVal) : "---";
+                                              return (nodeVal !== undefined && nodeVal !== null) ? String(nodeVal) : "";
                                           });
                                       };
 
@@ -3096,12 +3134,72 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                               } else {
                                   // FALLBACK: AGENT-DRIVEN FOR SINGLE OBJECT
                                   const agentPrompt = `
-Du bist ein Data Export Agent. Erstelle den exakten API-Call für dieses Objekt.
-... (rest of the existing agent prompt) ...
+Du bist ein Data Export Agent. Erstelle den exakten API-Call für dieses Objekt im System ${targetSystem}.
+
+### ZIEL-LOGIK:
+${exportLogic}
+
+### MAPPING-REGELN:
+${JSON.stringify(entityMappingRules, null, 2)}
+
+### ZIEL-ENDPUNKTE:
+${JSON.stringify(targetScheme?.discovery?.endpoints || {}, null, 2)}
+
+### ZIEL-SCOPE (Haupt-Container):
+ID: ${targetScopeId || 'Nicht definiert'}
+
+### OBJEKT-DATEN (Quelle):
+${JSON.stringify(node)}
+
+### VERKNÜPFTE PARENTS (Ziel-IDs):
+${JSON.stringify(parents)}
+
+ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
+{
+  "url": "string",
+  "method": "POST" | "PATCH",
+  "body": { ... }
+}
                                   `;
-                                  // (Existing agent fetch logic would go here if needed, but we keep it simple for now)
-                                  transferErrors++;
-                                  continue;
+
+                                  try {
+                                      const agentRes = await fetch(`${baseUrl}/chat/completions`, {
+                                          method: 'POST',
+                                          headers: openAiHeaders,
+                                          body: JSON.stringify({
+                                              model: "gpt-4o-mini",
+                                              messages: [{ role: "system", content: agentPrompt }],
+                                              response_format: { type: "json_object" }
+                                          })
+                                      });
+                                      if (!agentRes.ok) throw new Error("Agent failed to respond");
+                                      const agentData = await agentRes.json();
+                                      const callResult = JSON.parse(agentData.choices[0].message.content);
+                                      callConfig = {
+                                          url: callResult.url,
+                                          method: callResult.method,
+                                          body: callResult.body
+                                      };
+                                  } catch (err) {
+                                      console.error(`[Worker] Fallback agent failed for ${node.external_id}:`, err);
+                                      await session.run(
+                                          `MATCH (n { migration_id: $migrationId, external_id: $extId }) 
+                                           SET n.transfer_attempts = coalesce(n.transfer_attempts, 0) + 1, 
+                                               n.transfer_error = 'Fallback agent failed'`,
+                                          { migrationId, extId: node.external_id }
+                                      );
+                                      transferErrors++;
+                                      await upsertChatMessage(liveStatusId, migrationId, 'assistant', JSON.stringify({
+                                          type: 'live-transfer-status',
+                                          total: totalNodesToTransfer,
+                                          processed: totalTransferred + transferErrors,
+                                          successCount: totalTransferred,
+                                          errorCount: transferErrors,
+                                          currentEntity: sourceObjectType,
+                                          status: 'running'
+                                      }), currentStepNumber);
+                                      continue;
+                                  }
                               }
 
                               // EXECUTE TARGET API CALL

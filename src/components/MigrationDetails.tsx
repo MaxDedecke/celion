@@ -84,7 +84,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
     } else if (action === 'confirm_transfer_plan') {
       try {
         const newScopeConfig = {
-          ...(project.scope_config || {}),
+          ...(project.scopeConfig || {}),
           transferPlanApproved: true
         };
         
@@ -100,6 +100,24 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         console.error("Error confirming transfer plan:", error);
         toast.error("Fehler bei der Plan-Bestätigung.");
       }
+    } else if (action === 'reset_and_retry_transfer') {
+      try {
+        // 1. Reset approved flag in scope_config
+        const newScopeConfig = {
+          ...(project.scopeConfig || {}),
+          transferPlanApproved: false
+        };
+        await databaseClient.updateMigration(project.id, {
+          scope_config: newScopeConfig
+        });
+
+        // 2. Step 8 will handle the rest (Neo4j reset and DB reset) if we trigger it fresh
+        toast.success("Transfer wird zurückgesetzt...");
+        handleNextWorkflowStep(8);
+      } catch (error) {
+        console.error("Error resetting transfer:", error);
+        toast.error("Fehler beim Zurücksetzen des Transfers.");
+      }
     } else if (action.startsWith('retry:')) {
       const stepNum = parseInt(action.split(':')[1], 10);
       if (!isNaN(stepNum)) {
@@ -110,7 +128,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
     } else if (action === 'open-enhancement-ui') {
       onViewChange?.('enhancement');
     }
-  }, [handleNextWorkflowStep, onViewChange, project.id, project.scope_config]);
+  }, [handleNextWorkflowStep, onViewChange, project.id, project.scopeConfig]);
 
   const handleSendChatMessage = useCallback(
     async (message: string) => {

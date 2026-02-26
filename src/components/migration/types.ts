@@ -22,6 +22,8 @@ export interface MigrationProject {
   current_step?: number;
   step_status?: 'idle' | 'pending' | 'running' | 'completed' | 'failed';
   consultant_status?: 'idle' | 'thinking';
+  scope_config?: any;
+  scopeConfig?: any;
 }
 
 export interface MigrationStatusMeta {
