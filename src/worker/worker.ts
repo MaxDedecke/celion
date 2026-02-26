@@ -2923,6 +2923,24 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
               for (const sourceObjectType of sourceObjectTypes) {
                   let processedInBatch = 0;
                   
+                  // --- FETCH SAMPLE NODE FOR BETTER PROMPTING ---
+                  let sampleNode: any = null;
+                  const sampleSession = driver.session();
+                  try {
+                      const sampleRes = await sampleSession.run(
+                          `MATCH (n:\`${sourceSystem}\`) 
+                           WHERE n.migration_id = $migrationId 
+                           AND (toLower(n.entity_type) = toLower($sourceObjectType) OR toLower(n.entity_type) = toLower($sourceObjectType) + "s")
+                           RETURN properties(n) as props LIMIT 1`,
+                          { migrationId, sourceObjectType }
+                      );
+                      if (sampleRes.records.length > 0) {
+                          sampleNode = sampleRes.records[0].get('props');
+                      }
+                  } finally {
+                      await sampleSession.close();
+                  }
+
                   // Update live status for current entity
                   await upsertChatMessage(liveStatusId, migrationId, 'assistant', JSON.stringify({
                       type: 'live-transfer-status',
@@ -2952,6 +2970,9 @@ ${exportLogic}
 ### MAPPING-REGELN:
 ${JSON.stringify(entityMappingRules, null, 2)}
 
+### BEISPIEL-DATEN (Quelle - nutze NUR diese Felder für Platzhalter):
+${sampleNode ? JSON.stringify(sampleNode, null, 2) : "Keine Beispieldaten verfügbar."}
+
 ### ZIEL-ENDPUNKTE:
 ${JSON.stringify(targetScheme?.discovery?.endpoints || {}, null, 2)}
 
@@ -2966,15 +2987,17 @@ Erstelle ein JSON-Rezept, das beschreibt, wie ein API-Call für ein einzelnes Ob
 WICHTIG: Halte dich STRIKT an die API-Struktur von ${targetSystem}. 
 
 Nutze folgende Platzhalter-Syntax:
-- \${property_name}: Wert einer Eigenschaft des Quell-Objekts (z.B. \${name}, \${notes}).
+- \${property_name}: Wert einer Eigenschaft des Quell-Objekts (z.B. \${name}, \${notes}). Nutze NUR Felder aus den BEISPIEL-DATEN.
 - \${parent:RELATIONSHIP_TYPE:target_id}: Die im Zielsystem bereits existierende ID eines Parent-Objekts, das über RELATIONSHIP_TYPE verknüpft ist.
 - \${GLOBAL_ROOT_ID}: Die ID des Ziel-Containers (ID: ${targetScopeId}), falls kein spezifisches Parent-Objekt gefunden wird.
 - \${TEAM_ID} / \${WORKSPACE_ID}: Eine aus der ZIEL-CONNECTOR URL extrahierte globale ID (z.B. ClickUp Team-ID).
 
-### REGELN FÜR IDS:
-- Nutze für URLs und Body-Felder, die eine ID erwarten, ENTWEDER einen Platzhalter (wie \${GLOBAL_ROOT_ID}, \${TEAM_ID}) ODER extrahiere eine statische ID aus der ZIEL-CONNECTOR URL.
-- **UNTERSCHEIDUNG:** Beachte, dass \${GLOBAL_ROOT_ID} die ID des in Phase 0 erstellten Containers ist (z.B. ein Space). \${TEAM_ID} ist die übergeordnete Workspace-Ebene.
-- **VERBOT:** Nutze NIEMALS Platzhalter wie "---", "0", "null" oder "undefined" für ID-Felder. Falls du keine ID hast, nutze \${GLOBAL_ROOT_ID} als Fallback oder lasse das Feld weg, falls optional.
+### REGELN FÜR DIE STRUKTUR:
+1. **NAMEN:** Das Feld "name" (oder äquivalent) im Ziel DARF NIEMALS leer sein. Nutze \${name} oder einen statischen Fallback.
+2. **DATENTYPEN:** Felder wie "description" oder "content" müssen Strings sein. Erzeuge KEINE verschachtelten Objekte für diese Felder.
+3. **IDS:** Nutze für URLs und Body-Felder, die eine ID erwarten, ENTWEDER einen Platzhalter (wie \${GLOBAL_ROOT_ID}, \${TEAM_ID}) ODER extrahiere eine statische ID aus der ZIEL-CONNECTOR URL.
+4. **UNTERSCHEIDUNG:** Beachte, dass \${GLOBAL_ROOT_ID} die ID des in Phase 0 erstellten Containers ist (z.B. ein Space). \${TEAM_ID} ist die übergeordnete Workspace-Ebene.
+5. **VERBOT:** Nutze NIEMALS Platzhalter wie "---", "0", "null" oder "undefined" für ID-Felder. Falls du keine ID hast, nutze \${GLOBAL_ROOT_ID} als Fallback oder lasse das Feld weg, falls optional.
 
 ${targetSystem === 'Notion' ? `
 WICHTIG FÜR NOTION:
@@ -3079,9 +3102,14 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                                               if (match) {
                                                   const relType = match[1];
                                                   const prop = match[2];
-                                                  const parent = parents.find(p => p.type === relType);
-                                                  const res = parent ? parent[prop] : targetScopeId;
-                                                  console.log(`[Worker] Resolved parent placeholder ${val} to ${res}`);
+                                                  // Fuzzy match relationship type
+                                                  const parent = parents.find(p => p.type === relType || p.type.startsWith(relType) || relType.startsWith(p.type));
+                                                  const res = parent ? parent[prop] : null;
+                                                  
+                                                  if (!res) {
+                                                      console.log(`[Worker] Could not resolve parent ${val} for node ${node.external_id}. Fallback to root.`);
+                                                      return targetScopeId;
+                                                  }
                                                   return res;
                                               }
                                           }
@@ -3101,7 +3129,7 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                                               if (propName === 'TEAM_ID' || propName === 'WORKSPACE_ID') return teamIdFromUrl;
                                               if (propName.startsWith('parent:')) {
                                                   const parts = propName.split(':');
-                                                  const parent = parents.find(p => p.type === parts[1]);
+                                                  const parent = parents.find(p => p.type === parts[1] || p.type.startsWith(parts[1]));
                                                   return parent ? parent[parts[2]] : (targetScopeId || '');
                                               }
                                               const nodeVal = node[propName];
@@ -3121,13 +3149,23 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                                           return resolveValue(obj);
                                       };
 
+                                      const resolvedUrl = resolveValue(recipe.urlTemplate);
+                                      if (!resolvedUrl) throw new Error("URL template resolved to empty/null");
+
                                       callConfig = {
-                                          url: resolveValue(recipe.urlTemplate),
-                                          method: recipe.method,
+                                          url: resolvedUrl,
+                                          method: recipe.method || 'POST',
                                           body: processObject(recipe.bodyTemplate)
                                       };
                                   } catch (recipeErr) {
                                       console.error(`[Worker] Error applying recipe to ${node.external_id}:`, recipeErr);
+                                      // UPDATE NEO4J SO WE DON'T LOOP INFINITELY
+                                      await session.run(
+                                          `MATCH (n { migration_id: $migrationId, external_id: $extId }) 
+                                           SET n.transfer_attempts = coalesce(n.transfer_attempts, 0) + 1, 
+                                               n.transfer_error = $errText`,
+                                          { migrationId, extId: node.external_id, errText: `Recipe Error: ${String(recipeErr).substring(0, 100)}` }
+                                      );
                                       transferErrors++;
                                       continue;
                                   }
@@ -3210,17 +3248,21 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                                       ...(targetScheme?.headers || {})
                                   };
 
-                                  if (targetConnector.auth_type === 'api_key' && targetConnector.api_key) {
-                                      const authConf = targetScheme?.authentication;
+                                  // GENERIC AUTH LOGIC
+                                  const authConf = targetScheme?.authentication;
+                                  const token = targetConnector.api_key || targetConnector.username;
+                                  if (token) {
                                       const prefix = authConf?.tokenPrefix !== undefined ? authConf.tokenPrefix : 'Bearer ';
                                       const headerName = authConf?.headerName || 'Authorization';
-                                      targetHeaders[headerName] = `${prefix}${targetConnector.api_key}`;
+                                      targetHeaders[headerName] = `${prefix}${token.trim()}`;
                                   }
 
-                                  const apiRes = await fetch(callConfig.url.startsWith('http') ? callConfig.url : (targetScheme?.apiBaseUrl || "") + callConfig.url, {
+                                  const finalUrl = callConfig.url.startsWith('http') ? callConfig.url : (targetScheme?.apiBaseUrl || "") + callConfig.url;
+                                  
+                                  const apiRes = await fetch(finalUrl, {
                                       method: callConfig.method,
                                       headers: targetHeaders,
-                                      body: JSON.stringify(callConfig.body)
+                                      body: callConfig.method === 'GET' ? undefined : JSON.stringify(callConfig.body)
                                   });
 
                                   if (apiRes.ok) {
