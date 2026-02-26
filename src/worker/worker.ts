@@ -968,10 +968,16 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
                 ### TARGET OBJECT KEYS (aus der technischen Spezifikation):
                 ${JSON.stringify(sourceObjectSpecs.objects.map((o: any) => ({ key: o.key, displayName: o.displayName })))}
 
+                ### SCOPE KONFIGURATION:
+                ${JSON.stringify(scopeConfig)}
+
                 ### AUFGABE:
                 1. Analysiere jedes Item im 'Raw Inventory'.
                 2. Ordne es dem passendsten 'key' aus den 'Target Object Keys' zu. (Beispiel: 'project_tasks' -> 'task', 'sections' -> 'section').
-                3. Falls mehrere Items demselben Key zugeordnet werden, addiere deren 'count'.
+                3. **INTELLIGENTE ZUSAMMENFÜHRUNG & SCOPE-BEWERTUNG:**
+                   - Falls ein spezifischer **SCOPE** (z.B. ein Projektname oder eine ID) in der 'Scope Konfiguration' definiert ist: Bevorzuge die Counts von Endpunkten, die spezifisch für diesen Scope klingen (z.B. 'project_tasks', 'folder_items'). Ignoriere in diesem Fall die höheren Counts von globalen/unspezifischen Endpunkten (z.B. 'all_tasks'), da diese über den gewählten Scope hinausgehen.
+                   - Falls **KEIN SCOPE** definiert ist (globale Migration): Nimm bei Redundanz den **MAXIMALWERT**, um alle verfügbaren Daten zu erfassen.
+                   - Bei komplementären Daten (z.B. 'Active' + 'Archived'): **ADDIERE** die Counts weiterhin.
                 4. Falls ein Item zu absolut keinem technischen Key passt, behalte es unter seinem ursprünglichen Namen bei (als Fallback).
                 5. Entferne Duplikate durch die Zusammenführung.
 
@@ -1094,8 +1100,15 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
       const headerMsg = "Starte **Target Discovery**";
       await writeChatMessage(migrationId, 'assistant', headerMsg, currentStepNumber);
       
-      const { rows: migrationDetailRows } = await pool.query('SELECT scope_config FROM migrations WHERE id = $1', [migrationId]);
+      const { rows: migrationDetailRows } = await pool.query('SELECT name, scope_config FROM migrations WHERE id = $1', [migrationId]);
+      const migrationName = migrationDetailRows[0]?.name;
       const scopeConfig = migrationDetailRows[0]?.scope_config || {};
+      
+      // Normalize targetName if placeholder '-'
+      if (scopeConfig.targetName === "-") {
+          scopeConfig.targetName = scopeConfig.sourceScopeName || migrationName || "New Project";
+      }
+
       const { rows: connectorRows } = await pool.query('SELECT api_url, api_key, username FROM connectors WHERE migration_id = $1 AND connector_type = $2', [migrationId, 'out']);
       const connector = connectorRows[0];
 
@@ -2299,9 +2312,13 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
 
         await finishClientEnhance.query('COMMIT');
 
-        // Fetch source scope name for the confirmation message
-        const { rows: scopeNameRows } = await finishClientEnhance.query('SELECT scope_config FROM migrations WHERE id = $1', [migrationId]);
-        const sourceScopeName = scopeNameRows[0]?.scope_config?.sourceScopeName || "Projekt";
+        // Fetch target name for the confirmation message
+        const { rows: scopeNameRows } = await finishClientEnhance.query('SELECT name, scope_config FROM migrations WHERE id = $1', [migrationId]);
+        const migrationName7 = scopeNameRows[0]?.name;
+        const scopeConf7 = scopeNameRows[0]?.scope_config || {};
+        const displayTargetName = (scopeConf7.targetName && scopeConf7.targetName !== "-") 
+          ? scopeConf7.targetName 
+          : (scopeConf7.sourceScopeName || migrationName7 || "Projekt");
         
         const nextStepIndex = currentStepNumber;
         if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
@@ -2309,7 +2326,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
             
             // Special confirmation for Step 8
             if (nextStep.id === "data-transfer") {
-              const confirmMsg = `Alles ist bereit für den Datentransfer. Ich werde im Zielsystem **${tSys7}** einen neuen Bereich namens **"${sourceScopeName}"** anlegen und alle Daten dorthin übertragen. Sollen wir starten?`;
+              const confirmMsg = `Alles ist bereit für den Datentransfer. Ich werde im Zielsystem **${tSys7}** einen neuen Bereich namens **"${displayTargetName}"** anlegen und alle Daten dorthin übertragen. Sollen wir starten?`;
               await writeChatMessage(migrationId, 'assistant', confirmMsg, currentStepNumber);
               
               const actionContent = JSON.stringify({
@@ -2351,7 +2368,9 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
       const scopeConfig = migRowsScope[0]?.scope_config || {};
       
       const sourceScopeName = scopeConfig.sourceScopeName;
-      const preferredTargetName = scopeConfig.targetName || sourceScopeName || migrationName || "New Migration Project";
+      const preferredTargetName = (scopeConfig.targetName && scopeConfig.targetName !== "-") 
+        ? scopeConfig.targetName 
+        : (sourceScopeName || migrationName || "New Migration Project");
 
       // --- PLANNING PHASE ---
       if (!scopeConfig.transferPlanApproved) {
