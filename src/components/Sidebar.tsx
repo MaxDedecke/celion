@@ -343,7 +343,7 @@ const Sidebar = ({
                         Neu
                       </Button>
                     </TooltipTrigger>
-                    <TooltipContent side="right">
+                    <TooltipContent side="top">
                       <p>Neue Migration erstellen</p>
                     </TooltipContent>
                   </Tooltip>
