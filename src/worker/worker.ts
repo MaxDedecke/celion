@@ -953,6 +953,67 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
             await writeChatMessage(migrationId, 'assistant', 'Phase 3: Keine kritischen Lücken gefunden. Überspringe Retry.', currentStepNumber);
         }
 
+        // --- Phase 4: Inventory Normalization ---
+        try {
+            const sourceObjectSpecs = await loadObjectScheme(sourceSystem);
+            if (sourceObjectSpecs && phase1Result.entities && phase1Result.entities.length > 0) {
+                await writeChatMessage(migrationId, 'assistant', 'Phase 4: Normalisierung der Inventar-Daten...', currentStepNumber);
+                
+                const normalizationPrompt = `
+                Du bist ein Data Normalization Agent. Dein Ziel ist es, ein rohes System-Inventar auf standardisierte Objekt-Keys zu bereinigen.
+
+                ### RAW INVENTORY:
+                ${JSON.stringify(phase1Result.entities)}
+
+                ### TARGET OBJECT KEYS (aus der technischen Spezifikation):
+                ${JSON.stringify(sourceObjectSpecs.objects.map((o: any) => ({ key: o.key, displayName: o.displayName })))}
+
+                ### AUFGABE:
+                1. Analysiere jedes Item im 'Raw Inventory'.
+                2. Ordne es dem passendsten 'key' aus den 'Target Object Keys' zu. (Beispiel: 'project_tasks' -> 'task', 'sections' -> 'section').
+                3. Falls mehrere Items demselben Key zugeordnet werden, addiere deren 'count'.
+                4. Falls ein Item zu absolut keinem technischen Key passt, behalte es unter seinem ursprünglichen Namen bei (als Fallback).
+                5. Entferne Duplikate durch die Zusammenführung.
+
+                ### REGELN:
+                - Antworte AUSSCHLIESSLICH mit dem bereinigten JSON.
+                - Behalte die Felder 'count' und 'complexity' bei (wobei 'complexity' das Maximum der zusammengeführten Items sein sollte).
+
+                ### OUTPUT FORMAT:
+                {
+                  "entities": [
+                    { "name": "technical_key", "count": number, "complexity": "low|medium|high" }
+                  ],
+                  "normalization_summary": "Kurze Beschreibung was zusammengeführt wurde (z.B. 'project_tasks wurde mit task zusammengeführt')."
+                }
+                `;
+
+                const normResponse = await openaiClient.chat.completions.create({
+                    model: process.env.OPENAI_MODEL || "gpt-4o",
+                    messages: [
+                        { role: "system", content: "Du bist ein Experte für Daten-Strukturen." },
+                        { role: "user", content: normalizationPrompt }
+                    ],
+                    response_format: { type: "json_object" }
+                });
+
+                const normContent = normResponse.choices[0].message.content;
+                if (normContent) {
+                    const normResult = JSON.parse(normContent);
+                    if (normResult.entities) {
+                        console.log(`[Worker] Inventory normalized for ${migrationId}: ${normResult.normalization_summary}`);
+                        phase1Result.raw_entities_pre_normalization = [...phase1Result.entities]; // Keep for debugging
+                        phase1Result.entities = normResult.entities;
+                        phase1Result.normalization_summary = normResult.normalization_summary;
+                        await writeChatMessage(migrationId, 'assistant', `Inventar bereinigt: ${normResult.normalization_summary}`, currentStepNumber);
+                    }
+                }
+            }
+        } catch (normErr: any) {
+            console.error(`[Worker] Normalization failed:`, normErr);
+            // Non-critical, continue with raw data
+        }
+
         // Use phase1Result as final result
         result = phase1Result;
         resultMessageText = JSON.stringify(result);
@@ -2282,7 +2343,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
     } else if (agentName === 'runDataTransfer') {
       console.log(`[Worker] Running Data Transfer for migration ${migrationId}`);
       
-      // Phase 0: Target Container Preparation
+      // Phase 0: Target Container Preparation & Planning
       const { rows: migRowsScope } = await pool.query('SELECT name, source_system, target_system, scope_config FROM migrations WHERE id = $1', [migrationId]);
       const migrationName = migRowsScope[0]?.name;
       const sourceSystem = migRowsScope[0]?.source_system;
@@ -2290,8 +2351,96 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
       const scopeConfig = migRowsScope[0]?.scope_config || {};
       
       const sourceScopeName = scopeConfig.sourceScopeName;
-      // Hierarchie: Expliziter Name > Quell-Projekt-Name > Migrations-Name
       const preferredTargetName = scopeConfig.targetName || sourceScopeName || migrationName || "New Migration Project";
+
+      // --- PLANNING PHASE ---
+      if (!scopeConfig.transferPlanApproved) {
+          await writeChatMessage(migrationId, 'assistant', `Erstelle Migrations-Plan für den Transfer zu **${targetSystem}**...`, currentStepNumber);
+          
+          const driver = neo4j.driver(
+            process.env.NEO4J_URI || "bolt://neo4j-db:7687",
+            neo4j.auth.basic(process.env.NEO4J_USER || "neo4j", process.env.NEO4J_PASSWORD || "password")
+          );
+          
+          let stats = "";
+          const session = driver.session();
+          try {
+              const res = await session.run(
+                  `MATCH (n) WHERE n.migration_id = $migrationId 
+                   RETURN n.entity_type as type, count(n) as count`,
+                  { migrationId }
+              );
+              stats = res.records.map(r => `- **${r.get('type')}**: ${r.get('count')} Objekte`).join('\n');
+          } finally {
+              await session.close();
+              await driver.close();
+          }
+
+          const { rows: ruleRows } = await pool.query('SELECT source_object, target_object, rule_type FROM mapping_rules WHERE migration_id = $1 AND rule_type != \'IGNORE\'', [migrationId]);
+          const mappingSummary = ruleRows.map(r => `- ${r.source_object} → ${r.target_object} (${r.rule_type})`).join('\n');
+          
+          const targetScheme = await loadScheme(targetSystem);
+          const { apiKey, baseUrl, projectId: openAiProjectId } = resolveOpenAiConfig();
+          const openAiHeaders = buildOpenAiHeaders(apiKey, openAiProjectId);
+
+          const planPrompt = `
+Du bist ein Migrations-Experte. Erstelle einen finalen Transfer-Plan für den Nutzer.
+System: ${sourceSystem} nach ${targetSystem}.
+
+### DATEN-STATISTIK:
+${stats}
+
+### MAPPING-ZUSAMMENFASSUNG:
+${mappingSummary}
+
+### ZIEL-STRUKTUR (Export Logik):
+${targetScheme?.exportInstructions?.logic || "Standard-Hierarchie"}
+
+### AUFGABE:
+Fasse zusammen, wie die Migration ablaufen wird. 
+1. Welche Container werden im Ziel erstellt? (Basierend auf Name: "${preferredTargetName}")
+2. In welcher Reihenfolge werden die Objekte übertragen?
+3. Gibt es Besonderheiten?
+
+Antworte prägnant und strukturiert in Markdown.
+          `;
+
+          try {
+              const planRes = await fetch(`${baseUrl}/chat/completions`, {
+                  method: 'POST',
+                  headers: openAiHeaders,
+                  body: JSON.stringify({
+                      model: "gpt-4o",
+                      messages: [{ role: "system", content: planPrompt }]
+                  })
+              });
+              
+              if (planRes.ok) {
+                  const planData = await planRes.json();
+                  const planContent = planData.choices[0].message.content;
+                  
+                  await writeChatMessage(migrationId, 'assistant', `### 📋 Migrations-Plan\n\n${planContent}`, currentStepNumber);
+                  
+                  const actionContent = JSON.stringify({
+                      type: "action",
+                      actions: [
+                        { action: "confirm_transfer_plan", label: "Plan bestätigen & Transfer starten", variant: "primary" },
+                        { action: "retry", label: "Plan neu generieren", variant: "outline", stepNumber: currentStepNumber }
+                      ]
+                  });
+                  await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
+                  
+                  // WICHTIG: Status der Migration auf 'completed' setzen, damit die UI die Buttons anzeigt
+                  await pool.query('UPDATE migrations SET step_status = $1, status = $2 WHERE id = $3', ['completed', 'processing', migrationId]);
+                  await pool.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+                  return;
+              }
+          } catch (err) {
+              console.error("[Worker] Error generating plan:", err);
+          }
+      }
+
+      // --- EXECUTION PHASE (only if approved) ---
       
       const { rows: step4Rows } = await pool.query('SELECT target_scope_id FROM step_4_results WHERE migration_id = $1', [migrationId]);
       let targetScopeId = step4Rows[0]?.target_scope_id;

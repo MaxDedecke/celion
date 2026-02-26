@@ -77,9 +77,28 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
     }
   }, [project.id, project.current_step, project.step_status, isStepRunning, onRefresh]);
 
-  const handleAction = useCallback((action: string) => {
+  const handleAction = useCallback(async (action: string) => {
     if (action === 'continue') {
       handleNextWorkflowStep();
+    } else if (action === 'confirm_transfer_plan') {
+      try {
+        const newScopeConfig = {
+          ...(project.scope_config || {}),
+          transferPlanApproved: true
+        };
+        
+        const { error } = await databaseClient.updateMigration(project.id, {
+          scope_config: newScopeConfig
+        });
+        
+        if (error) throw error;
+        
+        toast.success("Transfer-Plan bestätigt. Migration wird gestartet...");
+        handleNextWorkflowStep(8);
+      } catch (error) {
+        console.error("Error confirming transfer plan:", error);
+        toast.error("Fehler bei der Plan-Bestätigung.");
+      }
     } else if (action.startsWith('retry:')) {
       const stepNum = parseInt(action.split(':')[1], 10);
       if (!isNaN(stepNum)) {
@@ -90,7 +109,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
     } else if (action === 'open-enhancement-ui') {
       onViewChange?.('enhancement');
     }
-  }, [handleNextWorkflowStep, onViewChange]);
+  }, [handleNextWorkflowStep, onViewChange, project.id, project.scope_config]);
 
   const handleSendChatMessage = useCallback(
     async (message: string) => {
