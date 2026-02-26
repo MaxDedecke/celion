@@ -5,6 +5,7 @@ import MappingPanel from "./migration/MappingPanel";
 import EnhancementPanel from "./migration/EnhancementPanel";
 import MigrationConfigPanel from "./migration/MigrationConfigPanel";
 import { toast } from "sonner";
+import { databaseClient } from "@/api/databaseClient";
 import type { MigrationDetailsProps } from "./migration/migrationDetails.types";
 import { cn } from "@/lib/utils";
 
