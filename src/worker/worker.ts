@@ -1622,6 +1622,14 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
         SCOPE: ${JSON.stringify(scopeConfig || {})}
         ANWEISUNGEN: ${scheme?.agentInstructions || 'Keine speziellen Anweisungen.'}
         
+        ### STRIKTE SCOPE-BESCHRÄNKUNG:
+        ${scopeConfig?.sourceScope ? `
+        ACHTUNG: Dies ist eine BEREICHS-MIGRATION (Scope: ${scopeConfig.sourceScopeName || scopeConfig.sourceScope}).
+        - Nutze NIEMALS globale Such-Endpunkte oder Endpunkte, die alle Objekte des Systems auflisten (z.B. '/api/1.0/tasks/search').
+        - Folge zwingend der Hierarchie im NAVIGATION GUIDE (z.B. erst Projekt abrufen, dann Aufgaben NUR dieses Projekts).
+        - Jedes Objekt, das du importierst, MUSS direkt oder indirekt zum oben genannten SCOPE gehören.
+        ` : 'Dies ist eine VOLL-MIGRATION. Du kannst globale Endpunkte nutzen, um alle Daten zu erfassen.'}
+
         REGELN:
         1. **NAVIGATION GUIDE:** Folge strikt dem oben stehenden Navigation Guide, um IDs zu ermitteln.
         2. **KEINE PLATZHALTER:** Nutze NIEMALS URLs mit geschweiften Klammern. Ersetze diese durch reale IDs aus vorherigen Tool-Antworten.
@@ -3332,12 +3340,21 @@ function _extractItems(body: any, entityName: string): any[] {
 
 async function _ingestToNeo4j(driver: any, systemLabel: string, entityType: string, items: any[], migrationId: string) {
   const session = driver.session();
+  // Normalize entity type for label (e.g. "project_tasks" -> "ProjectTasks")
+  const normalizedLabel = entityType
+    .split(/[\s_-]+/)
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join('')
+    .replace(/[^a-zA-Z0-9]/g, '');
+
   try {
       await session.run(
-          `UNWIND $items AS item 
-           MERGE (n:\`${systemLabel}\` { external_id: toString(COALESCE(item.gid, item.id, item.key, item.uuid)), migration_id: $migrationId }) 
-           SET n.entity_type = $entityType 
+          `UNWIND $items AS item
+           MERGE (n:\`${systemLabel}\` { external_id: toString(COALESCE(item.gid, item.id, item.key, item.uuid)), migration_id: $migrationId })
+           SET n:\`${normalizedLabel}\`
+           SET n.entity_type = $entityType
            SET n += item`,
+
           { 
               items: items.map(i => {
                   const sanitized: any = {};
