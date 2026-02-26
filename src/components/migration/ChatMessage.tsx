@@ -8,12 +8,62 @@ import { cn } from "@/lib/utils";
 import TypewriterText from "./TypewriterText";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
+import { Progress } from "@/components/ui/progress";
+
+const LiveTransferStatus = ({ data }: { data: any }) => {
+  const percentage = data.total > 0 ? Math.round((data.processed / data.total) * 100) : 0;
+  
+  return (
+    <div className="mt-2 space-y-3 w-full animate-in fade-in duration-500 min-w-[300px] sm:min-w-[400px] md:min-w-[500px]">
+      <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
+        <div className="flex items-center justify-between mb-3">
+          <div className="flex items-center gap-2">
+            <div className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
+            </div>
+            <h4 className="text-sm font-semibold text-primary">Datentransfer läuft...</h4>
+          </div>
+          <Badge variant="outline" className="bg-background/50 border-primary/30 text-primary tabular-nums">
+            {percentage}%
+          </Badge>
+        </div>
+
+        <div className="space-y-2">
+          <Progress value={percentage} className="h-2 bg-primary/10" />
+          <div className="flex justify-between text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
+            <span>{data.processed} von {data.total} Objekten</span>
+            <span>{data.currentEntity || "Initialisierung"}</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div className="rounded-lg border border-emerald-500/20 bg-emerald-500/5 p-2 flex flex-col items-center">
+          <span className="text-[10px] text-emerald-600 font-bold uppercase">Erfolgreich</span>
+          <span className="text-lg font-bold text-emerald-700 tabular-nums">{data.successCount || 0}</span>
+        </div>
+        <div className="rounded-lg border border-red-500/20 bg-red-500/5 p-2 flex flex-col items-center">
+          <span className="text-[10px] text-red-600 font-bold uppercase">Fehler</span>
+          <span className="text-lg font-bold text-red-700 tabular-nums">{data.errorCount || 0}</span>
+        </div>
+      </div>
+      
+      {data.status === 'completed' && (
+        <div className="flex items-center justify-center gap-2 py-1 text-emerald-600 animate-bounce">
+          <CheckCircle2 className="h-4 w-4" />
+          <span className="text-xs font-semibold">Transfer vollständig abgeschlossen!</span>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const DiscoveryReport = ({ data }: { data: any }) => {
   if (!data || !data.entities) return null;
 
   return (
-    <div className="mt-2 space-y-4 w-full">
+    <div className="mt-2 space-y-4 w-full min-w-[300px] sm:min-w-[400px] md:min-w-[500px]">
       <div className="rounded-xl border border-primary/20 bg-primary/5 p-4">
         <div className="flex items-center justify-between mb-2">
           <h4 className="text-sm font-semibold text-primary flex items-center gap-2">
@@ -449,7 +499,9 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
       <div className={cn(
         "flex flex-col min-w-0",
         message.role === "user" ? "items-end ml-auto" : "items-start mr-auto",
-        "max-w-[70%] sm:max-w-[60%] md:max-w-[50%]"
+        jsonContent?.type === 'live-transfer-status' || jsonContent?.entities 
+          ? "w-full max-w-none md:max-w-[98%]" 
+          : "max-w-[70%] sm:max-w-[60%] md:max-w-[50%]"
       )}>
         <div className={cn("mb-1 flex items-center gap-2", message.role === "user" && "flex-row-reverse")}>
           {message.stepInfo && (
@@ -461,7 +513,8 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
         </div>
         
         <div className={cn(
-          "rounded-2xl px-4 py-3 text-sm leading-relaxed w-fit border shadow-sm transition-all duration-200",
+          "rounded-2xl px-4 py-3 text-sm leading-relaxed border shadow-sm transition-all duration-200",
+          jsonContent?.type === 'live-transfer-status' || jsonContent?.entities ? "w-full" : "w-fit",
           message.role === "user" 
             ? "bg-primary/5 border-primary/5 text-foreground text-left" 
             : "bg-muted/30 border-muted/30 text-foreground text-left hover:border-primary/10 hover:shadow-md",
@@ -471,7 +524,9 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
         )}>
           {jsonContent ? (
             <div className="flex flex-col gap-2">
-              {jsonContent.entities ? (
+              {jsonContent.type === 'live-transfer-status' ? (
+                <LiveTransferStatus data={jsonContent} />
+              ) : jsonContent.entities ? (
                 <DiscoveryReport data={jsonContent} />
               ) : (
                 <div className="prose prose-sm dark:prose-invert max-w-none text-foreground">

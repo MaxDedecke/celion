@@ -24,10 +24,23 @@ async function logActivity(migrationId: string, type: 'success' | 'error' | 'inf
 
 // Hilfsfunktion zum Schreiben von Chat-Nachrichten (Verwendet eigene Connection für Sofort-Commit)
 async function writeChatMessage(migrationId: string, role: string, content: string, stepNumber?: number) {
-  await pool.query(
-    'INSERT INTO migration_chat_messages (migration_id, role, content, step_number) VALUES ($1, $2, $3, $4)',
+  const res = await pool.query(
+    'INSERT INTO migration_chat_messages (migration_id, role, content, step_number) VALUES ($1, $2, $3, $4) RETURNING id',
     [migrationId, role, content, stepNumber]
   );
+  return res.rows[0]?.id;
+}
+
+async function upsertChatMessage(id: string | null, migrationId: string, role: string, content: string, stepNumber?: number) {
+  if (id) {
+    await pool.query(
+      'UPDATE migration_chat_messages SET content = $1, created_at = now() WHERE id = $2',
+      [content, id]
+    );
+    return id;
+  } else {
+    return await writeChatMessage(migrationId, role, content, stepNumber);
+  }
 }
 
 async function writeMappingChatMessage(migrationId: string, role: string, content: string) {
@@ -2283,6 +2296,111 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
       const { rows: step4Rows } = await pool.query('SELECT target_scope_id FROM step_4_results WHERE migration_id = $1', [migrationId]);
       let targetScopeId = step4Rows[0]?.target_scope_id;
 
+      // VERIFICATION: Check if target container still exists
+      if (targetScopeId) {
+          const { rows: targetConnectorRows } = await pool.query('SELECT api_url, api_key, username, auth_type FROM connectors WHERE migration_id = $1 AND connector_type = $2', [migrationId, 'out']);
+          const targetConnector = targetConnectorRows[0];
+          const targetScheme = await loadScheme(targetSystem);
+          
+          if (targetConnector && targetScheme) {
+              const { apiKey, baseUrl, projectId: openAiProjectId } = resolveOpenAiConfig();
+              const openAiHeaders = buildOpenAiHeaders(apiKey, openAiProjectId);
+              const targetContainerType = scopeConfig.targetContainerType || targetScheme.exportInstructions?.preferredContainerType || "project";
+
+              const verifyPrompt = `
+Du bist ein Cloud-Integrations-Experte. Erstelle den API-Call, um die Existenz eines Haupt-Containers (ID: ${targetScopeId}) im System **${targetSystem}** zu prüfen.
+
+### ZIEL-SYSTEM INFOS:
+${JSON.stringify(targetScheme, null, 2)}
+
+### ZIEL-CONNECTOR URL:
+${targetConnector.api_url}
+
+### AUFGABE:
+Prüfe ob der Container vom Typ **"${targetContainerType}"** mit der ID **"${targetScopeId}"** existiert.
+Nutze einen GET Request auf den entsprechenden Detail-Endpunkt.
+
+ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
+{
+  "url": "string", // Relativ zur Base-URL oder absolut
+  "method": "GET"
+}
+              `;
+
+              try {
+                  const verifyRes = await fetch(`${baseUrl}/chat/completions`, {
+                      method: 'POST',
+                      headers: openAiHeaders,
+                      body: JSON.stringify({
+                          model: "gpt-4o",
+                          messages: [{ role: "system", content: verifyPrompt }],
+                          response_format: { type: "json_object" }
+                      })
+                  });
+                  
+                  if (verifyRes.ok) {
+                      const verifyData = await verifyRes.json();
+                      const callConfig = JSON.parse(verifyData.choices[0].message.content);
+                      
+                      const targetHeaders: any = { 
+                          "Accept": "application/json",
+                          "Content-Type": "application/json",
+                          ...(targetScheme.headers || {})
+                      };
+
+                      if (targetConnector.auth_type === 'api_key' && targetConnector.api_key) {
+                          const authConf = targetScheme.authentication;
+                          const prefix = authConf?.tokenPrefix !== undefined ? authConf.tokenPrefix : 'Bearer ';
+                          const headerName = authConf?.headerName || 'Authorization';
+                          targetHeaders[headerName] = `${prefix}${targetConnector.api_key}`;
+                      }
+
+                      const finalUrl = callConfig.url.startsWith('http') ? callConfig.url : (targetScheme.apiBaseUrl || "") + callConfig.url;
+                      const apiRes = await fetch(finalUrl, {
+                          method: callConfig.method,
+                          headers: targetHeaders
+                      });
+
+                      if (apiRes.status === 404) {
+                          console.log(`[Worker] Target container ${targetScopeId} not found (404). Will recreate.`);
+                          await writeChatMessage(migrationId, 'assistant', `Der zuvor erstellte Ziel-Container (ID: ${targetScopeId}) wurde nicht mehr im Zielsystem gefunden. Ich setze den Transfer-Status zurück und lege den Container neu an...`, currentStepNumber);
+                          
+                          // Reset database
+                          await pool.query('DELETE FROM step_4_results WHERE migration_id = $1', [migrationId]);
+                          
+                          // Reset Neo4j
+                          const driver = neo4j.driver(
+                            process.env.NEO4J_URI || "bolt://neo4j-db:7687",
+                            neo4j.auth.basic(process.env.NEO4J_USER || "neo4j", process.env.NEO4J_PASSWORD || "password")
+                          );
+                          const session = driver.session();
+                          try {
+                              await session.run(
+                                  `MATCH (n) WHERE n.migration_id = $migrationId 
+                                   SET n.target_id = null, n.transfer_attempts = null, n.transfer_error = null`,
+                                  { migrationId }
+                              );
+                              console.log(`[Worker] Neo4j target_ids cleared for migration ${migrationId}`);
+                          } catch (neoErr) {
+                              console.error(`[Worker] Failed to clear Neo4j target_ids:`, neoErr);
+                          } finally {
+                              await session.close();
+                              await driver.close();
+                          }
+
+                          targetScopeId = null;
+                      } else if (!apiRes.ok) {
+                          console.log(`[Worker] Verification check failed with status ${apiRes.status}. Proceeding assuming it might exist.`);
+                      } else {
+                          console.log(`[Worker] Target container ${targetScopeId} verified.`);
+                      }
+                  }
+              } catch (err) {
+                  console.error(`[Worker] Error in existence verification:`, err);
+              }
+          }
+      }
+
       if (!targetScopeId) {
           await writeChatMessage(migrationId, 'assistant', `Phase 0: Bereite Ziel-Container in **${targetSystem}** vor...`, currentStepNumber);
           
@@ -2559,13 +2677,40 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
       );
 
       try {
+          // 1. Calculate total nodes to transfer for progress bar
+          const countSession = driver.session();
+          let totalNodesToTransfer = 0;
+          try {
+              const countRes = await countSession.run(
+                  `MATCH (n:\`${sourceSystem}\`) 
+                   WHERE n.migration_id = $migrationId 
+                   AND n.target_id IS NULL
+                   RETURN count(n) as total`,
+                  { migrationId }
+              );
+              totalNodesToTransfer = countRes.records[0].get('total').toNumber();
+          } finally {
+              await countSession.close();
+          }
+
           let totalTransferred = 0;
           let transferErrors = 0;
+          
+          // Create initial live status message
+          let liveStatusId = await writeChatMessage(migrationId, 'assistant', JSON.stringify({
+              type: 'live-transfer-status',
+              total: totalNodesToTransfer,
+              processed: 0,
+              successCount: 0,
+              errorCount: 0,
+              currentEntity: 'Vorbereitung',
+              status: 'running'
+          }), currentStepNumber);
+
+          const { rows: ruleRows8 } = await pool.query('SELECT * FROM public.mapping_rules WHERE migration_id = $1', [migrationId]);
 
           // Process entities in sequence
           for (const targetEntityType of exportSeq) {
-              await writeChatMessage(migrationId, 'assistant', `Übertrage Objekte vom Typ: **${targetEntityType}**...`, currentStepNumber);
-              
               // Find source objects that map to this target type
               const { rows: entityRules } = await pool.query(
                   "SELECT DISTINCT source_object FROM mapping_rules WHERE migration_id = $1 AND target_object = $2 AND rule_type != 'IGNORE'",
@@ -2581,9 +2726,18 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
               for (const sourceObjectType of sourceObjectTypes) {
                   let processedInBatch = 0;
                   
-                  // 1. GENERATE RECIPE ONCE PER ENTITY PAIR
-                  await writeChatMessage(migrationId, 'assistant', `Erstelle Transfer-Rezept für **${sourceObjectType}** nach **${targetEntityType}**...`, currentStepNumber);
+                  // Update live status for current entity
+                  await upsertChatMessage(liveStatusId, migrationId, 'assistant', JSON.stringify({
+                      type: 'live-transfer-status',
+                      total: totalNodesToTransfer,
+                      processed: totalTransferred + transferErrors,
+                      successCount: totalTransferred,
+                      errorCount: transferErrors,
+                      currentEntity: `Initialisiere ${sourceObjectType}...`,
+                      status: 'running'
+                  }), currentStepNumber);
                   
+                  // 1. GENERATE RECIPE ONCE PER ENTITY PAIR
                   const { apiKey, baseUrl, projectId: openAiProjectId } = resolveOpenAiConfig();
                   const openAiHeaders = buildOpenAiHeaders(apiKey, openAiProjectId);
 
@@ -2808,9 +2962,16 @@ Du bist ein Data Export Agent. Erstelle den exakten API-Call für dieses Objekt.
                                           totalTransferred++;
                                           processedInBatch++;
                                           
-                                          if (totalTransferred % 10 === 0) {
-                                              await writeChatMessage(migrationId, 'assistant', `Transfer-Fortschritt ${targetEntityType}: **${totalTransferred}** Objekte übertragen...`, currentStepNumber);
-                                          }
+                                          // Update status message
+                                          await upsertChatMessage(liveStatusId, migrationId, 'assistant', JSON.stringify({
+                                              type: 'live-transfer-status',
+                                              total: totalNodesToTransfer,
+                                              processed: totalTransferred + transferErrors,
+                                              successCount: totalTransferred,
+                                              errorCount: transferErrors,
+                                              currentEntity: sourceObjectType,
+                                              status: 'running'
+                                          }), currentStepNumber);
                                       } else {
                                           console.error(`[Worker] API Response OK but no ID found for ${node.external_id}`);
                                           await session.run(
@@ -2820,6 +2981,15 @@ Du bist ein Data Export Agent. Erstelle den exakten API-Call für dieses Objekt.
                                               { migrationId, extId: node.external_id }
                                           );
                                           transferErrors++;
+                                          await upsertChatMessage(liveStatusId, migrationId, 'assistant', JSON.stringify({
+                                              type: 'live-transfer-status',
+                                              total: totalNodesToTransfer,
+                                              processed: totalTransferred + transferErrors,
+                                              successCount: totalTransferred,
+                                              errorCount: transferErrors,
+                                              currentEntity: sourceObjectType,
+                                              status: 'running'
+                                          }), currentStepNumber);
                                       }
                                   } else {
                                       const errText = await apiRes.text();
@@ -2831,6 +3001,15 @@ Du bist ein Data Export Agent. Erstelle den exakten API-Call für dieses Objekt.
                                           { migrationId, extId: node.external_id, errText: `${apiRes.status}: ${errText.substring(0, 200)}` }
                                       );
                                       transferErrors++;
+                                      await upsertChatMessage(liveStatusId, migrationId, 'assistant', JSON.stringify({
+                                          type: 'live-transfer-status',
+                                          total: totalNodesToTransfer,
+                                          processed: totalTransferred + transferErrors,
+                                          successCount: totalTransferred,
+                                          errorCount: transferErrors,
+                                          currentEntity: sourceObjectType,
+                                          status: 'running'
+                                      }), currentStepNumber);
                                   }
                               } catch (apiErr) {
                                   console.error(`[Worker] API Error:`, apiErr);
@@ -2841,6 +3020,15 @@ Du bist ein Data Export Agent. Erstelle den exakten API-Call für dieses Objekt.
                                       { migrationId, extId: node.external_id, errText: String(apiErr).substring(0, 200) }
                                   );
                                   transferErrors++;
+                                  await upsertChatMessage(liveStatusId, migrationId, 'assistant', JSON.stringify({
+                                      type: 'live-transfer-status',
+                                      total: totalNodesToTransfer,
+                                      processed: totalTransferred + transferErrors,
+                                      successCount: totalTransferred,
+                                      errorCount: transferErrors,
+                                      currentEntity: sourceObjectType,
+                                      status: 'running'
+                                  }), currentStepNumber);
                               }
                               
                               await new Promise(r => setTimeout(r, (rateLimitResult.delay || 0.5) * 1000));
@@ -2852,7 +3040,17 @@ Du bist ein Data Export Agent. Erstelle den exakten API-Call für dieses Objekt.
               }
           }
 
-          await writeChatMessage(migrationId, 'assistant', `Transfer abgeschlossen. ${totalTransferred} Objekte erfolgreich übertragen, ${transferErrors} Fehler.`, currentStepNumber);
+          // Final update
+          await upsertChatMessage(liveStatusId, migrationId, 'assistant', JSON.stringify({
+              type: 'live-transfer-status',
+              total: totalNodesToTransfer,
+              processed: totalTransferred + transferErrors,
+              successCount: totalTransferred,
+              errorCount: transferErrors,
+              currentEntity: 'Fertig',
+              status: 'completed'
+          }), currentStepNumber);
+
           result = { status: 'success', transferredCount: totalTransferred, errors: transferErrors };
 
       } finally {
