@@ -49,5 +49,6 @@ export interface NewMigrationInput {
   scopeConfig?: {
     sourceScope?: string;
     targetName?: string;
+    targetContainerType?: string;
   };
 }

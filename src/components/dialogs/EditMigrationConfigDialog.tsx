@@ -36,6 +36,10 @@ interface EditMigrationConfigDialogProps {
     targetSystem: string;
     sourceAuth: MigrationSystemAuthConfig;
     targetAuth: MigrationSystemAuthConfig;
+    scopeConfig?: {
+      targetName?: string;
+      targetContainerType?: string;
+    };
   };
 }
 
@@ -218,7 +222,6 @@ const EditMigrationConfigDialog = ({
 
           <div className="grid gap-4 md:grid-cols-2">
             {/* Source/Target Sections */}
-            {[/* ... */].map(/* ... */)}
           </div>
 
           {availableContainerTypes.length > 0 && (
