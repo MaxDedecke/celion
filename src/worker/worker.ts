@@ -5,6 +5,7 @@ import { AGENT_WORKFLOW_STEPS } from '../constants/agentWorkflow';
 import { loadScheme, loadObjectScheme } from '../lib/scheme-loader';
 import { resolveOpenAiConfig, buildOpenAiHeaders } from '../agents/openai/openaiClient';
 import { smartDiscovery } from '../tools/smartDiscovery';
+import { StepFactory } from '../agents/core/StepFactory';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -385,45 +386,41 @@ async function processJob(job: any) {
     let failureMessage = "";
 
     if (agentName === 'runSystemDetection') {
-      const url = agentParams?.url;
-      const expected = agentParams?.expectedSystem;
-      const instructions = agentParams?.instructions;
       const mode = agentParams?.mode || 'source';
-
-      const headerMsg = mode === 'source' ? "Analysiere **Quellsystem**" : "Analysiere **Zielsystem**";
-      await writeChatMessage(migrationId, 'assistant', headerMsg, currentStepNumber);
-      const detailMsg = `Ich überprüfe, ob **${expected}** zu der URL **${url}** passt.`;
-      await writeChatMessage(migrationId, 'assistant', detailMsg, currentStepNumber);
-
-      const messageGenerator = runSystemDetection(url, expected, instructions);
-      let lastMessageText: string | undefined;
-
-      for await (const message of messageGenerator) {
-        if (message.content && message.content.length > 0 && message.content[0].text) {
-          lastMessageText = message.content[0].text;
+      const context = {
+        migrationId,
+        stepNumber: currentStepNumber,
+        writeChatMessage: async (role, content, stepNum) => await writeChatMessage(migrationId, role, content, stepNum),
+        logActivity: async (type, title) => await logActivity(migrationId, type, title),
+        getConnector: async (type) => {
+            const { rows } = await pool.query('SELECT api_url, api_key, username FROM connectors WHERE migration_id = $1 AND connector_type = $2', [migrationId, type]);
+            return rows[0];
+        },
+        getMigrationDetails: async () => {
+            const { rows } = await pool.query('SELECT scope_config FROM migrations WHERE id = $1', [migrationId]);
+            return rows[0];
         }
-      }
+      };
 
-      if (lastMessageText) {
+      const agent = StepFactory.createAgent(agentName, context);
+      if (agent) {
         try {
-          const parsed = JSON.parse(lastMessageText);
-          parsed.system_mode = mode;
-          result = parsed;
-          resultMessageText = JSON.stringify(parsed);
-          
-          if (result && result.systemMatchesUrl === false) {
-             isLogicalFailure = true;
-             failureMessage = `${mode === 'source' ? 'Source' : 'Target'} system detection failed: URL does not match expected system.`;
-          }
-        } catch (e) {
-          result = { text: lastMessageText, system_mode: mode };
+          const agentResult = await agent.execute(agentParams);
+          isLogicalFailure = !!agentResult.isLogicalFailure;
+          failureMessage = agentResult.error || "";
+          result = agentResult.result || agentResult;
           resultMessageText = JSON.stringify(result);
+        } catch (err) {
+          isLogicalFailure = true;
+          failureMessage = String(err);
+          result = { error: failureMessage, system_mode: mode };
+          resultMessageText = failureMessage;
         }
       } else {
-        result = { error: 'Agent produced no output', system_mode: mode };
-        resultMessageText = JSON.stringify(result);
         isLogicalFailure = true;
-        failureMessage = "Agent produced no output.";
+        failureMessage = "Agent not found in StepFactory";
+        result = { error: failureMessage, system_mode: mode };
+        resultMessageText = failureMessage;
       }
 
       await writeChatMessage(migrationId, 'assistant', resultMessageText, currentStepNumber);
@@ -476,7 +473,6 @@ async function processJob(job: any) {
 
         await finishClient.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
         
-        // KPI: Increment global steps and agent metrics
         if (finalStepStatus === 'completed') {
           await incrementGlobalStats(finishClient, { steps: 1, success: 1, total_agents: 1 });
         } else if (finalStepStatus === 'failed') {
@@ -516,521 +512,45 @@ async function processJob(job: any) {
       }
 
     } else if (agentName === 'runCapabilityDiscovery') {
-      const sourceUrl = agentParams?.sourceUrl;
-      const sourceSystem = agentParams?.sourceExpectedSystem;
-      const headerMsg = "Starte **Source Discovery**";
-      await writeChatMessage(migrationId, 'assistant', headerMsg, currentStepNumber);
-      
-      const { rows: migrationDetailRows } = await pool.query('SELECT scope_config FROM migrations WHERE id = $1', [migrationId]);
-      const scopeConfig = migrationDetailRows[0]?.scope_config || {};
-      const { rows: connectorRows } = await pool.query('SELECT api_url, api_key, username FROM connectors WHERE migration_id = $1 AND connector_type = $2', [migrationId, 'in']);
-      const connector = connectorRows[0];
-
-      if (!connector || (!connector.api_key && !connector.username)) {
-        isLogicalFailure = true;
-        failureMessage = `Keine Zugangsdaten für das Quellsystem gefunden.`;
-        result = { success: false, error: failureMessage };
-        resultMessageText = failureMessage;
-      } else {
-        const fullScheme = await loadScheme(sourceSystem);
-        const discoveryScheme = { ...(fullScheme || {}), apiBaseUrl: fullScheme?.apiBaseUrl, headers: fullScheme?.headers };
-        const detailMsg = `Ich analysiere die Struktur von **${sourceSystem}** und ermittle die Datenmengen${scopeConfig?.sourceScope ? ` (Fokus: **${scopeConfig.sourceScope}**)` : ''}.`;
-        await writeChatMessage(migrationId, 'assistant', detailMsg, currentStepNumber);
-
-        // --- Phase 1: Exploration ---
-        await writeChatMessage(migrationId, 'assistant', 'Phase 1: Exploration der API-Endpunkte...', currentStepNumber);
-        
-        const { apiKey, baseUrl, projectId } = resolveOpenAiConfig();
-        const openAiHeaders = buildOpenAiHeaders(apiKey, projectId);
-        const openaiClient = {
-            chat: {
-                completions: {
-                    create: async (params: any) => {
-                        const response = await fetch(`${baseUrl}/chat/completions`, {
-                            method: 'POST',
-                            headers: openAiHeaders,
-                            body: JSON.stringify(params)
-                        });
-                        if (!response.ok) {
-                             const errorText = await response.text();
-                             throw new Error(`OpenAI API request failed: ${response.status} ${response.statusText} ${errorText}`);
-                        }
-                        return await response.json();
-                    }
-                }
-            }
-        };
-
-        const email = connector.username || "";
-        const token = connector.api_key || "";
-        const base64Credentials = btoa(`${email}:${token}`);
-        const endpointKeys = Object.keys(discoveryScheme?.discovery?.endpoints || {});
-
-        const SYSTEM_PROMPT = `
-Du bist eine Data Discovery Engine. Dein Ziel ist eine vollständige und wahrheitsgetreue Bestandsaufnahme der Systemstruktur und der Datenmengen.
-
-### PHASE 0: SCOPE ALIGNMENT (Identifizierung via API)
-- **ZIELE IDENTIFIZIEREN:** Falls in der Konfiguration (scopeConfig) ein Projektname (sourceScope) angegeben ist, musst du ZUERST die zugehörige ID (gid, id, uuid) über einen API-Call (z.B. /projects oder /workspaces) finden.
-- **ALLES ERFASSEN:** Falls KEIN Projektname angegeben ist, liste alle verfügbaren Container (Workspaces, Teams, Spaces) über die API auf und erfasse deren IDs.
-- **KEINE FAKE-IDS:** Nutze NIEMALS generische IDs wie '123456789', '23456789' oder '123'. Wenn du keine echte ID über die API findest, STOPPE und melde einen Fehler.
-- **ID-CACHING:** Speichere die verifizierten IDs intern ab. Du darfst für alle weiteren API-Aufrufe NUR noch diese über die API ermittelten IDs verwenden.
-
-### PHASE 1: EXPLORATION (Tool use)
-- **BEWEISPFLICHT:** Jeder 'count' im finalen Bericht MUSS auf einem realen 'totalCount' aus einem 'smart_discovery' Tool-Call basieren. Halluziniere NIEMALS Datenmengen.
-- **STRIKTE REGEL: KEINE PLATZHALTER.** Nutze NIEMALS URLs mit geschweiften Klammern. Ersetze diese durch die in Phase 0 identifizierten IDs.
-- **VOLLSTÄNDIGE ZÄHLUNG:** Rufe 'smart_discovery' für jeden Endpunkt auf. 
-
-### PHASE 2: FINAL REPORT
-- Erstelle das JSON-Objekt NUR mit Daten, die du tatsächlich über Tools abgefragt hast.
-- Falls ein Endpunkt nicht abgefragt werden konnte, setze den Count auf 0 und dokumentiere dies unter 'missedEndpoints'.
-
-### KOMPLEXITÄTS-BEWERTUNG:
-1. **Entitäts-Ebene:** 
-   - 0 Elemente -> IMMER "low"
-   - < 1.000 Elemente -> "low"
-   - 1.000 - 10.000 -> "medium"
-   - > 10.000 -> "high"
-2. **Gesamt-Score (complexityScore):** Gib einen Wert zwischen 1 und 10 an (NIEMALS höher!).
-   - 1-3 (Low): < 5.000 Elemente gesamt.
-   - 4-7 (Medium): 5.000 - 50.000 Elemente gesamt.
-   - 8-10 (High/Critical): > 50.000 Elemente gesamt.
-
-### FINAL JSON FORMAT:
-{
-  "entities": [
-    { "name": "string", "count": number, "complexity": "low" | "medium" | "high" }
-  ],
-  "coverage": {
-    "totalEndpoints": number,
-    "checkedEndpoints": ["string"],
-    "missedEndpoints": [{ "name": "string", "reason": "string" }]
-  },
-  "estimatedDurationMinutes": number,
-  "complexityScore": number,
-  "executedCalls": ["string"],
-  "scope": { 
-    "identified": boolean, 
-    "name": string | null, 
-    "id": string | null, 
-    "type": string | null,
-    "identified_ids": {
-       "workspace_id": "string",
-       "project_id": "string",
-       "space_id": "string",
-       "team_id": "string",
-       "other_ids": {}
-    }
-  },
-  "summary": "Kurze deutsche Zusammenfassung.",
-  "rawOutput": "Technischer Bericht."
-}
-        `;
-
-        const TOOLS = [
-          {
-            type: "function",
-            function: {
-              name: "smart_discovery",
-              description: "Führt eine intelligente Discovery-Anfrage durch. WICHTIG: Die URL muss vollständig aufgelöst sein (KEINE geschweiften Klammern!).",
-              parameters: {
-                type: "object",
-                properties: {
-                  url: { type: "string", description: "Die VOLLSTÄNDIGE URL (inkl. Base URL und ECHTEN IDs statt Platzhaltern)." },
-                  method: { type: "string", enum: ["GET", "POST"], description: "HTTP Methode." },
-                  headers: { type: "object", description: "Header (Authentifizierung wird automatisch ergänzt)." },
-                  body: { type: "object", description: "Optionaler Body." }
-                },
-                required: ["url"]
-              }
-            }
-          }
-        ];
-
-        const userContext = `
-Source URL: ${sourceUrl}
-Credentials: ${connector.username ? 'Email provided' : 'No email'}, Token provided
-Scope Config: ${JSON.stringify(scopeConfig || {}, null, 2)}
-
-### NAVIGATION GUIDE (Strikte Befolgung erforderlich):
-${JSON.stringify(discoveryScheme?.navigationGuide || "Kein Guide vorhanden.", null, 2)}
-
-### SYSTEM SCHEME:
-${JSON.stringify(discoveryScheme, null, 2)}
-
-### REQUIRED ENDPOINTS TO CHECK:
-${endpointKeys.map(k => `- ${k}`).join('\n')}
-
-Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben, ob er geprüft wurde oder warum er übersprungen wurde. Nutze zwingend den Navigation Guide für die Identifizierung der IDs.
-        `;
-
-        let messages: any[] = [
-            { role: "system", content: SYSTEM_PROMPT },
-            { role: "user", content: userContext }
-        ];
-
-        let phase1Result: any = null;
-        let lastMessageText: string | undefined;
-
-        // Loop for Phase 1
-        for (let turn = 0; turn < 25; turn++) {
-             const response = await openaiClient.chat.completions.create({
-                 model: process.env.OPENAI_MODEL || "gpt-4o",
-                 messages,
-                 tools: TOOLS,
-                 response_format: { type: "json_object" }
-             });
-             const message = response.choices[0].message;
-             messages.push(message);
-
-             if (message.content) {
-                 lastMessageText = message.content;
-                 // Try to parse partial results or check if it's the final JSON
-                 if (message.content.trim().startsWith('{')) {
-                     try {
-                         phase1Result = JSON.parse(message.content);
-                         if (phase1Result.entities) {
-                             // It seems like a final result
-                             break; 
-                         }
-                     } catch (e) {
-                         // Not JSON yet
-                     }
-                 } else {
-                     await writeChatMessage(migrationId, 'assistant', message.content, currentStepNumber);
-                 }
-             }
-
-             if (message.tool_calls && message.tool_calls.length > 0) {
-                 for (const toolCall of message.tool_calls) {
-                     const functionName = toolCall.function.name;
-                     const args = JSON.parse(toolCall.function.arguments);
-                     let toolResult: any;
-
-                     if (functionName === 'smart_discovery') {
-                         const requestHeaders: Record<string, string> = { ...args.headers };
-
-                         // Validierung gegen Platzhalter und generische Dummy-IDs
-                         const isGenericId = (url: string) => {
-                            return /123456789/.test(url) || /23456789/.test(url) || /34567890/.test(url) || /987654321/.test(url);
-                         };
-
-                         if (args.url && (args.url.includes('{') || args.url.includes('}'))) {
-                            toolResult = { 
-                                error: `URL enthält noch unaufgelöste Platzhalter: ${args.url}. Du MUSST diese Platzhalter durch reale IDs aus vorherigen API-Antworten ersetzen, bevor du das Tool aufrufst.` 
-                            };
-                         } else if (args.url && isGenericId(args.url)) {
-                            toolResult = {
-                                error: `URL enthält eine offensichtlich halluzinierte Dummy-ID: ${args.url}. Du darfst KEINE Fake-IDs wie '12345...' verwenden. Ermittle die echten IDs schrittweise über API-Abfragen in Phase 0 (z.B. indem du erst Workspaces/Teams auflistest).`
-                            };
-                         } else {
-                            const auth = discoveryScheme?.authentication;
-                            
-                            if (auth) {
-                                if (auth.type === 'bearer') {
-                                    const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : 'Bearer ';
-                                    requestHeaders['Authorization'] = `${prefix}${token}`;
-                                } else if (auth.type === 'header') {
-                                    const name = auth.headerName || 'Authorization';
-                                    const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : '';
-                                    requestHeaders[name] = `${prefix}${token}`;
-                                } else if (auth.type === 'basic') {
-                                    requestHeaders['Authorization'] = `Basic ${base64Credentials}`;
-                                }
-                            }
-                            
-                            if (discoveryScheme?.headers) {
-                                Object.assign(requestHeaders, discoveryScheme.headers);
-                            }
-
-                            try {
-                              toolResult = await smartDiscovery({
-                                  url: args.url,
-                                  method: args.method || 'GET',
-                                  headers: requestHeaders,
-                                  body: args.body,
-                                  paginationConfig: discoveryScheme?.discovery?.pagination
-                              });
-
-                              if (toolResult.sampleData) {
-                                  const sampleStr = JSON.stringify(toolResult.sampleData);
-                                  if (sampleStr.length > 10000) {
-                                      toolResult.sampleData = sampleStr.slice(0, 10000) + '...[TRUNCATED]';
-                                  }
-                              }
-                            } catch (toolErr: any) {
-                              toolResult = { error: toolErr.message };
-                            }
-                         }
-
-                     } else {
-                         toolResult = { error: `Unknown tool: ${functionName}` };
-                     }
-
-                     messages.push({
-                         tool_call_id: toolCall.id,
-                         role: "tool",
-                         name: functionName,
-                         content: JSON.stringify(toolResult)
-                     });
-                 }
-             } else {
-                 // No tool calls, likely finished
-                 break;
-             }
+      const context = {
+        migrationId,
+        stepNumber: currentStepNumber,
+        writeChatMessage: async (role, content, stepNum) => await writeChatMessage(migrationId, role, content, stepNum),
+        logActivity: async (type, title) => await logActivity(migrationId, type, title),
+        getConnector: async (type) => {
+            const { rows } = await pool.query('SELECT api_url, api_key, username FROM connectors WHERE migration_id = $1 AND connector_type = $2', [migrationId, type]);
+            return rows[0];
+        },
+        getMigrationDetails: async () => {
+            const { rows } = await pool.query('SELECT scope_config FROM migrations WHERE id = $1', [migrationId]);
+            return rows[0];
         }
-        
-        // --- Phase 2: Validation ---
-        await writeChatMessage(migrationId, 'assistant', 'Phase 2: Validierung der Abdeckung...', currentStepNumber);
-        
-        let validationResult: any = null;
-        if (phase1Result) {
-            // Check if all endpoints were covered
-            const checkedEndpoints = phase1Result.coverage?.checkedEndpoints || [];
-            // const missedEndpoints = endpointKeys.filter(k => !checkedEndpoints.includes(k) && !checkedEndpoints.includes(discoveryScheme.discovery.endpoints[k]?.url)); // Loose check
-            
-            // Simple validation logic or LLM based? 
-            // The user wants an agent to validate.
-            
-            const validationPrompt = `
-            Du bist der Quality Assurance Agent. Überprüfe das Ergebnis der Discovery Phase.
-            
-            REQUIRED ENDPOINTS:
-            ${endpointKeys.join(', ')}
-            
-            CHECKED ENDPOINTS (from Phase 1 Report):
-            ${JSON.stringify(checkedEndpoints)}
-            
-            MISSED ACCORDING TO REPORT:
-            ${JSON.stringify(phase1Result.coverage?.missedEndpoints || [])}
-            
-            AUFGABE:
-            Analysiere, ob die Abdeckung ausreichend ist. 
-            Antworte mit einem JSON Objekt:
-            {
-                "is_sufficient": boolean,
-                "missing_critical_endpoints": ["string"],
-                "validation_message": "string"
-            }
-            `;
-            
-            const validationResponse = await openaiClient.chat.completions.create({
-                model: process.env.OPENAI_MODEL || "gpt-4o",
-                messages: [
-                    { role: "system", content: "Du bist ein strenger QA Agent." },
-                    { role: "user", content: validationPrompt }
-                ],
-                response_format: { type: "json_object" }
-            });
-            
-            const valContent = validationResponse.choices[0].message.content;
-            if (valContent) {
-                validationResult = JSON.parse(valContent);
-                await writeChatMessage(migrationId, 'assistant', `Validierungsergebnis: ${validationResult.validation_message}`, currentStepNumber);
-            }
-        }
+      };
 
-        // --- Phase 3: Retry / Gap Filling ---
-        if (validationResult && !validationResult.is_sufficient && phase1Result) {
-             await writeChatMessage(migrationId, 'assistant', 'Phase 3: Versuche, fehlende Endpunkte abzurufen...', currentStepNumber);
-             
-             const phase3Prompt = `
-             ### QA VALIDATION FAILED
-             The following endpoints were missed: ${JSON.stringify(validationResult.missing_critical_endpoints || [])}
-             Validation Message: ${validationResult.validation_message}
-             
-             ### INSTRUCTION
-             1. Use the IDs and data you found in Phase 1 to construct valid URLs for these missing endpoints.
-             2. Fetch them using 'smart_discovery'.
-             3. Update your findings and provide a NEW, MERGED final report (JSON).
-             `;
-             
-             messages.push({ role: "user", content: phase3Prompt });
-             
-             for (let turn = 0; turn < 15; turn++) {
-                 const response = await openaiClient.chat.completions.create({
-                     model: process.env.OPENAI_MODEL || "gpt-4o",
-                     messages,
-                     tools: TOOLS,
-                     response_format: { type: "json_object" }
-                 });
-                 const message = response.choices[0].message;
-                 messages.push(message);
-
-                 if (message.content) {
-                     if (message.content.trim().startsWith('{')) {
-                         try {
-                             const newResult = JSON.parse(message.content);
-                             if (newResult.entities) {
-                                 phase1Result = newResult;
-                                 phase1Result.validation = validationResult;
-                                 phase1Result.phase3_executed = true;
-                                 await writeChatMessage(migrationId, 'assistant', 'Phase 3 abgeschlossen. Bericht aktualisiert.', currentStepNumber);
-                                 break; 
-                             }
-                         } catch (e) { }
-                     } else {
-                        await writeChatMessage(migrationId, 'assistant', message.content, currentStepNumber);
-                     }
-                 }
-
-                 if (message.tool_calls && message.tool_calls.length > 0) {
-                     for (const toolCall of message.tool_calls) {
-                         const functionName = toolCall.function.name;
-                         const args = JSON.parse(toolCall.function.arguments);
-                         let toolResult: any;
-
-                         if (functionName === 'smart_discovery') {
-                             const requestHeaders: Record<string, string> = { ...args.headers };
-
-                             // Validierung gegen Platzhalter und generische Dummy-IDs
-                             const isGenericId = (url: string) => {
-                                return /123456789/.test(url) || /23456789/.test(url) || /34567890/.test(url) || /987654321/.test(url);
-                             };
-
-                             if (args.url && (args.url.includes('{') || args.url.includes('}'))) {
-                                toolResult = { 
-                                    error: `URL enthält noch unaufgelöste Platzhalter: ${args.url}. Du MUSST diese Platzhalter durch reale IDs aus vorherigen API-Antworten ersetzen, bevor du das Tool aufrufst.` 
-                                };
-                             } else if (args.url && isGenericId(args.url)) {
-                                toolResult = {
-                                    error: `URL enthält eine offensichtlich halluzinierte Dummy-ID: ${args.url}. Du darfst KEINE Fake-IDs wie '12345...' verwenden. Ermittle die echten IDs schrittweise über API-Abfragen in Phase 0 (z.B. indem du erst Workspaces/Teams auflistest).`
-                                };
-                             } else {
-                                const auth = discoveryScheme?.authentication;
-                                
-                                if (auth) {
-                                    if (auth.type === 'bearer') {
-                                        const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : 'Bearer ';
-                                        requestHeaders['Authorization'] = `${prefix}${token}`;
-                                    } else if (auth.type === 'header') {
-                                        const name = auth.headerName || 'Authorization';
-                                        const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : '';
-                                        requestHeaders[name] = `${prefix}${token}`;
-                                    } else if (auth.type === 'basic') {
-                                        requestHeaders['Authorization'] = `Basic ${base64Credentials}`;
-                                    }
-                                }
-                                
-                                if (discoveryScheme?.headers) {
-                                    Object.assign(requestHeaders, discoveryScheme.headers);
-                                }
-
-                                try {
-                                  toolResult = await smartDiscovery({
-                                      url: args.url,
-                                      method: args.method || 'GET',
-                                      headers: requestHeaders,
-                                      body: args.body,
-                                      paginationConfig: discoveryScheme?.discovery?.pagination
-                                  });
-
-                                  if (toolResult.sampleData) {
-                                      const sampleStr = JSON.stringify(toolResult.sampleData);
-                                      if (sampleStr.length > 10000) {
-                                          toolResult.sampleData = sampleStr.slice(0, 10000) + '...[TRUNCATED]';
-                                      }
-                                  }
-                                } catch (toolErr: any) {
-                                  toolResult = { error: toolErr.message };
-                                }
-                             }
-                         } else {
-                             toolResult = { error: `Unknown tool: ${functionName}` };
-                         }
-
-                         messages.push({
-                             tool_call_id: toolCall.id,
-                             role: "tool",
-                             name: functionName,
-                             content: JSON.stringify(toolResult)
-                         });
-                     }
-                 } else {
-                     break;
-                 }
-             }
-        } else {
-            await writeChatMessage(migrationId, 'assistant', 'Phase 3: Keine kritischen Lücken gefunden. Überspringe Retry.', currentStepNumber);
-        }
-
-        // --- Phase 4: Inventory Normalization ---
+      const agent = StepFactory.createAgent(agentName, context);
+      if (agent) {
         try {
-            const sourceObjectSpecs = await loadObjectScheme(sourceSystem);
-            if (sourceObjectSpecs && phase1Result.entities && phase1Result.entities.length > 0) {
-                await writeChatMessage(migrationId, 'assistant', 'Phase 4: Normalisierung der Inventar-Daten...', currentStepNumber);
-                
-                const normalizationPrompt = `
-                Du bist ein Data Normalization Agent. Dein Ziel ist es, ein rohes System-Inventar auf standardisierte Objekt-Keys zu bereinigen.
-
-                ### RAW INVENTORY:
-                ${JSON.stringify(phase1Result.entities)}
-
-                ### TARGET OBJECT KEYS (aus der technischen Spezifikation):
-                ${JSON.stringify(sourceObjectSpecs.objects.map((o: any) => ({ key: o.key, displayName: o.displayName })))}
-
-                ### SCOPE KONFIGURATION:
-                ${JSON.stringify(scopeConfig)}
-
-                ### AUFGABE:
-                1. Analysiere jedes Item im 'Raw Inventory'.
-                2. Ordne es dem passendsten 'key' aus den 'Target Object Keys' zu. (Beispiel: 'project_tasks' -> 'task', 'sections' -> 'section').
-                3. **INTELLIGENTE ZUSAMMENFÜHRUNG & SCOPE-BEWERTUNG:**
-                   - Falls ein spezifischer **SCOPE** (z.B. ein Projektname oder eine ID) in der 'Scope Konfiguration' definiert ist: Bevorzuge die Counts von Endpunkten, die spezifisch für diesen Scope klingen (z.B. 'project_tasks', 'folder_items'). Ignoriere in diesem Fall die höheren Counts von globalen/unspezifischen Endpunkten (z.B. 'all_tasks'), da diese über den gewählten Scope hinausgehen.
-                   - Falls **KEIN SCOPE** definiert ist (globale Migration): Nimm bei Redundanz den **MAXIMALWERT**, um alle verfügbaren Daten zu erfassen.
-                   - Bei komplementären Daten (z.B. 'Active' + 'Archived'): **ADDIERE** die Counts weiterhin.
-                4. Falls ein Item zu absolut keinem technischen Key passt, behalte es unter seinem ursprünglichen Namen bei (als Fallback).
-                5. Entferne Duplikate durch die Zusammenführung.
-
-                ### REGELN:
-                - Antworte AUSSCHLIESSLICH mit dem bereinigten JSON.
-                - Behalte die Felder 'count' und 'complexity' bei (wobei 'complexity' das Maximum der zusammengeführten Items sein sollte).
-
-                ### OUTPUT FORMAT:
-                {
-                  "entities": [
-                    { "name": "technical_key", "count": number, "complexity": "low|medium|high" }
-                  ],
-                  "normalization_summary": "Kurze Beschreibung was zusammengeführt wurde (z.B. 'project_tasks wurde mit task zusammengeführt')."
-                }
-                `;
-
-                const normResponse = await openaiClient.chat.completions.create({
-                    model: process.env.OPENAI_MODEL || "gpt-4o",
-                    messages: [
-                        { role: "system", content: "Du bist ein Experte für Daten-Strukturen." },
-                        { role: "user", content: normalizationPrompt }
-                    ],
-                    response_format: { type: "json_object" }
-                });
-
-                const normContent = normResponse.choices[0].message.content;
-                if (normContent) {
-                    const normResult = JSON.parse(normContent);
-                    if (normResult.entities) {
-                        console.log(`[Worker] Inventory normalized for ${migrationId}: ${normResult.normalization_summary}`);
-                        phase1Result.raw_entities_pre_normalization = [...phase1Result.entities]; // Keep for debugging
-                        phase1Result.entities = normResult.entities;
-                        phase1Result.normalization_summary = normResult.normalization_summary;
-                        await writeChatMessage(migrationId, 'assistant', `Inventar bereinigt: ${normResult.normalization_summary}`, currentStepNumber);
-                    }
-                }
-            }
-        } catch (normErr: any) {
-            console.error(`[Worker] Normalization failed:`, normErr);
-            // Non-critical, continue with raw data
+          const agentResult = await agent.execute(agentParams);
+          isLogicalFailure = !!agentResult.isLogicalFailure;
+          failureMessage = agentResult.error || "";
+          result = agentResult.result || agentResult;
+          resultMessageText = JSON.stringify(result);
+        } catch (err) {
+          isLogicalFailure = true;
+          failureMessage = String(err);
+          result = { error: failureMessage };
+          resultMessageText = failureMessage;
         }
-
-        // Use phase1Result as final result
-        result = phase1Result;
-        resultMessageText = JSON.stringify(result);
-
-        if (!result || result.error || (!result.entities || result.entities.length === 0)) {
-            isLogicalFailure = true;
-            failureMessage = result?.error || "Keine Daten zur Migration gefunden (Discovery leer).";
-        }
+      } else {
+        isLogicalFailure = true;
+        failureMessage = "Agent not found in StepFactory";
+        result = { error: failureMessage };
+        resultMessageText = failureMessage;
       }
 
-      await writeChatMessage(migrationId, 'assistant', resultMessageText, currentStepNumber);
+      if (resultMessageText) {
+          await writeChatMessage(migrationId, 'assistant', resultMessageText, currentStepNumber);
+      }
       if (!isLogicalFailure) {
         await saveStep3Result(migrationId, result);
       }
@@ -1058,7 +578,6 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
         ]);
         await finishClient.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
         
-        // KPI: Increment global steps and agent metrics
         if (finalStepStatus === 'completed') {
           await incrementGlobalStats(finishClient, { steps: 1, success: 1, total_agents: 1 });
         } else if (finalStepStatus === 'failed') {
@@ -1095,66 +614,40 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
       }
 
     } else if (agentName === 'runTargetSchema') {
-      const targetUrl = agentParams?.targetUrl;
-      const targetSystem = agentParams?.targetExpectedSystem;
-      const headerMsg = "Starte **Target Discovery**";
-      await writeChatMessage(migrationId, 'assistant', headerMsg, currentStepNumber);
-      
-      const { rows: migrationDetailRows } = await pool.query('SELECT name, scope_config FROM migrations WHERE id = $1', [migrationId]);
-      const migrationName = migrationDetailRows[0]?.name;
-      const scopeConfig = migrationDetailRows[0]?.scope_config || {};
-      
-      // Normalize targetName if placeholder '-'
-      if (scopeConfig.targetName === "-") {
-          scopeConfig.targetName = scopeConfig.sourceScopeName || migrationName || "New Project";
-      }
-
-      const { rows: connectorRows } = await pool.query('SELECT api_url, api_key, username FROM connectors WHERE migration_id = $1 AND connector_type = $2', [migrationId, 'out']);
-      const connector = connectorRows[0];
-
-      if (!connector || (!connector.api_key && !connector.username)) {
-        isLogicalFailure = true;
-        failureMessage = `Keine Zugangsdaten für das Zielsystem gefunden.`;
-        result = { success: false, error: failureMessage };
-        resultMessageText = failureMessage;
-      } else {
-        const fullScheme = await loadScheme(targetSystem);
-        const discoveryScheme = { ...(fullScheme || {}), apiBaseUrl: fullScheme?.apiBaseUrl, headers: fullScheme?.headers };
-        const detailMsg = `Ich analysiere die Kompatibilität von **${targetSystem}**${scopeConfig?.targetName ? ` (Ziel-Scope: **${scopeConfig.targetName}**)` : ''}.`;
-        await writeChatMessage(migrationId, 'assistant', detailMsg, currentStepNumber);
-
-        const messageGenerator = runTargetDiscovery(targetUrl, discoveryScheme, { email: connector.username, apiToken: connector.api_key }, scopeConfig);
-        let lastMessageText: string | undefined;
-        for await (const message of messageGenerator) {
-          if (message.content && message.content.length > 0 && message.content[0].text) {
-            lastMessageText = message.content[0].text;
-            if (!lastMessageText.trim().startsWith('{')) {
-              await writeChatMessage(migrationId, 'assistant', lastMessageText, currentStepNumber);
-            }
-          }
+      const context = {
+        migrationId,
+        stepNumber: currentStepNumber,
+        writeChatMessage: async (role, content, stepNum) => await writeChatMessage(migrationId, role, content, stepNum),
+        logActivity: async (type, title) => await logActivity(migrationId, type, title),
+        getConnector: async (type) => {
+            const { rows } = await pool.query('SELECT api_url, api_key, username FROM connectors WHERE migration_id = $1 AND connector_type = $2', [migrationId, type]);
+            return rows[0];
+        },
+        getMigrationDetails: async () => {
+            const { rows } = await pool.query('SELECT name, scope_config FROM migrations WHERE id = $1', [migrationId]);
+            return rows[0];
         }
+      };
 
-        if (lastMessageText) {
-          try {
-            const parsed = JSON.parse(lastMessageText);
-            result = parsed;
-            resultMessageText = JSON.stringify(parsed);
-            if (result.targetScope?.status === 'not_found' || result.targetScope?.status === 'unauthorized' || result.targetScope?.status === 'conflict') {
-              isLogicalFailure = true;
-              failureMessage = result.summary || `Ziel-Konfiguration fehlerhaft: ${result.targetScope?.status}`;
-            }
-          } catch (e) {
-            result = { text: lastMessageText };
-            resultMessageText = JSON.stringify(result);
-            isLogicalFailure = true;
-            failureMessage = "Agent lieferte kein gültiges JSON Ergebnis.";
-          }
-        } else {
-          result = { error: 'Target agent produced no output' };
+      const agent = StepFactory.createAgent(agentName, context);
+      if (agent) {
+        try {
+          const agentResult = await agent.execute(agentParams);
+          isLogicalFailure = !!agentResult.isLogicalFailure;
+          failureMessage = agentResult.error || "";
+          result = agentResult.result || agentResult;
           resultMessageText = JSON.stringify(result);
+        } catch (err) {
           isLogicalFailure = true;
-          failureMessage = "Target agent produced no output.";
+          failureMessage = String(err);
+          result = { error: failureMessage };
+          resultMessageText = failureMessage;
         }
+      } else {
+        isLogicalFailure = true;
+        failureMessage = "Agent not found in StepFactory";
+        result = { error: failureMessage };
+        resultMessageText = failureMessage;
       }
 
       await writeChatMessage(migrationId, 'assistant', resultMessageText, currentStepNumber);
@@ -1185,7 +678,6 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
         ]);
         await finishClient.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
         
-        // KPI: Increment global steps and agent metrics
         if (finalStepStatus === 'completed') {
           await incrementGlobalStats(finishClient, { steps: 1, success: 1, total_agents: 1 });
         } else if (finalStepStatus === 'failed') {
@@ -1222,53 +714,41 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
       }
 
     } else if (agentName === 'runAuthFlow') {
-      const url = agentParams?.url;
-      const systemName = agentParams?.expectedSystem;
       const mode = agentParams?.mode || 'source';
-      const headerMsg = mode === 'source' ? "Verifiziere **Quellsystem-Authentifizierung**" : "Verifiziere **Zielsystem-Authentifizierung**";
-      await writeChatMessage(migrationId, 'assistant', headerMsg, currentStepNumber);
-      
-      const { rows: connectorRows } = await pool.query('SELECT api_url, api_key, username FROM connectors WHERE migration_id = $1 AND connector_type = $2', [migrationId, mode === 'source' ? 'in' : 'out']);
-      const connector = connectorRows[0];
-
-      if (!connector || (!connector.api_key && !connector.username)) {
-        isLogicalFailure = true;
-        failureMessage = `Keine Zugangsdaten für **${mode === 'source' ? 'Quellsystem' : 'Zielsystem'}** gefunden.`;
-        result = { success: false, error: failureMessage };
-        resultMessageText = failureMessage;
-      } else {
-        const fullScheme = await loadScheme(systemName);
-        const authScheme = { ...(fullScheme?.authentication || {}), apiBaseUrl: fullScheme?.apiBaseUrl, headers: fullScheme?.headers };
-        const detailMsg = `Ich teste die Verbindung zu **${systemName}** (**${url}**) mit den hinterlegten Zugangsdaten basierend auf der Konfiguration für **${fullScheme?.system || systemName}**.`;
-        await writeChatMessage(migrationId, 'assistant', detailMsg, currentStepNumber);
-
-        const messageGenerator = runAuthFlow(url, authScheme, { email: connector.username, apiToken: connector.api_key });
-        let lastMessageText: string | undefined;
-        for await (const message of messageGenerator) {
-          if (message.content && message.content.length > 0 && message.content[0].text) {
-            lastMessageText = message.content[0].text;
-          }
+      const context = {
+        migrationId,
+        stepNumber: currentStepNumber,
+        writeChatMessage: async (role, content, stepNum) => await writeChatMessage(migrationId, role, content, stepNum),
+        logActivity: async (type, title) => await logActivity(migrationId, type, title),
+        getConnector: async (type) => {
+            const { rows } = await pool.query('SELECT api_url, api_key, username FROM connectors WHERE migration_id = $1 AND connector_type = $2', [migrationId, type]);
+            return rows[0];
+        },
+        getMigrationDetails: async () => {
+            const { rows } = await pool.query('SELECT scope_config FROM migrations WHERE id = $1', [migrationId]);
+            return rows[0];
         }
-        if (lastMessageText) {
-          try {
-            const parsed = JSON.parse(lastMessageText);
-            parsed.system_mode = mode;
-            result = parsed;
-            resultMessageText = JSON.stringify(parsed);
-            if (result && result.success === false) {
-               isLogicalFailure = true;
-               failureMessage = `${mode === 'source' ? 'Source' : 'Target'} authentication failed: ${result.error || 'Unknown error'}`;
-            }
-          } catch (e) {
-            result = { text: lastMessageText, system_mode: mode };
-            resultMessageText = JSON.stringify(result);
-          }
-        } else {
-          result = { error: 'Agent produced no output', system_mode: mode };
+      };
+
+      const agent = StepFactory.createAgent(agentName, context);
+      if (agent) {
+        try {
+          const agentResult = await agent.execute(agentParams);
+          isLogicalFailure = !!agentResult.isLogicalFailure;
+          failureMessage = agentResult.error || "";
+          result = agentResult.result || agentResult;
           resultMessageText = JSON.stringify(result);
+        } catch (err) {
           isLogicalFailure = true;
-          failureMessage = "Agent produced no output.";
+          failureMessage = String(err);
+          result = { error: failureMessage, system_mode: mode };
+          resultMessageText = failureMessage;
         }
+      } else {
+        isLogicalFailure = true;
+        failureMessage = "Agent not found in StepFactory";
+        result = { error: failureMessage, system_mode: mode };
+        resultMessageText = failureMessage;
       }
 
       await writeChatMessage(migrationId, 'assistant', resultMessageText, currentStepNumber);
@@ -1302,7 +782,6 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
         ]);
         await finishClient.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
         
-        // KPI: Increment global steps and agent metrics
         if (finalStepStatus === 'completed') {
           await incrementGlobalStats(finishClient, { steps: 1, success: 1, total_agents: 1 });
         } else if (finalStepStatus === 'failed') {
@@ -1459,531 +938,49 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
       return;
 
     } else if (agentName === 'runDataStaging') {
-      // Step 5: Data Staging
-      // Technical preparation step with Agent-driven Rate-Limit Calibration and Ingestion
-      console.log(`[Worker] Running Data Staging for migration ${migrationId}`);
-      await writeChatMessage(migrationId, 'assistant', 'Bereite Daten für das Mapping vor (Data Staging)...', currentStepNumber);
-
-      // --- Phase 1: Rate-Limit Calibration ---
-      await writeChatMessage(migrationId, 'assistant', 'Phase 1: Initiale Rate-Limit Kalibrierung startet...', currentStepNumber);
-      
-      const { rows: connectorRows } = await pool.query('SELECT api_url, api_key, username, auth_type FROM connectors WHERE migration_id = $1 AND connector_type = $2', [migrationId, 'in']);
-      const connector = connectorRows[0];
-      const { rows: migrationRowsInfo } = await pool.query('SELECT source_system, notes, scope_config FROM migrations WHERE id = $1', [migrationId]);
-      const sourceSystem = migrationRowsInfo[0]?.source_system;
-      const instructions = migrationRowsInfo[0]?.notes;
-      const scopeConfig = migrationRowsInfo[0]?.scope_config;
-      const scheme = await loadScheme(sourceSystem);
-
-      let effectiveApiUrl = scheme?.apiBaseUrl || connector?.api_url || "";
-      // Strip trailing slash
-      effectiveApiUrl = effectiveApiUrl.replace(/\/$/, "");
-
-      const stagingLogs: string[] = [];
-      const phase3Logs: string[] = [];
-      let relRules: any[] = [];
-
-      const { apiKey, baseUrl, projectId } = resolveOpenAiConfig();
-      const openAiHeaders = buildOpenAiHeaders(apiKey, projectId);
-      const openaiClient = {
-        chat: {
-          completions: {
-            create: async (params: any) => {
-              const controller = new AbortController();
-              const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 seconds timeout
-              try {
-                const response = await fetch(`${baseUrl}/chat/completions`, {
-                  method: 'POST',
-                  headers: openAiHeaders,
-                  body: JSON.stringify(params),
-                  signal: controller.signal
-                });
-                clearTimeout(timeoutId);
-                if (!response.ok) {
-                  const errorText = await response.text();
-                  throw new Error(`OpenAI API request failed: ${response.status} ${response.statusText} ${errorText}`);
-                }
-                return await response.json();
-              } catch (e: any) {
-                clearTimeout(timeoutId);
-                throw e;
-              }
-            }
-          }
-        }
+      const context = {
+        migrationId,
+        stepNumber: currentStepNumber,
+        writeChatMessage: async (role, content, stepNum) => await writeChatMessage(migrationId, role, content, stepNum),
+        logActivity: async (type, title) => await logActivity(migrationId, type, title),
+        getConnector: async (type) => {
+            const { rows } = await pool.query('SELECT api_url, api_key, username, auth_type FROM connectors WHERE migration_id = $1 AND connector_type = $2', [migrationId, type]);
+            return rows[0];
+        },
+        getMigrationDetails: async () => {
+            const { rows } = await pool.query('SELECT source_system, notes, scope_config FROM migrations WHERE id = $1', [migrationId]);
+            return rows[0];
+        },
+        dbPool: pool
       };
 
-      let rateLimitResult = { delay: 1.0, batch_size: 50 };
-
-      if (connector && effectiveApiUrl) {
-          const probeUrl = sourceSystem === 'ClickUp' ? `${effectiveApiUrl}/api/v2/user` : (scheme?.authentication?.whoami?.endpoint ? `${effectiveApiUrl}${scheme.authentication.whoami.endpoint}` : effectiveApiUrl);
-          await writeChatMessage(migrationId, 'assistant', `Führe Probe-Anfrage durch an ${probeUrl}...`, currentStepNumber);
-          
-          const headers: any = { 
-              "Accept": "application/json",
-              ...(scheme?.headers || {})
-          };
-          if (connector.auth_type === 'api_key' && connector.api_key) {
-              headers["Authorization"] = sourceSystem === 'ClickUp' ? connector.api_key : `Bearer ${connector.api_key}`;
-          }
-
-          try {
-              console.log(`[Worker] Performing rate-limit probe to: ${probeUrl}`);
-              const probeRes = await fetch(probeUrl, { headers });
-              const resHeaders: any = {};
-              probeRes.headers.forEach((v, k) => { resHeaders[k] = v; });
-              const resBody = await probeRes.text();
-              
-              console.log(`[Worker] Probe response headers:`, JSON.stringify(resHeaders));
-
-              // Check if we have common rate-limit headers
-              const hasRateLimitHeaders = Object.keys(resHeaders).some(h => h.toLowerCase().includes('ratelimit') || h.toLowerCase().includes('retry-after'));
-
-              // LLM Analysis for Rate Limits
-              const calibrationPrompt = `
-                Analysiere diese API-Antwort und bestimme das optimale delay (in Sekunden, float) und die batch_size (int), 
-                um sicher unter dem Rate-Limit zu bleiben. Berücksichtige Header wie 'X-RateLimit-Limit', 'Retry-After' etc.
-                
-                API Antwort von ${sourceSystem}:
-                Status: ${probeRes.status}
-                Headers: ${JSON.stringify(resHeaders)}
-                Body: ${resBody.substring(0, 1000)}
-                
-                Gib NUR ein JSON zurück: { "delay": float, "batch_size": int }
-              `;
-
-              const calibrationGen = openaiClient.chat.completions.create({
-                  model: process.env.OPENAI_MODEL || "gpt-4o-mini",
-                  messages: [{ role: "user", content: calibrationPrompt }],
-                  response_format: { type: "json_object" }
-              });
-              const calResult = await calibrationGen;
-              const parsedCal = JSON.parse(calResult.choices[0].message.content || "{}");
-              if (parsedCal.delay !== undefined) rateLimitResult = parsedCal;
-
-              const frontendResult = {
-                status: "success",
-                phase: "Rate-Limit Calibration",
-                delay: rateLimitResult.delay,
-                batch_size: rateLimitResult.batch_size,
-                summary: hasRateLimitHeaders 
-                    ? `Rate-Limits basierend auf API-Headern kalibriert: ${rateLimitResult.delay}s Verzögerung, Batch-Größe ${rateLimitResult.batch_size}.`
-                    : `Keine Rate-Limit Header gefunden. Nutze geschätzte Sicherheits-Werte: ${rateLimitResult.delay}s Verzögerung, Batch-Größe ${rateLimitResult.batch_size}.`,
-                rawOutput: JSON.stringify(rateLimitResult)
-              };
-              await writeChatMessage(migrationId, 'assistant', JSON.stringify(frontendResult), currentStepNumber);
-          } catch (e: any) {
-              await writeChatMessage(migrationId, 'assistant', `Probe fehlgeschlagen: ${e.message}. Nutze Standardwerte.`, currentStepNumber);
-          }
-      }
-
-      // --- Phase 2: Agent-Driven Ingestion ---
-      await writeChatMessage(migrationId, 'assistant', 'Phase 2: Programmatischer Datenimport in Neo4j startet...', currentStepNumber);
-      
-      const { rows: step3Rows } = await pool.query('SELECT entity_name, count FROM step_3_results WHERE migration_id = $1', [migrationId]);
-      const userRelatedTerms = ['user', 'member', 'participant', 'assignee', 'owner', 'creator', 'author', 'collaborator'];
-      const entities = step3Rows
-        .map(r => ({ name: r.entity_name, count: r.count }))
-        .filter(ent => {
-          const nameLower = ent.name.toLowerCase();
-          const isUserRelated = userRelatedTerms.some(term => nameLower.includes(term));
-          return ent.count > 0 && !isUserRelated;
-        });
-      
+      const agent = StepFactory.createAgent(agentName, context);
       let totalImported = 0;
-      let validationErrors = 0;
-      const driver = neo4j.driver(
-        process.env.NEO4J_URI || "bolt://neo4j-db:7687",
-        neo4j.auth.basic(process.env.NEO4J_USER || "neo4j", process.env.NEO4J_PASSWORD || "password")
-      );
-
-      const addStagingLog = (msg: string) => {
-          stagingLogs.push(`[${new Date().toLocaleTimeString('de-DE')}] ${msg}`);
-      };
-
-      // Cleanup: Delete existing nodes for this migration
-      const cleanupSession = driver.session();
-      try {
-          addStagingLog('Bereinige alte Daten in Neo4j...');
-          await cleanupSession.run('MATCH (n { migration_id: $migrationId }) DETACH DELETE n', { migrationId });
-      } finally {
-          await cleanupSession.close();
-      }
-
-      const agentSystemPrompt = `
-        Du bist ein Data Ingestion Agent für ${sourceSystem}. Deine Aufgabe ist es, Daten über die API zu sammeln und in Neo4j zu speichern.
-        
-        ### NAVIGATION GUIDE (Strikte Befolgung erforderlich):
-        ${JSON.stringify(scheme?.navigationGuide || "Kein Guide vorhanden.", null, 2)}
-
-        ZIELE: ${JSON.stringify(entities)}
-        ENDPUNKTE: ${JSON.stringify(scheme?.discovery?.endpoints || {})}
-        BASE_URL: ${effectiveApiUrl}
-        SCOPE: ${JSON.stringify(scopeConfig || {})}
-        ANWEISUNGEN: ${scheme?.agentInstructions || 'Keine speziellen Anweisungen.'}
-        
-        ### STRIKTE SCOPE-BESCHRÄNKUNG:
-        ${scopeConfig?.sourceScope ? `
-        ACHTUNG: Dies ist eine BEREICHS-MIGRATION (Scope: ${scopeConfig.sourceScopeName || scopeConfig.sourceScope}).
-        - Nutze NIEMALS globale Such-Endpunkte oder Endpunkte, die alle Objekte des Systems auflisten (z.B. '/api/1.0/tasks/search').
-        - Folge zwingend der Hierarchie im NAVIGATION GUIDE (z.B. erst Projekt abrufen, dann Aufgaben NUR dieses Projekts).
-        - Jedes Objekt, das du importierst, MUSS direkt oder indirekt zum oben genannten SCOPE gehören.
-        ` : 'Dies ist eine VOLL-MIGRATION. Du kannst globale Endpunkte nutzen, um alle Daten zu erfassen.'}
-
-        REGELN:
-        1. **NAVIGATION GUIDE:** Folge strikt dem oben stehenden Navigation Guide, um IDs zu ermitteln.
-        2. **KEINE PLATZHALTER:** Nutze NIEMALS URLs mit geschweiften Klammern. Ersetze diese durch reale IDs aus vorherigen Tool-Antworten.
-        3. **KEINE HALLUZINATIONEN:** Erfinde NIEMALS IDs (wie '12345'). Wenn du eine ID nicht hast, rufe zuerst den Parent-Endpunkt auf.
-        4. Die URLs müssen IMMER mit der BASE_URL beginnen.
-        5. Nutze das Tool 'fetch_and_ingest'. Es speichert die Daten und gibt dir eine Liste der gefundenen IDs zurück.
-        6. **VOLLSTÄNDIGKEIT:** Versuche alle ZIELE zu erreichen.
-        7. **SCOPE:** Falls ein SCOPE definiert ist, beschränke dich darauf.
-        8. **METHODEN:** Beachte die HTTP-Methode (GET/POST).
-      `;
-
-      let messages: any[] = [{ role: "system", content: agentSystemPrompt }];
-      const tools = [{
-          type: "function",
-          function: {
-              name: "fetch_and_ingest",
-              description: "Fetch data from a URL and store it in Neo4j.",
-              parameters: {
-                  type: "object",
-                  properties: {
-                      entity_name: { type: "string" },
-                      url: { type: "string", description: "Vollständige URL mit aufgelösten Platzhaltern." },
-                      method: { type: "string", enum: ["GET", "POST"], description: "HTTP Methode. Standard: GET." },
-                      body: { type: "object", description: "Request Body für POST Anfragen (z.B. Filter)." }
-                  },
-                  required: ["entity_name", "url"]
-              }
-          }
-      }];
-
-      const attemptedUrls = new Set<string>();
-
-      try {
-          for (let turn = 0; turn < 15; turn++) {
-              const response = await openaiClient.chat.completions.create({
-                  model: process.env.OPENAI_MODEL || "gpt-4o",
-                  messages,
-                  tools,
-                  tool_choice: "auto"
-              });
-
-              const aiMessage = response.choices[0].message;
-              messages.push(aiMessage);
-
-              if (!aiMessage.tool_calls || aiMessage.tool_calls.length === 0) break;
-
-              for (const toolCall of aiMessage.tool_calls) {
-                  const args = JSON.parse(toolCall.function.arguments);
-                  const { entity_name, url } = args;
-
-                  if (attemptedUrls.has(url)) {
-                      messages.push({ role: "tool", tool_call_id: toolCall.id, content: "URL already processed." });
-                      continue;
-                  }
-                  attemptedUrls.add(url);
-                  addStagingLog(`Agent ruft ${entity_name} von ${url} ab...`);
-
-                  const headers: any = { 
-                      "Accept": "application/json",
-                      ...(scheme?.headers || {})
-                  };
-                  
-                  // Handle Authentication generically
-                  if (connector.auth_type === 'api_key' && connector.api_key) {
-                      const authConfig = scheme?.authentication;
-                      if (authConfig?.type === 'header') {
-                          const name = authConfig.headerName || 'Authorization';
-                          const prefix = authConfig.tokenPrefix !== undefined ? authConfig.tokenPrefix : 'Bearer ';
-                          headers[name] = `${prefix}${connector.api_key}`;
-                      } else {
-                          // Fallback to Bearer if not specified
-                          headers["Authorization"] = `Bearer ${connector.api_key}`;
-                      }
-                  } else if (connector.auth_type === 'basic' && connector.api_key) {
-                      // Basic auth fallback
-                      headers["Authorization"] = `Basic ${connector.api_key}`;
-                  }
-
-                  try {
-                      // Use method and body from tool arguments if provided, default to GET
-                      const method = args.method || 'GET';
-                      let body = args.body ? JSON.stringify(args.body) : undefined;
-                      
-                      // For POST requests without a body, default to empty object if needed (e.g. some search endpoints)
-                      if (method === 'POST' && !body) {
-                          body = JSON.stringify({});
-                      }
-
-                      const res = await fetch(url, { method, headers, body });
-                      if (res.ok) {
-                          const data = await res.json();
-                          const items = _extractItems(data, entity_name);
-                          if (items.length > 0) {
-                              // USE sourceSystem as label for consistency
-                              await _ingestToNeo4j(driver, sourceSystem, entity_name, items, migrationId);
-                              totalImported += items.length;
-                              const sampleIds = items.slice(0, 5).map((i: any) => i.gid || i.id || i.key || i.uuid);
-                              messages.push({ role: "tool", tool_call_id: toolCall.id, content: `Success. Imported ${items.length} items. Sample IDs: ${JSON.stringify(sampleIds)}` });
-                              addStagingLog(`${items.length} ${entity_name} importiert.`);
-                          } else {
-                              messages.push({ role: "tool", tool_call_id: toolCall.id, content: "No items found in response." });
-                          }
-                      } else {
-                          messages.push({ role: "tool", tool_call_id: toolCall.id, content: `Error: HTTP ${res.status}` });
-                          addStagingLog(`Fehler beim Abruf von ${entity_name}: HTTP ${res.status}`);
-                      }
-                  } catch (e: any) {
-                      messages.push({ role: "tool", tool_call_id: toolCall.id, content: `Fetch error: ${e.message}` });
-                      addStagingLog(`Abruffehler bei ${entity_name}: ${e.message}`);
-                  }
-                  await new Promise(r => setTimeout(r, rateLimitResult.delay * 1000));
-              }
-          }
-
-          // --- End of Phase 2 Ingestion ---
-          console.log(`[Worker] Phase 2 Ingestion complete. Starting Phase 3...`);
-          console.log(`[Worker] Starting Phase 3 for migration ${migrationId}`);
-          await writeChatMessage(migrationId, 'assistant', 'Phase 3: Automatische Beziehungserkennung startet...', currentStepNumber);
-          
-          const addPhase3Log = (msg: string) => {
-              phase3Logs.push(`[${new Date().toLocaleTimeString('de-DE')}] ${msg}`);
-          };
-
-          addPhase3Log('Analysiere Datenstruktur in Neo4j...');
-          
-          // 1. Get Schema Samples (Entity Types + Property Keys + Sample IDs) for this migration
-          const schemaSample: Record<string, any> = {};
-          const idSamples: Record<string, string[]> = {};
-          const schemaSession = driver.session();
-          try {
-              // Fetch distinct entity_type properties
-              const typesRes = await schemaSession.run(
-                  `MATCH (n {migration_id: $migrationId}) 
-                   RETURN DISTINCT n.entity_type as type`, 
-                  { migrationId }
-              );
-              const entityTypes = typesRes.records.map(r => r.get('type')).filter(t => t);
-              console.log(`[Worker] Found entity types for discovery: ${entityTypes.join(', ')}`);
-              
-              for (const type of entityTypes) {
-                  // Get sample properties
-                  const sampleRes = await schemaSession.run(
-                      `MATCH (n {migration_id: $migrationId, entity_type: $type}) 
-                       RETURN properties(n) as props LIMIT 1`,
-                      { migrationId, type }
-                  );
-                  if (sampleRes.records.length > 0) {
-                      schemaSample[type] = sampleRes.records[0].get('props');
-                  }
-
-                  // Get a few sample IDs to help the agent recognize the ID format/match
-                  const idsRes = await schemaSession.run(
-                      `MATCH (n {migration_id: $migrationId, entity_type: $type}) 
-                       RETURN n.external_id as id LIMIT 5`,
-                      { migrationId, type }
-                  );
-                  idSamples[type] = idsRes.records.map(r => r.get('id'));
-              }
-          } finally {
-              await schemaSession.close();
-          }
-
-          console.log(`[Worker] Schema and ID samples gathered for ${Object.keys(schemaSample).length} entity types`);
-
-          let totalRelsCreated = 0;
-          if (Object.keys(schemaSample).length > 0) {
-              const discoveryPrompt = `
-                Du bist eine technische Schnittstelle für das System ${sourceSystem}. Deine Antwort wird direkt von einem automatisierten Parser verarbeitet.
-                
-                ### STRIKTE AUSGABE-REGELN:
-                1. ANTWORTE AUSSCHLIESSLICH im folgenden JSON-Format: {"rules": [{"from": "string", "to": "string", "field": "string", "type": "string"}]}
-                2. Wenn du keine Beziehungen findest, antworte mit: {"rules": []}
-                3. Erzeuge KEINEN Markdown-Codeblock, KEINE Erklärungen, nur das nackte JSON Objekt.
-                
-                ### VALIDIERUNG DES VOKABULARS:
-                - Für 'from' und 'to' darfst du NUR exakte Werte aus dieser Liste verwenden: ${JSON.stringify(Object.keys(schemaSample))}
-                - Für 'field' darfst du NUR exakte Property-Namen aus den unten stehenden Beispielen verwenden.
-                - Jede Abweichung in der Schreibweise führt zum Systemabbruch.
-                
-                ### BEISPIEL FÜR EINE KORREKTE ANTWORT:
-                {"rules": [{"from": "tasks", "to": "tasks", "field": "parent_id", "type": "SUBTASK_OF"}, {"from": "tasks", "to": "users", "field": "creator_id", "type": "CREATED_BY"}]}
-                
-                ### DATEN-KONTEXT FÜR ${sourceSystem}:
-                VERFÜGBARE OBJEKTTYPEN & BEISPIELE:
-                ${JSON.stringify(schemaSample, null, 2)}
-                
-                BEISPIEL-IDS PRO TYP (ZUM ABGLEICH):
-                ${JSON.stringify(idSamples, null, 2)}
-                
-                ### AUFGABE:
-                Analysiere die Properties auf Foreign Keys (z.B. 'parent', 'project', 'user', 'list_id'). Achte besonders auf Selbst-Referenzen (Subtasks). Nutze fachlich korrekte Beziehungsnamen für ${sourceSystem} (z.B. 'SUBTASK_OF', 'IN_LIST', 'ASSIGNED_TO').
-              `;
-
-              console.log(`[Worker] Sending Relationship Discovery prompt for ${sourceSystem} to LLM...`);
-              const discoveryRes = await openaiClient.chat.completions.create({
-                  model: process.env.OPENAI_MODEL || "gpt-4o",
-                  messages: [{ role: "user", content: discoveryPrompt }],
-                  response_format: { type: "json_object" }
-              });
-
-              const rawContent = discoveryRes.choices[0].message.content || "[]";
-              console.log(`[Worker] LLM Discovery Result: ${rawContent}`);
-
-              try {
-                  const parsed = JSON.parse(rawContent);
-                  if (Array.isArray(parsed)) {
-                      relRules = parsed;
-                  } else if (parsed.relations && Array.isArray(parsed.relations)) {
-                      relRules = parsed.relations;
-                  } else if (parsed.rules && Array.isArray(parsed.rules)) {
-                      relRules = parsed.rules;
-                  } else if (parsed.from && parsed.to && parsed.field) {
-                      relRules = [parsed]; // Single object
-                  }
-              } catch (e) {
-                  console.error(`[Worker] Failed to parse discovery rules: ${e}`);
-                  addPhase3Log(`Fehler beim Parsen der Agenten-Antwort.`);
-              }
-
-              if (relRules.length > 0) {
-                  console.log(`[Worker] Applying ${relRules.length} relationship rules`);
-                  addPhase3Log(`${relRules.length} potenzielle Beziehungstypen identifiziert.`);
-                  const linkSession = driver.session();
-                  try {
-                      for (const rule of relRules) {
-                          // Validation: Ensure entity types exist
-                          if (!schemaSample[rule.from] || !schemaSample[rule.to]) {
-                              console.warn(`[Worker] Skipping rule with unknown entity types: ${rule.from} -> ${rule.to}`);
-                              addPhase3Log(`-> Überspringe Regel '${rule.type}': Typ '${!schemaSample[rule.from] ? rule.from : rule.to}' unbekannt.`);
-                              continue;
-                          }
-
-                          console.log(`[Worker] Applying rule: ${rule.from} --(${rule.type})--> ${rule.to} via ${rule.field}`);
-                          // Link nodes by filtering on entity_type property
-                          const linkQuery = `
-                            MATCH (a:\`${sourceSystem}\` {migration_id: $migrationId, entity_type: $fromType})
-                            MATCH (b:\`${sourceSystem}\` {migration_id: $migrationId, entity_type: $toType})
-                            WHERE a.\`${rule.field}\` IS NOT NULL 
-                              AND toString(a.\`${rule.field}\`) = b.external_id
-                              AND a <> b
-                            MERGE (a)-[r:\`${rule.type}\` {migration_id: $migrationId}]->(b)
-                            RETURN count(r) as count
-                          `;
-                          const result = await linkSession.run(linkQuery, { 
-                              migrationId, 
-                              fromType: rule.from, 
-                              toType: rule.to 
-                          });
-                          const count = result.records[0].get('count').toNumber();
-                          console.log(`[Worker] Created ${count} relationships for ${rule.type}`);
-                          if (count > 0) {
-                              totalRelsCreated += count;
-                              addPhase3Log(`-> ${count} Beziehungen vom Typ '${rule.type}' zwischen '${rule.from}' und '${rule.to}' erstellt.`);
-                          } else {
-                              addPhase3Log(`-> Regel '${rule.type}' identifiziert, aber keine passenden Datensätze gefunden.`);
-                          }
-                      }
-                  } finally {
-                      await linkSession.close();
-                  }
-              }
-          }
-          addPhase3Log('Phase 3 abgeschlossen.');
-          
-          // Final Phase 3 Summary Message
-          const phase3Result = {
-              status: "success",
-              phase: "Relationship Discovery",
-              summary: `Strukturanalyse beendet: ${totalRelsCreated} Beziehungen im Graph automatisch identifiziert und verknüpft.`,
-              rawOutput: `### Identifizierte Regeln:\n${relRules.length > 0 ? relRules.map((r: any) => `- **${r.type}**: ${r.from}.${r.field} -> ${r.to}`).join('\n') : 'Keine Regeln gefunden.'}\n\n### Protokoll:\n${phase3Logs.join('\n')}`
-          };
-          await writeChatMessage(migrationId, 'assistant', JSON.stringify(phase3Result), currentStepNumber);
-          
-          console.log(`[Worker] Phase 3 completed for migration ${migrationId}`);
-
-          // --- Phase 4: Validation ---
-          console.log(`[Worker] Starting Phase 4 (Validation) for migration ${migrationId}`);
-          await writeChatMessage(migrationId, 'assistant', 'Phase 4: Validierung der Datenintegrität...', currentStepNumber);
-          
-          const validationLogs: string[] = [];
-          const addValidationLog = (msg: string) => {
-              validationLogs.push(`[${new Date().toLocaleTimeString('de-DE')}] ${msg}`);
-          };
-          
-          const validationSession = driver.session();
-          try {
-              for (const entity of entities) {
-                  // Count nodes in Neo4j for this entity type and migration
-                  const result = await validationSession.run(
-                      `MATCH (n {migration_id: $migrationId, entity_type: $entityType}) RETURN count(n) as count`,
-                      { migrationId, entityType: entity.name }
-                  );
-                  const actualCount = result.records[0].get('count').toNumber();
-                  const expectedCount = entity.count;
-                  
-                  const match = actualCount === expectedCount;
-                  if (!match) validationErrors++;
-                  
-                  const icon = match ? '✅' : '⚠️';
-                  const msg = `${icon} Entity '${entity.name}': Erwartet ${expectedCount}, Gefunden ${actualCount}.`;
-                  addValidationLog(msg);
-              }
-          } catch (error: any) {
-              console.error(`[Worker] Validation failed: ${error}`);
-              addValidationLog(`❌ Validierungsfehler: ${error.message}`);
-              validationErrors++;
-          } finally {
-              await validationSession.close();
-          }
-          
-          const validationSummary = validationErrors === 0 
-              ? `Validierung erfolgreich: Alle ${entities.length} Entitätstypen sind vollständig vorhanden.`
-              : `Validierung abgeschlossen mit ${validationErrors} Abweichungen.`;
-              
-          const validationResultObj = {
-              status: validationErrors === 0 ? "success" : "warning",
-              phase: "Validation",
-              summary: validationSummary,
-              rawOutput: validationLogs.join('\n')
-          };
-          await writeChatMessage(migrationId, 'assistant', JSON.stringify(validationResultObj), currentStepNumber);
-
-      } finally {
-          await driver.close();
-      }
-
-      // Send bundled logs as a single structured message
-      const protocolResult = {
-          status: totalImported > 0 ? "success" : "error",
-          phase: "Data Ingestion Protocol",
-          summary: `Daten-Import und Graph-Strukturierung abgeschlossen: ${totalImported} Objekte geladen.`,
-          rawOutput: stagingLogs.join('\n')
-      };
-      await writeChatMessage(migrationId, 'assistant', JSON.stringify(protocolResult), currentStepNumber);
-
-      // Logical failure if NO data was imported at all
-      if (totalImported === 0) {
+      if (agent) {
+        try {
+          const agentResult = await agent.execute(agentParams);
+          isLogicalFailure = !!agentResult.isLogicalFailure;
+          failureMessage = agentResult.error || "";
+          result = agentResult.result || agentResult;
+          totalImported = agentResult.totalImported || 0;
+          resultMessageText = JSON.stringify(result);
+        } catch (err) {
           isLogicalFailure = true;
-          failureMessage = "Es konnten keine Daten aus dem Quellsystem geladen werden. Bitte überprüfen Sie die Berechtigungen und die Quell-URL.";
-      } else if (validationErrors > (entities.length * 0.5)) { 
-          // If more than 50% of entity types had mismatches, consider it a partial failure
-          isLogicalFailure = true;
-          failureMessage = `Datenerfassung unvollständig: ${validationErrors} Abweichungen bei der Validierung gefunden.`;
+          failureMessage = String(err);
+          result = { error: failureMessage };
+          resultMessageText = failureMessage;
+        }
+      } else {
+        isLogicalFailure = true;
+        failureMessage = "Agent not found in StepFactory";
+        result = { error: failureMessage };
+        resultMessageText = failureMessage;
       }
 
-      result = { 
-          status: isLogicalFailure ? 'failed' : (validationErrors > 0 ? 'warning' : 'success'), 
-          message: isLogicalFailure ? failureMessage : 'Data Staging abgeschlossen (mit Warnungen).', 
-          stagedCount: totalImported, 
-          urls: Array.from(attemptedUrls), 
-          logs: stagingLogs,
-          phase3Logs: phase3Logs
-      };
-      await saveStep5Result(migrationId, result);
+      await writeChatMessage(migrationId, 'assistant', resultMessageText, currentStepNumber);
+      if (!isLogicalFailure) {
+        await saveStep5Result(migrationId, result);
+      }
 
       const finishClientStaging = await pool.connect();
       try {
@@ -1998,36 +995,28 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
         const { rows: migRowsStaging } = await finishClientStaging.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
         const migrationDataStaging = migRowsStaging[0];
         const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migrationDataStaging?.workflow_state, stepRecord.workflow_step_id || step_id, result, (totalImported === 0));
-        
-        // We set status to processing if we have data, to allow the UI to show action buttons
-        const migrationStatus = totalImported > 0 ? 'processing' : 'paused';
-        const stepStatusForMigration = finalStepStatus;
+        const migrationStatus = (totalImported === 0) ? 'paused' : (completedCount >= totalSteps ? 'completed' : 'processing');
+        const stepStatusForMigration = (totalImported === 0) ? 'failed' : 'completed';
 
         await finishClientStaging.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
           nextState, progress, migrationStatus, stepStatusForMigration, currentStepNumber, migrationId,
         ]);
         await finishClientStaging.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
         
-        // KPI: Increment global steps and agent metrics
-        if (totalImported > 0) {
+        if (finalStepStatus === 'completed') {
           await incrementGlobalStats(finishClientStaging, { steps: 1, success: 1, total_agents: 1 });
-        } else {
+        } else if (finalStepStatus === 'failed') {
           await incrementGlobalStats(finishClientStaging, { total_agents: 1 });
         }
 
         await finishClientStaging.query('COMMIT');
 
         if (totalImported === 0) {
-          await writeChatMessage(migrationId, 'assistant', `Schritt 5 Data Staging fehlgeschlagen: ${failureMessage}`, currentStepNumber);
+          await writeChatMessage(migrationId, 'assistant', `Schritt 5 Data Staging fehlgeschlagen.`, currentStepNumber);
           await writeRetryAction(migrationId, currentStepNumber);
-          await logActivity(migrationId, 'warning', 'Data Staging fehlgeschlagen (keine Daten).');
+          await logActivity(migrationId, 'warning', `Schritt Data Staging fehlgeschlagen.`);
         } else {
-          if (validationErrors > 0) {
-            await writeChatMessage(migrationId, 'assistant', `Die Daten-Bereitstellung wurde mit **${validationErrors} Abweichungen** abgeschlossen. Sie können den Schritt wiederholen oder trotzdem mit dem Mapping fortfahren.`, currentStepNumber);
-          } else {
-            await writeChatMessage(migrationId, 'assistant', 'Die Daten-Bereitstellung (Data Staging) wurde erfolgreich abgeschlossen. Wir können nun mit dem Model Mapping fortfahren.', currentStepNumber);
-          }
-          
+          await writeChatMessage(migrationId, 'assistant', `Schritt 5 **Data Staging** erfolgreich abgeschlossen (${totalImported} Objekte geladen).`, currentStepNumber);
           const nextStepIndex = currentStepNumber;
           if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
               const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
@@ -2040,7 +1029,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
               });
               await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
           }
-          await logActivity(migrationId, 'success', validationErrors > 0 ? 'Data Staging mit Warnungen abgeschlossen.' : 'Data Staging abgeschlossen.');
+          await logActivity(migrationId, 'success', `Schritt Data Staging abgeschlossen.`);
         }
       } catch (e) {
         await finishClientStaging.query('ROLLBACK');
@@ -2050,62 +1039,41 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
       }
 
     } else if (agentName === 'runMappingVerification') {
-      // Step 6: Mapping Verification
-      console.log(`[Worker] Running Mapping Verification for migration ${migrationId}`);
-      await writeChatMessage(migrationId, 'assistant', 'Verifiziere Mapping-Konfiguration...', currentStepNumber);
+      const context = {
+        migrationId,
+        stepNumber: currentStepNumber,
+        writeChatMessage: async (role, content, stepNum) => await writeChatMessage(migrationId, role, content, stepNum),
+        logActivity: async (type, title) => await logActivity(migrationId, type, title),
+        getConnector: async (type) => {
+            const { rows } = await pool.query('SELECT api_url, api_key, username FROM connectors WHERE migration_id = $1 AND connector_type = $2', [migrationId, type]);
+            return rows[0];
+        },
+        getMigrationDetails: async () => {
+            const { rows } = await pool.query('SELECT source_system, target_system FROM migrations WHERE id = $1', [migrationId]);
+            return rows[0];
+        },
+        dbPool: pool
+      };
 
-      const { rows: migRows6 } = await pool.query('SELECT source_system, target_system FROM migrations WHERE id = $1', [migrationId]);
-      const sSys6 = migRows6[0]?.source_system;
-      const tSys6 = migRows6[0]?.target_system;
-
-      if (!sSys6 || !tSys6) throw new Error('Systemkonfiguration unvollständig.');
-
-      const { rows: s3Rows6 } = await pool.query('SELECT entity_name, count, is_ignored FROM step_3_results WHERE migration_id = $1', [migrationId]);
-      const userRelatedTerms = ['user', 'member', 'participant', 'assignee', 'owner', 'creator', 'author', 'collaborator'];
-      const sEnts6 = s3Rows6
-        .map(r => ({ name: r.entity_name, count: r.count, isIgnored: r.is_ignored }))
-        .filter(ent => {
-          const nameLower = ent.name.toLowerCase();
-          const isUserRelated = userRelatedTerms.some(term => nameLower.includes(term));
-          return ent.count > 0 && !isUserRelated;
-        });
-
-      // Fetch Existing Mapping Rules
-      const { rows: ruleRows6 } = await pool.query('SELECT * FROM public.mapping_rules WHERE migration_id = $1', [migrationId]);
-
-      const sSpecs6 = await loadObjectScheme(sSys6);
-      const tSpecs6 = await loadObjectScheme(tSys6);
-
-      if (!sSpecs6 || !tSpecs6) throw new Error('Objektspezifikationen konnten nicht geladen werden.');
-
-      const messageGenerator = runMappingVerification(sEnts6, ruleRows6, sSpecs6, tSpecs6);
-      let lastMessageText: string | undefined;
-      for await (const message of messageGenerator) {
-        if (message.content && message.content.length > 0 && message.content[0].text) {
-          lastMessageText = message.content[0].text;
-        }
-      }
-
-      if (lastMessageText) {
+      const agent = StepFactory.createAgent(agentName, context);
+      if (agent) {
         try {
-          result = JSON.parse(lastMessageText);
+          const agentResult = await agent.execute(agentParams);
+          isLogicalFailure = !!agentResult.isLogicalFailure;
+          failureMessage = agentResult.error || "";
+          result = agentResult.result || agentResult;
           resultMessageText = JSON.stringify(result);
-          
-          if (result.verification_report && result.verification_report.is_complete === false) {
-            isLogicalFailure = true;
-            failureMessage = "Mapping ist unvollständig.";
-          }
-        } catch (e) {
-          result = { text: lastMessageText };
-          resultMessageText = JSON.stringify(result);
+        } catch (err) {
           isLogicalFailure = true;
-          failureMessage = "Agent lieferte kein gültiges JSON Ergebnis.";
+          failureMessage = String(err);
+          result = { error: failureMessage };
+          resultMessageText = failureMessage;
         }
       } else {
-        result = { error: 'Verification agent produced no output' };
-        resultMessageText = JSON.stringify(result);
         isLogicalFailure = true;
-        failureMessage = "Verification agent produced no output.";
+        failureMessage = "Agent not found in StepFactory";
+        result = { error: failureMessage };
+        resultMessageText = failureMessage;
       }
 
       if (!isLogicalFailure) {
@@ -2128,7 +1096,6 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
         ]);
         await finishClient6.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
         
-        // KPI: Increment global stats
         if (!isLogicalFailure) {
           await incrementGlobalStats(finishClient6, { steps: 1, success: 1, total_agents: 1 });
         } else {
@@ -2151,7 +1118,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
             
             if (result.verification_report.target_readiness?.missing_required_fields && result.verification_report.target_readiness.missing_required_fields.length > 0) {
               message += `**Fehlende Pflichtfelder:**\n`;
-              result.verification_report.target_readiness.missing_required_fields.forEach((f: any) => {
+              result.verification_report.target_readiness.missing_required_fields.forEach((f) => {
                 message += `- ${f.targetEntity}: ${f.field}\n`;
               });
             }
@@ -2164,12 +1131,10 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
           await writeRetryAction(migrationId, currentStepNumber);
           await logActivity(migrationId, 'warning', `Schritt Mapping Verification fehlgeschlagen.`);
         } else {
-          // Zuerst die individuelle Zusammenfassung des Agenten
           if (result.summary) {
             await writeChatMessage(migrationId, 'assistant', result.summary, currentStepNumber);
           }
           
-          // Dann die standardisierte Erfolgsmeldung
           await writeChatMessage(migrationId, 'assistant', `Schritt 6 **Mapping Verification** erfolgreich abgeschlossen.`, currentStepNumber);
           
           const nextStepIndex = currentStepNumber;
@@ -2193,170 +1158,134 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
         finishClient6.release();
       }
 
-    } else if (agentName === 'runMappingRules') {
-      console.log(`[Worker] Executing runMappingRules for migration ${migrationId}`);
-      const userMessage = agentParams?.userMessage;
-      const context = agentParams?.context;
+    } else if (agentName === 'runMappingRules' || agentName === 'runEnhancementRules') {
+      const context = {
+        migrationId,
+        stepNumber: currentStepNumber,
+        writeChatMessage: async (role, content, stepNum) => await writeChatMessage(migrationId, role, content, stepNum),
+        logActivity: async (type, title) => await logActivity(migrationId, type, title),
+        getConnector: async () => null,
+        getMigrationDetails: async () => null,
+        dbPool: pool
+      };
 
-      const messageGenerator = runMappingRules(userMessage, {
-          ...context,
-          migrationId
-      });
-
-      let messageCount = 0;
-      for await (const message of messageGenerator) {
-        console.log(`[Worker] runMappingRules yielded message ${++messageCount}`);
-        if (message.content && message.content.length > 0 && message.content[0].text) {
-          await writeMappingChatMessage(migrationId, 'assistant', message.content[0].text);
+      const agent = StepFactory.createAgent(agentName, context);
+      if (agent) {
+        try {
+          await agent.execute(agentParams);
+        } catch (err) {
+          console.error(`[${agentName}] Failed`, err);
         }
+      } else {
+        console.error(`Agent not found in StepFactory: ${agentName}`);
       }
-      console.log(`[Worker] runMappingRules completed with ${messageCount} messages`);
-
-      await pool.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
-      return;
-
-    } else if (agentName === 'runEnhancementRules') {
-      console.log(`[Worker] Executing runEnhancementRules for migration ${migrationId}`);
-      const userMessage = agentParams?.userMessage;
-      const context = agentParams?.context;
-
-      const messageGenerator = runEnhancementRules(userMessage, {
-          ...context,
-          migrationId
-      });
-
-      let messageCount = 0;
-      for await (const message of messageGenerator) {
-        console.log(`[Worker] runEnhancementRules yielded message ${++messageCount}`);
-        if (message.content && message.content.length > 0 && message.content[0].text) {
-          await writeMappingChatMessage(migrationId, 'assistant', message.content[0].text);
-        }
-      }
-      console.log(`[Worker] runEnhancementRules completed with ${messageCount} messages`);
 
       await pool.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
       return;
 
     } else if (agentName === 'runQualityEnhancement') {
-      console.log(`[Worker] Running Quality Enhancement for migration ${migrationId}`);
-      await writeChatMessage(migrationId, 'assistant', 'Analysiere und verifiziere Qualitäts-Enhancements...', currentStepNumber);
-      
-      const { rows: migRows7 } = await pool.query('SELECT source_system, target_system FROM migrations WHERE id = $1', [migrationId]);
-      const sSys7 = migRows7[0]?.source_system;
-      const tSys7 = migRows7[0]?.target_system;
+      const context = {
+        migrationId,
+        stepNumber: currentStepNumber,
+        writeChatMessage: async (role, content, stepNum) => await writeChatMessage(migrationId, role, content, stepNum),
+        logActivity: async (type, title) => await logActivity(migrationId, type, title),
+        getConnector: async () => null,
+        getMigrationDetails: async () => null,
+        dbPool: pool
+      };
 
-      // Fetch all rules with enhancements OR special types (POLISH, ENHANCE)
-      const { rows: ruleRows7 } = await pool.query('SELECT * FROM public.mapping_rules WHERE migration_id = $1', [migrationId]);
-      const rulesWithEnhancements = ruleRows7.filter(r => 
-        (r.enhancements && r.enhancements.length > 0) || 
-        r.rule_type === 'POLISH' || 
-        r.rule_type === 'ENHANCE'
-      );
-      
-      if (rulesWithEnhancements.length > 0) {
-        const messageGenerator = runEnhancementVerification(rulesWithEnhancements, sSys7, tSys7);
-        let lastMessageText: string | undefined;
-        for await (const message of messageGenerator) {
-          if (message.content && message.content.length > 0 && message.content[0].text) {
-            lastMessageText = message.content[0].text;
-          }
-        }
-
-        if (lastMessageText) {
-          try {
-            const verificationResult = JSON.parse(lastMessageText);
-            const report = verificationResult.verification_report;
-            
-            if (report) {
-               if (report.summary) {
-                 await writeChatMessage(migrationId, 'assistant', report.summary, currentStepNumber);
-               }
-
-               // If there are warnings, list them
-               const warnings = report.analysis?.filter((a: any) => a.status === 'warning' || a.status === 'info') || [];
-               if (warnings.length > 0) {
-                  let warningMsg = "**Hinweise zur Überprüfung:**\n";
-                  warnings.forEach((w: any) => {
-                    warningMsg += `- Feld \`${w.field}\`: ${w.message}\n`;
-                  });
-                  await writeChatMessage(migrationId, 'assistant', warningMsg, currentStepNumber);
-               }
-            }
-          } catch (e) {
-            console.error("Failed to parse enhancement verification result", e);
-          }
+      const agent = StepFactory.createAgent(agentName, context);
+      if (agent) {
+        try {
+          const agentResult = await agent.execute(agentParams);
+          isLogicalFailure = !!agentResult.isLogicalFailure;
+          failureMessage = agentResult.error || "";
+          result = agentResult.result || agentResult;
+          resultMessageText = JSON.stringify(result);
+        } catch (err) {
+          isLogicalFailure = true;
+          failureMessage = String(err);
+          result = { error: failureMessage };
+          resultMessageText = failureMessage;
         }
       } else {
-        await writeChatMessage(migrationId, 'assistant', 'Keine spezifischen Enhancements konfiguriert. Der Inhalt wird 1:1 übernommen.', currentStepNumber);
+        isLogicalFailure = true;
+        failureMessage = "Agent not found in StepFactory";
+        result = { error: failureMessage };
+        resultMessageText = failureMessage;
       }
 
-      await writeChatMessage(migrationId, 'assistant', `Qualitäts-Veredelung abgeschlossen. ${rulesWithEnhancements.length} Mapping-Regeln mit Enhancements verarbeitet.`, currentStepNumber);
-
-      result = { 
-          status: 'success', 
-          message: 'Quality Enhancement erfolgreich abgeschlossen.',
-          processedRules: rulesWithEnhancements.length
-      };
-      await saveStep7Result(migrationId, result);
+      if (!isLogicalFailure) {
+        await saveStep7Result(migrationId, result);
+      }
 
       const finishClientEnhance = await pool.connect();
       try {
         await finishClientEnhance.query('BEGIN');
         await finishClientEnhance.query('UPDATE migration_steps SET status = $1, result = $2, status_message = $3 WHERE id = $4', [
-          'completed', result, 'Quality enhancement completed successfully.', step_id,
+          isLogicalFailure ? 'failed' : 'completed', result, isLogicalFailure ? failureMessage : 'Quality enhancement completed successfully.', step_id,
         ]);
 
         const { rows: migRowsFinal } = await finishClientEnhance.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
         const migrationDataFinal = migRowsFinal[0];
-        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migrationDataFinal?.workflow_state, stepRecord.workflow_step_id || step_id, result, false);
+        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migrationDataFinal?.workflow_state, stepRecord.workflow_step_id || step_id, result, isLogicalFailure);
         
         await finishClientEnhance.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
-          nextState, progress, 'processing', 'completed', currentStepNumber, migrationId,
+          nextState, progress, isLogicalFailure ? 'paused' : 'processing', isLogicalFailure ? 'failed' : 'completed', currentStepNumber, migrationId,
         ]);
         await finishClientEnhance.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
         
-        // KPI: Increment global stats
-        await incrementGlobalStats(finishClientEnhance, { steps: 1, success: 1, total_agents: 1 });
+        if (!isLogicalFailure) {
+          await incrementGlobalStats(finishClientEnhance, { steps: 1, success: 1, total_agents: 1 });
+        } else {
+          await incrementGlobalStats(finishClientEnhance, { total_agents: 1 });
+        }
 
         await finishClientEnhance.query('COMMIT');
 
-        // Fetch target name for the confirmation message
-        const { rows: scopeNameRows } = await finishClientEnhance.query('SELECT name, scope_config FROM migrations WHERE id = $1', [migrationId]);
-        const migrationName7 = scopeNameRows[0]?.name;
-        const scopeConf7 = scopeNameRows[0]?.scope_config || {};
-        const displayTargetName = (scopeConf7.targetName && scopeConf7.targetName !== "-") 
-          ? scopeConf7.targetName 
-          : (scopeConf7.sourceScopeName || migrationName7 || "Projekt");
-        
-        const nextStepIndex = currentStepNumber;
-        if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
-            const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
-            
-            // Special confirmation for Step 8
-            if (nextStep.id === "data-transfer") {
-              const confirmMsg = `Alles ist bereit für den Datentransfer. Ich werde im Zielsystem **${tSys7}** einen neuen Bereich namens **"${displayTargetName}"** anlegen und alle Daten dorthin übertragen. Sollen wir starten?`;
-              await writeChatMessage(migrationId, 'assistant', confirmMsg, currentStepNumber);
-              
-              const actionContent = JSON.stringify({
-                  type: "action",
-                  actions: [
-                    { action: "continue", label: "Ja, Transfer starten", variant: "primary" },
-                    { action: "retry", label: "Qualitäts-Check wiederholen", variant: "outline", stepNumber: currentStepNumber }
-                  ]
-              });
-              await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
-            } else {
-              const actionContent = JSON.stringify({
-                  type: "action",
-                  actions: [
-                    { action: "continue", label: `Weiter zu Schritt ${nextStepIndex + 1} ${nextStep.title}`, variant: "primary" },
-                    { action: "retry", label: `Schritt ${currentStepNumber} wiederholen`, variant: "outline", stepNumber: currentStepNumber }
-                  ]
-              });
-              await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
-            }
+        if (isLogicalFailure) {
+           await writeChatMessage(migrationId, 'assistant', `Schritt 7 Quality Enhancement fehlgeschlagen: ${failureMessage}`, currentStepNumber);
+           await writeRetryAction(migrationId, currentStepNumber);
+           await logActivity(migrationId, 'warning', `Schritt Quality Enhancement fehlgeschlagen.`);
+        } else {
+           const { rows: scopeNameRows } = await pool.query('SELECT name, scope_config, target_system FROM migrations WHERE id = $1', [migrationId]);
+           const migrationName7 = scopeNameRows[0]?.name;
+           const scopeConf7 = scopeNameRows[0]?.scope_config || {};
+           const tSys7 = scopeNameRows[0]?.target_system || "Zielsystem";
+           
+           const displayTargetName = (scopeConf7.targetName && scopeConf7.targetName !== "-") 
+             ? scopeConf7.targetName 
+             : (scopeConf7.sourceScopeName || migrationName7 || "Projekt");
+           
+           const nextStepIndex = currentStepNumber;
+           if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
+               const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
+               
+               if (nextStep.id === "data-transfer") {
+                 const confirmMsg = `Alles ist bereit für den Datentransfer. Ich werde im Zielsystem **${tSys7}** einen neuen Bereich namens **"${displayTargetName}"** anlegen und alle Daten dorthin übertragen. Sollen wir starten?`;
+                 await writeChatMessage(migrationId, 'assistant', confirmMsg, currentStepNumber);
+                 
+                 const actionContent = JSON.stringify({
+                     type: "action",
+                     actions: [
+                       { action: "continue", label: "Ja, Transfer starten", variant: "primary" },
+                       { action: "retry", label: "Qualitäts-Check wiederholen", variant: "outline", stepNumber: currentStepNumber }
+                     ]
+                 });
+                 await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
+               } else {
+                 const actionContent = JSON.stringify({
+                     type: "action",
+                     actions: [
+                       { action: "continue", label: `Weiter zu Schritt ${nextStepIndex + 1} ${nextStep.title}`, variant: "primary" },
+                       { action: "retry", label: `Schritt ${currentStepNumber} wiederholen`, variant: "outline", stepNumber: currentStepNumber }
+                     ]
+                 });
+                 await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
+               }
+           }
+           await logActivity(migrationId, 'success', 'Quality Enhancement abgeschlossen.');
         }
-        await logActivity(migrationId, 'success', 'Quality Enhancement abgeschlossen.');
       } catch (e) {
         await finishClientEnhance.query('ROLLBACK');
         throw e;
