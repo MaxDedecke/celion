@@ -4,6 +4,7 @@ export interface AgentContext {
   migrationId: string;
   stepNumber: number;
   writeChatMessage: (role: string, content: string, stepNumber?: number) => Promise<string | undefined>;
+  upsertChatMessage?: (id: string | null, role: string, content: string, stepNumber?: number) => Promise<string | undefined>;
   logActivity: (type: 'success' | 'error' | 'info' | 'warning', title: string) => Promise<void>;
   getConnector: (type: 'in' | 'out') => Promise<any>;
   getMigrationDetails: () => Promise<any>;

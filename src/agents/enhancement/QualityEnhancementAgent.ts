@@ -90,9 +90,9 @@ ${JSON.stringify(rulesWithEnhancements, null, 2)}
 
              const warnings = report.analysis?.filter((a: any) => a.status === 'warning' || a.status === 'info') || [];
              if (warnings.length > 0) {
-                let warningMsg = "**Hinweise zur Überprüfung:**\\n";
+                let warningMsg = "**Hinweise zur Überprüfung:**\n";
                 warnings.forEach((w: any) => {
-                  warningMsg += \`- Feld \\\`\${w.field}\\\`: \${w.message}\\n\`;
+                  warningMsg += `- Feld \`${w.field}\`: ${w.message}\n`;
                 });
                 await this.context.writeChatMessage('assistant', warningMsg, stepNumber);
              }

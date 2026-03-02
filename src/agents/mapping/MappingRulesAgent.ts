@@ -1,5 +1,5 @@
 import { AgentBase } from '../core/AgentBase';
-import { runMappingRules } from './runMappingRules';
+import { runMappingRules } from '../mappingRules/runMappingRules';
 
 export class MappingRulesAgent extends AgentBase {
   async execute(params: any): Promise<any> {

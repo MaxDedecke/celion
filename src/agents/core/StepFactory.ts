@@ -10,6 +10,7 @@ import { MappingVerificationAgent } from '../mapping/MappingVerificationAgent';
 import { QualityEnhancementAgent } from '../enhancement/QualityEnhancementAgent';
 import { MappingRulesAgent } from '../mapping/MappingRulesAgent';
 import { EnhancementRulesAgent } from '../enhancement/EnhancementRulesAgent';
+import { DataTransferAgent } from '../dataTransfer/DataTransferAgent';
 
 export class StepFactory {
   private static provider: LlmProvider = new OpenAiProvider(); // Default provider
@@ -34,6 +35,8 @@ export class StepFactory {
         return new MappingRulesAgent(this.provider, context);
       case 'runEnhancementRules':
         return new EnhancementRulesAgent(this.provider, context);
+      case 'runDataTransfer':
+        return new DataTransferAgent(this.provider, context);
       // Other agents can be added here
       default:
         return null;
