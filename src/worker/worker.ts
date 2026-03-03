@@ -211,7 +211,7 @@ async function processJob(job: any) {
         }
       };
 
-      const agent = StepFactory.createAgent(agentName, context);
+      const agent = await StepFactory.createAgent(agentName, context);
       if (agent) {
         try {
           const agentResult = await agent.execute(agentParams);
@@ -336,7 +336,7 @@ async function processJob(job: any) {
         }
       };
 
-      const agent = StepFactory.createAgent(agentName, context);
+      const agent = await StepFactory.createAgent(agentName, context);
       if (agent) {
         try {
           const agentResult = await agent.execute(agentParams);
@@ -438,7 +438,7 @@ async function processJob(job: any) {
         }
       };
 
-      const agent = StepFactory.createAgent(agentName, context);
+      const agent = await StepFactory.createAgent(agentName, context);
       if (agent) {
         try {
           const agentResult = await agent.execute(agentParams);
@@ -539,7 +539,7 @@ async function processJob(job: any) {
         }
       };
 
-      const agent = StepFactory.createAgent(agentName, context);
+      const agent = await StepFactory.createAgent(agentName, context);
       if (agent) {
         try {
           const agentResult = await agent.execute(agentParams);
@@ -763,7 +763,7 @@ async function processJob(job: any) {
         dbPool: pool
       };
 
-      const agent = StepFactory.createAgent(agentName, context);
+      const agent = await StepFactory.createAgent(agentName, context);
       let totalImported = 0;
       if (agent) {
         try {
@@ -864,7 +864,7 @@ async function processJob(job: any) {
         dbPool: pool
       };
 
-      const agent = StepFactory.createAgent(agentName, context);
+      const agent = await StepFactory.createAgent(agentName, context);
       if (agent) {
         try {
           const agentResult = await agent.execute(agentParams);
@@ -978,7 +978,7 @@ async function processJob(job: any) {
         dbPool: pool
       };
 
-      const agent = StepFactory.createAgent(agentName, context);
+      const agent = await StepFactory.createAgent(agentName, context);
       if (agent) {
         try {
           await agent.execute(agentParams);
@@ -1003,7 +1003,7 @@ async function processJob(job: any) {
         dbPool: pool
       };
 
-      const agent = StepFactory.createAgent(agentName, context);
+      const agent = await StepFactory.createAgent(agentName, context);
       if (agent) {
         try {
           const agentResult = await agent.execute(agentParams);
@@ -1121,7 +1121,7 @@ async function processJob(job: any) {
         dbPool: pool
       };
 
-      const agent = StepFactory.createAgent(agentName, context);
+      const agent = await StepFactory.createAgent(agentName, context);
       if (agent) {
         try {
           const agentResult = await agent.execute(agentParams);

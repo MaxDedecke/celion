@@ -95,11 +95,15 @@ Scheme: ${JSON.stringify(simplifiedScheme)}
 
     for (let turn = 0; turn < 15; turn++) {
       const response = await this.provider.chat(messages, TOOLS, { 
-          model: process.env.OPENAI_MODEL || "gpt-4o-mini",
+          model: process.env.OPENAI_MODEL || "gpt-4o",
           response_format: { type: "json_object" } 
       });
 
-      const message = response.choices[0].message;
+      const message: ChatMessage = {
+          role: "assistant",
+          content: response.content,
+          tool_calls: response.toolCalls
+      };
       messages.push(message);
 
       if (message.content) {
@@ -107,6 +111,7 @@ Scheme: ${JSON.stringify(simplifiedScheme)}
       }
 
       if (message.tool_calls && message.tool_calls.length > 0) {
+
         for (const toolCall of message.tool_calls) {
           const functionName = toolCall.function.name;
           const args = JSON.parse(toolCall.function.arguments);

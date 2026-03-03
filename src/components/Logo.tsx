@@ -4,11 +4,13 @@ const Logo = ({
   className = "",
   textClassName = "text-2xl",
   imageClassName = "h-10 w-10",
+  showText = true,
   onClick,
 }: {
   className?: string;
   textClassName?: string;
   imageClassName?: string;
+  showText?: boolean;
   onClick?: () => void;
 }) => {
   return (
@@ -22,7 +24,7 @@ const Logo = ({
         alt="Celion logo"
         className={imageClassName}
       />
-      <span className={cn("font-bold text-foreground", textClassName)}>Celion</span>
+      {showText && <span className={cn("font-bold text-foreground", textClassName)}>Celion</span>}
     </button>
   );
 };

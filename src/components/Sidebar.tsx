@@ -11,6 +11,7 @@ import {
   MoreHorizontal,
   FolderOpen,
   Layers,
+  Settings,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Logo from "./Logo";
@@ -20,6 +21,7 @@ import { useNavigate } from "react-router-dom";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { LlmSettingsDialog } from "./dialogs/LlmSettingsDialog";
 
 interface SidebarProps {
   projects: Array<{ id: string; name: string }>;
@@ -54,6 +56,7 @@ const Sidebar = ({
 }: SidebarProps) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [collapsedSize, setCollapsedSize] = useState<number>();
+  const [llmSettingsOpen, setLlmSettingsOpen] = useState(false);
   const sidebarRef = useRef<HTMLDivElement | null>(null);
   const migrationsScrollRef = useRef<HTMLDivElement | null>(null);
   const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set(projects.map(p => p.id)));
@@ -166,7 +169,7 @@ const Sidebar = ({
                 onClick={() => navigate("/dashboard")}
                 className="cursor-pointer transition-all"
                 imageClassName="h-14 w-14 pt-2"
-                textClassName="text-3xl ml-4"
+                showText={false}
               />
               <div className="flex items-center gap-1">
                 <Tooltip>
@@ -189,6 +192,21 @@ const Sidebar = ({
                     <Button
                       variant="ghost"
                       size="icon"
+                      onClick={() => setLlmSettingsOpen(true)}
+                      className="flex-shrink-0 hover:bg-foreground/5"
+                    >
+                      <Settings className="h-4 w-4" />
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p>KI-Einstellungen</p>
+                  </TooltipContent>
+                </Tooltip>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       onClick={() => setIsCollapsed(true)}
                       className="flex-shrink-0 hover:bg-foreground/5"
                     >
@@ -201,6 +219,11 @@ const Sidebar = ({
                 </Tooltip>
               </div>
             </div>
+
+            <LlmSettingsDialog 
+              open={llmSettingsOpen} 
+              onOpenChange={setLlmSettingsOpen} 
+            />
 
             <div className="h-px w-full bg-gradient-to-r from-transparent via-border/60 to-transparent mb-3 flex-shrink-0" />
 

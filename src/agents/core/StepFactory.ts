@@ -1,6 +1,7 @@
 import { AgentBase, AgentContext } from './AgentBase';
 import { LlmProvider } from './LlmProvider';
 import { OpenAiProvider } from './OpenAiProvider';
+import { Pool } from 'pg';
 import { CapabilityDiscoveryAgent } from '../discovery/CapabilityDiscoveryAgent';
 import { SystemDetectionAgent } from '../systemDetection/SystemDetectionAgent';
 import { AuthFlowAgent } from '../authFlow/AuthFlowAgent';
@@ -13,38 +14,71 @@ import { EnhancementRulesAgent } from '../enhancement/EnhancementRulesAgent';
 import { DataTransferAgent } from '../dataTransfer/DataTransferAgent';
 
 export class StepFactory {
-  private static provider: LlmProvider = new OpenAiProvider(); // Default provider
+  private static provider: LlmProvider | null = null;
 
-  static createAgent(agentName: string, context: AgentContext): AgentBase | null {
+  static async getProvider(dbPool?: Pool): Promise<LlmProvider> {
+    if (this.provider) return this.provider;
+
+    // Default to OpenAI
+    let selectedProvider = new OpenAiProvider();
+
+    if (dbPool) {
+      try {
+        const { rows } = await dbPool.query("SELECT provider, model, base_url, api_key FROM public.llm_settings ORDER BY updated_at DESC LIMIT 1");
+        if (rows.length > 0) {
+          const settings = rows[0];
+          if (settings.provider === 'openai') {
+            // We can inject settings here if needed, or rely on env/process.env
+            // For now, OpenAiProvider uses process.env, but we should make it configurable
+            process.env.OPENAI_MODEL = settings.model || process.env.OPENAI_MODEL;
+            if (settings.api_key) process.env.OPENAI_API_KEY = settings.api_key;
+            if (settings.base_url) process.env.OPENAI_BASE_URL = settings.base_url;
+            selectedProvider = new OpenAiProvider();
+          } else if (settings.provider === 'anthropic') {
+              // TODO: Implement AnthropicProvider tomorrow
+              console.log("Anthropic provider selected, but not yet implemented. Falling back to OpenAI.");
+          }
+        }
+      } catch (e) {
+        console.error("Failed to load LLM settings from DB:", e);
+      }
+    }
+
+    this.provider = selectedProvider;
+    return this.provider;
+  }
+
+  static async createAgent(agentName: string, context: AgentContext): Promise<AgentBase | null> {
+    const provider = await this.getProvider(context.dbPool);
+
     switch (agentName) {
       case 'runCapabilityDiscovery':
-        return new CapabilityDiscoveryAgent(this.provider, context);
+        return new CapabilityDiscoveryAgent(provider, context);
       case 'runSystemDetection':
-        return new SystemDetectionAgent(this.provider, context);
+        return new SystemDetectionAgent(provider, context);
       case 'runAuthFlow':
-        return new AuthFlowAgent(this.provider, context);
+        return new AuthFlowAgent(provider, context);
       case 'runTargetSchema':
-        return new TargetDiscoveryAgent(this.provider, context);
+        return new TargetDiscoveryAgent(provider, context);
       case 'runDataStaging':
-        return new DataStagingAgent(this.provider, context);
+        return new DataStagingAgent(provider, context);
       case 'runMappingVerification':
-        return new MappingVerificationAgent(this.provider, context);
+        return new MappingVerificationAgent(provider, context);
       case 'runQualityEnhancement':
-        return new QualityEnhancementAgent(this.provider, context);
+        return new QualityEnhancementAgent(provider, context);
       case 'runMappingRules':
-        return new MappingRulesAgent(this.provider, context);
+        return new MappingRulesAgent(provider, context);
       case 'runEnhancementRules':
-        return new EnhancementRulesAgent(this.provider, context);
+        return new EnhancementRulesAgent(provider, context);
       case 'runDataTransfer':
-        return new DataTransferAgent(this.provider, context);
-      // Other agents can be added here
+        return new DataTransferAgent(provider, context);
       default:
         return null;
     }
   }
 
-  // Method to change the provider if needed (e.g. to Ollama)
   static setProvider(provider: LlmProvider) {
     this.provider = provider;
   }
 }
+

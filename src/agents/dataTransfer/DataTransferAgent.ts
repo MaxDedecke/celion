@@ -150,19 +150,13 @@ Antworte prägnant und strukturiert in Markdown.
           `;
 
           try {
-              const planRes = await fetch(`${baseUrl}/chat/completions`, {
-                  method: 'POST',
-                  headers: openAiHeaders,
-                  body: JSON.stringify({
-                      model: "gpt-4o",
-                      messages: [{ role: "system", content: planPrompt }]
-                  })
+              const planRes = await this.provider.chat([{ role: "system", content: planPrompt }], undefined, {
+                  model: "gpt-4o"
               });
               
-              if (planRes.ok) {
-                  const planData = await planRes.json();
-                  const planContent = planData.choices[0].message.content;
-                  
+              const planContent = planRes.content;
+              
+              if (planContent) {
                   await writeChatMessage(migrationId, 'assistant', `### 📋 Migrations-Plan\n\n${planContent}`, currentStepNumber);
                   
                   const actionContent = JSON.stringify({
@@ -222,76 +216,69 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
               `;
 
               try {
-                  const verifyRes = await fetch(`${baseUrl}/chat/completions`, {
-                      method: 'POST',
-                      headers: openAiHeaders,
-                      body: JSON.stringify({
-                          model: "gpt-4o",
-                          messages: [{ role: "system", content: verifyPrompt }],
-                          response_format: { type: "json_object" }
-                      })
+                  const verifyRes = await this.provider.chat([{ role: "system", content: verifyPrompt }], undefined, {
+                      model: "gpt-4o",
+                      response_format: { type: "json_object" }
                   });
-                  
-                  if (verifyRes.ok) {
-                      const verifyData = await verifyRes.json();
-                      const callConfig = JSON.parse(verifyData.choices[0].message.content);
-                      
-                      const targetHeaders: any = { 
-                          "Accept": "application/json",
-                          "Content-Type": "application/json",
-                          ...(targetScheme.headers || {})
-                      };
 
-                      if (targetConnector.auth_type === 'api_key' && targetConnector.api_key) {
-                          const authConf = targetScheme.authentication;
-                          const prefix = authConf?.tokenPrefix !== undefined ? authConf.tokenPrefix : 'Bearer ';
-                          const headerName = authConf?.headerName || 'Authorization';
-                          targetHeaders[headerName] = `${prefix}${targetConnector.api_key}`;
-                      }
+                  const callConfig = JSON.parse(verifyRes.content || "{}");
 
-                      const finalUrl = callConfig.url.startsWith('http') ? callConfig.url : (targetScheme.apiBaseUrl || "") + callConfig.url;
-                      const apiRes = await fetch(finalUrl, {
-                          method: callConfig.method,
-                          headers: targetHeaders
-                      });
+                  const targetHeaders: any = { 
+                      "Accept": "application/json",
+                      "Content-Type": "application/json",
+                      ...(targetScheme.headers || {})
+                  };
 
-                      if (apiRes.status === 404) {
-                          console.log(`[Worker] Target container ${targetScopeId} not found (404). Will recreate.`);
-                          await writeChatMessage(migrationId, 'assistant', `Der zuvor erstellte Ziel-Container (ID: ${targetScopeId}) wurde nicht mehr im Zielsystem gefunden. Ich setze den Transfer-Status zurück und lege den Container neu an...`, currentStepNumber);
-                          
-                          // Reset database
-                          await dbPool.query('DELETE FROM step_4_results WHERE migration_id = $1', [migrationId]);
-                          
-                          // Reset Neo4j
-                          const driver = neo4j.driver(
-                            process.env.NEO4J_URI || "bolt://neo4j-db:7687",
-                            neo4j.auth.basic(process.env.NEO4J_USER || "neo4j", process.env.NEO4J_PASSWORD || "password")
+                  if (targetConnector.auth_type === 'api_key' && targetConnector.api_key) {
+                      const authConf = targetScheme.authentication;
+                      const prefix = authConf?.tokenPrefix !== undefined ? authConf.tokenPrefix : 'Bearer ';
+                      const headerName = authConf?.headerName || 'Authorization';
+                      targetHeaders[headerName] = `${prefix}${targetConnector.api_key}`;
+                  }
+
+                  const finalUrl = callConfig.url.startsWith('http') ? callConfig.url : (targetScheme.apiBaseUrl || "") + callConfig.url;
+                  const apiRes = await fetch(finalUrl, {
+                      method: callConfig.method,
+                      headers: targetHeaders
+                  });
+
+                  if (apiRes.status === 404) {
+                      console.log(`[Worker] Target container ${targetScopeId} not found (404). Will recreate.`);
+                      await writeChatMessage(migrationId, 'assistant', `Der zuvor erstellte Ziel-Container (ID: ${targetScopeId}) wurde nicht mehr im Zielsystem gefunden. Ich setze den Transfer-Status zurück und lege den Container neu an...`, currentStepNumber);
+
+                      // Reset database
+                      await dbPool.query('DELETE FROM step_4_results WHERE migration_id = $1', [migrationId]);
+
+                      // Reset Neo4j
+                      const driver = neo4j.driver(
+                        process.env.NEO4J_URI || "bolt://neo4j-db:7687",
+                        neo4j.auth.basic(process.env.NEO4J_USER || "neo4j", process.env.NEO4J_PASSWORD || "password")
+                      );
+                      const session = driver.session();
+                      try {
+                          await session.run(
+                              `MATCH (n) WHERE n.migration_id = $migrationId 
+                               SET n.target_id = null, n.transfer_attempts = null, n.transfer_error = null`,
+                              { migrationId }
                           );
-                          const session = driver.session();
-                          try {
-                              await session.run(
-                                  `MATCH (n) WHERE n.migration_id = $migrationId 
-                                   SET n.target_id = null, n.transfer_attempts = null, n.transfer_error = null`,
-                                  { migrationId }
-                              );
-                              console.log(`[Worker] Neo4j target_ids cleared for migration ${migrationId}`);
-                          } catch (neoErr) {
-                              console.error(`[Worker] Failed to clear Neo4j target_ids:`, neoErr);
-                          } finally {
-                              await session.close();
-                              await driver.close();
-                          }
-
-                          targetScopeId = null;
-                      } else if (!apiRes.ok) {
-                          console.log(`[Worker] Verification check failed with status ${apiRes.status}. Proceeding assuming it might exist.`);
-                      } else {
-                          console.log(`[Worker] Target container ${targetScopeId} verified.`);
+                          console.log(`[Worker] Neo4j target_ids cleared for migration ${migrationId}`);
+                      } catch (neoErr) {
+                          console.error(`[Worker] Failed to clear Neo4j target_ids:`, neoErr);
+                      } finally {
+                          await session.close();
+                          await driver.close();
                       }
+
+                      targetScopeId = null;
+                  } else if (!apiRes.ok) {
+                      console.log(`[Worker] Verification check failed with status ${apiRes.status}. Proceeding assuming it might exist.`);
+                  } else {
+                      console.log(`[Worker] Target container ${targetScopeId} verified.`);
                   }
               } catch (err) {
                   console.error(`[Worker] Error in existence verification:`, err);
               }
+
           }
       }
 
@@ -331,25 +318,18 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
               `;
 
               try {
-                  const containerRes = await fetch(`${baseUrl}/chat/completions`, {
-                      method: 'POST',
-                      headers: openAiHeaders,
-                      body: JSON.stringify({
-                          model: "gpt-4o",
-                          messages: [{ role: "system", content: containerPrompt }],
-                          response_format: { type: "json_object" }
-                      })
+                  const containerRes = await this.provider.chat([{ role: "system", content: containerPrompt }], undefined, {
+                      model: "gpt-4o",
+                      response_format: { type: "json_object" }
                   });
                   
-                  if (containerRes.ok) {
-                      const containerData = await containerRes.json();
-                      const callConfig = JSON.parse(containerData.choices[0].message.content);
+                  const callConfig = JSON.parse(containerRes.content || "{}");
                       
-                      const targetHeaders: any = { 
-                          "Accept": "application/json",
-                          "Content-Type": "application/json",
-                          ...(targetScheme.headers || {})
-                      };
+                  const targetHeaders: any = { 
+                      "Accept": "application/json",
+                      "Content-Type": "application/json",
+                      ...(targetScheme.headers || {})
+                  };
 
                       if (targetConnector.auth_type === 'api_key' && targetConnector.api_key) {
                           const authConf = targetScheme.authentication;
@@ -388,7 +368,6 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                           console.error(`[Worker] Container creation failed: ${errText}`);
                           await writeChatMessage(migrationId, 'assistant', `⚠️ Konnte Container nicht automatisch erstellen. Nutze Standard-Scope.`, currentStepNumber);
                       }
-                  }
               } catch (err) {
                   console.error(`[Worker] Error in Phase 0:`, err);
               }
@@ -898,18 +877,11 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                                   `;
 
                                   try {
-                                      const agentRes = await fetch(`${baseUrl}/chat/completions`, {
-                                          method: 'POST',
-                                          headers: openAiHeaders,
-                                          body: JSON.stringify({
-                                              model: "gpt-4o-mini",
-                                              messages: [{ role: "system", content: agentPrompt }],
-                                              response_format: { type: "json_object" }
-                                          })
+                                      const agentRes = await this.provider.chat([{ role: "system", content: agentPrompt }], undefined, {
+                                          model: "gpt-4o-mini",
+                                          response_format: { type: "json_object" }
                                       });
-                                      if (!agentRes.ok) throw new Error("Agent failed to respond");
-                                      const agentData = await agentRes.json();
-                                      const callResult = JSON.parse(agentData.choices[0].message.content);
+                                      const callResult = JSON.parse(agentRes.content || "{}");
                                       callConfig = {
                                           url: callResult.url,
                                           method: callResult.method,
