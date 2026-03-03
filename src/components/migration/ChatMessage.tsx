@@ -315,6 +315,8 @@ interface ChatMessageProps {
 
 const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = false, onTypewriterComplete, currentStep }: ChatMessageProps) => {
   const [showJsonDialog, setShowJsonDialog] = useState(false);
+  const [selectedDropdownValue, setSelectedDropdownValue] = useState<string>("");
+  const [isSubmitted, setIsSubmitted] = useState(false);
   const { toast } = useToast();
 
   const { jsonContent, textContent } = useMemo(() => {
@@ -494,7 +496,7 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
                 {enableTypewriter && message.role !== "user" ? (
                   <TypewriterText text={textContent} speed={8} onComplete={onTypewriterComplete} />
                 ) : (
-                  renderFormattedContent(textContent)
+                  renderFormattedContent(textContent.replace(/\[ID:[^\]]+\]/g, ''))
                 )}
               </div>
             )}
@@ -528,17 +530,14 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
                   </div>
                 ) : jsonContent.type === "datasource_dropdown" ? (
                   <div className="flex w-full justify-start py-2 animate-fade-in">
-                    <div className="flex flex-col gap-2 p-4 rounded-xl border border-primary/20 bg-primary/5 w-full">
+                    <div className="flex flex-col gap-3 p-4 rounded-xl border border-primary/20 bg-primary/5 w-full">
                       <label className="text-sm font-medium text-foreground">{jsonContent.label}</label>
-                      <Select onValueChange={(val) => {
-                        const selectedOption = jsonContent.options?.find((o: any) => o.id === val);
-                        const label = selectedOption ? selectedOption.label : val;
-                        const mode = jsonContent.mode === "source" ? "Quelle" : "Ziel";
-                        if (onAction) {
-                          if (val === "new") onAction(`send_chat:Ich möchte eine neue Datenquelle für ${mode} anlegen.`);
-                          else onAction(`send_chat:Ich wähle für ${mode} die Datenquelle '${label}' (ID: ${val})`);
-                        }
-                      }}>
+                      <Select 
+                        value={selectedDropdownValue}
+                        disabled={isSubmitted}
+                        onValueChange={(val) => {
+                          setSelectedDropdownValue(val);
+                        }}>
                         <SelectTrigger className="w-full sm:w-[350px] bg-background">
                           <SelectValue placeholder="Bitte wählen..." />
                         </SelectTrigger>
@@ -550,6 +549,27 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
                           ))}
                         </SelectContent>
                       </Select>
+                      {selectedDropdownValue && (
+                        <Button 
+                          size="sm" 
+                          disabled={isSubmitted}
+                          className="w-full sm:w-[350px] bg-primary text-primary-foreground hover:bg-primary/90 mt-1"
+                          onClick={() => {
+                            setIsSubmitted(true);
+                            const val = selectedDropdownValue;
+                            const selectedOption = jsonContent.options?.find((o: any) => o.id === val);
+                            const label = selectedOption ? selectedOption.label.split(' - ')[0] : val; // Clean up label to exclude URL
+                            const mode = jsonContent.mode === "source" ? "Quelle" : "Ziel";
+                            if (onAction) {
+                              if (val === "new") onAction(`send_chat:Ich möchte eine neue Datenquelle für ${mode} anlegen.`);
+                              // We include a hidden token block so the backend gets the ID, but the visible text is cleaner
+                              else onAction(`send_chat:Ich wähle für ${mode} die Datenquelle '${label}'.[ID:${val}]`);
+                            }
+                          }}
+                        >
+                          Auswahl bestätigen
+                        </Button>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -578,15 +598,17 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
                     )}
                   </div>
                 )}
-                <Button 
-                  variant="outline" 
-                  size="sm" 
-                  onClick={() => setShowJsonDialog(true)} 
-                  className="h-7 text-xs bg-background/80 hover:bg-accent mt-1 w-48 self-center"
-                >
-                  <FileJson className="w-3 h-3 mr-2" />
-                  Details anzeigen
-                </Button>
+                {!["live-transfer-status", "action", "datasource_dropdown"].includes(jsonContent.type) && !jsonContent.entities && (
+                  <Button 
+                    variant="outline" 
+                    size="sm" 
+                    onClick={() => setShowJsonDialog(true)} 
+                    className="h-7 text-xs bg-background/80 hover:bg-accent mt-1 w-48 self-center"
+                  >
+                    <FileJson className="w-3 h-3 mr-2" />
+                    Details anzeigen
+                  </Button>
+                )}
               </div>
             )}
 

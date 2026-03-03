@@ -291,9 +291,16 @@ const MigrationChatCard = ({
     if (migrationData.status !== "completed") {
       const isStartButton = migrationData.status === "not_started";
       
-      // Don't show the default button during onboarding (Step 0) 
-      // until it officially switches to "not_started" (Start button)
-      if (rawStep === 0 && !isStartButton) {
+      const isOnboardingIncomplete = rawStep === 0 && (
+        !migrationData.source_system || 
+        migrationData.source_system === 'TBD' || 
+        !migrationData.target_system || 
+        migrationData.target_system === 'TBD'
+      );
+      
+      // We do not want to show the button if onboarding is not fully configured,
+      // or if the consultant is actively thinking.
+      if (isOnboardingIncomplete || isConsultantThinking) {
         return null;
       }
 

@@ -678,11 +678,73 @@ async function processJob(job: any) {
         [userId]
       );
 
+      const fetchScopeData = async (system: string, dataSourceId: string, apiToken?: string, url?: string, email?: string): Promise<{id: string, name: string}[]> => {
+          let token = apiToken;
+          let apiUrl = url;
+          let userEmail = email;
+          
+          if (dataSourceId && dataSourceId !== 'new') {
+            const { rows: dsRows } = await pool.query(
+               'SELECT api_url, api_key, email, username FROM data_sources WHERE id = $1',
+               [dataSourceId]
+            );
+            if (dsRows.length > 0) {
+                token = dsRows[0].api_key;
+                apiUrl = dsRows[0].api_url;
+                userEmail = dsRows[0].email || dsRows[0].username;
+            }
+          }
+          
+          if (!token || !apiUrl) throw new Error("Fehlende Zugangsdaten für diese Datenquelle.");
+
+          let endpoint = "";
+          let headers: any = {};
+          
+          const sys = system.toLowerCase().replace(/\s/g, '');
+          if (sys === 'clickup') {
+            endpoint = apiUrl.replace(/\/$/, '') + '/api/v2/team';
+            headers['Authorization'] = token;
+          } else if (sys === 'asana') {
+            endpoint = apiUrl.replace(/\/$/, '') + '/api/1.0/workspaces?opt_fields=gid,name';
+            headers['Authorization'] = 'Bearer ' + token;
+          } else if (sys === 'jiracloud') {
+            endpoint = apiUrl.replace(/\/$/, '') + '/rest/api/3/project';
+            const auth = Buffer.from(`${userEmail}:${token}`).toString('base64');
+            headers['Authorization'] = 'Basic ' + auth;
+          } else if (sys === 'gitlab') {
+            endpoint = apiUrl.replace(/\/$/, '') + '/api/v4/projects';
+            headers['PRIVATE-TOKEN'] = token;
+          } else if (sys === 'notion') {
+            endpoint = apiUrl.replace(/\/$/, '') + '/v1/search';
+            headers['Authorization'] = 'Bearer ' + token;
+            headers['Notion-Version'] = '2022-06-28';
+          } else {
+            throw new Error(`Bereichsabfrage für System '${system}' wird aktuell nicht automatisch unterstützt.`);
+          }
+
+          const response = await fetch(endpoint, { 
+             headers,
+             method: sys === 'notion' ? 'POST' : 'GET',
+             body: sys === 'notion' ? JSON.stringify({ filter: { property: "object", value: "database" } }) : undefined
+          });
+          if (!response.ok) throw new Error(`HTTP error ${response.status} from ${system}`);
+          const data = await response.json();
+          
+          if (sys === 'clickup') return (data.teams || []).map((t: any) => ({ id: t.id, name: t.name }));
+          if (sys === 'asana') return (data.data || []).map((w: any) => ({ id: w.gid, name: w.name }));
+          if (sys === 'jiracloud') return (Array.isArray(data) ? data : data.values || []).map((p: any) => ({ id: p.id || p.key, name: p.name }));
+          if (sys === 'gitlab') return (Array.isArray(data) ? data : []).map((p: any) => ({ id: p.id, name: p.name }));
+          if (sys === 'notion') return (data.results || []).map((p: any) => ({ id: p.id, name: p.title?.[0]?.plain_text || 'Unnamed' }));
+          
+          return [];
+      };
+
       const messageGenerator = runIntroductionAgent(userMessage, {
           ...context,
           migrationId,
           migrationName,
-          dataSources
+          dataSources,
+          fetchScopeData
       });
       
       for await (const message of messageGenerator) {
@@ -751,8 +813,10 @@ async function processJob(job: any) {
                   resolvedTarget.url,
                   JSON.stringify({
                     sourceScope: args.source.scope,
+                    sourceScopeIds: args.source.scopeIds,
                     targetName: args.target.scope,
-                    targetContainerType: args.target.containerType
+                    targetContainerType: args.target.containerType,
+                    targetContainerId: args.target.containerId
                   }),
                   migrationId
                 ]
