@@ -1,11 +1,16 @@
 import { Pool } from 'pg';
-import neo4j from 'neo4j-driver';
-import { runIntroductionAgent, runSystemDetection, runAuthFlow, runSourceDiscovery, runTargetDiscovery, runAnswerAgent, runMapping, runMappingVerification, runMappingRules, runEnhancementRules, runEnhancementVerification, runDataTransformation } from '../agents/agentService';
+import { runIntroductionAgent, runAnswerAgent} from '../agents/agentService';
 import { AGENT_WORKFLOW_STEPS } from '../constants/agentWorkflow';
-import { loadScheme, loadObjectScheme } from '../lib/scheme-loader';
-import { resolveOpenAiConfig, buildOpenAiHeaders } from '../agents/openai/openaiClient';
-import { smartDiscovery } from '../tools/smartDiscovery';
 import { StepFactory } from '../agents/core/StepFactory';
+import { 
+  saveStep1Result, 
+  saveStep2Result, 
+  saveStep3Result, 
+  saveStep4Result, 
+  saveStep5Result, 
+  saveStep6Result, 
+  saveStep7Result 
+} from '../lib/step-results';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -44,13 +49,6 @@ async function upsertChatMessage(id: string | null, migrationId: string, role: s
   }
 }
 
-async function writeMappingChatMessage(migrationId: string, role: string, content: string) {
-  await pool.query(
-    'INSERT INTO mapping_chat_messages (migration_id, role, content) VALUES ($1, $2, $3)',
-    [migrationId, role, content]
-  );
-}
-
 async function writeRetryAction(migrationId: string, stepNumber: number) {
   const actionContent = JSON.stringify({
     type: "action",
@@ -66,147 +64,7 @@ async function writeRetryAction(migrationId: string, stepNumber: number) {
   await writeChatMessage(migrationId, 'system', actionContent, stepNumber);
 }
 
-// Result Persistence Helpers
-async function saveStep1Result(migrationId: string, mode: string, result: any) {
-  await pool.query(
-    `INSERT INTO public.step_1_results (migration_id, system_mode, detected_system, confidence_score, api_type, api_subtype, recommended_base_url, raw_json)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-     ON CONFLICT (migration_id, system_mode) DO UPDATE SET
-       detected_system = EXCLUDED.detected_system,
-       confidence_score = EXCLUDED.confidence_score,
-       api_type = EXCLUDED.api_type,
-       api_subtype = EXCLUDED.api_subtype,
-       recommended_base_url = EXCLUDED.recommended_base_url,
-       raw_json = EXCLUDED.raw_json,
-       created_at = now()`,
-    [
-      migrationId, mode, 
-      result.detected_system || result.systemName, 
-      result.confidenceScore, 
-      result.apiTypeDetected, 
-      result.apiSubtype, 
-      result.recommendedBaseUrl, 
-      result
-    ]
-  );
-}
-
-async function saveStep2Result(migrationId: string, mode: string, result: any) {
-  await pool.query(
-    `INSERT INTO public.step_2_results (migration_id, system_mode, is_authenticated, auth_type, error_message, raw_json)
-     VALUES ($1, $2, $3, $4, $5, $6)
-     ON CONFLICT (migration_id, system_mode) DO UPDATE SET
-       is_authenticated = EXCLUDED.is_authenticated,
-       auth_type = EXCLUDED.auth_type,
-       error_message = EXCLUDED.error_message,
-       raw_json = EXCLUDED.raw_json,
-       created_at = now()`,
-    [
-      migrationId, mode, 
-      result.authenticated ?? result.success, 
-      result.authType || result.auth_method, 
-      result.error || result.error_message, 
-      result
-    ]
-  );
-}
-
-async function saveStep3Result(migrationId: string, result: any) {
-  // 1. Update overall complexity score
-  if (result.complexityScore !== undefined) {
-    await pool.query('UPDATE public.migrations SET complexity_score = $1 WHERE id = $2', [result.complexityScore, migrationId]);
-  }
-
-  // 2. Save identified scope name if available
-  if (result.scope && result.scope.name) {
-    await pool.query(
-      "UPDATE public.migrations SET scope_config = jsonb_set(COALESCE(scope_config, '{}'::jsonb), '{sourceScopeName}', to_jsonb($1::text)) WHERE id = $2",
-      [result.scope.name, migrationId]
-    );
-  }
-
-  // 3. Save entities (Inventory)
-  if (result.entities && Array.isArray(result.entities)) {
-    for (const entity of result.entities) {
-      await pool.query(
-        `INSERT INTO public.step_3_results (migration_id, entity_name, count, complexity, error_message, raw_json)
-         VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (migration_id, entity_name) DO UPDATE SET
-           count = EXCLUDED.count,
-           complexity = EXCLUDED.complexity,
-           error_message = EXCLUDED.error_message,
-           raw_json = EXCLUDED.raw_json,
-           created_at = now()`,
-        [migrationId, entity.name, entity.count || 0, entity.complexity, entity.error, entity]
-      );
-    }
-  }
-}
-
-async function saveStep4Result(migrationId: string, result: any) {
-  await pool.query(
-    `INSERT INTO public.step_4_results (
-      migration_id, target_scope_id, target_scope_name, target_status, 
-      writable_entities, missing_permissions, summary, raw_json
-    )
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-     ON CONFLICT (migration_id) DO UPDATE SET
-       target_scope_id = EXCLUDED.target_scope_id,
-       target_scope_name = EXCLUDED.target_scope_name,
-       target_status = EXCLUDED.target_status,
-       writable_entities = EXCLUDED.writable_entities,
-       missing_permissions = EXCLUDED.missing_permissions,
-       summary = EXCLUDED.summary,
-       raw_json = EXCLUDED.raw_json,
-       created_at = now()`,
-    [
-      migrationId,
-      result.targetScope?.id,
-      result.targetScope?.name,
-      result.targetScope?.status,
-      result.compatibility?.writableEntities || [],
-      result.compatibility?.missingPermissions || [],
-      result.summary,
-      result
-    ]
-  );
-}
-
-async function saveStep5Result(migrationId: string, result: any) {
-  await pool.query(
-    `INSERT INTO public.step_5_results (migration_id, summary, raw_json)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (migration_id) DO UPDATE SET
-       summary = EXCLUDED.summary,
-       raw_json = EXCLUDED.raw_json,
-       created_at = now()`,
-    [migrationId, result.summary || 'Data Staging abgeschlossen.', result]
-  );
-}
-
-async function saveStep6Result(migrationId: string, result: any) {
-  await pool.query(
-    `INSERT INTO public.step_6_results (migration_id, summary, raw_json)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (migration_id) DO UPDATE SET
-       summary = EXCLUDED.summary,
-       raw_json = EXCLUDED.raw_json,
-       created_at = now()`,
-    [migrationId, result.summary, result]
-  );
-}
-
-async function saveStep7Result(migrationId: string, result: any) {
-  await pool.query(
-    `INSERT INTO public.step_7_results (migration_id, summary, raw_json)
-     VALUES ($1, $2, $3)
-     ON CONFLICT (migration_id) DO UPDATE SET
-       summary = EXCLUDED.summary,
-       raw_json = EXCLUDED.raw_json,
-       created_at = now()`,
-    [migrationId, result.summary || 'Quality Enhancement abgeschlossen.', result]
-  );
-}
+// Result Persistence Helpers moved to ../lib/step-results.ts
 
 const ensureWorkflowState = (state: any = {}) => {
   const safeState = state || {};
@@ -230,26 +88,6 @@ const incrementGlobalStats = async (client: any, data: { steps?: number, success
   } catch (e) {
     console.error('[Worker] Failed to update global stats:', e);
   }
-};
-
-const filterIdFields = (schema: any): any => {
-  if (!schema || !schema.objects) return schema;
-  
-  const idSuffixes = ["_id", "Id", "Guid", "Uuid", "_guid", "_uuid"];
-  const idExact = ["id", "uuid", "guid", "pk", "_id", "external_id"];
-  
-  const filteredObjects = schema.objects.map((obj: any) => {
-    if (!obj.fields) return obj;
-    return {
-      ...obj,
-      fields: obj.fields.filter((f: any) => {
-        const fid = (f.id || "").toLowerCase();
-        return !idExact.includes(fid) && !idSuffixes.some(suffix => f.id.endsWith(suffix));
-      })
-    };
-  });
-  
-  return { ...schema, objects: filteredObjects };
 };
 
 const updateWorkflowForStep = (state: any, workflowStepId: string, result: any, isError: boolean) => {
@@ -278,34 +116,6 @@ const updateWorkflowForStep = (state: any, workflowStepId: string, result: any, 
   return { nextState, progress, completedCount, totalSteps };
 };
 
-function flattenObject(obj: any, prefix = ''): any {
-  return Object.keys(obj).reduce((acc: any, k: string) => {
-    const pre = prefix.length ? prefix + '_' : '';
-    if (typeof obj[k] === 'object' && obj[k] !== null && !Array.isArray(obj[k])) {
-      Object.assign(acc, flattenObject(obj[k], pre + k));
-    } else {
-      acc[pre + k] = obj[k];
-    }
-    return acc;
-  }, {});
-}
-
-function sanitizeForNeo4j(obj: any): any {
-  const sanitized: any = {};
-  for (const [key, value] of Object.entries(obj)) {
-    // Neo4j only accepts primitives or arrays of primitives
-    if (Array.isArray(value)) {
-      sanitized[key] = value.filter(v => typeof v !== 'object').map(v => String(v));
-    } else if (typeof value === 'object' && value !== null) {
-      // Should have been flattened, but if anything remains, stringify it
-      sanitized[key] = JSON.stringify(value);
-    } else {
-      sanitized[key] = value;
-    }
-  }
-  return sanitized;
-}
-
 async function processJob(job: any) {
   let { step_id, payload } = job;
   
@@ -320,7 +130,6 @@ async function processJob(job: any) {
 
   const agentName = payload?.agentName;
   const agentParams = payload?.agentParams;
-  const stepIdFromPayload = payload?.stepId;
 
   console.log(`[Worker] Processing job ${job.id}. agentName: "${agentName}", step_id: ${step_id}, migrationId: ${payload?.migrationId}`);
 
@@ -425,7 +234,7 @@ async function processJob(job: any) {
 
       await writeChatMessage(migrationId, 'assistant', resultMessageText, currentStepNumber);
       if (!isLogicalFailure) {
-        await saveStep1Result(migrationId, mode, result);
+        await saveStep1Result(pool, migrationId, mode, result);
       }
 
       const finishClient = await pool.connect();
@@ -552,7 +361,7 @@ async function processJob(job: any) {
           await writeChatMessage(migrationId, 'assistant', resultMessageText, currentStepNumber);
       }
       if (!isLogicalFailure) {
-        await saveStep3Result(migrationId, result);
+        await saveStep3Result(pool, migrationId, result);
       }
 
       const finishClient = await pool.connect();
@@ -652,7 +461,7 @@ async function processJob(job: any) {
 
       await writeChatMessage(migrationId, 'assistant', resultMessageText, currentStepNumber);
       if (!isLogicalFailure) {
-        await saveStep4Result(migrationId, result);
+        await saveStep4Result(pool, migrationId, result);
       }
 
       const finishClient = await pool.connect();
@@ -753,7 +562,7 @@ async function processJob(job: any) {
 
       await writeChatMessage(migrationId, 'assistant', resultMessageText, currentStepNumber);
       if (!isLogicalFailure) {
-        await saveStep2Result(migrationId, mode, result);
+        await saveStep2Result(pool, migrationId, mode, result);
       }
 
       const finishClient = await pool.connect();
@@ -979,7 +788,7 @@ async function processJob(job: any) {
 
       await writeChatMessage(migrationId, 'assistant', resultMessageText, currentStepNumber);
       if (!isLogicalFailure) {
-        await saveStep5Result(migrationId, result);
+        await saveStep5Result(pool, migrationId, result);
       }
 
       const finishClientStaging = await pool.connect();
@@ -1077,7 +886,7 @@ async function processJob(job: any) {
       }
 
       if (!isLogicalFailure) {
-        await saveStep6Result(migrationId, result);
+        await saveStep6Result(pool, migrationId, result);
       }
 
       const finishClient6 = await pool.connect();
@@ -1216,7 +1025,7 @@ async function processJob(job: any) {
       }
 
       if (!isLogicalFailure) {
-        await saveStep7Result(migrationId, result);
+        await saveStep7Result(pool, migrationId, result);
       }
 
       const finishClientEnhance = await pool.connect();
@@ -1438,61 +1247,6 @@ function main() {
   }
   console.log('Worker started.');
   setInterval(() => pollForJobs(), POLL_INTERVAL);
-}
-
-function _extractItems(body: any, entityName: string): any[] {
-  if (Array.isArray(body)) return body;
-  if (typeof body === 'object' && body !== null) {
-      for (const key of [entityName, 'items', 'data', 'tasks', 'results', 'values', 'elements']) {
-          if (Array.isArray(body[key])) return body[key];
-      }
-      for (const key in body) {
-          if (Array.isArray(body[key])) return body[key];
-      }
-  }
-  return [];
-}
-
-async function _ingestToNeo4j(driver: any, systemLabel: string, entityType: string, items: any[], migrationId: string) {
-  const session = driver.session();
-  // Normalize entity type for label (e.g. "project_tasks" -> "ProjectTasks")
-  const normalizedLabel = entityType
-    .split(/[\s_-]+/)
-    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-    .join('')
-    .replace(/[^a-zA-Z0-9]/g, '');
-
-  try {
-      await session.run(
-          `UNWIND $items AS item
-           MERGE (n:\`${systemLabel}\` { external_id: toString(COALESCE(item.gid, item.id, item.key, item.uuid)), migration_id: $migrationId })
-           SET n:\`${normalizedLabel}\`
-           SET n.entity_type = $entityType
-           SET n += item`,
-
-          { 
-              items: items.map(i => {
-                  const sanitized: any = {};
-                  for (const [k, v] of Object.entries(i)) {
-                      if (['string', 'number', 'boolean'].includes(typeof v) || v === null) {
-                          sanitized[k] = v;
-                      } else if (typeof v === 'object' && v !== null && !Array.isArray(v)) {
-                          // Flatten simple nested IDs (e.g., list: { id: "123" } -> list_id: "123")
-                          const vObj = v as any;
-                          if (vObj.id) sanitized[`${k}_id`] = String(vObj.id);
-                          // Also keep common name fields if they exist
-                          if (vObj.name) sanitized[`${k}_name`] = String(vObj.name);
-                      }
-                  }
-                  return sanitized;
-              }), 
-              migrationId, 
-              entityType 
-          }
-      );
-  } finally {
-      await session.close();
-  }
 }
 
 main();
