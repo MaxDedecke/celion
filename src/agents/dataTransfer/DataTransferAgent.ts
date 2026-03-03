@@ -63,7 +63,8 @@ export class DataTransferAgent extends AgentBase {
     const agentParams = params;
     
     
-      console.log(`[Worker] Running Data Transfer for migration ${migrationId}`);
+    // Start processing the data transfer
+    console.log(`[Worker] Running Data Transfer for migration ${migrationId}`);
       
       // Phase 0: Target Container Preparation & Planning
       const { rows: migRowsScope } = await dbPool.query('SELECT name, source_system, target_system, scope_config FROM migrations WHERE id = $1', [migrationId]);

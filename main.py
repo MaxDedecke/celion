@@ -3491,8 +3491,12 @@ async def toggle_entity_ignore(id: str, entity_name: str, display_name: Optional
 async def get_llm_settings():
     try:
         with _get_db_connection() as conn, conn.cursor(row_factory=psycopg.rows.dict_row) as cur:
-            cur.execute("SELECT id, provider, model, base_url, '' as api_key FROM public.llm_settings ORDER BY updated_at DESC")
+            cur.execute("SELECT id, provider, model, base_url, api_key FROM public.llm_settings ORDER BY updated_at DESC")
             settings = cur.fetchall()
+            # Mask api_key for security
+            for s in settings:
+                if s.get('api_key'):
+                    s['api_key'] = "************"
             return settings
     except Exception as exc:
         print(f"Error in GET /api/llm-settings: {exc}")

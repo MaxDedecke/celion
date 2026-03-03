@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Settings, Loader2, Key, Globe, Layers } from "lucide-react";
+import { Settings, Loader2, Key, Globe, Layers, Brain } from "lucide-react";
 
 interface LlmSettings {
   id?: string;
@@ -70,10 +70,16 @@ export function LlmSettingsDialog({
   const handleSave = async () => {
     setSaving(true);
     try {
+      // Don't send the masked placeholder back to the server
+      const payload = { ...settings };
+      if (payload.api_key === "************") {
+        delete payload.api_key;
+      }
+
       const res = await fetch("/api/llm-settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(settings),
+        body: JSON.stringify(payload),
       });
       if (res.ok) {
         toast({
@@ -100,7 +106,7 @@ export function LlmSettingsDialog({
       <DialogContent className="sm:max-w-[450px]">
         <DialogHeader>
           <div className="flex items-center gap-2">
-            <Settings className="w-5 h-5 text-primary" />
+            <Brain className="w-5 h-5 text-primary" />
             <DialogTitle>LLM Provider Einstellungen</DialogTitle>
           </div>
         </DialogHeader>

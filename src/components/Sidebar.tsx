@@ -12,6 +12,7 @@ import {
   FolderOpen,
   Layers,
   Settings,
+  Brain,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Logo from "./Logo";
@@ -195,7 +196,7 @@ const Sidebar = ({
                       onClick={() => setLlmSettingsOpen(true)}
                       className="flex-shrink-0 hover:bg-foreground/5"
                     >
-                      <Settings className="h-4 w-4" />
+                      <Brain className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom">
