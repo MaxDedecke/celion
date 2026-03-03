@@ -155,7 +155,7 @@ Antworte prägnant und strukturiert in Markdown.
                   model: "gpt-4o"
               });
               
-              const planContent = planRes.content;
+              const planContent = planRes.choices[0].message.content;
               
               if (planContent) {
                   await writeChatMessage(migrationId, 'assistant', `### 📋 Migrations-Plan\n\n${planContent}`, currentStepNumber);
@@ -222,7 +222,7 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                       response_format: { type: "json_object" }
                   });
 
-                  const callConfig = JSON.parse(verifyRes.content || "{}");
+                  const callConfig = JSON.parse(verifyRes.choices[0].message.content || "{}");
 
                   const targetHeaders: any = { 
                       "Accept": "application/json",
@@ -324,7 +324,7 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                       response_format: { type: "json_object" }
                   });
                   
-                  const callConfig = JSON.parse(containerRes.content || "{}");
+                  const callConfig = JSON.parse(containerRes.choices[0].message.content || "{}");
                       
                   const targetHeaders: any = { 
                       "Accept": "application/json",
@@ -882,7 +882,7 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                                           model: "gpt-4o-mini",
                                           response_format: { type: "json_object" }
                                       });
-                                      const callResult = JSON.parse(agentRes.content || "{}");
+                                      const callResult = JSON.parse(agentRes.choices[0].message.content || "{}");
                                       callConfig = {
                                           url: callResult.url,
                                           method: callResult.method,

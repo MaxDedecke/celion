@@ -215,7 +215,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
             { role: "user", content: validationPrompt }
         ], undefined, { response_format: { type: "json_object" } });
         
-        const valContent = validationResponse.content;
+        const valContent = validationResponse.choices[0].message.content;
         if (valContent) {
             validationResult = JSON.parse(valContent);
             await this.context.writeChatMessage('assistant', `Validierungsergebnis: ${validationResult.validation_message}`, stepNumber);
@@ -241,11 +241,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
          
          for (let turn = 0; turn < 15; turn++) {
              const response = await this.provider.chat(messages, TOOLS, { response_format: { type: "json_object" } });
-             const message: ChatMessage = {
-                 role: "assistant",
-                 content: response.content,
-                 tool_calls: response.toolCalls
-             };
+             const message = response.choices[0].message;
              messages.push(message);
 
              if (message.content) {

@@ -35,20 +35,23 @@ const MigrationChatCard = ({
   const [migrationData, setMigrationData] = useState<Migration>(migration);
   const [mappingRules, setMappingRules] = useState<any[]>([]);
 
-  // Track message count to detect new messages for auto-scroll
+  // Track message count and step to avoid stale closures in polling
   const prevMessageCountRef = useRef(0);
+  const currentStepRef = useRef(migration.current_step || 0);
 
   useEffect(() => {
+    currentStepRef.current = migration.current_step || 0;
     setMigrationData(migration);
   }, [migration]);
 
   useEffect(() => {
     let isActive = true;
     
-    // Reset state when migration changes
+    // Reset state ONLY when migration ID changes
     setChatMessages([]);
     setMappingRules([]);
     prevMessageCountRef.current = 0;
+    initialScrollDone.current = null;
 
     const fetchChatMessages = async () => {
       try {
@@ -69,14 +72,15 @@ const MigrationChatCard = ({
         
         const data = await response.json();
         setMigrationData(data);
+        currentStepRef.current = data.current_step || 0;
       } catch (error) {
         console.error("Failed to fetch migration data:", error);
       }
     };
 
     const fetchMappingRules = async () => {
-       // Only fetch if we are close to step 6 (e.g. step 5 completed or step 6 active)
-       if (migrationData.current_step >= 5) {
+       // Only fetch if we are close to step 6
+       if (currentStepRef.current >= 5) {
           try {
             const response = await fetch(`/api/migrations/${migration.id}/mapping-rules`);
             if (!isActive) return;
@@ -104,7 +108,7 @@ const MigrationChatCard = ({
       isActive = false;
       clearInterval(interval);
     };
-  }, [migration.id, migrationData.current_step]); // Added migrationData.current_step dependency for rules fetch trigger
+  }, [migration.id]); // Removed migrationData.current_step dependency
 
   const totalSteps = 10;
   const rawStep = migrationData.current_step || 0;
@@ -158,13 +162,15 @@ const MigrationChatCard = ({
     
     // Check if new messages arrived
     if (newMessageCount > prevMessageCountRef.current) {
-        // Always scroll to bottom for new messages as requested ("Fokus setzen")
-        // Use timeout to wait for rendering (especially if animation starts)
-        setTimeout(() => scrollToBottom('smooth'), 100);
+        // ONLY scroll to bottom if user is already near bottom
+        // This prevents the "once jump" when clicking action buttons if user scrolled up
+        if (isNearBottom) {
+          setTimeout(() => scrollToBottom('smooth'), 100);
+        }
     }
     
     prevMessageCountRef.current = newMessageCount;
-  }, [chatMessages.length]);
+  }, [chatMessages.length, isNearBottom]);
 
 
   // Continuous scroll while running (if user hasn't scrolled away)

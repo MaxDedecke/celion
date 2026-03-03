@@ -252,11 +252,7 @@ export class DataStagingAgent extends AgentBase {
     try {
         for (let turn = 0; turn < 15; turn++) {
             const response = await this.provider.chat(messages, tools, { tool_choice: "auto" });
-            const aiMessage: ChatMessage = {
-                role: "assistant",
-                content: response.content,
-                tool_calls: response.toolCalls
-            };
+            const aiMessage = response.choices[0].message;
             messages.push(aiMessage);
 
             if (!aiMessage.tool_calls || aiMessage.tool_calls.length === 0) break;

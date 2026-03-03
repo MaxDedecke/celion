@@ -99,11 +99,7 @@ Scheme: ${JSON.stringify(simplifiedScheme)}
           response_format: { type: "json_object" } 
       });
 
-      const message: ChatMessage = {
-          role: "assistant",
-          content: response.content,
-          tool_calls: response.toolCalls
-      };
+      const message = response.choices[0].message;
       messages.push(message);
 
       if (message.content) {

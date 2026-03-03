@@ -78,7 +78,7 @@ ${JSON.stringify(rulesWithEnhancements, null, 2)}
             response_format: { type: "json_object" } 
         });
 
-        const messageContent = response.content;
+        const messageContent = response.choices[0].message.content;
 
         if (messageContent) {
           const verificationResult = JSON.parse(messageContent);
