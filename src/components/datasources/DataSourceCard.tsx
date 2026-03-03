@@ -11,6 +11,7 @@ import {
   Globe2,
   Power,
   Link2,
+  Mail,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -42,6 +43,7 @@ export function DataSourceCard({ source, onEdit, onDelete }: DataSourceCardProps
 
   return (
     <Card
+      onClick={() => onEdit(source)}
       className="group relative cursor-pointer overflow-hidden border-border/60 bg-gradient-to-br from-background/95 to-background/80 transition-all duration-200 hover:-translate-y-1 hover:border-primary/40 hover:shadow-[0_24px_48px_-28px_rgba(15,23,42,0.45)]"
     >
       <CardHeader className="flex flex-row items-center gap-4 pb-3">
@@ -79,6 +81,12 @@ export function DataSourceCard({ source, onEdit, onDelete }: DataSourceCardProps
             <div className="flex items-center gap-2 text-muted-foreground">
               <Link2 className="h-4 w-4" />
               <span className="truncate">{source.api_url}</span>
+            </div>
+          )}
+          {source.email && (
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <Mail className="h-4 w-4" />
+              <span className="truncate">{source.email}</span>
             </div>
           )}
           <div className="flex items-center gap-2 text-muted-foreground">

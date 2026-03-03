@@ -15,10 +15,8 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { DATA_SOURCE_TYPE_OPTIONS, type DataSourceType } from "@/constants/sourceTypes";
-import { WizardSteps, type WizardStep } from "@/components/ui/wizard-steps";
 import { DataSourceCard } from "@/components/datasources/DataSourceCard";
 import { BasicInfoStep } from "@/components/datasources/wizard/BasicInfoStep";
-import { AuthAndInfraStep } from "@/components/datasources/wizard/AuthAndInfraStep";
 import type { DataSourceWithProjects, ProjectSummary, DataSourceFormData } from "@/types/dataSource";
 import {
   createInitialDataSourceFormData,
@@ -30,17 +28,6 @@ import type { TablesInsert } from "@/integrations/database/types";
 
 const SOURCE_TYPE_OPTIONS = DATA_SOURCE_TYPE_OPTIONS;
 
-const DATA_SOURCE_WIZARD_STEPS: WizardStep[] = [
-  {
-    title: "Grundlagen",
-    description: "Name, Typ und Sichtbarkeit festlegen",
-  },
-  {
-    title: "Zugang",
-    description: "Authentifizierung und Infrastruktur konfigurieren",
-  },
-];
-
 const DataSources = () => {
   const navigate = useNavigate();
   const [dataSources, setDataSources] = useState<DataSourceWithProjects[]>([]);
@@ -48,28 +35,13 @@ const DataSources = () => {
   const [loading, setLoading] = useState(true);
   const loaderVisible = useMinimumLoader(loading, 1000);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [currentStep, setCurrentStep] = useState(0);
   const [editingSource, setEditingSource] = useState<DataSourceWithProjects | null>(null);
   const [selectedProjects, setSelectedProjects] = useState<string[]>([]);
   const [formData, setFormData] = useState<DataSourceFormData>(() => createInitialDataSourceFormData());
   const nameInputRef = useRef<HTMLInputElement | null>(null);
 
-  const totalSteps = DATA_SOURCE_WIZARD_STEPS.length;
-  const isLastStep = currentStep === totalSteps - 1;
-
   const handleDialogOpenChange = (open: boolean) => {
     setIsDialogOpen(open);
-    if (!open) {
-      setCurrentStep(0);
-    }
-  };
-
-  const handleNextStep = () => {
-    setCurrentStep((previous) => Math.min(previous + 1, totalSteps - 1));
-  };
-
-  const handlePreviousStep = () => {
-    setCurrentStep((previous) => Math.max(previous - 1, 0));
   };
 
   const sourceTypeOptions = SOURCE_TYPE_OPTIONS.includes(
@@ -139,12 +111,11 @@ const DataSources = () => {
       setFormData(createInitialDataSourceFormData());
       setSelectedProjects([]);
     }
-    setCurrentStep(0);
     setIsDialogOpen(true);
   };
 
   useEffect(() => {
-    if (!isDialogOpen || currentStep !== 0) {
+    if (!isDialogOpen) {
       return;
     }
 
@@ -153,7 +124,7 @@ const DataSources = () => {
     }, 0);
 
     return () => window.clearTimeout(timeoutId);
-  }, [isDialogOpen, currentStep]);
+  }, [isDialogOpen]);
 
   const handleSave = async () => {
     if (!formData.name) {
@@ -161,11 +132,10 @@ const DataSources = () => {
       return;
     }
 
-    const hasApiKeyAuth = formData.api_key && formData.username && formData.password;
-    const hasEmailAuth = formData.api_key && formData.email;
+    const hasAuth = formData.api_key || (formData.username && formData.password) || formData.auth_type === 'oauth2';
 
-    if (!hasApiKeyAuth && !hasEmailAuth) {
-      toast.error("Bitte geben Sie entweder API-Key, Benutzername und Passwort oder API-Key and Email an.");
+    if (!hasAuth) {
+      toast.error("Bitte geben Sie Zugangsdaten (API Token oder Benutzername/Passwort) an.");
       return;
     }
 
@@ -226,7 +196,6 @@ const DataSources = () => {
       }
 
       setIsDialogOpen(false);
-      setCurrentStep(0);
       setFormData(createInitialDataSourceFormData());
       await loadDataSources();
     } catch (error: unknown) {
@@ -334,60 +303,30 @@ const DataSources = () => {
             <DialogTitle>
               {editingSource ? "Datenquelle bearbeiten" : "Neue Datenquelle"}
             </DialogTitle>
-            <DialogDescription>
-              Schritt {currentStep + 1} von {totalSteps}: {DATA_SOURCE_WIZARD_STEPS[currentStep]?.description}
-            </DialogDescription>
           </DialogHeader>
           <div className="space-y-6 py-2">
-            <WizardSteps steps={DATA_SOURCE_WIZARD_STEPS} currentStep={currentStep} />
             <div className="space-y-6">
-              {currentStep === 0 && (
-                <BasicInfoStep
-                  formData={formData}
-                  setFormData={setFormData}
-                  sourceTypeOptions={sourceTypeOptions}
-                  ref={nameInputRef}
-                />
-              )}
-
-              {currentStep === 1 && (
-                <AuthAndInfraStep
-                  formData={formData}
-                  setFormData={setFormData}
-                />
-              )}
+              <BasicInfoStep
+                formData={formData}
+                setFormData={setFormData}
+                sourceTypeOptions={sourceTypeOptions}
+                ref={nameInputRef}
+              />
             </div>
           </div>
 
-          <DialogFooter className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:justify-between">
+          <DialogFooter className="flex flex-col gap-3 pt-4 sm:flex-row sm:items-center sm:justify-end">
             <Button
               variant="ghost"
               onClick={() => handleDialogOpenChange(false)}
-              className="order-2 rounded-full sm:order-1"
+              className="rounded-full"
             >
               Abbrechen
             </Button>
-            <div className="flex w-full items-center justify-end gap-2 sm:order-2 sm:w-auto">
-              <Button
-                variant="outline"
-                onClick={handlePreviousStep}
-                disabled={currentStep === 0}
-                className="rounded-full"
-              >
-                Zurück
-              </Button>
-              {isLastStep ? (
-                <Button onClick={handleSave} className="rounded-full px-5">
-                  Speichern
-                </Button>
-              ) : (
-                <Button onClick={handleNextStep} className="rounded-full px-5">
-                  Weiter
-                </Button>
-              )}
-            </div>
-          </DialogFooter>
-        </DialogContent>
+            <Button onClick={handleSave} className="rounded-full px-5">
+              Speichern
+            </Button>
+          </DialogFooter>        </DialogContent>
       </Dialog>
     </div>
   );

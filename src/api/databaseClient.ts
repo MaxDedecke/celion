@@ -302,9 +302,9 @@ export const databaseClient = {
 
   insertDataSource: (payload: TablesInsert<"data_sources">) => fetchFromApi<Tables<"data_sources">>("/data_sources", { method: "POST", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
 
-  updateDataSource: (id: string, payload: TablesUpdate<"data_sources">) => fetchFromApi<Tables<"data_sources">>(`/data_sources?id=eq.${id}`, { method: "PATCH", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
+  updateDataSource: (id: string, payload: TablesUpdate<"data_sources">) => fetchFromApi<Tables<"data_sources">>(`/data_sources/${id}`, { method: "PATCH", body: JSON.stringify(payload), headers: { "Content-Type": "application/json" } }),
 
-  deleteDataSource: (id: string) => fetchFromApi<void>(`/data_sources?id=eq.${id}`, { method: "DELETE" }),
+  deleteDataSource: (id: string) => fetchFromApi<void>(`/data_sources/${id}`, { method: "DELETE" }),
 
   upsertDataSourceProjectAssignment: (
     dataSourceId: string,

@@ -93,7 +93,7 @@ export const mapDataSourceToFormData = (source?: DataSourceWithProjects): DataSo
     api_key: source.api_key || "",
     username: source.username || "",
     password: source.password || "",
-    email: (config.email as string) || "",
+    email: source.email || (config.email as string) || "",
     auth_type: source.auth_type,
     is_active: source.is_active,
     is_global: source.is_global,

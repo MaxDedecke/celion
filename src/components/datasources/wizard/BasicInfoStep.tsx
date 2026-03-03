@@ -1,5 +1,4 @@
 import { forwardRef } from "react";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -17,13 +16,6 @@ export const BasicInfoStep = forwardRef<HTMLInputElement, BasicInfoStepProps>(
   ({ formData, setFormData, sourceTypeOptions }, ref) => {
     return (
       <div className="space-y-6">
-        <Alert className="border-border/50 bg-muted/40">
-          <AlertTitle>Grunddaten klar benennen</AlertTitle>
-          <AlertDescription className="space-y-2 text-sm text-muted-foreground">
-            <p>Vergeben Sie einen eindeutigen Namen, der System und Umgebung widerspiegelt (z. B. „Salesforce PROD“).</p>
-            <p>Prüfen Sie, ob die angegebene URL ohne VPN erreichbar ist oder zusätzliche Infrastruktur benötigt.</p>
-          </AlertDescription>
-        </Alert>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="space-y-2">
             <div className="flex items-center gap-2">
@@ -92,6 +84,38 @@ export const BasicInfoStep = forwardRef<HTMLInputElement, BasicInfoStepProps>(
           />
           <p className="text-xs text-muted-foreground">Beispiel: https://api.system.de/v1</p>
         </div>
+
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          <div className="space-y-2">
+            <div className="flex items-center gap-2">
+              <Label htmlFor="api_key">API Token</Label>
+              <InfoTooltip
+                content={
+                  <div className="space-y-1">
+                    <p>Geben Sie den Key/Token exakt so ein, wie er vom Provider geliefert wurde.</p>
+                    <p>Falls der Key nur temporär gültig ist, ergänzen Sie das Ablaufdatum.</p>
+                  </div>
+                }
+              />
+            </div>
+            <Input
+              id="api_key"
+              type="password"
+              value={formData.api_key}
+              onChange={(e) => setFormData({ ...formData, api_key: e.target.value })}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="email">Email</Label>
+            <Input
+              id="email"
+              type="email"
+              value={formData.email}
+              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+            />
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="space-y-2">
             <Label>Aktiv</Label>
