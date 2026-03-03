@@ -4,18 +4,12 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Plus,
   ArrowLeftRight,
-  ChevronLeft,
-  ChevronRight,
   Trash2,
-  Database,
   Sparkles,
   Save,
   Loader2,
   MessageSquare,
-  Pencil,
   Check,
-  Zap,
-  Target,
   ArrowRight
 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -27,7 +21,6 @@ import ChatInput from "@/components/migration/ChatInput";
 import type { ChatMessage } from "@/components/migration/ChatMessage";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
 import {
   AlertDialog,
   AlertDialogAction,

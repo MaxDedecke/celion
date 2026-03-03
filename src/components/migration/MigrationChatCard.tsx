@@ -1,15 +1,12 @@
 import { useMemo, useRef, useEffect, useState } from "react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { ChevronDown, ArrowRight, Play } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { AgentWorkflowStepState } from "./types";
 import ChatMessageList from "./ChatMessageList";
 import ChatInput from "./ChatInput";
 import type { ChatMessage } from "./ChatMessage";
 import { AGENT_WORKFLOW_STEPS } from "@/constants/agentWorkflow";
-import StepperDots from "./StepperDots";
-import { Progress } from "@/components/ui/progress";
 import type { MigrationProject as Migration } from "./types";
 
 interface MigrationChatCardProps {
@@ -292,10 +289,10 @@ const MigrationChatCard = ({
       const isStartButton = migrationData.status === "not_started";
       
       const isOnboardingIncomplete = rawStep === 0 && (
-        !migrationData.source_system || 
-        migrationData.source_system === 'TBD' || 
-        !migrationData.target_system || 
-        migrationData.target_system === 'TBD'
+        !migrationData.sourceSystem || 
+        migrationData.sourceSystem === 'TBD' || 
+        !migrationData.targetSystem || 
+        migrationData.targetSystem === 'TBD'
       );
       
       // We do not want to show the button if onboarding is not fully configured,

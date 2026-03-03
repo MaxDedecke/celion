@@ -1,7 +1,6 @@
 import ChatMessage, { ChatMessage as ChatMessageType } from "./ChatMessage";
-import { cn } from "@/lib/utils";
 import { useMessageQueue } from "@/hooks/useMessageQueue";
-import { Sparkles, ArrowRight } from "lucide-react";
+import { Sparkles} from "lucide-react";
 
 interface ChatMessageListProps {
   messages: ChatMessageType[];
@@ -49,15 +48,12 @@ const ChatMessageList = ({
   isConsultantThinking,
   onOpenAgentOutput,
   onAction,
-  showContinueButton = false,
   onContinue,
-  continueButtonText = "Fortsetzen",
   currentStepTitle,
   currentStep
 }: ChatMessageListProps) => {
   const { 
     visibleMessages, 
-    hasQueuedMessages,
     animatingId,
     completedAnimations,
     onAnimationComplete
@@ -85,7 +81,6 @@ const ChatMessageList = ({
     }
   });
   const lastActionMessage = actionMessages[actionMessages.length - 1];
-  const isLastActionMessageVisible = lastActionMessage && visibleMessages.some(m => m.id === lastActionMessage.id);
 
   return (
     <div className="flex flex-col gap-2 pb-4 pr-3">
@@ -95,7 +90,6 @@ const ChatMessageList = ({
           return null;
         }
 
-        const isLastMessage = index === visibleMessages.length - 1;
         const shouldAnimate = animatingId === message.id && !completedAnimations.has(message.id);
         
         // Determine if we should show a divider
