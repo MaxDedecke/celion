@@ -352,7 +352,10 @@ const Sidebar = ({
 
               <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
                 <div className="flex-shrink-0 flex items-center justify-between px-2 py-2">
-                  <h3 className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider">
+                  <h3 
+                    className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider cursor-pointer hover:text-foreground transition-colors"
+                    onClick={() => navigate("/migrations")}
+                  >
                     <Layers className="h-3 w-3" />
                     Migrationen {totalMigrationsCount > 0 && `(${totalMigrationsCount})`}
                   </h3>
