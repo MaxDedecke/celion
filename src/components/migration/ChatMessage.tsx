@@ -9,6 +9,7 @@ import TypewriterText from "./TypewriterText";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const LiveTransferStatus = ({ data }: { data: any }) => {
   const percentage = data.total > 0 ? Math.round((data.processed / data.total) * 100) : 0;
@@ -142,6 +143,146 @@ const DiscoveryReport = ({ data }: { data: any }) => {
   );
 };
 
+// Utility functions for rendering content using hoisted function declarations
+function processLinks(text: string) {
+  const combinedRegex = /\[(.*?)\]\((.*?)\)|(\bhttps?:\/\/[^\s\)]+)/g;
+  const parts = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = combinedRegex.exec(text)) !== null) {
+    const index = match.index;
+    if (index > lastIndex) {
+      parts.push(text.substring(lastIndex, index));
+    }
+
+    if (match[1] && match[2]) {
+      parts.push(
+        <a key={`link-${index}`} href={match[2]} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">{match[1]}</a>
+      );
+    } else if (match[3]) {
+      parts.push(
+        <a key={`url-${index}`} href={match[3]} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">{match[3]}</a>
+      );
+    }
+    lastIndex = index + match[0].length;
+  }
+
+  if (lastIndex < text.length) {
+    parts.push(text.substring(lastIndex));
+  }
+  return parts.length > 0 ? parts : [text];
+}
+
+function renderTextSegment(text: string) {
+  const parts = text.split(/(\*\*.*?\*\*)/g);
+  return (
+    <span className="whitespace-pre-wrap">
+      {parts.map((part, i) => {
+        if (part.startsWith("**") && part.endsWith("**")) {
+          const content = part.slice(2, -2);
+          if (content.match(/^https?:\/\//)) {
+              return <a key={`bold-link-${i}`} href={content} target="_blank" rel="noopener noreferrer" className="font-bold text-primary underline hover:text-primary/80">{content}</a>;
+          }
+          return <span key={`bold-${i}`} className="font-bold text-primary">{content}</span>;
+        }
+        return <Fragment key={`segment-${i}`}>{processLinks(part)}</Fragment>;
+      })}
+    </span>
+  );
+}
+
+function renderMarkdownTable(content: string) {
+  const lines = content.trim().split('\n');
+  if (lines.length < 3) return null;
+  if (!lines[1].includes('---') || !lines[1].includes('|')) return null;
+
+  const headers = lines[0].split('|').filter((c, i, arr) => {
+      if (i === 0 && c.trim() === '') return false;
+      if (i === arr.length - 1 && c.trim() === '') return false;
+      return true;
+  }).map(c => c.trim());
+
+  const rows = lines.slice(2).map(line => 
+    line.split('|').filter((c, i, arr) => {
+        if (i === 0 && c.trim() === '') return false;
+        if (i === arr.length - 1 && c.trim() === '') return false;
+        return true;
+    }).map(c => c.trim())
+  );
+
+  return (
+    <div key="table-container" className="my-2 rounded-md border overflow-hidden bg-card/50">
+        <Table>
+            <TableHeader className="bg-muted/50">
+                <TableRow>
+                    {headers.map((h, i) => (
+                        <TableHead key={`head-${i}`} className="h-8 text-xs font-bold px-2">{h}</TableHead>
+                    ))}
+                </TableRow>
+            </TableHeader>
+            <TableBody>
+                {rows.map((row, i) => (
+                    <TableRow key={`row-${i}`} className="hover:bg-muted/30 border-b last:border-0">
+                        {row.map((cell, j) => (
+                            <TableCell key={`cell-${i}-${j}`} className="py-2 text-xs px-2">{renderFormattedContent(cell)}</TableCell>
+                        ))}
+                    </TableRow>
+                ))}
+            </TableBody>
+        </Table>
+    </div>
+  );
+}
+
+function renderFormattedContent(text: string | null | undefined): React.ReactNode {
+  if (text === null || text === undefined) return null;
+  const safeText = String(text);
+  const lines = safeText.split('\n');
+  const parts: React.ReactNode[] = [];
+  let currentTextLines: string[] = [];
+  let currentTableLines: string[] = [];
+  let inTable = false;
+
+  for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const isTableLine = line.trim().startsWith('|') || (line.trim().includes('|') && line.trim().includes('---'));
+
+      if (inTable) {
+          if (isTableLine) {
+              currentTableLines.push(line);
+          } else {
+              parts.push(<Fragment key={`text-pre-${i}`}>{renderTextSegment(currentTextLines.join('\n'))}</Fragment>);
+              currentTextLines = [];
+              parts.push(<Fragment key={`table-${i}`}>{renderMarkdownTable(currentTableLines.join('\n'))}</Fragment>);
+              currentTableLines = [];
+              inTable = false;
+              if (line.trim() !== '') currentTextLines.push(line);
+          }
+      } else {
+          const nextLine = lines[i+1];
+          if (line.trim().includes('|') && nextLine && nextLine.trim().includes('---') && nextLine.trim().includes('|')) {
+               if (currentTextLines.length > 0) {
+                   parts.push(<Fragment key={`text-pre-${i}`}>{renderTextSegment(currentTextLines.join('\n'))}</Fragment>);
+                   currentTextLines = [];
+               }
+               inTable = true;
+               currentTableLines.push(line);
+          } else {
+              currentTextLines.push(line);
+          }
+      }
+  }
+
+  if (inTable && currentTableLines.length > 0) {
+      parts.push(<Fragment key={`table-end`}>{renderMarkdownTable(currentTableLines.join('\n'))}</Fragment>);
+  } else if (currentTextLines.length > 0) {
+      parts.push(<Fragment key={`text-end`}>{renderTextSegment(currentTextLines.join('\n'))}</Fragment>);
+  }
+
+  return <div className="flex flex-col gap-1">{parts}</div>;
+}
+
 export type ChatMessageRole = "system" | "agent" | "user" | "assistant";
 export type ChatMessageStatus = "success" | "error" | "pending" | "info";
 
@@ -149,9 +290,8 @@ export interface ChatMessage {
   id: string;
   role: ChatMessageRole;
   content: string;
-  // ÄNDERUNG: 'timestamp' zu 'created_at' umbenannt (oder beides erlauben)
   created_at: string; 
-  timestamp?: string; // Optional für Kompatibilität
+  timestamp?: string;
   status?: ChatMessageStatus;
   step_number?: number;
   stepInfo?: {
@@ -177,16 +317,46 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
   const [showJsonDialog, setShowJsonDialog] = useState(false);
   const { toast } = useToast();
 
-  const jsonContent = useMemo(() => {
-    try {
-      const trimmed = message.content.trim();
-      if (trimmed.startsWith("{") && trimmed.endsWith("}")) {
-        return JSON.parse(trimmed);
+  const { jsonContent, textContent } = useMemo(() => {
+    const content = message.content.trim();
+    
+    // 1. Try to extract JSON from markdown code block
+    const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (codeBlockMatch) {
+      try {
+        const json = JSON.parse(codeBlockMatch[1]);
+        const text = content.replace(codeBlockMatch[0], "").trim();
+        return { jsonContent: json, textContent: text || null };
+      } catch (e) {
+        // Fall through
       }
-    } catch {
-      return null;
     }
-    return null;
+
+    // 2. Try to find the first { and last }
+    const firstBrace = content.indexOf("{");
+    const lastBrace = content.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      try {
+        const potentialJson = content.substring(firstBrace, lastBrace + 1);
+        const json = JSON.parse(potentialJson);
+        const text = (content.substring(0, firstBrace) + content.substring(lastBrace + 1)).trim();
+        return { jsonContent: json, textContent: text || null };
+      } catch (e) {
+        // Fall through
+      }
+    }
+
+    // 3. Fallback: try full parse
+    try {
+      if (content.startsWith("{") && content.endsWith("}")) {
+        const json = JSON.parse(content);
+        return { jsonContent: json, textContent: null };
+      }
+    } catch (e) {
+      // Not JSON
+    }
+
+    return { jsonContent: null, textContent: content };
   }, [message.content]);
 
   const handleCopyJson = () => {
@@ -200,32 +370,40 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
   };
 
   useEffect(() => {
-    if (!onTypewriterComplete) return;
+    if (!onTypewriterComplete || !enableTypewriter) return;
 
-    // Only attempt to complete if typewriter is enabled
-    if (!enableTypewriter) return;
+    // We only reach here if enableTypewriter is true, 
+    // which means this message is the current one in the queue.
 
-    // JSON messages skip typewriter animation
-    if (jsonContent) {
+    // 1. User messages never animate, complete immediately
+    if (message.role === "user") {
       onTypewriterComplete();
       return;
     }
 
-    // User messages skip typewriter animation (they have CSS slide-up)
-    if (message.role === "user") {
+    // 2. If we have ONLY JSON content (no text), complete immediately 
+    // (Special JSON components don't have typewriter support yet)
+    if (jsonContent && !textContent) {
       onTypewriterComplete();
+      return;
     }
-  }, [enableTypewriter, message.role, onTypewriterComplete, jsonContent]);
+
+    // 3. If we have no content at all, complete immediately
+    if (!jsonContent && !textContent) {
+      onTypewriterComplete();
+      return;
+    }
+
+    // Note: If textContent is present and it's an assistant/agent message,
+    // TypewriterText will handle calling onTypewriterComplete when the text is finished.
+  }, [enableTypewriter, message.role, onTypewriterComplete, jsonContent, textContent]);
 
   const derivedStatus = useMemo(() => {
     if (message.status) return message.status;
     
-    // If we have valid JSON content, rely on its internal status/success fields
-    // instead of scanning the full string which might contain scraped HTML with "success" classes
     if (jsonContent) {
-      if (jsonContent.status === 'success' || jsonContent.success === true || jsonContent.systemMatchesUrl === true) return "success";
-      if (jsonContent.status === 'error' || jsonContent.error || jsonContent.systemMatchesUrl === false) return "error";
-      return undefined;
+      if (jsonContent.status === "success" || jsonContent.success === true || jsonContent.systemMatchesUrl === true) return "success";
+      if (jsonContent.status === "error" || jsonContent.error || jsonContent.systemMatchesUrl === false) return "error";
     }
 
     const lower = message.content.toLowerCase();
@@ -233,40 +411,6 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
     if (lower.includes("fehlgeschlagen") || lower.includes("failed") || lower.includes("error:")) return "error";
     return undefined;
   }, [message.status, message.content, jsonContent]);
-
-  // Special Action Message Rendering
-  if (jsonContent && jsonContent.type === 'action') {
-    const actions = jsonContent.actions || (jsonContent.action ? [jsonContent] : []);
-    
-    return (
-      <div className="flex w-full justify-center gap-3 py-4 animate-fade-in flex-wrap">
-        {actions.map((action: any, idx: number) => {
-          // Logic for hiding 'continue' button if we are already in a later step
-          if (action.action === 'continue' && currentStep !== undefined && message.step_number !== undefined && message.step_number < currentStep) {
-            return null;
-          }
-          
-          // Retry buttons always stay visible
-          
-          return (
-            <Button 
-              key={idx}
-              onClick={() => onAction && onAction(action.action === 'retry' ? `retry:${action.stepNumber}` : action.action)} 
-              variant={action.variant || "outline"} 
-              size="sm"
-              className={cn(
-                "gap-2",
-                action.variant === "primary" ? "bg-primary text-primary-foreground hover:bg-primary/90" : "border-primary/20 hover:bg-primary/5 text-primary"
-              )}
-            >
-              {action.label}
-              {action.action === 'continue' ? <ArrowRight className="h-4 w-4" /> : <Play className="h-3 w-3" />}
-            </Button>
-          );
-        })}
-      </div>
-    );
-  }
 
   const getIcon = () => {
     if (message.status === "success") return CheckCircle2;
@@ -291,15 +435,6 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
     return "text-primary";
   };
 
-  const getTextColor = () => {
-    switch (derivedStatus) {
-      case "success": return "text-emerald-700 dark:text-emerald-300";
-      case "error": return "text-red-700 dark:text-red-300";
-      case "pending": return "text-amber-700 dark:text-amber-300";
-      default: return "text-foreground";
-    }
-  };
-
   const formatTimestamp = (ts: string | undefined) => {
     if (!ts) return "";
     const date = new Date(ts);
@@ -312,175 +447,6 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
     });
   };
 
-  const processLinks = (text: string) => {
-    const linkRegex = /\[(.*?)\]\((.*?)\)/g;
-    // Also match raw URLs that aren't already in markdown links
-    const urlRegex = /(?<!\]\()(\bhttps?:\/\/[^\s\)]+)/g;
-    
-    // Simplification: Just handle raw URLs for now if not mixed, but to be safe use split logic
-    const parts = [];
-    let lastIndex = 0;
-    
-    // We can use a simpler approach: split by space and check if url? 
-    // Or just use the original logic but enhanced
-    
-    const combinedRegex = /\[(.*?)\]\((.*?)\)|(\bhttps?:\/\/[^\s\)]+)/g;
-    let match;
-
-    while ((match = combinedRegex.exec(text)) !== null) {
-      const index = match.index;
-      if (index > lastIndex) {
-        parts.push(text.substring(lastIndex, index));
-      }
-
-      if (match[1] && match[2]) {
-        // Markdown link [text](url)
-        parts.push(
-          <a key={`link-${index}`} href={match[2]} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">{match[1]}</a>
-        );
-      } else if (match[3]) {
-        // Raw URL
-        parts.push(
-          <a key={`url-${index}`} href={match[3]} target="_blank" rel="noopener noreferrer" className="text-primary underline hover:text-primary/80">{match[3]}</a>
-        );
-      }
-      lastIndex = index + match[0].length;
-    }
-
-    if (lastIndex < text.length) {
-      parts.push(text.substring(lastIndex));
-    }
-    return parts.length > 0 ? parts : [text];
-  };
-
-  const renderMarkdownTable = (content: string) => {
-    const lines = content.trim().split('\n');
-    if (lines.length < 3) return null;
-
-    // Check for header separator line (must contain | and ---)
-    if (!lines[1].includes('---') || !lines[1].includes('|')) return null;
-
-    const headers = lines[0].split('|').filter((c, i, arr) => {
-        // Filter empty strings resulting from leading/trailing pipes if they are empty
-        if (i === 0 && c.trim() === '') return false;
-        if (i === arr.length - 1 && c.trim() === '') return false;
-        return true;
-    }).map(c => c.trim());
-
-    const rows = lines.slice(2).map(line => 
-      line.split('|').filter((c, i, arr) => {
-          if (i === 0 && c.trim() === '') return false;
-          if (i === arr.length - 1 && c.trim() === '') return false;
-          return true;
-      }).map(c => c.trim())
-    );
-
-    return (
-      <div key="table-container" className="my-2 rounded-md border overflow-hidden bg-card/50">
-          <Table>
-              <TableHeader className="bg-muted/50">
-                  <TableRow>
-                      {headers.map((h, i) => (
-                          <TableHead key={`head-${i}`} className="h-8 text-xs font-bold px-2">{h}</TableHead>
-                      ))}
-                  </TableRow>
-              </TableHeader>
-              <TableBody>
-                  {rows.map((row, i) => (
-                      <TableRow key={`row-${i}`} className="hover:bg-muted/30 border-b last:border-0">
-                          {row.map((cell, j) => (
-                              <TableCell key={`cell-${i}-${j}`} className="py-2 text-xs px-2">{renderFormattedContent(cell)}</TableCell>
-                          ))}
-                      </TableRow>
-                  ))}
-              </TableBody>
-          </Table>
-      </div>
-    );
-  };
-
-  const renderFormattedContent = (text: string) => {
-    if (text === null || text === undefined) return null;
-    const safeText = String(text);
-
-    // Check for Markdown Table (simple detection: looks for lines with |)
-    // We split by potential table blocks.
-    // A table block starts with a line containing | and is followed by a line containing | and ---
-    
-    // Regex is tricky, so we'll do line-by-line processing
-    const lines = safeText.split('\n');
-    const parts: React.ReactNode[] = [];
-    let currentTextLines: string[] = [];
-    let currentTableLines: string[] = [];
-    let inTable = false;
-
-    for (let i = 0; i < lines.length; i++) {
-        const line = lines[i];
-        const isTableLine = line.trim().startsWith('|') || (line.trim().includes('|') && line.trim().includes('---')); // Simplistic
-
-        if (inTable) {
-            if (isTableLine) {
-                currentTableLines.push(line);
-            } else {
-                // Table ended
-                parts.push(<Fragment key={`text-pre-${i}`}>{renderTextSegment(currentTextLines.join('\n'))}</Fragment>);
-                currentTextLines = [];
-                
-                parts.push(<Fragment key={`table-${i}`}>{renderMarkdownTable(currentTableLines.join('\n'))}</Fragment>);
-                currentTableLines = [];
-                inTable = false;
-                
-                // Process current line as text (unless empty)
-                if (line.trim() !== '') currentTextLines.push(line);
-            }
-        } else {
-            // Check start of table: Current line has pipes, Next line has pipes and ---
-            const nextLine = lines[i+1];
-            if (line.trim().includes('|') && nextLine && nextLine.trim().includes('---') && nextLine.trim().includes('|')) {
-                 // Push accumulated text
-                 if (currentTextLines.length > 0) {
-                     parts.push(<Fragment key={`text-pre-${i}`}>{renderTextSegment(currentTextLines.join('\n'))}</Fragment>);
-                     currentTextLines = [];
-                 }
-                 inTable = true;
-                 currentTableLines.push(line);
-            } else {
-                currentTextLines.push(line);
-            }
-        }
-    }
-
-    // Flush remaining
-    if (inTable && currentTableLines.length > 0) {
-        parts.push(<Fragment key={`table-end`}>{renderMarkdownTable(currentTableLines.join('\n'))}</Fragment>);
-    } else if (currentTextLines.length > 0) {
-        parts.push(<Fragment key={`text-end`}>{renderTextSegment(currentTextLines.join('\n'))}</Fragment>);
-    }
-
-    return <div className="flex flex-col gap-1">{parts}</div>;
-  };
-
-  const renderTextSegment = (text: string) => {
-    // Split by **text** markers
-    const parts = text.split(/(\*\*.*?\*\*)/g);
-    return (
-      <span className="whitespace-pre-wrap">
-        {parts.map((part, i) => {
-          if (part.startsWith("**") && part.endsWith("**")) {
-            const content = part.slice(2, -2);
-            // Check if content is a URL
-            if (content.match(/^https?:\/\//)) {
-                return <a key={`bold-link-${i}`} href={content} target="_blank" rel="noopener noreferrer" className="font-bold text-primary underline hover:text-primary/80">{content}</a>;
-            }
-            return <span key={`bold-${i}`} className="font-bold text-primary">{content}</span>;
-          }
-          return <Fragment key={`segment-${i}`}>{processLinks(part)}</Fragment>;
-        })}
-      </span>
-    );
-  };
-
-  // Hilfsvariable für den Zeitstempel: API sendet created_at
   const displayTime = message.created_at || message.timestamp;
 
   return (
@@ -499,7 +465,7 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
       <div className={cn(
         "flex flex-col min-w-0",
         message.role === "user" ? "items-end ml-auto" : "items-start mr-auto",
-        jsonContent?.type === 'live-transfer-status' || jsonContent?.entities 
+        jsonContent?.type === "live-transfer-status" || jsonContent?.entities 
           ? "w-full max-w-none md:max-w-[98%]" 
           : "max-w-[70%] sm:max-w-[60%] md:max-w-[50%]"
       )}>
@@ -514,7 +480,7 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
         
         <div className={cn(
           "rounded-2xl px-4 py-3 text-sm leading-relaxed border shadow-sm transition-all duration-200",
-          jsonContent?.type === 'live-transfer-status' || jsonContent?.entities ? "w-full" : "w-fit",
+          jsonContent?.type === "live-transfer-status" || jsonContent?.entities ? "w-full" : "w-fit",
           message.role === "user" 
             ? "bg-primary/5 border-primary/5 text-foreground text-left" 
             : "bg-muted/30 border-muted/30 text-foreground text-left hover:border-primary/10 hover:shadow-md",
@@ -522,65 +488,121 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
           derivedStatus === "error" && "bg-red-500/5 border-red-500/5 shadow-red-500/5",
           message.role === "system" && "bg-muted/20 border-muted/20 italic text-muted-foreground"
         )}>
-          {jsonContent ? (
-            <div className="flex flex-col gap-2">
-              {jsonContent.type === 'live-transfer-status' ? (
-                <LiveTransferStatus data={jsonContent} />
-              ) : jsonContent.entities ? (
-                <DiscoveryReport data={jsonContent} />
-              ) : (
-                <div className="prose prose-sm dark:prose-invert max-w-none text-foreground">
-                  <p className="mb-1 font-semibold">
-                    {jsonContent.system_mode === 'source' ? "Analyse Quellsystem:" : 
-                     jsonContent.system_mode === 'target' ? "Analyse Zielsystem:" : 
-                     "Ergebnis:"}
-                  </p>
-                  {jsonContent.rawOutput && (
-                    <div className="mt-0 opacity-90 prose prose-sm dark:prose-invert max-w-none text-foreground">
-                      {typeof jsonContent.rawOutput === 'string' ? (
-                        jsonContent.rawOutput.trim().startsWith("<") 
-                          ? "[Raw Content / HTML detected - see details]"
-                          : renderFormattedContent(
-                              jsonContent.rawOutput.length > 300 
-                              ? jsonContent.rawOutput.substring(0, 300) + "..." 
-                              : jsonContent.rawOutput
-                          )
-                      ) : (
-                        <p className="text-xs italic text-muted-foreground">
-                          [Strukturierte Daten - Details anzeigen]
-                        </p>
-                      )}
+          <div className="flex flex-col gap-3">
+            {textContent && (
+              <div className="prose prose-sm dark:prose-invert max-w-none text-foreground">
+                {enableTypewriter && message.role !== "user" ? (
+                  <TypewriterText text={textContent} speed={8} onComplete={onTypewriterComplete} />
+                ) : (
+                  renderFormattedContent(textContent)
+                )}
+              </div>
+            )}
+
+            {jsonContent && (
+              <div className="flex flex-col gap-2">
+                {jsonContent.type === "live-transfer-status" ? (
+                  <LiveTransferStatus data={jsonContent} />
+                ) : jsonContent.entities ? (
+                  <DiscoveryReport data={jsonContent} />
+                ) : jsonContent.type === "action" ? (
+                  <div className="flex w-full justify-center gap-3 py-2 animate-fade-in flex-wrap">
+                    {(jsonContent.actions || (jsonContent.action ? [jsonContent] : [])).map((action: any, idx: number) => {
+                      if (action.action === "continue" && currentStep !== undefined && message.step_number !== undefined && message.step_number < currentStep) return null;
+                      return (
+                        <Button 
+                          key={idx}
+                          onClick={() => onAction && onAction(action.action === "retry" ? `retry:${action.stepNumber}` : action.action)} 
+                          variant={action.variant || "outline"} 
+                          size="sm"
+                          className={cn(
+                            "gap-2",
+                            action.variant === "primary" ? "bg-primary text-primary-foreground hover:bg-primary/90" : "border-primary/20 hover:bg-primary/5 text-primary"
+                          )}
+                        >
+                          {action.label}
+                          {action.action === "continue" ? <ArrowRight className="h-4 w-4" /> : <Play className="h-3 w-3" />}
+                        </Button>
+                      );
+                    })}
+                  </div>
+                ) : jsonContent.type === "datasource_dropdown" ? (
+                  <div className="flex w-full justify-start py-2 animate-fade-in">
+                    <div className="flex flex-col gap-2 p-4 rounded-xl border border-primary/20 bg-primary/5 w-full">
+                      <label className="text-sm font-medium text-foreground">{jsonContent.label}</label>
+                      <Select onValueChange={(val) => {
+                        const selectedOption = jsonContent.options?.find((o: any) => o.id === val);
+                        const label = selectedOption ? selectedOption.label : val;
+                        const mode = jsonContent.mode === "source" ? "Quelle" : "Ziel";
+                        if (onAction) {
+                          if (val === "new") onAction(`send_chat:Ich möchte eine neue Datenquelle für ${mode} anlegen.`);
+                          else onAction(`send_chat:Ich wähle für ${mode} die Datenquelle '${label}' (ID: ${val})`);
+                        }
+                      }}>
+                        <SelectTrigger className="w-full sm:w-[350px] bg-background">
+                          <SelectValue placeholder="Bitte wählen..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {jsonContent.options?.map((o: any) => (
+                            <SelectItem key={o.id} value={o.id} className={o.id === "new" ? "font-semibold text-primary" : ""}>
+                              {o.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     </div>
-                  )}
-                </div>
-              )}
-              <Button 
-                variant="outline" 
-                size="sm" 
-                onClick={() => setShowJsonDialog(true)} 
-                className="h-7 text-xs bg-background/80 hover:bg-accent mt-1 w-48 self-center"
-              >
-                <FileJson className="w-3 h-3 mr-2" />
-                Details anzeigen
-              </Button>
-            </div>
-          ) : (
-            <>
-              {enableTypewriter && message.role !== "user" ? (
-                <TypewriterText text={message.content} speed={8} onComplete={onTypewriterComplete} />
-              ) : (
-                renderFormattedContent(message.content)
-              )}
-              {message.actionButton && onOpenAgentOutput && (
-                <span
-                  onClick={() => onOpenAgentOutput(message.actionButton!.stepId)}
-                  className="inline-flex items-center ml-1 text-primary hover:text-primary/80 hover:scale-110 cursor-pointer transition-all duration-200"
-                  title="Agenten Output öffnen"
+                  </div>
+                ) : (
+                  <div className="prose prose-sm dark:prose-invert max-w-none text-foreground">
+                    <p className="mb-1 font-semibold">
+                      {jsonContent.system_mode === "source" ? "Analyse Quellsystem:" : 
+                       jsonContent.system_mode === "target" ? "Analyse Zielsystem:" : 
+                       "Ergebnis:"}
+                    </p>
+                    {jsonContent.rawOutput && (
+                      <div className="mt-0 opacity-90 prose prose-sm dark:prose-invert max-w-none text-foreground">
+                        {typeof jsonContent.rawOutput === "string" ? (
+                          jsonContent.rawOutput.trim().startsWith("<") 
+                            ? "[Raw Content / HTML detected - see details]"
+                            : renderFormattedContent(
+                                jsonContent.rawOutput.length > 300 
+                                ? jsonContent.rawOutput.substring(0, 300) + "..." 
+                                : jsonContent.rawOutput
+                            )
+                        ) : (
+                          <p className="text-xs italic text-muted-foreground">
+                            [Strukturierte Daten - Details anzeigen]
+                          </p>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  onClick={() => setShowJsonDialog(true)} 
+                  className="h-7 text-xs bg-background/80 hover:bg-accent mt-1 w-48 self-center"
                 >
-                  <SquareArrowOutUpRight className="h-4 w-4" />
-                </span>
-              )}
-            </>
+                  <FileJson className="w-3 h-3 mr-2" />
+                  Details anzeigen
+                </Button>
+              </div>
+            )}
+
+            {!jsonContent && !textContent && (
+               <span className="text-xs italic text-muted-foreground">[Leere Nachricht]</span>
+            )}
+          </div>
+
+          {message.actionButton && onOpenAgentOutput && (
+            <span
+              onClick={() => onOpenAgentOutput(message.actionButton!.stepId)}
+              className="inline-flex items-center ml-1 text-primary hover:text-primary/80 hover:scale-110 cursor-pointer transition-all duration-200"
+              title="Agenten Output öffnen"
+            >
+              <SquareArrowOutUpRight className="h-4 w-4" />
+            </span>
           )}
         </div>
       </div>

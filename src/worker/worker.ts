@@ -667,14 +667,22 @@ async function processJob(job: any) {
       // Set status to thinking
       await pool.query('UPDATE migrations SET consultant_status = $1 WHERE id = $2', ['thinking', migrationId]);
       
-      // Fetch current migration name
-      const { rows: migRows } = await pool.query('SELECT name FROM migrations WHERE id = $1', [migrationId]);
+      // Fetch current migration name and user_id
+      const { rows: migRows } = await pool.query('SELECT name, user_id FROM migrations WHERE id = $1', [migrationId]);
       const migrationName = migRows[0]?.name;
+      const userId = migRows[0]?.user_id;
+
+      // Fetch available data sources
+      const { rows: dataSources } = await pool.query(
+        'SELECT id, name, source_type, api_url FROM data_sources WHERE user_id = $1 OR is_global = true', 
+        [userId]
+      );
 
       const messageGenerator = runIntroductionAgent(userMessage, {
           ...context,
           migrationId,
-          migrationName
+          migrationName,
+          dataSources
       });
       
       for await (const message of messageGenerator) {
@@ -683,6 +691,44 @@ async function processJob(job: any) {
           if (text.startsWith("AUSGABE_TOOL_CALL:FINISH_ONBOARDING:")) {
               const argsStr = text.replace("AUSGABE_TOOL_CALL:FINISH_ONBOARDING:", "");
               const args = JSON.parse(argsStr);
+
+              // Helper function to resolve or create a data source
+              const resolveDataSource = async (systemData: any, defaultName: string) => {
+                if (systemData.dataSourceId && systemData.dataSourceId !== "new") {
+                  const { rows: dsRows } = await pool.query(
+                    'SELECT api_url, api_key, username, email, source_type, auth_type FROM data_sources WHERE id = $1',
+                    [systemData.dataSourceId]
+                  );
+                  if (dsRows.length > 0) {
+                    return {
+                      url: dsRows[0].api_url,
+                      apiToken: dsRows[0].api_key,
+                      email: dsRows[0].email || dsRows[0].username,
+                      system: dsRows[0].source_type,
+                      authType: dsRows[0].auth_type || 'api_key'
+                    };
+                  }
+                }
+                
+                // Create new data source
+                const name = defaultName;
+                const { rows: newDs } = await pool.query(
+                  `INSERT INTO data_sources (user_id, name, source_type, api_url, api_key, email, auth_type, is_active, is_global)
+                   VALUES ($1, $2, $3, $4, $5, $6, 'api_key', true, false)
+                   RETURNING id`,
+                  [userId, name, systemData.system, systemData.url, systemData.apiToken, systemData.email]
+                );
+                return {
+                  url: systemData.url,
+                  apiToken: systemData.apiToken,
+                  email: systemData.email,
+                  system: systemData.system,
+                  authType: 'api_key'
+                };
+              };
+
+              const resolvedSource = await resolveDataSource(args.source, `Quelle: ${args.name}`);
+              const resolvedTarget = await resolveDataSource(args.target, `Ziel: ${args.name}`);
               
               // 1. Update Migration
               await pool.query(
@@ -699,10 +745,10 @@ async function processJob(job: any) {
                 WHERE id = $7`,
                 [
                   args.name, 
-                  args.source.system, 
-                  args.source.url, 
-                  args.target.system, 
-                  args.target.url,
+                  resolvedSource.system, 
+                  resolvedSource.url, 
+                  resolvedTarget.system, 
+                  resolvedTarget.url,
                   JSON.stringify({
                     sourceScope: args.source.scope,
                     targetName: args.target.scope,
@@ -716,22 +762,24 @@ async function processJob(job: any) {
               // Source
               await pool.query(
                 `INSERT INTO connectors (migration_id, connector_type, api_url, api_key, username, auth_type)
-                 VALUES ($1, 'in', $2, $3, $4, 'api_key')
+                 VALUES ($1, 'in', $2, $3, $4, $5)
                  ON CONFLICT (migration_id, connector_type) DO UPDATE SET
                    api_url = EXCLUDED.api_url,
                    api_key = EXCLUDED.api_key,
-                   username = EXCLUDED.username`,
-                [migrationId, args.source.url, args.source.apiToken, args.source.email]
+                   username = EXCLUDED.username,
+                   auth_type = EXCLUDED.auth_type`,
+                [migrationId, resolvedSource.url, resolvedSource.apiToken, resolvedSource.email, resolvedSource.authType]
               );
               // Target
               await pool.query(
                 `INSERT INTO connectors (migration_id, connector_type, api_url, api_key, username, auth_type)
-                 VALUES ($1, 'out', $2, $3, $4, 'api_key')
+                 VALUES ($1, 'out', $2, $3, $4, $5)
                  ON CONFLICT (migration_id, connector_type) DO UPDATE SET
                    api_url = EXCLUDED.api_url,
                    api_key = EXCLUDED.api_key,
-                   username = EXCLUDED.username`,
-                [migrationId, args.target.url, args.target.apiToken, args.target.email]
+                   username = EXCLUDED.username,
+                   auth_type = EXCLUDED.auth_type`,
+                [migrationId, resolvedTarget.url, resolvedTarget.apiToken, resolvedTarget.email, resolvedTarget.authType]
               );
 
               await writeChatMessage(migrationId, 'assistant', "Perfekt! Ich habe alles konfiguriert. Wir können jetzt mit der System-Erkennung (Schritt 1) starten.", 0);

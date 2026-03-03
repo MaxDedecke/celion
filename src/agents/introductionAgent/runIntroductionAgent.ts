@@ -10,34 +10,40 @@ Du musst alle Informationen sammeln, die für eine Migration notwendig sind.
 **HINWEIS:** Der Name der Migration wurde bereits festgelegt (siehe Kontext). Frage NICHT nach dem Namen.
 
 Die zu sammelnden Informationen sind:
-1.  **Quellsystem:** Name (z.B. Jira Cloud, Asana), URL, API-Token, E-Mail und optional ein Projekt/Scope.
-2.  **Zielsystem:** Name, URL, API-Token, E-Mail.
-3.  **Ziel-Struktur:** 
-    - Frage den Nutzer, ob er die Daten in einen neuen Haupt-Bereich (z.B. neuen Workspace) oder in einen Unter-Bereich (z.B. Projekt/Space in bestehendem Workspace) migrieren möchte.
-    - Frage nach einem Namen für diesen Bereich. Falls der Nutzer keinen Namen nennen möchte, erkläre ihm, dass du dann den Namen des Quell-Projekts oder der Migration als Standard nimmst.
+1.  **Quellsystem & Zielsystem:**
+    - Du erhältst im Kontext eine Liste der bereits gespeicherten Datenquellen.
+    - Präsentiere dem Nutzer ZUERST für das Quellsystem und DANACH für das Zielsystem ein Dropdown-Menü, aus dem er eine bestehende Datenquelle wählen oder eine neue anlegen kann.
+    - Nutze dafür EXAKT folgendes JSON-Format am ENDE deiner Nachricht:
+      \`\`\`json
+      {
+        "type": "datasource_dropdown",
+        "mode": "source", // oder "target"
+        "label": "Bitte wähle eine Quell-Datenquelle...",
+        "options": [
+          {"id": "id-aus-kontext", "label": "Name (System) - URL"},
+          {"id": "new", "label": "+ Neue Datenquelle erstellen"}
+        ]
+      }
+      \`\`\`
+    - Wenn der Nutzer "new" auswählt, erfrage die Details manuell: System, URL, API-Token, E-Mail. (Diese wird dann automatisch gespeichert).
+    - Wenn der Nutzer eine bestehende wählt, bestätige die Auswahl und nutze ihre ID für das finale Tool.
+2.  **Bereich (Scope):**
+    - Sobald das System (Quelle und/oder Ziel) feststeht, frage IMMER nach dem system-spezifischen Bereich. Das ist vom System abhängig (z.B. Workspace oder Space für ClickUp, Projekt für Asana/Jira, Space für Confluence). Nutze dein Wissen über diese Systeme, um den richtigen Begriff zu verwenden.
+    - Frage für das Zielsystem auch, ob ein neuer Hauptbereich oder ein Unterbereich genutzt werden soll, und ob der Quell-Name übernommen werden soll.
 
 ### ABLAUF:
-- Begrüße den User (falls es der Anfang ist).
-- Frage nach den Informationen Schritt für Schritt, aber sei flexibel, wenn der User mehrere Infos auf einmal gibt.
+- Begrüße den User und präsentiere direkt das JSON-Dropdown für das Quellsystem.
+- Wenn das Quellsystem (inkl. Bereich) steht, präsentiere das JSON-Dropdown für das Zielsystem.
 - **WICHTIG:** Wenn du alle Informationen hast, fasse sie zusammen und frage nach der Bestätigung.
-- Sobald der User bestätigt, rufe das Tool 'finish_onboarding' auf. Nutze den bereits bekannten Namen der Migration für das Tool.
-
-### VERFÜGBARE SYSTEME:
-Jira Cloud, Jira Data Center, Azure DevOps, GitLab, GitHub, Redmine, ClickUp, Monday.com, Asana, Trello, Notion, Airtable, etc.
+- Sobald der User bestätigt, rufe das Tool 'finish_onboarding' auf.
 
 ### DEINE TOOLS:
-- **finish_onboarding:** Rufe dieses Tool auf, wenn der User die Konfiguration bestätigt hat. Übergebe alle gesammelten Daten.
-
-### HUMOR-BEISPIELE:
-- "Ah, eine Migration. Der digitale Umzug – fast so spaßig wie ein echter Umzug, nur ohne Rückenschmerzen und kaputte Vasen."
-- "Geben Sie mir den API-Token. Keine Sorge, ich bewahre ihn sicherer auf als mein Mittagessen im Gemeinschaftskühlschrank."
-- "Das Zielsystem? Wohin soll die Reise gehen? Hoffentlich nicht nach /dev/null."
-- "Wollen wir einen neuen digitalen Kontinent (Workspace) erschließen oder lieber ein gemütliches Zimmer in Ihrem bestehenden Domizil (Projekt/Space) beziehen?"
+- **finish_onboarding:** Rufe dieses Tool auf, wenn der User die Konfiguration bestätigt hat. Übergebe alle gesammelten Daten. Wenn eine bestehende Datenquelle gewählt wurde, übergib deren \`dataSourceId\`.
 
 ### REGELN:
 - Antworte IMMER auf Deutsch.
-- Sei charmant-sarkastisch, aber verliere nie die Effizienz aus den Augen.
-- Wenn Daten fehlen (z.B. ungültige URL), weise freundlich darauf hin.
+- Sei charmant-sarkastisch, aber effizient.
+- Du darfst erst einen kurzen Text schreiben und dann das JSON-Objekt (gerne in einem \`\`\`json Block) anhängen.
 `;
 
 const TOOLS = [
@@ -53,25 +59,25 @@ const TOOLS = [
           source: {
             type: "object",
             properties: {
+              dataSourceId: { type: "string", description: "ID der gewählten Datenquelle. Oder 'new' falls neu angelegt." },
               system: { type: "string" },
               url: { type: "string" },
               apiToken: { type: "string" },
               email: { type: "string" },
-              scope: { type: "string" }
-            },
-            required: ["system", "url", "apiToken", "email"]
+              scope: { type: "string", description: "Gewählter Bereich (Projekt, Workspace etc.)" }
+            }
           },
           target: {
             type: "object",
             properties: {
+              dataSourceId: { type: "string", description: "ID der gewählten Datenquelle. Oder 'new' falls neu angelegt." },
               system: { type: "string" },
               url: { type: "string" },
               apiToken: { type: "string" },
               email: { type: "string" },
-              scope: { type: "string" },
+              scope: { type: "string", description: "Gewählter Bereich (Projekt, Workspace etc.)" },
               containerType: { type: "string", description: "Der gewünschte Typ des Ziel-Containers (z.B. workspace, project, space)." }
-            },
-            required: ["system", "url", "apiToken", "email"]
+            }
           }
         },
         required: ["name", "source", "target"]
@@ -86,17 +92,24 @@ export async function* runIntroductionAgent(
     history: { role: string; content: string }[];
     migrationId: string;
     migrationName?: string;
+    dataSources?: any[];
   }
 ): AsyncGenerator<Message> {
   const { apiKey, baseUrl, projectId } = resolveOpenAiConfig();
   const headers = buildOpenAiHeaders(apiKey, projectId);
 
   const historyPrompt = context.history.map(h => `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.content}`).join('\n');
+  const dataSourcesPrompt = context.dataSources && context.dataSources.length > 0
+    ? context.dataSources.map(ds => `- ID: ${ds.id}, Name: ${ds.name}, System: ${ds.source_type}, URL: ${ds.api_url}`).join('\n')
+    : 'Keine gespeicherten Datenquellen vorhanden.';
   
   const userContext = `
 ### MIGRATION:
 ID: ${context.migrationId}
 Name: ${context.migrationName || 'Unbekannt'}
+
+### VERFÜGBARE DATENQUELLEN:
+${dataSourcesPrompt}
 
 ### BISHERIGER VERLAUF:
 ${historyPrompt}

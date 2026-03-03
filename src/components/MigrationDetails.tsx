@@ -127,6 +127,9 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
       onViewChange?.('mapping');
     } else if (action === 'open-enhancement-ui') {
       onViewChange?.('enhancement');
+    } else if (action.startsWith('send_chat:')) {
+      const msg = action.substring('send_chat:'.length);
+      handleSendChatMessage(msg);
     }
   }, [handleNextWorkflowStep, onViewChange, project.id, project.scopeConfig]);
 
