@@ -39,7 +39,7 @@ Stelle sicher, dass Docker und Docker Compose auf deinem System installiert sind
     ```
 
 2.  **Umgebungsvariablen konfigurieren:**
-    Erstelle eine `.env` Datei basierend auf der `.env.example` und trage deinen `OPENAI_API_KEY` sowie die Datenbank-Credentials ein.
+    Erstelle eine `.env` Datei basierend auf der `.env.example` und trage deine Datenbank-Credentials ein. Den `OPENAI_API_KEY` kannst du nun direkt über die Sidebar in der Benutzeroberfläche (LLM-Einstellungen) konfigurieren.
 
 3.  **Anwendung starten:**
     ```bash

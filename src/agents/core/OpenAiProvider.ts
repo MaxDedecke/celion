@@ -3,11 +3,11 @@ import { LlmProvider, ChatMessage, Tool } from './LlmProvider';
 
 export class OpenAiProvider implements LlmProvider {
   async chat(messages: ChatMessage[], tools?: Tool[], options?: any): Promise<any> {
-    const { apiKey, baseUrl, projectId } = resolveOpenAiConfig();
+    const { apiKey, baseUrl, projectId, model } = await resolveOpenAiConfig();
     const openAiHeaders = buildOpenAiHeaders(apiKey, projectId);
     
     const body: any = {
-      model: process.env.OPENAI_MODEL || "gpt-4o",
+      model: model,
       messages,
       ...options
     };

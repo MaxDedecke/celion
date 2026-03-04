@@ -34,7 +34,7 @@ Beispiel:
 export async function runDataTransformation(
   tasks: { id: string, field: string, value: any, instruction: string }[]
 ): Promise<{ id: string, field: string, newValue: any }[]> {
-  const { apiKey, baseUrl, projectId } = resolveOpenAiConfig();
+  const { apiKey, baseUrl, projectId } = await resolveOpenAiConfig();
   const headers = buildOpenAiHeaders(apiKey, projectId);
 
   const userContext = `

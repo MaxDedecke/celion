@@ -62,7 +62,7 @@ const TOOLS = [
 ];
 
 export async function* runSystemDetection(url: string, system: string, instructions?: string): AsyncGenerator<Message> {
-  const { apiKey, baseUrl, projectId } = resolveOpenAiConfig();
+  const { apiKey, baseUrl, projectId } = await resolveOpenAiConfig();
   const headers = buildOpenAiHeaders(apiKey, projectId);
 
   const messages: any[] = [

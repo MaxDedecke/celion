@@ -125,7 +125,7 @@ export class DataTransferAgent extends AgentBase {
           const mappingSummary = ruleRows.map(r => `- ${r.source_object} → ${r.target_object} (${r.rule_type})`).join('\n');
           
           const targetScheme = await loadScheme(targetSystem);
-          const { apiKey, baseUrl, projectId: openAiProjectId } = resolveOpenAiConfig();
+          const { apiKey, baseUrl, projectId: openAiProjectId } = await resolveOpenAiConfig();
           const openAiHeaders = buildOpenAiHeaders(apiKey, openAiProjectId);
 
           const planPrompt = `
@@ -192,7 +192,7 @@ Antworte prägnant und strukturiert in Markdown.
           const targetScheme = await loadScheme(targetSystem);
           
           if (targetConnector && targetScheme) {
-              const { apiKey, baseUrl, projectId: openAiProjectId } = resolveOpenAiConfig();
+              const { apiKey, baseUrl, projectId: openAiProjectId } = await resolveOpenAiConfig();
               const openAiHeaders = buildOpenAiHeaders(apiKey, openAiProjectId);
               const targetContainerType = scopeConfig.targetContainerType || targetScheme.exportInstructions?.preferredContainerType || "project";
 
@@ -291,7 +291,7 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
           const targetScheme = await loadScheme(targetSystem);
           
           if (targetConnector && targetScheme) {
-              const { apiKey, baseUrl, projectId: openAiProjectId } = resolveOpenAiConfig();
+              const { apiKey, baseUrl, projectId: openAiProjectId } = await resolveOpenAiConfig();
               const openAiHeaders = buildOpenAiHeaders(apiKey, openAiProjectId);
               
               // Bestimme Container-Typ (Nutzerwahl oder System-Standard)
@@ -630,7 +630,7 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                   }), currentStepNumber);
                   
                   // 1. GENERATE RECIPE ONCE PER ENTITY PAIR
-                  const { apiKey, baseUrl, projectId: openAiProjectId } = resolveOpenAiConfig();
+                  const { apiKey, baseUrl, projectId: openAiProjectId } = await resolveOpenAiConfig();
                   const openAiHeaders = buildOpenAiHeaders(apiKey, openAiProjectId);
 
                   const entityMappingRules = ruleRows8.filter(r => 

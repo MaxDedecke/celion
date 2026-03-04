@@ -87,7 +87,7 @@ export async function* runAnswerAgent(
     sourceSystem: string;
   }
 ): AsyncGenerator<Message> {
-  const { apiKey, baseUrl, projectId } = resolveOpenAiConfig();
+  const { apiKey, baseUrl, projectId } = await resolveOpenAiConfig();
   const headers = buildOpenAiHeaders(apiKey, projectId);
   const backendUrl = process.env.INTERNAL_BACKEND_URL || "http://backend:8000";
 

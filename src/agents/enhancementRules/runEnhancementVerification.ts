@@ -41,7 +41,7 @@ export async function* runEnhancementVerification(
   sourceSystem: string,
   targetSystem: string
 ): AsyncGenerator<Message> {
-  const { apiKey, baseUrl, projectId } = resolveOpenAiConfig();
+  const { apiKey, baseUrl, projectId } = await resolveOpenAiConfig();
   const headers = buildOpenAiHeaders(apiKey, projectId);
 
   const userContext = `

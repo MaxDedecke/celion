@@ -73,7 +73,7 @@ export async function* runSourceDiscovery(
   credentials: { email?: string; apiToken?: string },
   scopeConfig?: { sourceScope?: string }
 ): AsyncGenerator<Message> {
-  const { apiKey, baseUrl, projectId } = resolveOpenAiConfig();
+  const { apiKey, baseUrl, projectId } = await resolveOpenAiConfig();
   const headers = buildOpenAiHeaders(apiKey, projectId);
 
   const email = credentials.email || "";

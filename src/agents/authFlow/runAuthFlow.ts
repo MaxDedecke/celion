@@ -51,7 +51,7 @@ export async function* runAuthFlow(
   authScheme: any,
   credentials: { email?: string; apiToken?: string }
 ): AsyncGenerator<Message> {
-  const { apiKey, baseUrl, projectId } = resolveOpenAiConfig();
+  const { apiKey, baseUrl, projectId } = await resolveOpenAiConfig();
   const headers = buildOpenAiHeaders(apiKey, projectId);
 
   // Pre-calculate Base64 credentials for Basic Auth injection

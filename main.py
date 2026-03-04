@@ -95,6 +95,12 @@ def _get_db_connection() -> psycopg.Connection:
         row_factory=psycopg.rows.dict_row,
     )
 
+def _get_llm_settings(conn: psycopg.Connection):
+    """Fetches the latest LLM settings from the database."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT provider, model, base_url, api_key FROM public.llm_settings ORDER BY updated_at DESC LIMIT 1")
+        return cur.fetchone()
+
 
 def _serialize_user_row(row: dict[str, Any]) -> dict[str, Any]:
     """Convert a database user row into a JSON-serializable dict without the password."""
@@ -2026,7 +2032,12 @@ async def _delete_neo4j_data(migration_id: str):
 
 def _get_embeddings(text: str) -> list[float]:
     """Generate embeddings for the given text using OpenAI."""
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    with _get_db_connection() as conn:
+        llm_settings = _get_llm_settings(conn)
+        api_key = llm_settings.get('api_key') if llm_settings else os.getenv("OPENAI_API_KEY")
+        base_url = llm_settings.get('base_url') if llm_settings else None
+    
+    client = OpenAI(api_key=api_key, base_url=base_url)
     response = client.embeddings.create(
         input=[text],
         model="text-embedding-3-small"
@@ -2038,7 +2049,12 @@ def _get_embeddings_batch(texts: list[str]) -> list[list[float]]:
     """Generate embeddings for a list of texts using OpenAI."""
     if not texts:
         return []
-    client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+    with _get_db_connection() as conn:
+        llm_settings = _get_llm_settings(conn)
+        api_key = llm_settings.get('api_key') if llm_settings else os.getenv("OPENAI_API_KEY")
+        base_url = llm_settings.get('base_url') if llm_settings else None
+    
+    client = OpenAI(api_key=api_key, base_url=base_url)
     response = client.embeddings.create(
         input=texts,
         model="text-embedding-3-small"

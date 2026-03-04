@@ -24,15 +24,10 @@ export class StepFactory {
 
     if (dbPool) {
       try {
-        const { rows } = await dbPool.query("SELECT provider, model, base_url, api_key FROM public.llm_settings ORDER BY updated_at DESC LIMIT 1");
+        const { rows } = await dbPool.query("SELECT provider FROM public.llm_settings ORDER BY updated_at DESC LIMIT 1");
         if (rows.length > 0) {
           const settings = rows[0];
           if (settings.provider === 'openai') {
-            // We can inject settings here if needed, or rely on env/process.env
-            // For now, OpenAiProvider uses process.env, but we should make it configurable
-            process.env.OPENAI_MODEL = settings.model || process.env.OPENAI_MODEL;
-            if (settings.api_key) process.env.OPENAI_API_KEY = settings.api_key;
-            if (settings.base_url) process.env.OPENAI_BASE_URL = settings.base_url;
             selectedProvider = new OpenAiProvider();
           } else if (settings.provider === 'anthropic') {
               // TODO: Implement AnthropicProvider tomorrow

@@ -135,6 +135,12 @@ def _get_connector(conn: psycopg.Connection, migration_id: str, connector_type: 
         )
         return cur.fetchone()
 
+def _get_llm_settings(conn: psycopg.Connection):
+    """Fetches the latest LLM settings from the database."""
+    with conn.cursor() as cur:
+        cur.execute("SELECT provider, model, base_url, api_key FROM public.llm_settings ORDER BY updated_at DESC LIMIT 1")
+        return cur.fetchone()
+
 def _get_neo4j_driver():
     """Create a new Neo4j driver using environment variables."""
     uri = os.environ.get("NEO4J_URI", "bolt://neo4j-db:7687")
@@ -304,7 +310,11 @@ def _run_graph_enhancement(conn: psycopg.Connection, migration_id: str, source_s
     # 2. Agent-Call: Analyze relationships
     _write_chat_message(conn, migration_id, 'assistant', 'Analyzing potential relationships with AI...', 5)
     
-    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    llm_settings = _get_llm_settings(conn)
+    api_key = llm_settings.get('api_key') if llm_settings else os.environ.get("OPENAI_API_KEY")
+    base_url = llm_settings.get('base_url') if llm_settings else None
+    
+    client = OpenAI(api_key=api_key, base_url=base_url)
     prompt = f"""
     Ich habe folgende Nodes aus dem System '{source_system}' in Neo4j importiert (migration_id: '{migration_id}').
     Analysiere die Properties auf potenzielle Beziehungen (z.B. IDs die auf andere Nodes verweisen wie parent_id, project_id, user_id).
@@ -436,7 +446,11 @@ def _run_data_ingest_neo4j(conn: psycopg.Connection, migration_id: str, workflow
         return
     
     # --- AGENT SETUP ---
-    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    llm_settings = _get_llm_settings(conn)
+    api_key = llm_settings.get('api_key') if llm_settings else os.environ.get("OPENAI_API_KEY")
+    base_url = llm_settings.get('base_url') if llm_settings else None
+    
+    client = OpenAI(api_key=api_key, base_url=base_url)
     
     system_prompt = f"""
     Du bist ein Data Ingestion Agent für {source_system}. Deine Aufgabe ist es, Daten über die API zu sammeln und in Neo4j zu speichern.
@@ -630,7 +644,11 @@ def _run_rate_limit_calibration(conn: psycopg.Connection, migration_id: str):
     # Agent-Call: Analyze response with OpenAI
     _write_chat_message(conn, migration_id, 'assistant', 'Analyzing API response for rate limits...', 5)
     
-    client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+    llm_settings = _get_llm_settings(conn)
+    api_key = llm_settings.get('api_key') if llm_settings else os.environ.get("OPENAI_API_KEY")
+    base_url = llm_settings.get('base_url') if llm_settings else None
+    
+    client = OpenAI(api_key=api_key, base_url=base_url)
     prompt = f"""
     Analysiere diese API-Antwort und bestimme das optimale delay_seconds und die batch_size, 
     um sicher unter dem Rate-Limit zu bleiben. Berücksichtige Header wie 'X-RateLimit-Limit', 
