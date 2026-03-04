@@ -99,7 +99,21 @@ def _get_llm_settings(conn: psycopg.Connection):
     """Fetches the latest LLM settings from the database."""
     with conn.cursor() as cur:
         cur.execute("SELECT provider, model, base_url, api_key FROM public.llm_settings ORDER BY updated_at DESC LIMIT 1")
-        return cur.fetchone()
+        settings = cur.fetchone()
+        
+        # If no settings in DB, try environment variables
+        if not settings:
+            api_key = os.environ.get("OPENAI_API_KEY")
+            if not api_key:
+                return None
+            return {
+                "provider": "openai",
+                "model": os.environ.get("OPENAI_MODEL", "gpt-4o"),
+                "base_url": None,
+                "api_key": api_key
+            }
+            
+        return settings
 
 
 def _serialize_user_row(row: dict[str, Any]) -> dict[str, Any]:

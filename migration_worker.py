@@ -139,7 +139,24 @@ def _get_llm_settings(conn: psycopg.Connection):
     """Fetches the latest LLM settings from the database."""
     with conn.cursor() as cur:
         cur.execute("SELECT provider, model, base_url, api_key FROM public.llm_settings ORDER BY updated_at DESC LIMIT 1")
-        return cur.fetchone()
+        settings = cur.fetchone()
+        
+        # If no settings in DB, try environment variables
+        if not settings:
+            api_key = os.environ.get("OPENAI_API_KEY")
+            if not api_key:
+                raise Exception("OPENAI_API_KEY_MISSING")
+            return {
+                "provider": "openai",
+                "model": os.environ.get("OPENAI_MODEL", "gpt-4o"),
+                "base_url": None,
+                "api_key": api_key
+            }
+            
+        if not settings.get('api_key') and not os.environ.get("OPENAI_API_KEY"):
+            raise Exception("OPENAI_API_KEY_MISSING")
+            
+        return settings
 
 def _get_neo4j_driver():
     """Create a new Neo4j driver using environment variables."""
@@ -311,8 +328,8 @@ def _run_graph_enhancement(conn: psycopg.Connection, migration_id: str, source_s
     _write_chat_message(conn, migration_id, 'assistant', 'Analyzing potential relationships with AI...', 5)
     
     llm_settings = _get_llm_settings(conn)
-    api_key = llm_settings.get('api_key') if llm_settings else os.environ.get("OPENAI_API_KEY")
-    base_url = llm_settings.get('base_url') if llm_settings else None
+    api_key = llm_settings.get('api_key')
+    base_url = llm_settings.get('base_url')
     
     client = OpenAI(api_key=api_key, base_url=base_url)
     prompt = f"""
@@ -447,8 +464,8 @@ def _run_data_ingest_neo4j(conn: psycopg.Connection, migration_id: str, workflow
     
     # --- AGENT SETUP ---
     llm_settings = _get_llm_settings(conn)
-    api_key = llm_settings.get('api_key') if llm_settings else os.environ.get("OPENAI_API_KEY")
-    base_url = llm_settings.get('base_url') if llm_settings else None
+    api_key = llm_settings.get('api_key')
+    base_url = llm_settings.get('base_url')
     
     client = OpenAI(api_key=api_key, base_url=base_url)
     
@@ -645,8 +662,8 @@ def _run_rate_limit_calibration(conn: psycopg.Connection, migration_id: str):
     _write_chat_message(conn, migration_id, 'assistant', 'Analyzing API response for rate limits...', 5)
     
     llm_settings = _get_llm_settings(conn)
-    api_key = llm_settings.get('api_key') if llm_settings else os.environ.get("OPENAI_API_KEY")
-    base_url = llm_settings.get('base_url') if llm_settings else None
+    api_key = llm_settings.get('api_key')
+    base_url = llm_settings.get('base_url')
     
     client = OpenAI(api_key=api_key, base_url=base_url)
     prompt = f"""
@@ -875,10 +892,19 @@ def process_migration_step(job_payload: Dict[str, Any]):
         print(f" [{migration_id}] Step {step_number} completed successfully.")
 
     except Exception as e:
-        print(f" [!] Error processing step {step_number} for migration {migration_id}: {e}")
+        error_msg = str(e)
+        print(f" [!] Error processing step {step_number} for migration {migration_id}: {error_msg}")
+        
+        user_facing_error = error_msg
+        if "OPENAI_API_KEY_MISSING" in error_msg:
+            user_facing_error = "⚠️ **Konfiguration fehlt**: Kein OpenAI API-Key gefunden. Bitte öffne die Einstellungen in der Sidebar und hinterlege einen API-Key, um fortzufahren."
+        else:
+            user_facing_error = f"❌ **Fehler während Schritt {step_number}**: {error_msg}"
+            
         if db_conn:
-            _update_migration_step_status(db_conn, migration_id, step_number, 'failed', str(e))
-            _write_chat_message(db_conn, migration_id, 'assistant', f"Error during step {step_number}: {e}", step_number)
+            _update_migration_step_status(db_conn, migration_id, step_number, 'failed', error_msg)
+            _write_chat_message(db_conn, migration_id, 'assistant', user_facing_error, step_number)
+            _write_action_buttons(db_conn, migration_id, step_number)
     finally:
         if db_conn:
             db_conn.close()

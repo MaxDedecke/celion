@@ -847,6 +847,14 @@ async function processJob(job: any) {
               );
 
               await writeChatMessage(migrationId, 'assistant', "Perfekt! Ich habe alles konfiguriert. Wir können jetzt mit der System-Erkennung (Schritt 1) starten.", 0);
+              
+              const startAction = JSON.stringify({
+                  type: "action",
+                  actions: [
+                    { action: "continue", label: "Schritt 1: System-Erkennung starten", variant: "primary" }
+                  ]
+              });
+              await writeChatMessage(migrationId, 'system', startAction, 0);
           } else {
               await writeChatMessage(migrationId, 'assistant', text, 0);
           }
@@ -1318,23 +1326,36 @@ async function processJob(job: any) {
   } catch (error) {
     console.error(`Error processing job ${job.id}:`, error);
     const errorMessage = (error as Error).message;
+    const isMissingKey = errorMessage.includes("OPENAI_API_KEY_MISSING");
+    
+    const userFacingError = isMissingKey 
+        ? "⚠️ **Konfiguration fehlt**: Kein OpenAI API-Key gefunden. Bitte öffne die Einstellungen in der Sidebar und hinterlege einen API-Key, um fortzufahren."
+        : `❌ **Fehler**: ${errorMessage}`;
+
     const errorClient = await pool.connect();
     try {
       await errorClient.query('BEGIN');
-      await errorClient.query('UPDATE migration_steps SET status = $1, status_message = $2 WHERE id = $3', ['failed', errorMessage, step_id]);
-      const { rows: migrationRows } = await errorClient.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
-      const migrationData = migrationRows[0];
-      const { nextState, progress } = updateWorkflowForStep(migrationData?.workflow_state, stepRecord.workflow_step_id || step_id, errorMessage, true);
-      await errorClient.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4 WHERE id = $5', [nextState, progress, 'paused', 'failed', migrationId]);
+      
+      if (step_id) {
+          await errorClient.query('UPDATE migration_steps SET status = $1, status_message = $2 WHERE id = $3', ['failed', errorMessage, step_id]);
+          const { rows: migrationRows } = await errorClient.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
+          const migrationData = migrationRows[0];
+          const { nextState, progress } = updateWorkflowForStep(migrationData?.workflow_state, stepRecord?.workflow_step_id || step_id, errorMessage, true);
+          await errorClient.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4 WHERE id = $5', [nextState, progress, 'paused', 'failed', migrationId]);
+      }
+      
       await errorClient.query('UPDATE jobs SET status = $1, last_error = $2 WHERE id = $3', ['failed', errorMessage, job.id]);
       
       // KPI: Increment global stats (only total attempts)
       await incrementGlobalStats(errorClient, { total_agents: 1 });
 
       await errorClient.query('COMMIT');
-      await writeChatMessage(migrationId, 'assistant', `Error: ${errorMessage}`, currentStepNumber);
-      await writeRetryAction(migrationId, currentStepNumber);
-      await logActivity(migrationId, 'error', `Schritt fehlgeschlagen: ${errorMessage}`);
+      
+      if (migrationId) {
+          await writeChatMessage(migrationId, 'assistant', userFacingError, currentStepNumber);
+          await writeRetryAction(migrationId, currentStepNumber);
+          await logActivity(migrationId, 'error', `Schritt fehlgeschlagen: ${errorMessage}`);
+      }
     } catch (e2) {
       await errorClient.query('ROLLBACK');
       console.error('Error in error handling:', e2);

@@ -22,11 +22,12 @@ export const resolveOpenAiConfig = async () => {
         const projectId = process.env.VITE_OPENAI_PROJECT_ID?.trim();
         const model = settings.model || process.env.OPENAI_MODEL || "gpt-4o";
         
-        if (!apiKey) throw new Error("API_KEY fehlt (nicht in DB und nicht in ENV)");
+        if (!apiKey) throw new Error("OPENAI_API_KEY_MISSING: Kein API-Key in der Datenbank oder den Umgebungsvariablen gefunden. Bitte konfiguriere den LLM-Provider in den Einstellungen.");
         
         return { apiKey, baseUrl, projectId, model };
       }
-    } catch (error) {
+    } catch (error: any) {
+      if (error.message?.startsWith("OPENAI_API_KEY_MISSING")) throw error;
       console.error("Failed to fetch LLM settings from DB, falling back to ENV:", error);
     }
   }
@@ -36,7 +37,7 @@ export const resolveOpenAiConfig = async () => {
   const env = isServer ? process.env : import.meta.env;
 
   const apiKey = (env.VITE_OPENAI_API_KEY || env.OPENAI_API_KEY)?.trim();
-  if (!apiKey) throw new Error("VITE_OPENAI_API_KEY fehlt");
+  if (!apiKey) throw new Error("OPENAI_API_KEY_MISSING: Kein API-Key in der Datenbank oder den Umgebungsvariablen gefunden. Bitte konfiguriere den LLM-Provider in den Einstellungen.");
 
   const baseUrl = (env.VITE_OPENAI_API_BASE_URL?.trim() || DEFAULT_OPENAI_BASE_URL).replace(/\/$/, "");
   const projectId = env.VITE_OPENAI_PROJECT_ID?.trim();

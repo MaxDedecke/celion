@@ -60,13 +60,13 @@ export async function* runEnhancementRules(
   context: {
     sourceEntities: any[];
     sourceSchema: any;
-    context: {
-      history: { role: string; content: string }[];
-      migrationId: string;
-    }
-    ): AsyncGenerator<Message> {
-    const { apiKey, baseUrl, projectId } = await resolveOpenAiConfig();
-    const headers = buildOpenAiHeaders(apiKey, projectId);
+    currentEnhancements: any[];
+    history: { role: string; content: string }[];
+    migrationId: string;
+  }
+): AsyncGenerator<Message> {
+  const { apiKey, baseUrl, projectId } = await resolveOpenAiConfig();
+  const headers = buildOpenAiHeaders(apiKey, projectId);
   const backendUrl = process.env.INTERNAL_BACKEND_URL || "http://backend:8000";
   
   const historyPrompt = context.history.map(h => `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.content}`).join('\n');
