@@ -474,6 +474,7 @@ const Dashboard = () => {
 
       if (selectedMigration === migrationToDelete.id) {
         setSelectedMigration(null);
+        navigate("/migrations");
       }
       
       toast.success(`Migration "${migrationToDelete.name}" gelöscht`);

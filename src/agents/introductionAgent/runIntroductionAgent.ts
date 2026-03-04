@@ -42,13 +42,14 @@ Die zu sammelnden Informationen sind:
       }
       \`\`\`
     - Wenn der Nutzer bestimmte Bereiche migrieren möchte, rufe das Tool 'fetch_available_scopes' auf, um die im System verfügbaren Bereiche abzufragen. Präsentiere diese dann dem Nutzer zur Auswahl.
+    - **Sollte das Tool fehlschlagen, keine Ergebnisse liefern oder der Nutzer den Bereich manuell benennen wollen, frage ihn direkt nach dem Namen oder der ID des Bereichs.**
     - Speichere die ausgewählten IDs.
     - Frage für das Zielsystem auch, ob ein neuer Hauptbereich oder ein Unterbereich genutzt werden soll, und ob der Quell-Name übernommen werden soll.
 
 ### ABLAUF:
 - Begrüße den User und präsentiere direkt das JSON-Dropdown für das Quellsystem.
 - Wenn das Quellsystem steht, frage nach dem Scope (Alles vs. spezifisch) und zeige die zwei Action-Buttons.
-- Nutze 'fetch_available_scopes' bei spezifischem Wunsch.
+- Nutze 'fetch_available_scopes' bei spezifischem Wunsch. Falls das fehlschlägt, frage nach dem Namen des Bereichs.
 - Präsentiere anschließend ZWINGEND wieder ein JSON-Dropdown für das Zielsystem (mit \`"mode": "target"\`), damit der Nutzer auch dieses System per Dropdown wählen kann.
 - **WICHTIG:** Wenn du alle Informationen hast, fasse sie zusammen und frage nach der Bestätigung.
 - Wenn du nach der finalen Bestätigung fragst, hänge ZWINGEND EXAKT folgendes JSON am Ende der Nachricht an:

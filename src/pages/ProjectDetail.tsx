@@ -351,7 +351,7 @@ const ProjectDetail = () => {
       toast.success("Migration gelöscht");
       setShowDeleteDialog(false);
       setMigrationToDelete(null);
-      await Promise.all([loadSidebarData(), loadProjectData(projectId!)]);
+      navigate("/migrations");
     } catch (error) {
       console.error(error);
       toast.error("Fehler beim Löschen der Migration");

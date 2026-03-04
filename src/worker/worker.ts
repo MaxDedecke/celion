@@ -701,21 +701,37 @@ async function processJob(job: any) {
           let headers: any = {};
           
           const sys = system.toLowerCase().replace(/\s/g, '');
+          
+          // Helper to get base URL from a potentially complex URL
+          const getBaseUrl = (url: string) => {
+            try {
+              const urlObj = new URL(url);
+              return `${urlObj.protocol}//${urlObj.hostname}`;
+            } catch (e) {
+              return url.replace(/\/$/, '');
+            }
+          };
+
           if (sys === 'clickup') {
-            endpoint = apiUrl.replace(/\/$/, '') + '/api/v2/team';
+            // ClickUp API is fixed
+            endpoint = 'https://api.clickup.com/api/v2/team';
             headers['Authorization'] = token;
           } else if (sys === 'asana') {
-            endpoint = apiUrl.replace(/\/$/, '') + '/api/1.0/workspaces?opt_fields=gid,name';
+            // Asana API is fixed
+            endpoint = 'https://app.asana.com/api/1.0/workspaces?opt_fields=gid,name';
             headers['Authorization'] = 'Bearer ' + token;
           } else if (sys === 'jiracloud') {
-            endpoint = apiUrl.replace(/\/$/, '') + '/rest/api/3/project';
+            // Jira Cloud needs the instance domain
+            endpoint = getBaseUrl(apiUrl) + '/rest/api/3/project';
             const auth = Buffer.from(`${userEmail}:${token}`).toString('base64');
             headers['Authorization'] = 'Basic ' + auth;
           } else if (sys === 'gitlab') {
-            endpoint = apiUrl.replace(/\/$/, '') + '/api/v4/projects';
+            // GitLab can be self-hosted or gitlab.com
+            endpoint = getBaseUrl(apiUrl) + '/api/v4/projects';
             headers['PRIVATE-TOKEN'] = token;
           } else if (sys === 'notion') {
-            endpoint = apiUrl.replace(/\/$/, '') + '/v1/search';
+            // Notion API is fixed
+            endpoint = 'https://api.notion.com/v1/search';
             headers['Authorization'] = 'Bearer ' + token;
             headers['Notion-Version'] = '2022-06-28';
           } else {

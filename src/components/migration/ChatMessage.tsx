@@ -532,27 +532,29 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
                   <div className="flex w-full justify-start py-2 animate-fade-in">
                     <div className="flex flex-col gap-3 p-4 rounded-xl border border-primary/20 bg-primary/5 w-full">
                       <label className="text-sm font-medium text-foreground">{jsonContent.label}</label>
-                      <Select 
-                        value={selectedDropdownValue}
-                        disabled={isSubmitted}
-                        onValueChange={(val) => {
-                          setSelectedDropdownValue(val);
-                        }}>
-                        <SelectTrigger className="w-full sm:w-[350px] bg-background">
-                          <SelectValue placeholder="Bitte wählen..." />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {jsonContent.options?.map((o: any) => (
-                            <SelectItem key={o.id} value={o.id} className={o.id === "new" ? "font-semibold text-primary" : ""}>
-                              {o.label}
-                            </SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {selectedDropdownValue && (
+                      <div className="flex items-center gap-2">
+                        <Select 
+                          value={selectedDropdownValue}
+                          disabled={isSubmitted}
+                          onValueChange={(val) => {
+                            setSelectedDropdownValue(val);
+                          }}>
+                          <SelectTrigger className="w-full sm:w-[350px] bg-background">
+                            <SelectValue placeholder="Bitte wählen..." />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {jsonContent.options?.map((o: any) => (
+                              <SelectItem key={o.id} value={o.id} className={o.id === "new" ? "font-semibold text-primary" : ""}>
+                                {o.label}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        {isSubmitted && <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />}
+                      </div>
+                      {selectedDropdownValue && !isSubmitted && (
                         <Button 
                           size="sm" 
-                          disabled={isSubmitted}
                           className="w-full sm:w-[350px] bg-primary text-primary-foreground hover:bg-primary/90 mt-1"
                           onClick={() => {
                             setIsSubmitted(true);
