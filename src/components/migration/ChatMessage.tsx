@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, Fragment } from "react";
-import { User, SquareArrowOutUpRight, CheckCircle2, XCircle, Play, Copy, Rocket, FileJson, ArrowRight, Clock, Sparkles } from "lucide-react";
+import { User, SquareArrowOutUpRight, CheckCircle2, XCircle, Play, Copy, Rocket, FileJson, ArrowRight, Clock, Brain } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -423,7 +423,7 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
     if (content.includes("dupliziert") || content.includes("kopiert")) return Copy;
     
     if (message.role === "user") return User;
-    if (message.role === "assistant") return Sparkles;
+    if (message.role === "assistant") return Brain;
     
     return null;
   };

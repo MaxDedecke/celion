@@ -1,6 +1,6 @@
 import ChatMessage, { ChatMessage as ChatMessageType } from "./ChatMessage";
 import { useMessageQueue } from "@/hooks/useMessageQueue";
-import { Sparkles} from "lucide-react";
+import { Brain } from "lucide-react";
 
 interface ChatMessageListProps {
   messages: ChatMessageType[];
@@ -18,7 +18,7 @@ interface ChatMessageListProps {
 const ThinkingIndicator = ({ stepTitle, role = "agent" }: { stepTitle?: string, role?: "agent" | "consultant" }) => (
   <div className="flex items-start gap-3 py-3 animate-fade-in pl-2">
     <div className="h-8 w-8 flex items-center justify-center">
-      <Sparkles className="h-4 w-4 text-primary animate-pulse" />
+      <Brain className="h-4 w-4 text-primary animate-pulse" />
     </div>
     <div className="flex flex-col gap-1.5">
       <span className="text-sm text-muted-foreground font-medium">
