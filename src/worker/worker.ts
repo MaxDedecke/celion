@@ -9,7 +9,9 @@ import {
   saveStep4Result, 
   saveStep5Result, 
   saveStep6Result, 
-  saveStep7Result 
+  saveStep7Result,
+  saveStep8Result,
+  saveStep9Result
 } from '../lib/step-results';
 
 const pool = new Pool({
@@ -1281,6 +1283,10 @@ async function processJob(job: any) {
         result = { error: failureMessage };
       }
 
+      if (!isLogicalFailure && result && !result.isEarlyReturnForPlan) {
+          await saveStep8Result(pool, migrationId, result);
+      }
+
       const finishClientTransfer = await pool.connect();
       try {
         await finishClientTransfer.query('BEGIN');
@@ -1348,12 +1354,7 @@ async function processJob(job: any) {
             return rows[0];
         },
         saveResult: async (res) => {
-            await pool.query(
-                `INSERT INTO step_9_results (migration_id, workflow_step_id, data) 
-                 VALUES ($1, $2, $3)
-                 ON CONFLICT (migration_id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
-                [migrationId, stepRecord?.workflow_step_id, res]
-            );
+            await saveStep9Result(pool, migrationId, res);
         },
         dbPool: pool
       };

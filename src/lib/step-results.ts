@@ -140,3 +140,35 @@ export async function saveStep7Result(pool: Pool, migrationId: string, result: a
     [migrationId, result.summary || 'Quality Enhancement abgeschlossen.', result]
   );
 }
+
+export async function saveStep8Result(pool: Pool, migrationId: string, result: any) {
+  await pool.query(
+    `INSERT INTO public.step_8_results (migration_id, summary, raw_json)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (migration_id) DO UPDATE SET
+       summary = EXCLUDED.summary,
+       raw_json = EXCLUDED.raw_json,
+       created_at = now()`,
+    [
+      migrationId, 
+      `Transfer abgeschlossen: ${result.transferredCount || 0} Objekte erfolgreich übertragen, ${result.errors || 0} Fehler.`, 
+      result
+    ]
+  );
+}
+
+export async function saveStep9Result(pool: Pool, migrationId: string, result: any) {
+  await pool.query(
+    `INSERT INTO public.step_9_results (migration_id, summary, raw_json)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (migration_id) DO UPDATE SET
+       summary = EXCLUDED.summary,
+       raw_json = EXCLUDED.raw_json,
+       created_at = now()`,
+    [
+      migrationId, 
+      `Verifizierung abgeschlossen: ${result.verified || 0} Objekte validiert, ${result.failed || 0} fehlgeschlagen.`, 
+      result
+    ]
+  );
+}

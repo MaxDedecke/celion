@@ -3339,11 +3339,11 @@ async def enqueue_migration_step(payload: RunStepRequest) -> dict[str, Any]:
 
 @app.get("/api/migrations/{id}/results")
 async def get_migration_results(id: str) -> dict[str, Any]:
-    """Fetch all structured results for steps 1 to 7."""
+    """Fetch all structured results for steps 1 to 9."""
     try:
         results = {
             "step_1": [], "step_2": [], "step_3": [], "step_4": [], 
-            "step_5": [], "step_6": [], "step_7": []
+            "step_5": [], "step_6": [], "step_7": [], "step_8": [], "step_9": []
         }
         with _get_db_connection() as conn, conn.cursor() as cur:
             # Step 1
@@ -3373,6 +3373,14 @@ async def get_migration_results(id: str) -> dict[str, Any]:
             # Step 7
             cur.execute("SELECT * FROM public.step_7_results WHERE migration_id = %s", (id,))
             results["step_7"] = [dict(row) for row in cur.fetchall()]
+
+            # Step 8
+            cur.execute("SELECT * FROM public.step_8_results WHERE migration_id = %s", (id,))
+            results["step_8"] = [dict(row) for row in cur.fetchall()]
+
+            # Step 9
+            cur.execute("SELECT * FROM public.step_9_results WHERE migration_id = %s", (id,))
+            results["step_9"] = [dict(row) for row in cur.fetchall()]
             
         return results
     except Exception as exc:
