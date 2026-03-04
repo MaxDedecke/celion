@@ -58,7 +58,7 @@ export class DataTransferAgent extends AgentBase {
     
     // We shouldn't actually do the final state commit inside the agent, but to keep the code unchanged:
     const updateWorkflowForStep = (state: any, id: string, res: any, err: boolean) => { return { nextState: state, progress: 0 }; };
-    const incrementGlobalStats = async () => {};
+    const incrementGlobalStats = async (...args: any[]) => {};
     const AGENT_WORKFLOW_STEPS: any[] = [];
     const agentParams = params;
     
@@ -155,7 +155,7 @@ Antworte prägnant und strukturiert in Markdown.
                   model: "gpt-4o"
               });
               
-              const planContent = planRes.choices[0].message.content;
+              const planContent = planRes.content;
               
               if (planContent) {
                   await writeChatMessage(migrationId, 'assistant', `### 📋 Migrations-Plan\n\n${planContent}`, currentStepNumber);
@@ -227,7 +227,7 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                       response_format: { type: "json_object" }
                   });
 
-                  const callConfig = JSON.parse(verifyRes.choices[0].message.content || "{}");
+                  const callConfig = JSON.parse(verifyRes.content || "{}");
 
                   const targetHeaders: any = { 
                       "Accept": "application/json",
@@ -329,7 +329,7 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                       response_format: { type: "json_object" }
                   });
                   
-                  const callConfig = JSON.parse(containerRes.choices[0].message.content || "{}");
+                  const callConfig = JSON.parse(containerRes.content || "{}");
                       
                   const targetHeaders: any = { 
                       "Accept": "application/json",
@@ -887,7 +887,7 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                                           model: "gpt-4o-mini",
                                           response_format: { type: "json_object" }
                                       });
-                                      const callResult = JSON.parse(agentRes.choices[0].message.content || "{}");
+                                      const callResult = JSON.parse(agentRes.content || "{}");
                                       callConfig = {
                                           url: callResult.url,
                                           method: callResult.method,

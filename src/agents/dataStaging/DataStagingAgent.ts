@@ -147,7 +147,7 @@ export class DataStagingAgent extends AgentBase {
                 response_format: { type: "json_object" }
             });
             
-            const parsedCal = JSON.parse(calResult.choices[0].message.content || "{}");
+            const parsedCal = JSON.parse(calResult.content || "{}");
             if (parsedCal.delay !== undefined) rateLimitResult = parsedCal;
 
             const frontendResult = {
@@ -252,7 +252,11 @@ export class DataStagingAgent extends AgentBase {
     try {
         for (let turn = 0; turn < 15; turn++) {
             const response = await this.provider.chat(messages, tools, { tool_choice: "auto" });
-            const aiMessage = response.choices[0].message;
+            const aiMessage: ChatMessage = {
+                role: 'assistant',
+                content: response.content,
+                tool_calls: response.toolCalls
+            };
             messages.push(aiMessage);
 
             if (!aiMessage.tool_calls || aiMessage.tool_calls.length === 0) break;
@@ -390,7 +394,7 @@ export class DataStagingAgent extends AgentBase {
                 { role: "user", content: discoveryPrompt }
             ], undefined, { response_format: { type: "json_object" } });
 
-            const rawContent = discoveryRes.choices[0].message.content || "[]";
+            const rawContent = discoveryRes.content || "[]";
             try {
                 const parsed = JSON.parse(rawContent);
                 if (Array.isArray(parsed)) {

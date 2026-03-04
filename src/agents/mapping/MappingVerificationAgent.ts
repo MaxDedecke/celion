@@ -115,7 +115,7 @@ ${JSON.stringify(targetSpecs.objects, null, 2)}
         response_format: { type: "json_object" } 
     });
 
-    const messageContent = response.choices[0].message.content;
+    const messageContent = response.content;
 
     if (messageContent) {
       try {

@@ -141,7 +141,11 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
     // Loop for Phase 1
     for (let turn = 0; turn < 25; turn++) {
          const response = await this.provider.chat(messages, TOOLS, { response_format: { type: "json_object" } });
-         const message = response.choices[0].message;
+         const message: ChatMessage = {
+             role: 'assistant',
+             content: response.content,
+             tool_calls: response.toolCalls
+         };
          messages.push(message);
 
          if (message.content) {
@@ -215,7 +219,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
             { role: "user", content: validationPrompt }
         ], undefined, { response_format: { type: "json_object" } });
         
-        const valContent = validationResponse.choices[0].message.content;
+        const valContent = validationResponse.content;
         if (valContent) {
             validationResult = JSON.parse(valContent);
             await this.context.writeChatMessage('assistant', `Validierungsergebnis: ${validationResult.validation_message}`, stepNumber);
@@ -241,7 +245,11 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
          
          for (let turn = 0; turn < 15; turn++) {
              const response = await this.provider.chat(messages, TOOLS, { response_format: { type: "json_object" } });
-             const message = response.choices[0].message;
+             const message: ChatMessage = {
+                 role: 'assistant',
+                 content: response.content,
+                 tool_calls: response.toolCalls
+             };
              messages.push(message);
 
              if (message.content) {
@@ -334,7 +342,7 @@ Du MUSST für JEDEN dieser Endpunkte im finalen Report unter 'coverage' angeben,
                 { role: "user", content: normalizationPrompt }
             ], undefined, { response_format: { type: "json_object" } });
 
-            const normContent = normResponse.choices[0].message.content;
+            const normContent = normResponse.content;
             if (normContent) {
                 const normResult = JSON.parse(normContent);
                 if (normResult.entities) {

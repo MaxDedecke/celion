@@ -1,8 +1,8 @@
 import { resolveOpenAiConfig, buildOpenAiHeaders } from '../openai/openaiClient';
-import { LlmProvider, ChatMessage, Tool } from './LlmProvider';
+import { LlmProvider, ChatMessage, Tool, ChatResponse } from './LlmProvider';
 
 export class OpenAiProvider implements LlmProvider {
-  async chat(messages: ChatMessage[], tools?: Tool[], options?: any): Promise<any> {
+  async chat(messages: ChatMessage[], tools?: Tool[], options?: any): Promise<ChatResponse> {
     const { apiKey, baseUrl, projectId, model } = await resolveOpenAiConfig();
     const openAiHeaders = buildOpenAiHeaders(apiKey, projectId);
     
@@ -27,6 +27,19 @@ export class OpenAiProvider implements LlmProvider {
       throw new Error(`OpenAI API request failed: ${response.status} ${response.statusText} ${errorText}`);
     }
 
-    return await response.json();
+    const data = await response.json();
+    const choice = data.choices[0];
+    const message = choice.message;
+
+    return {
+      content: message.content,
+      toolCalls: message.tool_calls,
+      usage: data.usage ? {
+          promptTokens: data.usage.prompt_tokens,
+          completionTokens: data.usage.completion_tokens,
+          totalTokens: data.usage.total_tokens
+      } : undefined,
+      raw: data
+    };
   }
 }

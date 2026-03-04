@@ -124,7 +124,11 @@ ${scopeConfig?.targetName ? `Besonderer Fokus: Ziel-Projekt/Workspace soll "**${
           response_format: { type: "json_object" } 
       });
 
-      const message = response.choices[0].message;
+      const message: ChatMessage = {
+          role: 'assistant',
+          content: response.content,
+          tool_calls: response.toolCalls
+      };
       messages.push(message);
 
       if (message.content) {

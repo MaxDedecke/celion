@@ -1332,6 +1332,99 @@ async function processJob(job: any) {
       } finally {
         finishClientTransfer.release();
       }
+    } else if (agentName === 'runVerification') {
+      const context = {
+        migrationId,
+        stepNumber: currentStepNumber,
+        writeChatMessage: async (role, content, stepNum) => await writeChatMessage(migrationId, role, content, stepNum),
+        upsertChatMessage: async (id, role, content, stepNum) => await upsertChatMessage(id, migrationId, role, content, stepNum),
+        logActivity: async (type, title) => await logActivity(migrationId, type, title),
+        getConnector: async (type) => {
+            const { rows } = await pool.query('SELECT api_url, api_key, username, auth_type FROM connectors WHERE migration_id = $1 AND connector_type = $2', [migrationId, type]);
+            return rows[0];
+        },
+        getMigrationDetails: async () => {
+            const { rows } = await pool.query('SELECT name, source_system, target_system, scope_config FROM migrations WHERE id = $1', [migrationId]);
+            return rows[0];
+        },
+        saveResult: async (res) => {
+            await pool.query(
+                `INSERT INTO step_9_results (migration_id, workflow_step_id, data) 
+                 VALUES ($1, $2, $3)
+                 ON CONFLICT (migration_id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
+                [migrationId, stepRecord?.workflow_step_id, res]
+            );
+        },
+        dbPool: pool
+      };
+
+      const agent = await StepFactory.createAgent(agentName, context);
+      if (agent) {
+        try {
+          const agentResult = await agent.execute(agentParams);
+          isLogicalFailure = !!agentResult.isLogicalFailure;
+          failureMessage = agentResult.error || "";
+          result = agentResult;
+        } catch (err) {
+          isLogicalFailure = true;
+          failureMessage = String(err);
+          result = { error: failureMessage };
+        }
+      } else {
+        isLogicalFailure = true;
+        failureMessage = "Agent not found in StepFactory";
+        result = { error: failureMessage };
+      }
+
+      const finishClientVerif = await pool.connect();
+      try {
+        await finishClientVerif.query('BEGIN');
+        await finishClientVerif.query('UPDATE migration_steps SET status = $1, result = $2, status_message = $3 WHERE id = $4', [
+          isLogicalFailure ? 'failed' : 'completed', result, isLogicalFailure ? failureMessage : 'Verification completed.', step_id,
+        ]);
+
+        const { rows: migRowsFinal } = await finishClientVerif.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
+        const migrationDataFinal = migRowsFinal[0];
+        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migrationDataFinal?.workflow_state, stepRecord.workflow_step_id || step_id, result, isLogicalFailure);
+        const migrationStatus = isLogicalFailure ? 'paused' : (completedCount >= totalSteps ? 'completed' : 'processing');
+        const stepStatusForMigration = isLogicalFailure ? 'failed' : 'completed';
+
+        await finishClientVerif.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
+          nextState, progress, migrationStatus, stepStatusForMigration, currentStepNumber, migrationId,
+        ]);
+        await finishClientVerif.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+        
+        if (!isLogicalFailure) {
+           await incrementGlobalStats(finishClientVerif, { steps: 1, success: 1, total_agents: 1 });
+        } else {
+           await incrementGlobalStats(finishClientVerif, { total_agents: 1 });
+        }
+
+        await finishClientVerif.query('COMMIT');
+        
+        if (isLogicalFailure) {
+            await writeChatMessage(migrationId, 'assistant', `Schritt 9 Verifizierung fehlgeschlagen: ${failureMessage}`, currentStepNumber);
+            await writeRetryAction(migrationId, currentStepNumber);
+        } else {
+            const nextStepIndex = currentStepNumber;
+            if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
+                const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
+                const actionContent = JSON.stringify({
+                    type: "action",
+                    actions: [
+                      { action: "continue", label: `Weiter zu Schritt ${nextStepIndex + 1} ${nextStep.title}`, variant: "primary" },
+                      { action: "retry", label: `Schritt ${currentStepNumber} wiederholen`, variant: "outline", stepNumber: currentStepNumber }
+                    ]
+                });
+                await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
+            }
+        }
+      } catch (e) {
+        await finishClientVerif.query('ROLLBACK');
+        throw e;
+      } finally {
+        finishClientVerif.release();
+      }
       return;
 
     } else {
