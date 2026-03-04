@@ -67,11 +67,12 @@ export class DataTransferAgent extends AgentBase {
     console.log(`[Worker] Running Data Transfer for migration ${migrationId}`);
       
       // Phase 0: Target Container Preparation & Planning
-      const { rows: migRowsScope } = await dbPool.query('SELECT name, source_system, target_system, scope_config FROM migrations WHERE id = $1', [migrationId]);
+      const { rows: migRowsScope } = await dbPool.query('SELECT name, source_system, target_system, scope_config, context FROM migrations WHERE id = $1', [migrationId]);
       const migrationName = migRowsScope[0]?.name;
       const sourceSystem = migRowsScope[0]?.source_system;
       const targetSystem = migRowsScope[0]?.target_system;
       const scopeConfig = migRowsScope[0]?.scope_config || {};
+      const migrationContext = migRowsScope[0]?.context || {};
       
       const sourceScopeName = scopeConfig.sourceScopeName;
       const preferredTargetName = (scopeConfig.targetName && scopeConfig.targetName !== "-") 
@@ -131,6 +132,9 @@ export class DataTransferAgent extends AgentBase {
           const planPrompt = `
 Du bist ein Migrations-Experte. Erstelle einen finalen Transfer-Plan für den Nutzer.
 System: ${sourceSystem} nach ${targetSystem}.
+
+### MIGRATIONS-GEDÄCHTNIS:
+${JSON.stringify(migrationContext, null, 2)}
 
 ### DATEN-STATISTIK:
 ${stats}

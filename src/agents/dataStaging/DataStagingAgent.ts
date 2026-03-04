@@ -94,6 +94,7 @@ export class DataStagingAgent extends AgentBase {
     const sourceSystem = migrationDetails?.source_system;
     const instructions = migrationDetails?.notes;
     const scopeConfig = migrationDetails?.scope_config;
+    const migrationContext = migrationDetails?.context || {};
     const scheme = await loadScheme(sourceSystem);
 
     let effectiveApiUrl = scheme?.apiBaseUrl || connector?.api_url || "";
@@ -199,6 +200,9 @@ export class DataStagingAgent extends AgentBase {
 
     const agentSystemPrompt = `
       Du bist ein Data Ingestion Agent für ${sourceSystem}. Deine Aufgabe ist es, Daten über die API zu sammeln und in Neo4j zu speichern.
+
+      ### MIGRATIONS-GEDÄCHTNIS:
+      ${JSON.stringify(migrationContext, null, 2)}
       
       ### NAVIGATION GUIDE (Strikte Befolgung erforderlich):
       ${JSON.stringify(scheme?.navigationGuide || "Kein Guide vorhanden.", null, 2)}

@@ -15,6 +15,7 @@ export class TargetDiscoveryAgent extends AgentBase {
     const migrationDetails = await this.context.getMigrationDetails();
     const migrationName = migrationDetails?.name;
     const scopeConfig = migrationDetails?.scope_config || {};
+    const migrationContext = migrationDetails?.context || {};
     
     // Normalize targetName if placeholder '-'
     if (scopeConfig.targetName === "-") {
@@ -42,6 +43,9 @@ export class TargetDiscoveryAgent extends AgentBase {
 
     const SYSTEM_PROMPT = `
 Du bist die Target Validation Engine von Celion. Dein Ziel ist es, die Einsatzbereitschaft des Zielsystems für die anstehende Migration sicherzustellen.
+
+### MIGRATIONS-GEDÄCHTNIS:
+${JSON.stringify(migrationContext, null, 2)}
 
 ### PHASE 1: TARGET EXPLORATION & SCOPE VALIDATION
 - Nutze 'smart_discovery', um die Top-Level-Strukturen (Workspaces, Projekte, Ordner) des Zielsystems aufzulisten.

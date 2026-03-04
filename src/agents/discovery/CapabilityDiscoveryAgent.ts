@@ -13,6 +13,7 @@ export class CapabilityDiscoveryAgent extends AgentBase {
     
     const migrationDetails = await this.context.getMigrationDetails();
     const scopeConfig = migrationDetails?.scope_config || {};
+    const migrationContext = migrationDetails?.context || {};
     const connector = await this.context.getConnector('in');
 
     if (!connector || (!connector.api_key && !connector.username)) {
@@ -36,6 +37,10 @@ export class CapabilityDiscoveryAgent extends AgentBase {
 
     const SYSTEM_PROMPT = `
 Du bist eine Data Discovery Engine. Dein Ziel ist eine vollständige und wahrheitsgetreue Bestandsaufnahme der Systemstruktur und der Datenmengen.
+
+### MIGRATIONS-GEDÄCHTNIS (WICHTIG!):
+Nutze diese bereits verifizierten Fakten über die Migration, um Zeit zu sparen und Halluzinationen zu vermeiden.
+${JSON.stringify(migrationContext, null, 2)}
 
 ### PHASE 0: SCOPE ALIGNMENT (Identifizierung via API)
 - **ZIELE IDENTIFIZIEREN:** Falls in der Konfiguration (scopeConfig) ein Projektname (sourceScope) angegeben ist, musst du ZUERST die zugehörige ID (gid, id, uuid) über einen API-Call (z.B. /projects oder /workspaces) finden.

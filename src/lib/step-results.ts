@@ -1,5 +1,15 @@
 import { Pool } from 'pg';
 
+export async function updateMigrationContext(pool: Pool, migrationId: string, newFacts: Record<string, any>) {
+  await pool.query(
+    `UPDATE public.migrations 
+     SET context = context || $1::jsonb,
+         updated_at = now() 
+     WHERE id = $2`,
+    [JSON.stringify(newFacts), migrationId]
+  );
+}
+
 export async function saveStep1Result(pool: Pool, migrationId: string, mode: string, result: any) {
   await pool.query(
     `INSERT INTO public.step_1_results (migration_id, system_mode, detected_system, confidence_score, api_type, api_subtype, recommended_base_url, raw_json)
@@ -22,6 +32,15 @@ export async function saveStep1Result(pool: Pool, migrationId: string, mode: str
       result
     ]
   );
+
+  // Update global memory
+  if (result.detected_system || result.systemName) {
+    await updateMigrationContext(pool, migrationId, {
+      [`${mode}_system`]: result.detected_system || result.systemName,
+      [`${mode}_base_url`]: result.recommendedBaseUrl || null,
+      [`${mode}_api_type`]: result.apiTypeDetected || null
+    });
+  }
 }
 
 export async function saveStep2Result(pool: Pool, migrationId: string, mode: string, result: any) {
@@ -42,6 +61,14 @@ export async function saveStep2Result(pool: Pool, migrationId: string, mode: str
       result
     ]
   );
+
+  // Update global memory
+  if (result.authenticated ?? result.success) {
+    await updateMigrationContext(pool, migrationId, {
+      [`${mode}_is_authenticated`]: true,
+      [`${mode}_auth_type`]: result.authType || result.auth_method || null
+    });
+  }
 }
 
 export async function saveStep3Result(pool: Pool, migrationId: string, result: any) {
@@ -56,11 +83,17 @@ export async function saveStep3Result(pool: Pool, migrationId: string, result: a
       "UPDATE public.migrations SET scope_config = jsonb_set(COALESCE(scope_config, '{}'::jsonb), '{sourceScopeName}', to_jsonb($1::text)) WHERE id = $2",
       [result.scope.name, migrationId]
     );
+    await updateMigrationContext(pool, migrationId, {
+      source_scope_name: result.scope.name,
+      source_scope_id: result.scope.id || null
+    });
   }
 
   // 3. Save entities (Inventory)
   if (result.entities && Array.isArray(result.entities)) {
+    let totalItems = 0;
     for (const entity of result.entities) {
+      totalItems += (entity.count || 0);
       await pool.query(
         `INSERT INTO public.step_3_results (migration_id, entity_name, count, complexity, error_message, raw_json)
          VALUES ($1, $2, $3, $4, $5, $6)
@@ -73,6 +106,10 @@ export async function saveStep3Result(pool: Pool, migrationId: string, result: a
         [migrationId, entity.name, entity.count || 0, entity.complexity, entity.error, entity]
       );
     }
+    
+    await updateMigrationContext(pool, migrationId, {
+      source_total_items_estimated: totalItems
+    });
   }
 }
 
@@ -103,6 +140,15 @@ export async function saveStep4Result(pool: Pool, migrationId: string, result: a
       result
     ]
   );
+
+  // Update global memory
+  if (result.targetScope) {
+    await updateMigrationContext(pool, migrationId, {
+      target_scope_id: result.targetScope.id || null,
+      target_scope_name: result.targetScope.name || null,
+      target_scope_status: result.targetScope.status || null
+    });
+  }
 }
 
 export async function saveStep5Result(pool: Pool, migrationId: string, result: any) {

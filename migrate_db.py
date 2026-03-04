@@ -13,6 +13,12 @@ def migrate():
         )
         cur = conn.cursor()
         
+        print("Adding context column to migrations table...")
+        cur.execute("""
+        ALTER TABLE public.migrations
+        ADD COLUMN IF NOT EXISTS context jsonb NOT NULL DEFAULT '{}'::jsonb;
+        """)
+
         print("Creating mapping_chat_messages table...")
         cur.execute("""
         CREATE TABLE IF NOT EXISTS public.mapping_chat_messages (

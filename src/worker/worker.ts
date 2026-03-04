@@ -208,7 +208,7 @@ async function processJob(job: any) {
             return rows[0];
         },
         getMigrationDetails: async () => {
-            const { rows } = await pool.query('SELECT scope_config FROM migrations WHERE id = $1', [migrationId]);
+            const { rows } = await pool.query('SELECT scope_config, context FROM migrations WHERE id = $1', [migrationId]);
             return rows[0];
         }
       };
@@ -333,7 +333,7 @@ async function processJob(job: any) {
             return rows[0];
         },
         getMigrationDetails: async () => {
-            const { rows } = await pool.query('SELECT scope_config FROM migrations WHERE id = $1', [migrationId]);
+            const { rows } = await pool.query('SELECT scope_config, context FROM migrations WHERE id = $1', [migrationId]);
             return rows[0];
         }
       };
@@ -435,7 +435,7 @@ async function processJob(job: any) {
             return rows[0];
         },
         getMigrationDetails: async () => {
-            const { rows } = await pool.query('SELECT name, scope_config FROM migrations WHERE id = $1', [migrationId]);
+            const { rows } = await pool.query('SELECT name, scope_config, context FROM migrations WHERE id = $1', [migrationId]);
             return rows[0];
         }
       };
@@ -536,7 +536,7 @@ async function processJob(job: any) {
             return rows[0];
         },
         getMigrationDetails: async () => {
-            const { rows } = await pool.query('SELECT scope_config FROM migrations WHERE id = $1', [migrationId]);
+            const { rows } = await pool.query('SELECT scope_config, context FROM migrations WHERE id = $1', [migrationId]);
             return rows[0];
         }
       };
@@ -895,7 +895,7 @@ async function processJob(job: any) {
             return rows[0];
         },
         getMigrationDetails: async () => {
-            const { rows } = await pool.query('SELECT source_system, notes, scope_config FROM migrations WHERE id = $1', [migrationId]);
+            const { rows } = await pool.query('SELECT source_system, notes, scope_config, context FROM migrations WHERE id = $1', [migrationId]);
             return rows[0];
         },
         dbPool: pool
@@ -996,7 +996,7 @@ async function processJob(job: any) {
             return rows[0];
         },
         getMigrationDetails: async () => {
-            const { rows } = await pool.query('SELECT source_system, target_system FROM migrations WHERE id = $1', [migrationId]);
+            const { rows } = await pool.query('SELECT source_system, target_system, context FROM migrations WHERE id = $1', [migrationId]);
             return rows[0];
         },
         dbPool: pool
@@ -1253,7 +1253,7 @@ async function processJob(job: any) {
             return rows[0];
         },
         getMigrationDetails: async () => {
-            const { rows } = await pool.query('SELECT name, source_system, target_system, scope_config FROM migrations WHERE id = $1', [migrationId]);
+            const { rows } = await pool.query('SELECT name, source_system, target_system, scope_config, context FROM migrations WHERE id = $1', [migrationId]);
             return rows[0];
         },
         dbPool: pool
@@ -1350,7 +1350,7 @@ async function processJob(job: any) {
             return rows[0];
         },
         getMigrationDetails: async () => {
-            const { rows } = await pool.query('SELECT name, source_system, target_system, scope_config FROM migrations WHERE id = $1', [migrationId]);
+            const { rows } = await pool.query('SELECT name, source_system, target_system, scope_config, context FROM migrations WHERE id = $1', [migrationId]);
             return rows[0];
         },
         saveResult: async (res) => {
