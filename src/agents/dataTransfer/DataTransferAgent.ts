@@ -173,7 +173,12 @@ Antworte prägnant und strukturiert in Markdown.
                   // WICHTIG: Status der Migration auf 'completed' setzen, damit die UI die Buttons anzeigt
                   await dbPool.query('UPDATE migrations SET step_status = $1, status = $2 WHERE id = $3', ['completed', 'processing', migrationId]);
                   await dbPool.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
-                  return;
+                  return {
+                      success: true,
+                      isEarlyReturnForPlan: true,
+                      result: { status: 'planning_sent', plan: planContent },
+                      isLogicalFailure: false
+                  };
               }
           } catch (err) {
               console.error("[Worker] Error generating plan:", err);
@@ -1081,10 +1086,11 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
       } finally {
         finishClientTransfer.release();
       }
-      return;
-
-    
-    
-    return { success: !isLogicalFailure, result, isLogicalFailure };
+      
+      return { 
+          success: !isLogicalFailure, 
+          result, 
+          isLogicalFailure 
+      };
   }
 }
