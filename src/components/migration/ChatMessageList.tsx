@@ -22,7 +22,7 @@ const ThinkingIndicator = ({ stepTitle, role = "agent" }: { stepTitle?: string, 
     </div>
     <div className="flex flex-col gap-1.5">
       <span className="text-sm text-muted-foreground font-medium">
-        {role === "consultant" ? "Consultant denkt nach..." : (stepTitle ? `Analysiere ${stepTitle}...` : "Agent denkt nach...")}
+        {role === "consultant" ? "Celion denkt nach..." : (stepTitle ? `Analysiere ${stepTitle}...` : "Celion arbeitet...")}
       </span>
       <div className="flex gap-1.5">
         <div 
@@ -58,7 +58,7 @@ const ChatMessageList = ({
     completedAnimations,
     onAnimationComplete
   } = useMessageQueue(messages, {
-    delayMs: 400,
+    delayMs: 100,
   });
 
   const handleAction = (action: string) => {

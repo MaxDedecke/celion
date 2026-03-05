@@ -26,84 +26,99 @@ const MigrationChatCard = ({
   onOpenAgentOutput
 }: MigrationChatCardProps) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
-  const bottomSpacerRef = useRef<HTMLDivElement>(null); // New Ref for auto-scroll
+  const bottomSpacerRef = useRef<HTMLDivElement>(null);
   const [isNearBottom, setIsNearBottom] = useState(true);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [migrationData, setMigrationData] = useState<Migration>(migration);
   const [mappingRules, setMappingRules] = useState<any[]>([]);
 
-  // Track message count and step to avoid stale closures in polling
   const prevMessageCountRef = useRef(0);
   const currentStepRef = useRef(migration.current_step || 0);
+  const initialScrollDone = useRef<string | null>(null);
 
   useEffect(() => {
     currentStepRef.current = migration.current_step || 0;
     setMigrationData(migration);
   }, [migration]);
 
+  const fetchChatMessages = async (isActive: boolean) => {
+    try {
+      const response = await fetch(`/api/migrations/${migration.id}/chat?t=${Date.now()}`);
+      if (!isActive) return;
+      
+      if (response.status === 404) return;
+      if (!response.ok) return;
+
+      const data = await response.json();
+      setChatMessages(prev => {
+        const optimisticMessages = prev.filter(m => m.id.startsWith('optimistic-'));
+        const filteredOptimistic = optimisticMessages.filter(opt => 
+          !data.some((real: ChatMessage) => real.role === opt.role && real.content === opt.content)
+        );
+        return [...data, ...filteredOptimistic];
+      });
+    } catch (error) {
+      console.error("Failed to fetch chat messages:", error);
+    }
+  };
+
+  const fetchMigration = async (isActive: boolean) => {
+    try {
+      const response = await fetch(`/api/migrations/${migration.id}?t=${Date.now()}`);
+      if (!isActive) return;
+      
+      if (response.status === 404) return;
+      if (!response.ok) return;
+
+      const data = await response.json();
+      setMigrationData(data);
+    } catch (error) {
+      console.error("Failed to fetch migration data:", error);
+    }
+  };
+
+  const fetchMappingRules = async (isActive: boolean) => {
+     if (currentStepRef.current >= 5) {
+        try {
+          const response = await fetch(`/api/migrations/${migration.id}/mapping-rules`);
+          if (!isActive) return;
+          
+          if (response.status === 404) return;
+          if (!response.ok) return;
+
+          const data = await response.json();
+          setMappingRules(data);
+        } catch (error) {
+          console.error("Failed to fetch mapping rules:", error);
+        }
+     }
+  };
+
   useEffect(() => {
     let isActive = true;
     
-    // Reset state ONLY when migration ID changes
     setChatMessages([]);
     setMappingRules([]);
     prevMessageCountRef.current = 0;
     initialScrollDone.current = null;
 
-    const fetchChatMessages = async () => {
-      try {
-        const response = await fetch(`/api/migrations/${migration.id}/chat?t=${Date.now()}`);
-        if (!isActive) return;
-        
-        if (response.status === 404) return;
-        if (!response.ok) return;
-
-        const data = await response.json();
-        setChatMessages(data);
-      } catch (error) {
-        console.error("Failed to fetch chat messages:", error);
-      }
-    };
-
-    const fetchMigration = async () => {
-// ... (already updated above)
-    };
-
-    const fetchMappingRules = async () => {
-       // Only fetch if we are close to step 6
-       if (currentStepRef.current >= 5) {
-          try {
-            const response = await fetch(`/api/migrations/${migration.id}/mapping-rules`);
-            if (!isActive) return;
-            
-            if (response.status === 404) return;
-            if (!response.ok) return;
-
-            const data = await response.json();
-            setMappingRules(data);
-          } catch (error) {
-            console.error("Failed to fetch mapping rules:", error);
-          }
-       }
-    };
-
-    fetchChatMessages();
-    fetchMigration();
-    fetchMappingRules();
+    fetchChatMessages(isActive);
+    fetchMigration(isActive);
+    fetchMappingRules(isActive);
 
     const interval = setInterval(() => {
       if (isActive) {
-        fetchChatMessages();
-        fetchMigration();
-        fetchMappingRules();
+        fetchChatMessages(isActive);
+        fetchMigration(isActive);
+        fetchMappingRules(isActive);
       }
-    }, 3000); // Poll every 3 seconds
+    }, 2000); 
 
     return () => {
       isActive = false;
       clearInterval(interval);
     };
-  }, [migration.id]); // Removed migrationData.current_step dependency
+  }, [migration.id]);
 
   const totalSteps = 10;
   const rawStep = migrationData.current_step || 0;
@@ -111,19 +126,15 @@ const MigrationChatCard = ({
   const hasCurrentStepFailed = migrationData.step_status === 'failed';
   const isConsultantThinking = migrationData.consultant_status === 'thinking';
 
-  // Wenn Schritt X läuft oder fehlgeschlagen ist, sind erst X-1 Schritte komplett fertig
   const completedCount = (isStepRunning || hasCurrentStepFailed) ? Math.max(0, rawStep - 1) : rawStep;
-  const overallProgress = (completedCount / totalSteps) * 100;
   const currentStepNumber = completedCount + 1 > totalSteps ? totalSteps : completedCount + 1;
   const activeStep = AGENT_WORKFLOW_STEPS[currentStepNumber - 1];
   const runningStepIndex = Math.max(0, (rawStep || 1) - 1);
   const runningStep = AGENT_WORKFLOW_STEPS[runningStepIndex];
-  const currentStepTitle = activeStep?.title || (completedCount === totalSteps ? "Abgeschlossen" : "Bereit");
 
   const handleScroll = () => {
     if (scrollContainerRef.current) {
       const { scrollTop, scrollHeight, clientHeight } = scrollContainerRef.current;
-      // Increased threshold to 150px to be more forgiving
       setIsNearBottom(scrollHeight - scrollTop - clientHeight < 150);
     }
   };
@@ -136,75 +147,55 @@ const MigrationChatCard = ({
     }
   };
 
-  // Initial scroll to bottom: Instant jump
-  const initialScrollDone = useRef<string | null>(null);
-  
   useEffect(() => {
     if (chatMessages.length > 0 && initialScrollDone.current !== migration.id) {
-      // Small timeout to allow render
       const timeoutId = setTimeout(() => {
-        scrollToBottom('auto'); // Instant scroll
+        scrollToBottom('auto');
         initialScrollDone.current = migration.id;
-        prevMessageCountRef.current = chatMessages.length; // Sync count
+        prevMessageCountRef.current = chatMessages.length;
       }, 100);
       return () => clearTimeout(timeoutId);
     }
   }, [migration.id, chatMessages.length > 0]);
 
-  // Auto-scroll on NEW messages
   useEffect(() => {
     const newMessageCount = chatMessages.length;
-    
-    // Check if new messages arrived
     if (newMessageCount > prevMessageCountRef.current) {
-        // ONLY scroll to bottom if user is already near bottom
-        // This prevents the "once jump" when clicking action buttons if user scrolled up
         if (isNearBottom) {
           setTimeout(() => scrollToBottom('smooth'), 100);
         }
     }
-    
     prevMessageCountRef.current = newMessageCount;
   }, [chatMessages.length, isNearBottom]);
 
-
-  // Continuous scroll while running (if user hasn't scrolled away)
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval> | null = null;
-    
     if (isStepRunning || isConsultantThinking) {
       intervalId = setInterval(() => {
         if (isNearBottom) {
           scrollToBottom('smooth');
         }
-      }, 500); // Decreased frequency slightly to reduce jitter
+      }, 500);
     }
-    
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
   }, [isStepRunning, isConsultantThinking, isNearBottom]);
 
   const lastActionMessage = useMemo(() => {
-    // Helper to find action JSON in a message
     const findActionJson = (content: string) => {
       try {
-        // 1. Try markdown code block
         const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
         if (codeBlockMatch) {
           const json = JSON.parse(codeBlockMatch[1]);
           if (json.type === 'action') return json;
         }
-
-        // 2. Try braces
         const firstBrace = content.indexOf("{");
         const lastBrace = content.lastIndexOf("}");
         if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
           const json = JSON.parse(content.substring(firstBrace, lastBrace + 1));
           if (json.type === 'action') return json;
         }
-
-        // 3. Try full
         const json = JSON.parse(content);
         if (json.type === 'action') return json;
       } catch (e) {
@@ -220,11 +211,8 @@ const MigrationChatCard = ({
   const actionButtons = useMemo(() => {
     if (isStepRunning || isConsultantThinking) return null;
 
-    // ... (Step 6/7 logic remains same)
-
     if (lastActionMessage) {
       try {
-        // Use same extraction logic
         const content = lastActionMessage.content;
         let jsonContent: any = null;
         
@@ -242,12 +230,26 @@ const MigrationChatCard = ({
         }
 
         const actions = jsonContent.actions || (jsonContent.action ? [jsonContent] : []);
+        const messageIndex = chatMessages.findIndex(m => m.id === lastActionMessage.id);
+        if (messageIndex !== -1) {
+          const subsequentMessages = chatMessages.slice(messageIndex + 1);
+          const isFulfilled = subsequentMessages.some(m => {
+            if (m.role !== "user") return false;
+            return actions.some((a: any) => {
+              if (typeof a.action === 'string' && a.action.startsWith('send_chat:')) {
+                const expectedText = a.action.substring(10).trim();
+                return m.content.trim() === expectedText;
+              }
+              return false;
+            });
+          });
+          if (isFulfilled) return null;
+        }
         
         return actions.map((action: any, idx: number) => {
           if (action.action === 'continue' && rawStep !== undefined && lastActionMessage.step_number !== undefined && lastActionMessage.step_number < rawStep) {
             return null;
           }
-          
           return (
             <Button 
               key={idx}
@@ -271,7 +273,6 @@ const MigrationChatCard = ({
 
     if (migrationData.status !== "completed") {
       const isStartButton = migrationData.status === "not_started";
-      
       const isOnboardingIncomplete = rawStep === 0 && (
         !migrationData.sourceSystem || 
         migrationData.sourceSystem === 'TBD' || 
@@ -279,8 +280,6 @@ const MigrationChatCard = ({
         migrationData.targetSystem === 'TBD'
       );
       
-      // We do not want to show the button if the consultant is actively thinking,
-      // or if onboarding is still incomplete (systems are TBD).
       if (isConsultantThinking || isOnboardingIncomplete) {
         return null;
       }
@@ -303,7 +302,6 @@ const MigrationChatCard = ({
             <ArrowRight className="h-3.5 w-3.5" />
           </Button>
           
-          {/* Permanent Retry Button for the current technical step (if already started once) */}
           {!isStartButton && rawStep > 0 && (
             <Button 
               onClick={() => onAction && onAction(`retry:${rawStep}`)} 
@@ -318,14 +316,30 @@ const MigrationChatCard = ({
         </div>
       );
     }
-
     return null;
-  }, [isStepRunning, isConsultantThinking, lastActionMessage, migrationData.status, rawStep, onAction, onContinue, hasCurrentStepFailed, runningStep, currentStepNumber, activeStep, mappingRules.length]);
+  }, [isStepRunning, isConsultantThinking, lastActionMessage, migrationData.status, rawStep, onAction, onContinue, hasCurrentStepFailed, runningStep, currentStepNumber, activeStep, mappingRules.length, chatMessages]);
 
-  const handleSendMessage = (message: string) => {
-    onSendMessage(message);
-    // Force scroll immediately
+  const handleSendMessage = async (message: string) => {
+    const trimmed = message.trim();
+    if (!trimmed) return;
+
+    const optimisticMsg: ChatMessage = {
+      id: `optimistic-${Date.now()}`,
+      role: 'user',
+      content: trimmed,
+      created_at: new Date().toISOString(),
+      migration_id: migration.id
+    };
+    
+    setChatMessages(prev => [...prev, optimisticMsg]);
     setTimeout(() => scrollToBottom('smooth'), 50);
+
+    onSendMessage(trimmed);
+    
+    setTimeout(() => {
+      fetchChatMessages(true);
+      fetchMigration(true);
+    }, 300);
   };
 
   return (
@@ -345,7 +359,6 @@ const MigrationChatCard = ({
               currentStepTitle={runningStep?.title}
               currentStep={rawStep}
             />
-            {/* Spacer div for auto-scrolling */}
             <div ref={bottomSpacerRef} className="h-2" />
           </div>
           
@@ -371,7 +384,7 @@ const MigrationChatCard = ({
           <ChatInput 
             disabled={isStepRunning || isConsultantThinking} 
             onSend={handleSendMessage} 
-            placeholder={isStepRunning ? "Agent arbeitet..." : isConsultantThinking ? "Consultant denkt nach..." : "Nächsten Schritt starten oder Befehl eingeben..."} 
+            placeholder={isStepRunning ? "Celion arbeitet..." : isConsultantThinking ? "Celion denkt nach..." : "Nächsten Schritt starten oder Befehl eingeben..."} 
           />
         </div>
       </CardContent>

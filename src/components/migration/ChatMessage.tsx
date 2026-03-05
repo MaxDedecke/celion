@@ -319,6 +319,8 @@ const ChatMessage = ({ message, allMessages, onOpenAgentOutput, onAction, enable
   const [selectedDropdownValue, setSelectedDropdownValue] = useState<string>("");
   const [isSubmitted, setIsSubmitted] = useState(false);
   const [localSubmittedText, setLocalSubmittedText] = useState<string>("");
+  const [isActionSubmitted, setIsActionSubmitted] = useState(false);
+  const [localActionText, setLocalActionText] = useState<string>("");
   const { toast } = useToast();
 
   const { jsonContent, textContent } = useMemo(() => {
@@ -364,31 +366,50 @@ const ChatMessage = ({ message, allMessages, onOpenAgentOutput, onAction, enable
   }, [message.content]);
 
   const { initialSubmitted, initialSelectedValue, historySubmittedText } = useMemo(() => {
-    if (!jsonContent || jsonContent.type !== "datasource_dropdown" || !allMessages) {
+    if (!jsonContent || !allMessages) {
       return { initialSubmitted: false, initialSelectedValue: "", historySubmittedText: "" };
     }
-    const mode = jsonContent.mode === "source" ? "Quelle" : "Ziel";
-    
-    const messageIndex = allMessages.findIndex(m => m.id === message.id);
-    if (messageIndex !== -1) {
-      const subsequentMessages = allMessages.slice(messageIndex + 1);
-      const selectionMessage = subsequentMessages.find(m => m.role === "user" && (m.content.includes(`Ich wähle für ${mode}`) || m.content.includes(`neue Datenquelle für ${mode}`)));
-      
-      if (selectionMessage) {
-        const idMatch = selectionMessage.content.match(/\[ID:([^\]]+)\]/);
-        const val = idMatch ? idMatch[1] : (selectionMessage.content.includes("neue") ? "new" : "");
+
+    if (jsonContent.type === "datasource_dropdown") {
+      const mode = jsonContent.mode === "source" ? "Quelle" : "Ziel";
+      const messageIndex = allMessages.findIndex(m => m.id === message.id);
+      if (messageIndex !== -1) {
+        const subsequentMessages = allMessages.slice(messageIndex + 1);
+        const selectionMessage = subsequentMessages.find(m => m.role === "user" && (m.content.includes(`Ich wähle für ${mode}`) || m.content.includes(`neue Datenquelle für ${mode}`)));
         
-        let text = "";
-        if (val === "new") {
-          text = `Neue Datenquelle anlegen`;
-        } else {
-          const labelMatch = selectionMessage.content.match(/die Datenquelle '([^']+)'/);
-          text = labelMatch ? labelMatch[1] : val;
+        if (selectionMessage) {
+          const idMatch = selectionMessage.content.match(/\[ID:([^\]]+)\]/);
+          const val = idMatch ? idMatch[1] : (selectionMessage.content.includes("neue") ? "new" : "");
+          
+          let text = "";
+          if (val === "new") {
+            text = `Neue Datenquelle anlegen`;
+          } else {
+            const labelMatch = selectionMessage.content.match(/die Datenquelle '([^']+)'/);
+            text = labelMatch ? labelMatch[1] : val;
+          }
+          
+          return { initialSubmitted: true, initialSelectedValue: val, historySubmittedText: text };
         }
+      }
+    } else if (jsonContent.type === "scope_dropdown") {
+      const messageIndex = allMessages.findIndex(m => m.id === message.id);
+      if (messageIndex !== -1) {
+        const subsequentMessages = allMessages.slice(messageIndex + 1);
+        const selectionMessage = subsequentMessages.find(m => m.role === "user" && m.content.includes("Ich wähle den Bereich"));
         
-        return { initialSubmitted: true, initialSelectedValue: val, historySubmittedText: text };
+        if (selectionMessage) {
+          const idMatch = selectionMessage.content.match(/\[ID:([^\]]+)\]/);
+          const val = idMatch ? idMatch[1] : "";
+          
+          const labelMatch = selectionMessage.content.match(/den Bereich '([^']+)'/);
+          const text = labelMatch ? labelMatch[1] : val;
+          
+          return { initialSubmitted: true, initialSelectedValue: val, historySubmittedText: text };
+        }
       }
     }
+
     return { initialSubmitted: false, initialSelectedValue: "", historySubmittedText: "" };
   }, [jsonContent, allMessages, message.id]);
 
@@ -401,6 +422,50 @@ const ChatMessage = ({ message, allMessages, onOpenAgentOutput, onAction, enable
 
   const actualSubmitted = isSubmitted || initialSubmitted;
   const actualText = localSubmittedText || historySubmittedText;
+
+  const { initialActionSubmitted, historyActionText } = useMemo(() => {
+    if (!jsonContent || jsonContent.type !== "action" || !allMessages) {
+      return { initialActionSubmitted: false, historyActionText: "" };
+    }
+    
+    const actions = jsonContent.actions || (jsonContent.action ? [jsonContent] : []);
+    const sendChatActions = actions.filter((a: any) => typeof a.action === 'string' && a.action.startsWith('send_chat:'));
+    
+    if (sendChatActions.length === 0) {
+      return { initialActionSubmitted: false, historyActionText: "" };
+    }
+
+    const messageIndex = allMessages.findIndex(m => m.id === message.id);
+    if (messageIndex !== -1) {
+      const subsequentMessages = allMessages.slice(messageIndex + 1);
+      
+      const selectionMessage = subsequentMessages.find(m => {
+        if (m.role !== "user") return false;
+        return sendChatActions.some((a: any) => {
+          const expectedText = a.action.substring(10).trim();
+          return m.content.trim() === expectedText;
+        });
+      });
+      
+      if (selectionMessage) {
+        const matchedAction = sendChatActions.find((a: any) => {
+           const expectedText = a.action.substring(10).trim();
+           return selectionMessage.content.trim() === expectedText;
+        });
+        return { initialActionSubmitted: true, historyActionText: matchedAction?.label || selectionMessage.content };
+      }
+    }
+    return { initialActionSubmitted: false, historyActionText: "" };
+  }, [jsonContent, allMessages, message.id]);
+
+  useEffect(() => {
+    if (initialActionSubmitted && !isActionSubmitted) {
+      setIsActionSubmitted(true);
+    }
+  }, [initialActionSubmitted]);
+
+  const actualActionSubmitted = isActionSubmitted || initialActionSubmitted;
+  const actualActionText = localActionText || historyActionText;
 
   const handleCopyJson = () => {
     if (jsonContent) {
@@ -549,26 +614,43 @@ const ChatMessage = ({ message, allMessages, onOpenAgentOutput, onAction, enable
                 ) : jsonContent.entities ? (
                   <DiscoveryReport data={jsonContent} />
                 ) : jsonContent.type === "action" ? (
-                  <div className="flex w-full justify-center gap-3 py-2 animate-fade-in flex-wrap">
-                    {(jsonContent.actions || (jsonContent.action ? [jsonContent] : [])).map((action: any, idx: number) => {
-                      if (action.action === "continue" && currentStep !== undefined && message.step_number !== undefined && message.step_number < currentStep) return null;
-                      return (
-                        <Button 
-                          key={idx}
-                          onClick={() => onAction && onAction(action.action === "retry" ? `retry:${action.stepNumber}` : action.action)} 
-                          variant={action.variant || "outline"} 
-                          size="sm"
-                          className={cn(
-                            "gap-2",
-                            action.variant === "primary" ? "bg-primary text-primary-foreground hover:bg-primary/90" : "border-primary/20 hover:bg-primary/5 text-primary"
-                          )}
-                        >
-                          {action.label}
-                          {action.action === "continue" ? <ArrowRight className="h-4 w-4" /> : <Play className="h-3 w-3" />}
-                        </Button>
-                      );
-                    })}
-                  </div>
+                  currentStep === 0 ? null : (
+                    <div className="flex w-full justify-center gap-3 py-2 animate-fade-in flex-wrap">
+                      {actualActionSubmitted ? (
+                        <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-md text-emerald-700 w-full justify-center">
+                          <CheckCircle2 className="h-5 w-5 shrink-0" />
+                          <span className="font-medium text-sm">
+                            {actualActionText || "Aktion bestätigt"}
+                          </span>
+                        </div>
+                      ) : (
+                        (jsonContent.actions || (jsonContent.action ? [jsonContent] : [])).map((action: any, idx: number) => {
+                          if (action.action === "continue" && currentStep !== undefined && message.step_number !== undefined && message.step_number < currentStep) return null;
+                          return (
+                            <Button 
+                              key={idx}
+                              onClick={() => {
+                                if (typeof action.action === 'string' && action.action.startsWith('send_chat:')) {
+                                  setIsActionSubmitted(true);
+                                  setLocalActionText(action.label);
+                                }
+                                if (onAction) onAction(action.action === "retry" ? `retry:${action.stepNumber}` : action.action);
+                              }} 
+                              variant={action.variant || "outline"} 
+                              size="sm"
+                              className={cn(
+                                "gap-2",
+                                action.variant === "primary" ? "bg-primary text-primary-foreground hover:bg-primary/90" : "border-primary/20 hover:bg-primary/5 text-primary"
+                              )}
+                            >
+                              {action.label}
+                              {action.action === "continue" ? <ArrowRight className="h-4 w-4" /> : <Play className="h-3 w-3" />}
+                            </Button>
+                          );
+                        })
+                      )}
+                    </div>
+                  )
                 ) : jsonContent.type === "datasource_dropdown" ? (
                   <div className="flex w-full justify-start py-2 animate-fade-in">
                     <div className="flex flex-col gap-3 p-4 rounded-xl border border-primary/20 bg-primary/5 w-full">
@@ -624,6 +706,62 @@ const ChatMessage = ({ message, allMessages, onOpenAgentOutput, onAction, enable
                                   if (val === "new") onAction(`send_chat:Ich möchte eine neue Datenquelle für ${mode} anlegen.`);
                                   // We include a hidden token block so the backend gets the ID, but the visible text is cleaner
                                   else onAction(`send_chat:Ich wähle für ${mode} die Datenquelle '${label}'.[ID:${val}]`);
+                                }
+                              }}
+                            >
+                              Auswahl bestätigen
+                            </Button>
+                          )}
+                        </>
+                      )}
+                    </div>
+                  </div>
+                ) : jsonContent.type === "scope_dropdown" ? (
+                  <div className="flex w-full justify-start py-2 animate-fade-in">
+                    <div className="flex flex-col gap-3 p-4 rounded-xl border border-primary/20 bg-primary/5 w-full">
+                      <label className="text-sm font-medium text-foreground">{jsonContent.label || "Bitte wähle einen Bereich..."}</label>
+                      {actualSubmitted ? (
+                        <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-md text-emerald-700 w-full sm:w-[350px]">
+                          <CheckCircle2 className="h-5 w-5 shrink-0" />
+                          <span className="font-medium text-sm">
+                            {actualText || "Auswahl bestätigt"}
+                          </span>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <Select 
+                              value={selectedDropdownValue}
+                              disabled={false}
+                              onValueChange={(val) => {
+                                setSelectedDropdownValue(val);
+                              }}>
+                              <SelectTrigger className="w-full sm:w-[350px] bg-background">
+                                <SelectValue placeholder="Bitte wählen..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {jsonContent.options?.map((o: any) => (
+                                  <SelectItem key={o.id} value={o.id}>
+                                    {o.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          {selectedDropdownValue && (
+                            <Button 
+                              size="sm" 
+                              className="w-full sm:w-[350px] bg-primary text-primary-foreground hover:bg-primary/90 mt-1"
+                              onClick={() => {
+                                setIsSubmitted(true);
+                                const val = selectedDropdownValue;
+                                const selectedOption = jsonContent.options?.find((o: any) => o.id === val);
+                                const label = selectedOption ? selectedOption.label : val;
+                                
+                                setLocalSubmittedText(label);
+
+                                if (onAction) {
+                                  onAction(`send_chat:Ich wähle den Bereich '${label}'.[ID:${val}]`);
                                 }
                               }}
                             >

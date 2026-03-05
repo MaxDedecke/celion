@@ -36,7 +36,7 @@ const ChatInput = ({ disabled, onSend, placeholder }: ChatInputProps) => {
   }, [message]);
 
   const effectivePlaceholder = disabled
-    ? "Agent arbeitet..."
+    ? "Celion arbeitet..."
     : placeholder || "Nächsten Schritt starten oder Befehl eingeben...";
 
   return (
