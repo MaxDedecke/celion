@@ -306,6 +306,7 @@ export interface ChatMessage {
 
 interface ChatMessageProps {
   message: ChatMessage;
+  allMessages?: ChatMessage[];
   onOpenAgentOutput?: (stepId: string) => void;
   onAction?: (action: string) => void;
   enableTypewriter?: boolean;
@@ -313,10 +314,11 @@ interface ChatMessageProps {
   currentStep?: number;
 }
 
-const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = false, onTypewriterComplete, currentStep }: ChatMessageProps) => {
+const ChatMessage = ({ message, allMessages, onOpenAgentOutput, onAction, enableTypewriter = false, onTypewriterComplete, currentStep }: ChatMessageProps) => {
   const [showJsonDialog, setShowJsonDialog] = useState(false);
   const [selectedDropdownValue, setSelectedDropdownValue] = useState<string>("");
   const [isSubmitted, setIsSubmitted] = useState(false);
+  const [localSubmittedText, setLocalSubmittedText] = useState<string>("");
   const { toast } = useToast();
 
   const { jsonContent, textContent } = useMemo(() => {
@@ -360,6 +362,45 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
 
     return { jsonContent: null, textContent: content };
   }, [message.content]);
+
+  const { initialSubmitted, initialSelectedValue, historySubmittedText } = useMemo(() => {
+    if (!jsonContent || jsonContent.type !== "datasource_dropdown" || !allMessages) {
+      return { initialSubmitted: false, initialSelectedValue: "", historySubmittedText: "" };
+    }
+    const mode = jsonContent.mode === "source" ? "Quelle" : "Ziel";
+    
+    const messageIndex = allMessages.findIndex(m => m.id === message.id);
+    if (messageIndex !== -1) {
+      const subsequentMessages = allMessages.slice(messageIndex + 1);
+      const selectionMessage = subsequentMessages.find(m => m.role === "user" && (m.content.includes(`Ich wähle für ${mode}`) || m.content.includes(`neue Datenquelle für ${mode}`)));
+      
+      if (selectionMessage) {
+        const idMatch = selectionMessage.content.match(/\[ID:([^\]]+)\]/);
+        const val = idMatch ? idMatch[1] : (selectionMessage.content.includes("neue") ? "new" : "");
+        
+        let text = "";
+        if (val === "new") {
+          text = `Neue Datenquelle anlegen`;
+        } else {
+          const labelMatch = selectionMessage.content.match(/die Datenquelle '([^']+)'/);
+          text = labelMatch ? labelMatch[1] : val;
+        }
+        
+        return { initialSubmitted: true, initialSelectedValue: val, historySubmittedText: text };
+      }
+    }
+    return { initialSubmitted: false, initialSelectedValue: "", historySubmittedText: "" };
+  }, [jsonContent, allMessages, message.id]);
+
+  useEffect(() => {
+    if (initialSubmitted && !isSubmitted) {
+      setIsSubmitted(true);
+      setSelectedDropdownValue(initialSelectedValue);
+    }
+  }, [initialSubmitted]);
+
+  const actualSubmitted = isSubmitted || initialSubmitted;
+  const actualText = localSubmittedText || historySubmittedText;
 
   const handleCopyJson = () => {
     if (jsonContent) {
@@ -532,45 +573,64 @@ const ChatMessage = ({ message, onOpenAgentOutput, onAction, enableTypewriter = 
                   <div className="flex w-full justify-start py-2 animate-fade-in">
                     <div className="flex flex-col gap-3 p-4 rounded-xl border border-primary/20 bg-primary/5 w-full">
                       <label className="text-sm font-medium text-foreground">{jsonContent.label}</label>
-                      <div className="flex items-center gap-2">
-                        <Select 
-                          value={selectedDropdownValue}
-                          disabled={isSubmitted}
-                          onValueChange={(val) => {
-                            setSelectedDropdownValue(val);
-                          }}>
-                          <SelectTrigger className="w-full sm:w-[350px] bg-background">
-                            <SelectValue placeholder="Bitte wählen..." />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {jsonContent.options?.map((o: any) => (
-                              <SelectItem key={o.id} value={o.id} className={o.id === "new" ? "font-semibold text-primary" : ""}>
-                                {o.label}
-                              </SelectItem>
-                            ))}
-                          </SelectContent>
-                        </Select>
-                        {isSubmitted && <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0" />}
-                      </div>
-                      {selectedDropdownValue && !isSubmitted && (
-                        <Button 
-                          size="sm" 
-                          className="w-full sm:w-[350px] bg-primary text-primary-foreground hover:bg-primary/90 mt-1"
-                          onClick={() => {
-                            setIsSubmitted(true);
-                            const val = selectedDropdownValue;
-                            const selectedOption = jsonContent.options?.find((o: any) => o.id === val);
-                            const label = selectedOption ? selectedOption.label.split(' - ')[0] : val; // Clean up label to exclude URL
-                            const mode = jsonContent.mode === "source" ? "Quelle" : "Ziel";
-                            if (onAction) {
-                              if (val === "new") onAction(`send_chat:Ich möchte eine neue Datenquelle für ${mode} anlegen.`);
-                              // We include a hidden token block so the backend gets the ID, but the visible text is cleaner
-                              else onAction(`send_chat:Ich wähle für ${mode} die Datenquelle '${label}'.[ID:${val}]`);
-                            }
-                          }}
-                        >
-                          Auswahl bestätigen
-                        </Button>
+                      {actualSubmitted ? (
+                        <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-md text-emerald-700 w-full sm:w-[350px]">
+                          <CheckCircle2 className="h-5 w-5 shrink-0" />
+                          <span className="font-medium text-sm">
+                            {actualText || "Auswahl bestätigt"}
+                          </span>
+                        </div>
+                      ) : (
+                        <>
+                          <div className="flex items-center gap-2">
+                            <Select 
+                              value={selectedDropdownValue}
+                              disabled={false}
+                              onValueChange={(val) => {
+                                setSelectedDropdownValue(val);
+                              }}>
+                              <SelectTrigger className="w-full sm:w-[350px] bg-background">
+                                <SelectValue placeholder="Bitte wählen..." />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {jsonContent.options?.map((o: any) => (
+                                  <SelectItem key={o.id} value={o.id} className={o.id === "new" ? "font-semibold text-primary" : ""}>
+                                    {o.label}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                          {selectedDropdownValue && (
+                            <Button 
+                              size="sm" 
+                              className="w-full sm:w-[350px] bg-primary text-primary-foreground hover:bg-primary/90 mt-1"
+                              onClick={() => {
+                                setIsSubmitted(true);
+                                const val = selectedDropdownValue;
+                                const selectedOption = jsonContent.options?.find((o: any) => o.id === val);
+                                const label = selectedOption ? selectedOption.label.split(' - ')[0] : val; // Clean up label to exclude URL
+                                const mode = jsonContent.mode === "source" ? "Quelle" : "Ziel";
+                                
+                                let text = "";
+                                if (val === "new") {
+                                  text = `Neue Datenquelle anlegen`;
+                                } else {
+                                  text = label;
+                                }
+                                setLocalSubmittedText(text);
+
+                                if (onAction) {
+                                  if (val === "new") onAction(`send_chat:Ich möchte eine neue Datenquelle für ${mode} anlegen.`);
+                                  // We include a hidden token block so the backend gets the ID, but the visible text is cleaner
+                                  else onAction(`send_chat:Ich wähle für ${mode} die Datenquelle '${label}'.[ID:${val}]`);
+                                }
+                              }}
+                            >
+                              Auswahl bestätigen
+                            </Button>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>

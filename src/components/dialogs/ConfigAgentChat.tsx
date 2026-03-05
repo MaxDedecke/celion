@@ -160,7 +160,7 @@ Alles korrekt? (ja/nein)`;
          <ScrollArea className="h-full pr-4">
             <div className="space-y-4 pb-4">
               {messages.map((msg) => (
-                <ChatMessage key={msg.id} message={msg} />
+                <ChatMessage key={msg.id} message={msg} allMessages={messages} />
               ))}
             </div>
          </ScrollArea>

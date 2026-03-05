@@ -123,6 +123,7 @@ const ChatMessageList = ({
             >
               <ChatMessage 
                 message={message} 
+                allMessages={messages}
                 onOpenAgentOutput={onOpenAgentOutput}
                 onAction={handleAction}
                 enableTypewriter={shouldAnimate}
