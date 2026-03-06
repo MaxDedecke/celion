@@ -160,6 +160,7 @@ Sobald alle Schritte ausgeführt wurden, antworte mit folgendem JSON:
   "conflict": boolean,
   "conflictReason": "Kurze Erklärung falls conflict=true, andernfalls null",
   "targetScope": {
+    "name": "${targetName}",
     "status": "ready" | "conflict" | "unauthorized",
     "existingEntities": ["Liste von gefundenen Namen"]
   },
@@ -242,6 +243,10 @@ Sobald alle Schritte ausgeführt wurden, antworte mit folgendem JSON:
     if (!phase2Result) {
          return { success: false, error: "Ausführung fehlgeschlagen oder kein gültiges Ergebnis geliefert.", isLogicalFailure: true };
     }
+
+    // Ensure targetName is in result for caching
+    if (!phase2Result.targetScope) phase2Result.targetScope = {};
+    if (!phase2Result.targetScope.name) phase2Result.targetScope.name = targetName;
 
     if (phase2Result.targetScope?.status === 'unauthorized') {
       return {

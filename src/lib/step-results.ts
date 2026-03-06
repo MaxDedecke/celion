@@ -148,6 +148,13 @@ export async function saveStep4Result(pool: Pool, migrationId: string, result: a
 
   // Update global memory
   if (result.targetScope) {
+    if (result.targetScope.name) {
+        await pool.query(
+          "UPDATE public.migrations SET scope_config = jsonb_set(COALESCE(scope_config, '{}'::jsonb), '{targetName}', to_jsonb($1::text)) WHERE id = $2",
+          [result.targetScope.name, migrationId]
+        );
+    }
+
     await updateMigrationContext(pool, migrationId, {
       target_scope_id: result.targetScope.id || null,
       target_scope_name: result.targetScope.name || null,

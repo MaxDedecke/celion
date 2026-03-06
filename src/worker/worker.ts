@@ -197,11 +197,13 @@ async function processJob(job: any) {
   }
 
   // Start-Nachricht im Chat (Sofort sichtbar)
-  // MODIFIED: Only show for non-split agents or the first part of split agents (source)
-  // Skip for Conversational Agents
+  // MODIFIED: Agents now write their own headers like "Starte **Target Discovery**"
+  // so we skip the generic one here to avoid redundancy.
+  /*
   if (!conversationalAgents.includes(agentName) && (agentParams?.mode || 'source') === 'source') {
     await writeChatMessage(migrationId, 'assistant', `Starte Schritt ${currentStepNumber} ${stepTitle}...`, currentStepNumber);
   }
+  */
 
   console.log("Agent params:", JSON.stringify(agentParams, null, 2));
 
