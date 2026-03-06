@@ -564,7 +564,7 @@ const Dashboard = () => {
     const isStepRunning = currentMigration.step_status === 'running' || currentMigration.step_status === 'pending';
     const hasCurrentStepFailed = currentMigration.step_status === 'failed';
     const completedCount = (isStepRunning || hasCurrentStepFailed) ? Math.max(0, rawStep - 1) : rawStep;
-    return completedCount >= 5;
+    return completedCount >= 3;
   }, [currentMigration]);
 
   const isEnhancementEnabled = useMemo(() => {
@@ -573,24 +573,24 @@ const Dashboard = () => {
     const isStepRunning = currentMigration.step_status === 'running' || currentMigration.step_status === 'pending';
     const hasCurrentStepFailed = currentMigration.step_status === 'failed';
     const completedCount = (isStepRunning || hasCurrentStepFailed) ? Math.max(0, rawStep - 1) : rawStep;
-    return completedCount >= 6;
+    return completedCount >= 4;
   }, [currentMigration]);
 
-  const isStep6Verified = useMemo(() => {
+  const isStep4Verified = useMemo(() => {
     if (!currentMigration?.workflowState?.nodes) return false;
-    const step6Node = currentMigration.workflowState.nodes.find((n: any) => n.id === "mapping-verification" || n.id === "step-6");
-    if (!step6Node) return false;
+    const step4Node = currentMigration.workflowState.nodes.find((n: any) => n.id === "mapping-verification" || n.id === "step-4");
+    if (!step4Node) return false;
     
     // Check for success: status='done' AND no error
-    return step6Node.status === 'done' && step6Node.agentResult && !step6Node.agentResult.error;
+    return step4Node.status === 'done' && step4Node.agentResult && !step4Node.agentResult.error;
   }, [currentMigration]);
 
-  const isStep7Verified = useMemo(() => {
+  const isStep5Verified = useMemo(() => {
     if (!currentMigration?.workflowState?.nodes) return false;
-    const step7Node = currentMigration.workflowState.nodes.find((n: any) => n.id === "quality-enhancement" || n.id === "step-7");
-    if (!step7Node) return false;
+    const step5Node = currentMigration.workflowState.nodes.find((n: any) => n.id === "quality-enhancement" || n.id === "step-5");
+    if (!step5Node) return false;
     
-    return step7Node.status === 'done' && step7Node.agentResult && !step7Node.agentResult.error;
+    return step5Node.status === 'done' && step5Node.agentResult && !step5Node.agentResult.error;
   }, [currentMigration]);
 
   const configVerificationStatus = useMemo(() => {
@@ -754,12 +754,12 @@ const Dashboard = () => {
                     onClick={() => setActiveView('mapping')}
                     className="h-8 w-8 relative"
                     disabled={!isMappingEnabled}
-                    title={isMappingEnabled ? (isStep6Verified ? "Mappings - verifiziert" : "Mappings") : "Mapping erst nach Abschluss von Schritt 4 verfügbar"}
+                    title={isMappingEnabled ? (isStep4Verified ? "Mappings - verifiziert" : "Mappings") : "Mapping erst nach Abschluss von Schritt 3 verfügbar"}
                   >
                     <Network className={cn("h-4 w-4 transition-colors", activeView === 'mapping' && "text-primary")} />
                     {isMappingEnabled && (
                       <div className="absolute -top-1 -right-1 pointer-events-none bg-background rounded-full ring-2 ring-background">
-                         {isStep6Verified ? (
+                         {isStep4Verified ? (
                            <CheckCircle2 className="h-3 w-3 text-green-500 fill-background" /> 
                          ) : (
                            <XCircle className="h-3 w-3 text-red-500 fill-background" />
@@ -773,12 +773,12 @@ const Dashboard = () => {
                     onClick={() => setActiveView('enhancement')}
                     className="h-8 w-8 relative"
                     disabled={!isEnhancementEnabled}
-                    title={isEnhancementEnabled ? (isStep7Verified ? "Enhancements - abgeschlossen" : "Enhancements") : "Enhancements erst nach Mapping verfügbar"}
+                    title={isEnhancementEnabled ? (isStep5Verified ? "Enhancements - abgeschlossen" : "Enhancements") : "Enhancements erst nach Mapping verfügbar"}
                   >
                     <Zap className={cn("h-4 w-4 transition-colors", activeView === 'enhancement' && "text-primary")} />
                     {isEnhancementEnabled && (
                       <div className="absolute -top-1 -right-1 pointer-events-none bg-background rounded-full ring-2 ring-background">
-                         {isStep7Verified ? (
+                         {isStep5Verified ? (
                            <CheckCircle2 className="h-3 w-3 text-green-500 fill-background" /> 
                          ) : (
                            <Circle className="h-3 w-3 text-muted-foreground fill-background" />

@@ -224,7 +224,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
             <MappingPanel 
               migrationId={project.id} 
               onClose={() => onViewChange?.('chat')}
-              onTriggerStep={() => handleNextWorkflowStep(6)}
+              onTriggerStep={() => handleNextWorkflowStep(4)}
             />
           </div>
         )}
@@ -233,7 +233,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
             <EnhancementPanel 
               migrationId={project.id} 
               onClose={() => onViewChange?.('chat')}
-              onTriggerStep={() => handleNextWorkflowStep(7)}
+              onTriggerStep={() => handleNextWorkflowStep(5)}
             />
           </div>
         )}

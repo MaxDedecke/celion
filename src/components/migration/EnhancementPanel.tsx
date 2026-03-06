@@ -232,8 +232,8 @@ const EnhancementPanel = ({ migrationId, onClose, onTriggerStep }: EnhancementPa
     setShowSaveDialog(false);
     setIsSaving(true);
     try {
-      // Step 7 trigger
-      await fetch(`/api/migrations/${migrationId}/action/7`, { method: 'POST' });
+      // Step 5 trigger
+      await fetch(`/api/migrations/${migrationId}/action/5`, { method: 'POST' });
       toast.success("Enhancements erfolgreich gespeichert");
       onClose?.();
     } catch (error) {
@@ -525,7 +525,7 @@ const EnhancementPanel = ({ migrationId, onClose, onTriggerStep }: EnhancementPa
               <AlertDialogHeader>
                 <AlertDialogTitle>Konfiguration abschließen?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Die Enhancements werden gespeichert und die Datenqualität wird im nächsten Schritt (Step 7) optimiert.
+                  Die Enhancements werden gespeichert und die Datenqualität wird im nächsten Schritt (Step 5) optimiert.
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

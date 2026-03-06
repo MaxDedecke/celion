@@ -368,7 +368,7 @@ const MappingPanel = ({ migrationId, onClose, onTriggerStep }: MappingPanelProps
     setShowSaveDialog(false);
     setIsSaving(true);
     try {
-      await databaseClient.updateMigrationResult(migrationId, 6, { mappings });
+      await databaseClient.updateMigrationResult(migrationId, 4, { mappings });
       toast.success("Mapping erfolgreich gespeichert");
       onTriggerStep?.();
       onClose?.();
@@ -975,7 +975,7 @@ const MappingPanel = ({ migrationId, onClose, onTriggerStep }: MappingPanelProps
               <AlertDialogHeader>
                 <AlertDialogTitle>Mappings speichern & verifizieren?</AlertDialogTitle>
                 <AlertDialogDescription>
-                  Das Speichern der Mappings erfordert eine erneute Verifizierung (Schritt 6). Möchten Sie fortfahren?
+                  Das Speichern der Mappings erfordert eine erneute Verifizierung (Schritt 4). Möchten Sie fortfahren?
                 </AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>

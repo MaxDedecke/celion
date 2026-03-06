@@ -78,7 +78,7 @@ const MigrationChatCard = ({
   };
 
   const fetchMappingRules = async (isActive: boolean) => {
-     if (currentStepRef.current >= 5) {
+     if (currentStepRef.current >= 4) {
         try {
           const response = await fetch(`/api/migrations/${migration.id}/mapping-rules`);
           if (!isActive) return;
@@ -291,27 +291,56 @@ const MigrationChatCard = ({
           : `Weiter zu Schritt ${currentStepNumber}: ${activeStep?.title}`;
       
       return (
-        <div className="flex flex-wrap gap-2">
-          <Button 
-            onClick={() => onContinue()} 
-            variant="default" 
-            size="sm"
-            className="h-8 text-xs gap-1.5 animate-fade-in"
-          >
-            {label}
-            <ArrowRight className="h-3.5 w-3.5" />
-          </Button>
-          
-          {!isStartButton && rawStep > 0 && (
+        <div className="flex flex-col gap-2">
+          <div className="flex flex-wrap gap-2">
             <Button 
-              onClick={() => onAction && onAction(`retry:${rawStep}`)} 
-              variant="outline" 
+              onClick={() => onContinue()} 
+              variant="default" 
               size="sm"
-              className="h-8 text-xs gap-1.5 animate-fade-in border-primary/20 hover:bg-primary/5 text-primary"
+              className="h-8 text-xs gap-1.5 animate-fade-in"
             >
-              <Play className="h-3 w-3" />
-              Schritt {rawStep} zurücksetzen & neu starten
+              {label}
+              <ArrowRight className="h-3.5 w-3.5" />
             </Button>
+            
+            {!isStartButton && rawStep > 0 && (
+              <Button 
+                onClick={() => onAction && onAction(`retry:${rawStep}`)} 
+                variant="outline" 
+                size="sm"
+                className="h-8 text-xs gap-1.5 animate-fade-in border-primary/20 hover:bg-primary/5 text-primary"
+              >
+                <Play className="h-3 w-3" />
+                Schritt {rawStep} zurücksetzen & neu starten
+              </Button>
+            )}
+          </div>
+
+          {/* Quick Actions for Mapping Step (Step 4) */}
+          {currentStepNumber === 4 && !hasCurrentStepFailed && (
+            <div className="flex flex-wrap gap-2 mt-1">
+              <Button 
+                onClick={() => onAction && onAction('open-mapping-ui')} 
+                variant="outline" 
+                size="sm"
+                className="h-8 text-xs gap-1.5 animate-fade-in border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10 text-emerald-700"
+              >
+                <ArrowLeftRight className="h-3.5 w-3.5" />
+                Mapping Editor öffnen
+              </Button>
+              
+              {mappingRules.length === 0 && (
+                <Button 
+                  onClick={() => handleSendMessage("Bitte erstelle automatisch alle notwendigen Mappings für die aktuellen Objekte und ignoriere Felder, die nicht benötigt werden.")} 
+                  variant="outline" 
+                  size="sm"
+                  className="h-8 text-xs gap-1.5 animate-fade-in border-primary/30 bg-primary/5 hover:bg-primary/10 text-primary"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  KI-Mapping Vorschläge erstellen
+                </Button>
+              )}
+            </div>
           )}
         </div>
       );
