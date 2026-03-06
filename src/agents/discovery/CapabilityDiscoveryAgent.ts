@@ -32,22 +32,23 @@ export class CapabilityDiscoveryAgent extends AgentBase {
     const email = connector.username || "";
     const token = connector.api_key || "";
     const base64Credentials = btoa(`${email}:${token}`);
-    const endpointKeys = Object.keys(discoveryScheme?.discovery?.endpoints || {});
+    const availableEndpoints = discoveryScheme?.discovery?.endpoints || {};
+    const endpointKeys = Object.keys(availableEndpoints);
 
-    // --- Phase 1: Planning Agent ---
-    await this.context.writeChatMessage('assistant', 'Phase 1: Erstelle Discovery-Plan...', stepNumber);
+    // --- Phase 1: Planning & Verification Agent ---
+    await this.context.writeChatMessage('assistant', 'Phase 1: Erstelle und verifiziere Discovery-Plan...', stepNumber);
     
     const planningPrompt = `
 Du bist der Planning Agent für eine Datenmigration.
-Deine Aufgabe ist es, einen sequentiellen Ausführungsplan für API-Aufrufe zu erstellen, um alle relevanten Daten für den ausgewählten Scope zu ermitteln.
+Deine Aufgabe ist es, einen sequentiellen Ausführungsplan für API-Aufrufe zu erstellen, um ein vollständiges Inventar der Datenmengen (Counts für Tasks, Listen, Projekte etc.) für den ausgewählten Scope zu ermitteln.
 
 ### API BASE URL:
 ${discoveryScheme?.apiBaseUrl || "Nicht definiert"}
 
 ### SYSTEM SCHEMA (Verfügbare Endpunkte):
-${JSON.stringify(discoveryScheme?.discovery?.endpoints || {}, null, 2)}
+${JSON.stringify(availableEndpoints, null, 2)}
 
-### NAVIGATION GUIDE:
+### NAVIGATION GUIDE (WICHTIG - BITTE BEFOLGEN):
 ${JSON.stringify(discoveryScheme?.navigationGuide || "Kein Guide vorhanden.", null, 2)}
 
 ### SCOPE:
@@ -56,11 +57,12 @@ IDs: ${JSON.stringify(scopeIds)}
 
 ### AUFGABE:
 1. Analysiere die 'endpoints' und den 'navigationGuide'.
-2. Bestimme, welche Endpunkte aufgerufen werden müssen, um die Datenmengen (Counts) der verschiedenen Entitäten (z.B. Projekte, Tasks, Listen) zu ermitteln.
+2. Bestimme, welche Endpunkte aufgerufen werden müssen, um die Datenmengen der verschiedenen Entitäten zu ermitteln.
 3. Berücksichtige den 'Scope':
-   - Wenn IDs übergeben wurden, MÜSSEN diese im Plan verwendet werden, um API-Platzhalter (wie {space_id}, {project_id} etc.) zu füllen oder sie als Kontext für den nächsten Schritt zu definieren.
-   - Der Plan MUSS die logische Reihenfolge einhalten (z.B. erst Ordner abfragen, dann Listen in diesen Ordnern).
-4. Erstelle einen JSON-Plan mit einer Liste von Schritten.
+   - Nutze die vorhandenen IDs (${JSON.stringify(scopeIds)}), um API-Platzhalter zu füllen.
+   - Falls eine 'team_id' oder ähnliche Root-ID benötigt wird, plane zuerst einen Aufruf ein, um diese zu ermitteln (siehe Navigation Guide).
+   - Der Plan MUSS die logische Hierarchie einhalten.
+4. Erstelle einen Plan im JSON-Format.
 
 ### JSON OUTPUT FORMAT:
 {
@@ -70,30 +72,88 @@ IDs: ${JSON.stringify(scopeIds)}
       "step": number,
       "endpoint_key": "string (Schlüssel aus den endpoints)",
       "url_template": "string (Die URL mit Platzhaltern)",
-      "description": "string (Was macht dieser Schritt?)",
-      "requires_ids": ["string"] (Platzhalter-Namen, die für diese URL benötigt werden, z.B. "space_id")
+      "description": "string",
+      "requires_ids": ["string"]
     }
   ]
 }
     `;
 
-    const planningResponse = await this.provider.chat([
-        { role: "system", content: "Du bist ein API Planning Agent." },
-        { role: "user", content: planningPrompt }
-    ], undefined, { response_format: { type: "json_object" } });
+    const verificationPrompt = `
+Du bist der Plan-Verifizierer. Prüfe den folgenden Discovery-Plan gegen die verfügbaren Endpunkte und den Scope.
+Ziel ist es, sicherzustellen, dass alle RELEVANTEN Datenmengen (Counts) für den gewählten Scope erfasst werden können.
+
+### VERFÜGBARE ENDPUNKTE:
+${endpointKeys.join(', ')}
+
+### GEWÄHLTER SCOPE:
+Name: ${scopeName}
+IDs: ${JSON.stringify(scopeIds)}
+
+### VORLÄUFIGER PLAN:
+{{PLAN}}
+
+### PRÜF-KRITERIEN:
+1. **Erreichbarkeit:** Sind alle notwendigen Aufrufe enthalten, um die für den Scope benötigten IDs (z.B. team_id) zu erhalten?
+2. **Vollständigkeit:** Werden die Haupt-Datenobjekte (z.B. Tasks, Projekte, Listen) gezählt? (Low-Level Objekte wie Kommentare oder Anhänge sind für das Inventar OPTIONAL und kein Grund zur Ablehnung).
+3. **Logik:** Ist die Reihenfolge konsistent (Parent vor Child)?
+4. **Platzhalter:** Sind die Platzhalter in den URLs durch den Plan oder den Scope auflösbar?
+
+Antworte zwingend im JSON-Format.
+
+### JSON OUTPUT FORMAT:
+Falls alles okay ist: { "status": "valid" }
+Falls etwas fehlt oder unlogisch ist: { "status": "incomplete", "missing": ["key1", "key2"], "reason": "Detaillierte Erklärung der Mängel" }
+`;
 
     let executionPlan: any = null;
-    try {
-        if (planningResponse.content) {
-            executionPlan = JSON.parse(planningResponse.content);
-            await this.context.writeChatMessage('assistant', `Plan erstellt: ${executionPlan.summary}`, stepNumber);
+    let attempts = 0;
+    let feedback = "";
+
+    while (attempts < 4) {
+        const messages: ChatMessage[] = [
+            { role: "system", content: "Du bist ein präziser API Planning Agent. Du MUSST strikt auf das Feedback des Verifizierers reagieren und den Plan entsprechend korrigieren." }
+        ];
+
+        if (feedback) {
+            messages.push({ 
+                role: "user", 
+                content: `${planningPrompt}\n\n### DEIN VORHERIGER PLAN WAR UNVOLLSTÄNDIG.\n### FEEDBACK VOM VERIFIZIERER:\n${feedback}\n\nBitte erstelle einen neuen, korrigierten Plan, der ALLE Kritikpunkte adressiert.` 
+            });
+        } else {
+            messages.push({ role: "user", content: planningPrompt });
         }
-    } catch (e) {
-        return { success: false, error: "Planung fehlgeschlagen (ungültiges JSON)", isLogicalFailure: true };
+
+        const planningRes = await this.provider.chat(messages, undefined, { response_format: { type: "json_object" } });
+
+        if (!planningRes.content) throw new Error("Kein Plan generiert.");
+        const draftPlan = JSON.parse(planningRes.content);
+
+        // Verifizierung
+        const verifRes = await this.provider.chat([
+            { role: "system", content: "Du bist ein strenger aber fairer Verifizierer. Konzentriere dich auf die Erreichbarkeit der Daten und die logische Konsistenz. Akzeptiere den Plan, wenn die Kern-Daten (Tasks, Projekte) gezählt werden können. Antworte im JSON-Format." },
+            { role: "user", content: verificationPrompt.replace('{{PLAN}}', JSON.stringify(draftPlan, null, 2)) }
+        ], undefined, { response_format: { type: "json_object" } });
+
+        const verification = JSON.parse(verifRes.content || '{"status":"valid"}');
+
+        if (verification.status === "valid") {
+            executionPlan = draftPlan;
+            await this.context.writeChatMessage('assistant', `✅ Discovery-Plan verifiziert: ${executionPlan.summary}`, stepNumber);
+            break;
+        } else {
+            const missingInfo = verification.missing && verification.missing.length > 0 
+                ? `Fehlende Endpunkte: ${verification.missing.join(', ')}.` 
+                : "";
+            feedback = `${missingInfo} Grund: ${verification.reason || "Unbekannter Fehler in der Plan-Logik."}`;
+            
+            await this.context.writeChatMessage('assistant', `⚠️ **Plan-Verifizierung fehlgeschlagen (Versuch ${attempts + 1}/4):**\n${feedback}`, stepNumber);
+            attempts++;
+        }
     }
 
     if (!executionPlan || !executionPlan.plan || executionPlan.plan.length === 0) {
-        return { success: false, error: "Leerer Ausführungsplan generiert.", isLogicalFailure: true };
+         return { success: false, error: "Konnte keinen validen Discovery-Plan erstellen.", isLogicalFailure: true };
     }
 
     // --- Phase 2: Execution Agent ---
@@ -163,7 +223,7 @@ Sobald alle Schritte ausgeführt und alle Daten gesammelt wurden, antworte mit f
     ];
 
     let messages: ChatMessage[] = [
-        { role: "system", content: "Du bist ein präziser API Execution Agent." },
+        { role: "system", content: "Du bist ein präziser API Execution Agent. Antworte im JSON-Format." },
         { role: "user", content: executionPrompt }
     ];
 
@@ -252,7 +312,7 @@ Sobald alle Schritte ausgeführt und alle Daten gesammelt wurden, antworte mit f
             `;
 
             const normResponse = await this.provider.chat([
-                { role: "system", content: "Du bist ein Experte für Daten-Strukturen." },
+                { role: "system", content: "Du bist ein Experte für Daten-Strukturen. Antworte im JSON-Format." },
                 { role: "user", content: normalizationPrompt }
             ], undefined, { response_format: { type: "json_object" } });
 
