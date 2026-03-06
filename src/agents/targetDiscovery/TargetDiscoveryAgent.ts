@@ -18,7 +18,7 @@ export class TargetDiscoveryAgent extends AgentBase {
     const migrationContext = migrationDetails?.context || {};
     
     // Normalize targetName if placeholder '-'
-    if (scopeConfig.targetName === "-") {
+    if (!scopeConfig.targetName || scopeConfig.targetName === "-") {
         scopeConfig.targetName = scopeConfig.sourceScopeName || migrationName || "New Project";
     }
 
@@ -34,52 +34,99 @@ export class TargetDiscoveryAgent extends AgentBase {
 
     const fullScheme = await loadScheme(targetSystem);
     const discoveryScheme = { ...(fullScheme || {}), apiBaseUrl: fullScheme?.apiBaseUrl, headers: fullScheme?.headers };
-    const detailMsg = `Ich analysiere die Kompatibilität von **${targetSystem}**${scopeConfig?.targetName ? ` (Ziel-Scope: **${scopeConfig.targetName}**)` : ''}.`;
+    const detailMsg = `Ich analysiere die Kompatibilität von **${targetSystem}** (Ziel-Scope: **${scopeConfig.targetName}**).`;
     await this.context.writeChatMessage('assistant', detailMsg, stepNumber);
 
     const email = connector.username || "";
     const token = connector.api_key || "";
     const base64Credentials = btoa(`${email}:${token}`);
 
-    const SYSTEM_PROMPT = `
-Du bist die Target Validation Engine von Celion. Dein Ziel ist es, die Einsatzbereitschaft des Zielsystems für die anstehende Migration sicherzustellen.
+    // --- Phase 1: Planning Agent ---
+    await this.context.writeChatMessage('assistant', 'Phase 1: Erstelle Target-Discovery-Plan...', stepNumber);
 
-### MIGRATIONS-GEDÄCHTNIS:
-${JSON.stringify(migrationContext, null, 2)}
+    const planningPrompt = `
+Du bist der Planning Agent für eine Datenmigration in das Zielsystem ${targetSystem}.
+Deine Aufgabe ist es, einen sequentiellen Ausführungsplan für API-Aufrufe zu erstellen, um die Top-Level-Strukturen (Workspaces, Projekte, Ordner etc.) des Zielsystems abzufragen.
+Dein Hauptziel ist es herauszufinden, ob ein Bereich/Projekt mit dem Namen "${scopeConfig.targetName}" bereits existiert, um Namenskonflikte zu vermeiden.
 
-### PHASE 1: TARGET EXPLORATION & SCOPE VALIDATION
-- Nutze 'smart_discovery', um die Top-Level-Strukturen (Workspaces, Projekte, Ordner) des Zielsystems aufzulisten.
-- FALLS KEIN 'sourceScope' (Quell-Projekt/ID) in der 'Scope Config' angegeben ist:
-    * Dies ist eine VOLL-MIGRATION. Das Zielsystem MUSS leer sein (keine User-Projekte/Daten).
-    * Falls das System NICHT leer ist: Setze 'targetScope.status' auf 'conflict' und warne in der 'summary'.
-    * Falls das System leer ist: Setze 'targetScope.status' auf 'ready' und 'targetScope.isTargetEmpty' auf true.
-- FALLS EIN 'sourceScope' (Quell-Projekt/ID) angegeben ist:
-    * Dies ist eine BEREICHS-MIGRATION. Das Zielsystem DARF bereits Daten/Projekte enthalten.
-    * Falls ein 'targetName' angegeben ist: Suche nach einer Entität mit diesem Namen. 
-        - Falls gefunden: Dokumentiere die ID und prüfe auf Schreibrechte. Status: 'ready'.
-        - Falls NICHT gefunden: Dies ist IDEAL für einen neuen Import. Setze 'targetScope.found' auf false, aber 'targetScope.status' auf 'ready', da wir den Bereich in Schritt 8 neu anlegen werden.
-    * Falls KEIN 'targetName' angegeben ist: Prüfe die allgemeine Erreichbarkeit für neue Projekte.
-    * Setze 'targetScope.status' auf 'ready', solange keine kritischen API-Fehler (z.B. 'unauthorized') vorliegen.
+### API BASE URL:
+${discoveryScheme?.apiBaseUrl || "Nicht definiert"}
 
-### PHASE 2: COMPATIBILITY & PERMISSIONS
-- Überprüfe Schreibrechte für die wichtigsten Entitäten (Tasks, Folders, etc.).
-- Identifiziere die 'writableEntities'.
+### SYSTEM SCHEMA (Verfügbare Endpunkte):
+${JSON.stringify(discoveryScheme?.discovery?.endpoints || {}, null, 2)}
+
+### AUFGABE:
+1. Analysiere die 'endpoints'.
+2. Bestimme, welche Endpunkte aufgerufen werden müssen, um die Top-Level-Objekte (wie Workspaces, Spaces, Projekte) aufzulisten. Es geht NICHT um Low-Level Objekte wie Tasks oder Kommentare.
+3. Erstelle einen JSON-Plan mit einer Liste von Schritten.
+
+### JSON OUTPUT FORMAT:
+{
+  "summary": "Kurze Erklärung des Plans",
+  "plan": [
+    {
+      "step": number,
+      "endpoint_key": "string",
+      "url_template": "string",
+      "description": "string"
+    }
+  ]
+}
+`;
+
+    const planningResponse = await this.provider.chat([
+        { role: "system", content: "Du bist ein API Planning Agent." },
+        { role: "user", content: planningPrompt }
+    ], undefined, { response_format: { type: "json_object" } });
+
+    let executionPlan: any = null;
+    try {
+        if (planningResponse.content) {
+            executionPlan = JSON.parse(planningResponse.content);
+            await this.context.writeChatMessage('assistant', `Plan erstellt: ${executionPlan.summary}`, stepNumber);
+        }
+    } catch (e) {
+        return { success: false, error: "Planung fehlgeschlagen (ungültiges JSON)", isLogicalFailure: true };
+    }
+
+    if (!executionPlan || !executionPlan.plan || executionPlan.plan.length === 0) {
+        return { success: false, error: "Leerer Ausführungsplan generiert.", isLogicalFailure: true };
+    }
+
+    // --- Phase 2: Execution Agent ---
+    await this.context.writeChatMessage('assistant', 'Phase 2: Führe Target-Discovery-Plan aus...', stepNumber);
+
+    const executionPrompt = `
+Du bist die Target Validation Engine von Celion. Dein Ziel ist es, die Einsatzbereitschaft des Zielsystems sicherzustellen und Namenskonflikte zu vermeiden.
+Deine Aufgabe ist es, den übergebenen 'Execution Plan' SCHRITT FÜR SCHRITT abzuarbeiten und dabei das Tool 'smart_discovery' zu verwenden.
+
+### API BASE URL:
+${discoveryScheme?.apiBaseUrl || "Nicht definiert"}
+
+### DEIN PLAN:
+${JSON.stringify(executionPlan.plan, null, 2)}
+
+### ZIEL-NAME (WICHTIG):
+Wir möchten einen neuen Bereich/Projekt namens "**${scopeConfig.targetName}**" anlegen.
+
+### REGELN FÜR DIE AUSFÜHRUNG:
+1. Arbeite den Plan sequentiell ab.
+2. Für JEDEN Schritt im Plan rufst du 'smart_discovery' auf (mit vollständig aufgelöster URL).
+3. Analysiere die zurückgegebenen Daten. Prüfe, ob es bereits eine Entität (Workspace, Projekt etc.) gibt, die EXAKT so heißt wie der ZIEL-NAME.
+4. Falls ein Namenskonflikt besteht, setze "conflict" auf true.
+5. Führe für jeden relevanten Endpunkt aus dem Plan Tool-Calls aus.
 
 ### FINAL JSON FORMAT:
+Sobald alle Schritte ausgeführt wurden, antworte mit folgendem JSON:
 {
+  "conflict": boolean,
+  "conflictReason": "Kurze Erklärung falls conflict=true, andernfalls null",
   "targetScope": {
-    "found": boolean,
-    "id": "string | null",
-    "name": "string | null",
     "status": "ready" | "conflict" | "unauthorized",
-    "isTargetEmpty": boolean
+    "existingEntities": ["Liste von gefundenen Namen"]
   },
-  "compatibility": {
-    "writableEntities": ["string"],
-    "existingEntities": ["string"]
-  },
-  "summary": "Deutsche Zusammenfassung: Ist das Ziel für den gewählten Modus (Voll vs. Bereich) geeignet?",
-  "rawOutput": "Detaillierte Liste der gefundenen Strukturen im Zielsystem."
+  "summary": "Deutsche Zusammenfassung",
+  "rawOutput": "Detaillierte Liste"
 }
 `;
 
@@ -88,14 +135,12 @@ ${JSON.stringify(migrationContext, null, 2)}
         type: "function",
         function: {
           name: "smart_discovery",
-          description: "Führt eine intelligente Discovery-Anfrage durch, inklusive automatischer Pagination über alle Seiten.",
+          description: "Führt eine Discovery-Anfrage durch, inklusive automatischer Pagination.",
           parameters: {
             type: "object",
             properties: {
-              url: { type: "string", description: "Die vollständige URL zum Endpunkt." },
-              method: { type: "string", enum: ["GET", "POST"], description: "HTTP Methode." },
-              headers: { type: "object", description: "Header (Authentifizierung wird automatisch ergänzt)." },
-              body: { type: "object", description: "Optionaler Body." }
+              url: { type: "string" },
+              method: { type: "string", enum: ["GET", "POST"] }
             },
             required: ["url"]
           }
@@ -103,138 +148,154 @@ ${JSON.stringify(migrationContext, null, 2)}
       }
     ];
 
-    const userContext = `
-Target URL: ${targetUrl}
-Credentials: ${connector.username ? 'Email provided' : 'No email'}, Token provided
-System Scheme: ${JSON.stringify(discoveryScheme, null, 2)}
-Scope Config: ${JSON.stringify(scopeConfig || {}, null, 2)}
-
-### TARGET VALIDATION TASK:
-Bitte prüfe, ob das Zielsystem bereit ist. 
-${scopeConfig?.sourceScope ? `Bereichs-Migration (Quelle: ${scopeConfig.sourceScope}). Vorhandene Daten im Ziel sind erlaubt.` : 'Voll-Migration geplant. Zielsystem sollte leer sein.'}
-${scopeConfig?.targetName ? `Besonderer Fokus: Ziel-Projekt/Workspace soll "**${scopeConfig.targetName}**" heißen.` : ''}
-    `;
-
-    const messages: ChatMessage[] = [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: userContext }
+    let messages: ChatMessage[] = [
+        { role: "system", content: "Du bist ein präziser API Execution Agent." },
+        { role: "user", content: executionPrompt }
     ];
 
-    let lastMessageText: string | undefined;
+    let phase2Result: any = null;
 
-    for (let turn = 0; turn < 15; turn++) {
-      const response = await this.provider.chat(messages, TOOLS, { 
-          model: process.env.OPENAI_MODEL || "gpt-4o",
-          response_format: { type: "json_object" } 
-      });
+    for (let turn = 0; turn < 25; turn++) {
+         const response = await this.provider.chat(messages, TOOLS, { response_format: { type: "json_object" } });
+         const message: ChatMessage = {
+             role: 'assistant',
+             content: response.content,
+             tool_calls: response.toolCalls
+         };
+         messages.push(message);
 
-      const message: ChatMessage = {
-          role: 'assistant',
-          content: response.content,
-          tool_calls: response.toolCalls
-      };
-      messages.push(message);
+         if (message.content) {
+             if (message.content.trim().startsWith('{')) {
+                 try {
+                     const parsed = JSON.parse(message.content);
+                     if (parsed.targetScope && typeof parsed.conflict === 'boolean') {
+                         phase2Result = parsed;
+                         break; 
+                     }
+                 } catch (e) {
+                 }
+             }
+         }
 
-      if (message.content) {
-        lastMessageText = message.content;
-        if (!message.content.trim().startsWith('{')) {
-          await this.context.writeChatMessage('assistant', message.content, stepNumber);
-        }
-      }
+         if (message.tool_calls && message.tool_calls.length > 0) {
+             for (const toolCall of message.tool_calls) {
+                 const functionName = toolCall.function.name;
+                 const args = JSON.parse(toolCall.function.arguments);
+                 let toolResult: any;
 
-      if (message.tool_calls && message.tool_calls.length > 0) {
-        for (const toolCall of message.tool_calls) {
-          const functionName = toolCall.function.name;
-          const args = JSON.parse(toolCall.function.arguments);
-          let result: any;
+                 if (functionName === 'smart_discovery') {
+                     toolResult = await this.handleSmartDiscoveryToolCall(args, token, base64Credentials, discoveryScheme);
+                 } else {
+                     toolResult = { error: `Unknown tool: ${functionName}` };
+                 }
 
-          try {
-            if (functionName === 'smart_discovery') {
-              const requestHeaders: Record<string, string> = { ...args.headers };
-              const auth = discoveryScheme?.authentication;
-              
-              if (auth) {
-                  if (auth.type === 'bearer') {
-                      const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : 'Bearer ';
-                      requestHeaders['Authorization'] = `${prefix}${token}`;
-                  } else if (auth.type === 'header') {
-                      const name = auth.headerName || 'Authorization';
-                      const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : '';
-                      requestHeaders[name] = `${prefix}${token}`;
-                  } else if (auth.type === 'basic') {
-                      requestHeaders['Authorization'] = `Basic ${base64Credentials}`;
-                  }
-              }
-              
-              if (discoveryScheme?.headers) {
-                  Object.assign(requestHeaders, discoveryScheme.headers);
-              }
-
-              result = await smartDiscovery({
-                url: args.url,
-                method: args.method || 'GET',
-                headers: requestHeaders,
-                body: args.body,
-                paginationConfig: discoveryScheme?.discovery?.pagination
-              });
-              
-              if (result.sampleData) {
-                const sampleStr = JSON.stringify(result.sampleData);
-                if (sampleStr.length > 10000) {
-                  result.sampleData = sampleStr.slice(0, 10000) + '...[TRUNCATED]';
-                }
-              }
-            } else {
-              result = { error: `Unknown tool: ${functionName}` };
-            }
-          } catch (error) {
-            result = { error: error instanceof Error ? error.message : String(error) };
-          }
-
-          messages.push({
-            tool_call_id: toolCall.id,
-            role: "tool",
-            name: functionName,
-            content: JSON.stringify(result)
-          });
-        }
-      } else {
-        break;
-      }
+                 messages.push({
+                     tool_call_id: toolCall.id,
+                     role: "tool",
+                     name: functionName,
+                     content: JSON.stringify(toolResult)
+                 });
+             }
+         } else {
+             break;
+         }
     }
 
-    if (lastMessageText) {
-      try {
-        const parsed = JSON.parse(lastMessageText);
-        let isLogicalFailure = false;
-        let failureMessage = "";
+    if (!phase2Result) {
+         return { success: false, error: "Ausführung fehlgeschlagen oder kein gültiges Ergebnis geliefert.", isLogicalFailure: true };
+    }
 
-        if (parsed.targetScope?.status === 'not_found' || parsed.targetScope?.status === 'unauthorized' || parsed.targetScope?.status === 'conflict') {
-          isLogicalFailure = true;
-          failureMessage = parsed.summary || `Ziel-Konfiguration fehlerhaft: ${parsed.targetScope?.status}`;
-        }
-        
-        return {
-            success: !isLogicalFailure,
-            result: parsed,
-            isLogicalFailure,
-            error: failureMessage
-        };
-      } catch (e) {
-        return {
-            success: false,
-            result: { text: lastMessageText },
-            isLogicalFailure: true,
-            error: "Agent lieferte kein gültiges JSON Ergebnis."
-        };
-      }
-    } else {
+    if (phase2Result.targetScope?.status === 'unauthorized') {
       return {
           success: false,
-          result: { error: 'Target agent produced no output' },
+          result: phase2Result,
           isLogicalFailure: true,
-          error: "Target agent produced no output."
+          error: "Ziel-Konfiguration fehlerhaft: unauthorized"
       };
     }
+
+    // Handle Name Conflict
+    if (phase2Result.conflict || phase2Result.targetScope?.status === 'conflict') {
+      await this.context.writeChatMessage('assistant', `⚠️ **Namenskonflikt erkannt:** ${phase2Result.conflictReason || `Ein Bereich mit dem Namen '${scopeConfig.targetName}' existiert bereits.`}\n\nBitte wähle einen neuen Namen für den Zielbereich, um die Migration fortzusetzen.`, stepNumber);
+      
+      const actionContent = JSON.stringify({
+          type: "action",
+          actions: [
+              { action: "prompt_target_name", label: "Neuen Namen eingeben", variant: "primary" }
+          ]
+      });
+      await this.context.writeChatMessage('assistant', `\`\`\`json\n${actionContent}\n\`\`\``, stepNumber);
+
+      return {
+          success: true,
+          isEarlyReturnForPlan: true,
+          result: { error: 'Name conflict', status: 'conflict', details: phase2Result }
+      };
+    }
+
+    // Success
+    await this.context.writeChatMessage('assistant', `✅ Zielsystem ist bereit. Keine Namenskonflikte für "${scopeConfig.targetName}" gefunden.`, stepNumber);
+    return {
+        success: true,
+        result: phase2Result
+    };
+  }
+
+  private async handleSmartDiscoveryToolCall(args: any, token: string, base64Credentials: string, discoveryScheme: any): Promise<any> {
+      const requestHeaders: Record<string, string> = {};
+
+      if (!args.url) {
+        return { error: "Keine URL für smart_discovery angegeben." };
+      }
+
+      let finalUrl = args.url;
+      if (!finalUrl.startsWith('http') && discoveryScheme?.apiBaseUrl) {
+          const baseUrl = discoveryScheme.apiBaseUrl.replace(/\/$/, '');
+          const path = finalUrl.startsWith('/') ? finalUrl : `/${finalUrl}`;
+          finalUrl = `${baseUrl}${path}`;
+      }
+
+      if (finalUrl && (finalUrl.includes('{') || finalUrl.includes('}'))) {
+        return { 
+            error: `URL enthält noch unaufgelöste Platzhalter: ${finalUrl}. Ersetze diese durch reale IDs oder überspringe sie, falls es Top-Level-Abfragen sind.` 
+        };
+      }
+
+      const auth = discoveryScheme?.authentication;
+      if (auth) {
+          if (auth.type === 'bearer') {
+              const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : 'Bearer ';
+              requestHeaders['Authorization'] = `${prefix}${token}`;
+          } else if (auth.type === 'header') {
+              const name = auth.headerName || 'Authorization';
+              const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : '';
+              requestHeaders[name] = `${prefix}${token}`;
+          } else if (auth.type === 'basic') {
+              requestHeaders['Authorization'] = `Basic ${base64Credentials}`;
+          }
+      }
+      
+      if (discoveryScheme?.headers) {
+          Object.assign(requestHeaders, discoveryScheme.headers);
+      }
+
+      try {
+        const toolResult = await smartDiscovery({
+            url: finalUrl,
+            method: args.method || 'GET',
+            headers: requestHeaders,
+            paginationConfig: discoveryScheme?.discovery?.pagination
+        });
+
+        if (toolResult.sampleData) {
+            const sampleStr = JSON.stringify(toolResult.sampleData);
+            if (sampleStr.length > 5000) {
+                toolResult.sampleData = sampleStr.slice(0, 5000) + '...[TRUNCATED]';
+            }
+        }
+        return toolResult;
+      } catch (toolErr: any) {
+        return { error: toolErr.message };
+      }
   }
 }

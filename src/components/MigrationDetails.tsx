@@ -8,6 +8,10 @@ import { toast } from "sonner";
 import { databaseClient } from "@/api/databaseClient";
 import type { MigrationDetailsProps } from "./migration/migrationDetails.types";
 import { cn } from "@/lib/utils";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Button } from "@/components/ui/button";
 
 export interface MigrationDetailsRef {
   openWorkflowPanel: () => void;
@@ -21,6 +25,8 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
   onViewChange
 }, ref) => {
   const [isStepRunning, setIsStepRunning] = useState(project.step_status === 'running');
+  const [isRenamePromptOpen, setIsRenamePromptOpen] = useState(false);
+  const [newTargetName, setNewTargetName] = useState("");
 
   useImperativeHandle(ref, () => ({
     openWorkflowPanel: () => {
@@ -118,6 +124,9 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         console.error("Error resetting transfer:", error);
         toast.error("Fehler beim Zurücksetzen des Transfers.");
       }
+    } else if (action === 'prompt_target_name') {
+      setNewTargetName(project.scopeConfig?.targetName || project.scopeConfig?.sourceScopeName || project.name || "");
+      setIsRenamePromptOpen(true);
     } else if (action.startsWith('retry:')) {
       const stepNum = parseInt(action.split(':')[1], 10);
       if (!isNaN(stepNum)) {
@@ -131,7 +140,29 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
       const msg = action.substring('send_chat:'.length);
       handleSendChatMessage(msg);
     }
-  }, [handleNextWorkflowStep, onViewChange, project.id, project.scopeConfig]);
+  }, [handleNextWorkflowStep, onViewChange, project.id, project.scopeConfig, project.name]);
+
+  const handleTargetNameSubmit = async () => {
+    if (!newTargetName.trim()) return;
+    try {
+      const newScopeConfig = {
+        ...(project.scopeConfig || {}),
+        targetName: newTargetName.trim()
+      };
+      const { error } = await databaseClient.updateMigration(project.id, {
+        scope_config: newScopeConfig
+      });
+      if (error) throw error;
+
+      setIsRenamePromptOpen(false);
+      toast.success("Name aktualisiert. Target Discovery wird neu gestartet...");
+      // Step 2 is Target Discovery
+      handleNextWorkflowStep(2);
+    } catch (error) {
+      console.error("Error updating target name:", error);
+      toast.error("Fehler beim Speichern des Namens.");
+    }
+  };
 
   const handleSendChatMessage = useCallback(
     async (message: string) => {
@@ -217,6 +248,35 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
           </div>
         )}
       </div>
+
+      <Dialog open={isRenamePromptOpen} onOpenChange={setIsRenamePromptOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Neuen Ziel-Namen wählen</DialogTitle>
+          </DialogHeader>
+          <div className="py-4 space-y-4">
+            <div className="space-y-2">
+              <Label htmlFor="new-target-name">Der gewählte Name existiert im Zielsystem bereits. Bitte gib einen neuen Namen für das Projekt/den Workspace ein:</Label>
+              <Input
+                id="new-target-name"
+                value={newTargetName}
+                onChange={(e) => setNewTargetName(e.target.value)}
+                placeholder="Neuer Name..."
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    handleTargetNameSubmit();
+                  }
+                }}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setIsRenamePromptOpen(false)}>Abbrechen</Button>
+            <Button onClick={handleTargetNameSubmit}>Speichern & Wiederholen</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 });
