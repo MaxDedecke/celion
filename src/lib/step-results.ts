@@ -92,8 +92,12 @@ export async function saveStep3Result(pool: Pool, migrationId: string, result: a
   // 3. Save entities (Inventory)
   if (result.entities && Array.isArray(result.entities)) {
     let totalItems = 0;
+    const inventory: Record<string, number> = {};
     for (const entity of result.entities) {
-      totalItems += (entity.count || 0);
+      const count = entity.count || 0;
+      totalItems += count;
+      inventory[entity.name] = count;
+
       await pool.query(
         `INSERT INTO public.step_3_results (migration_id, entity_name, count, complexity, error_message, raw_json)
          VALUES ($1, $2, $3, $4, $5, $6)
@@ -103,12 +107,13 @@ export async function saveStep3Result(pool: Pool, migrationId: string, result: a
            error_message = EXCLUDED.error_message,
            raw_json = EXCLUDED.raw_json,
            created_at = now()`,
-        [migrationId, entity.name, entity.count || 0, entity.complexity, entity.error, entity]
+        [migrationId, entity.name, count, entity.complexity, entity.error, entity]
       );
     }
     
     await updateMigrationContext(pool, migrationId, {
-      source_total_items_estimated: totalItems
+      source_total_items_estimated: totalItems,
+      source_inventory: inventory
     });
   }
 }

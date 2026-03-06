@@ -15,11 +15,17 @@ export class TargetDiscoveryAgent extends AgentBase {
     const migrationDetails = await this.context.getMigrationDetails();
     const migrationName = migrationDetails?.name;
     const scopeConfig = migrationDetails?.scope_config || {};
-    const migrationContext = migrationDetails?.context || {};
     
-    // Normalize targetName if placeholder '-'
-    if (!scopeConfig.targetName || scopeConfig.targetName === "-") {
-        scopeConfig.targetName = scopeConfig.sourceScopeName || migrationName || "New Project";
+    // Normalize targetName:
+    // 1. Check if the user specified a name during introduction (or via rename dialog)
+    // 2. Fallback to source scope name if available
+    // 3. Fallback to the overall migration name
+    // 4. Default to "New Project"
+    let targetName = scopeConfig.targetName;
+    if (!targetName || targetName === "-" || targetName === "Zielbereich") {
+        targetName = scopeConfig.sourceScopeName || migrationName || "New Project";
+        // Update scopeConfig for consistency in subsequent steps
+        scopeConfig.targetName = targetName;
     }
 
     const connector = await this.context.getConnector('out');
@@ -34,63 +40,95 @@ export class TargetDiscoveryAgent extends AgentBase {
 
     const fullScheme = await loadScheme(targetSystem);
     const discoveryScheme = { ...(fullScheme || {}), apiBaseUrl: fullScheme?.apiBaseUrl, headers: fullScheme?.headers };
-    const detailMsg = `Ich analysiere die Kompatibilität von **${targetSystem}** (Ziel-Scope: **${scopeConfig.targetName}**).`;
+    const detailMsg = `Ich analysiere die Kompatibilität von **${targetSystem}** (Ziel-Scope: **${targetName}**).`;
     await this.context.writeChatMessage('assistant', detailMsg, stepNumber);
 
     const email = connector.username || "";
     const token = connector.api_key || "";
     const base64Credentials = btoa(`${email}:${token}`);
 
-    // --- Phase 1: Planning Agent ---
-    await this.context.writeChatMessage('assistant', 'Phase 1: Erstelle Target-Discovery-Plan...', stepNumber);
+    // --- Phase 1: Planning & Verification Agent ---
+    await this.context.writeChatMessage('assistant', 'Phase 1: Erstelle und verifiziere Target-Discovery-Plan...', stepNumber);
+
+    const availableEndpoints = discoveryScheme?.discovery?.endpoints || {};
+    const endpointKeys = Object.keys(availableEndpoints);
 
     const planningPrompt = `
 Du bist der Planning Agent für eine Datenmigration in das Zielsystem ${targetSystem}.
 Deine Aufgabe ist es, einen sequentiellen Ausführungsplan für API-Aufrufe zu erstellen, um die Top-Level-Strukturen (Workspaces, Projekte, Ordner etc.) des Zielsystems abzufragen.
-Dein Hauptziel ist es herauszufinden, ob ein Bereich/Projekt mit dem Namen "${scopeConfig.targetName}" bereits existiert, um Namenskonflikte zu vermeiden.
+Dein Hauptziel ist es herauszufinden, ob ein Bereich/Projekt mit dem Namen "${targetName}" bereits existiert.
 
-### API BASE URL:
-${discoveryScheme?.apiBaseUrl || "Nicht definiert"}
+### VERFÜGBARE ENDPUNKTE (AUS SPEC):
+${JSON.stringify(availableEndpoints, null, 2)}
 
-### SYSTEM SCHEMA (Verfügbare Endpunkte):
-${JSON.stringify(discoveryScheme?.discovery?.endpoints || {}, null, 2)}
-
-### AUFGABE:
-1. Analysiere die 'endpoints'.
-2. Bestimme, welche Endpunkte aufgerufen werden müssen, um die Top-Level-Objekte (wie Workspaces, Spaces, Projekte) aufzulisten. Es geht NICHT um Low-Level Objekte wie Tasks oder Kommentare.
-3. Erstelle einen JSON-Plan mit einer Liste von Schritten.
+### DEIN AUFTRAG:
+1. Erstelle einen Plan im JSON-Format mit Schritten.
+2. Jeder Schritt muss einen 'endpoint_key' aus der obigen Liste verwenden.
+3. Der Plan MUSS alle relevanten Top-Level Endpunkte enthalten, um eine vollständige Namensprüfung zu ermöglichen.
 
 ### JSON OUTPUT FORMAT:
 {
-  "summary": "Kurze Erklärung des Plans",
+  "summary": "Erklärung",
   "plan": [
-    {
-      "step": number,
-      "endpoint_key": "string",
-      "url_template": "string",
-      "description": "string"
-    }
+    { "step": 1, "endpoint_key": "string", "url_template": "string", "description": "string" }
   ]
 }
 `;
 
-    const planningResponse = await this.provider.chat([
-        { role: "system", content: "Du bist ein API Planning Agent." },
-        { role: "user", content: planningPrompt }
-    ], undefined, { response_format: { type: "json_object" } });
+    const verificationPrompt = `
+Du bist der Plan-Verifizierer. Prüfe den folgenden Plan gegen die verfügbaren Endpunkte.
+Stelle sicher, dass ALLE relevanten Top-Level Endpunkte (z.B. Workspaces, Projekte, Spaces) im Plan enthalten sind.
+Falls etwas fehlt, gib eine Liste der fehlenden 'endpoint_keys' zurück.
+Antworte zwingend im JSON-Format.
+
+### VERFÜGBARE ENDPUNKTE:
+${endpointKeys.join(', ')}
+
+### VORLÄUFIGER PLAN:
+{{PLAN}}
+
+### JSON OUTPUT FORMAT:
+Falls alles okay ist: { "status": "valid" }
+Falls etwas fehlt: { "status": "incomplete", "missing": ["key1", "key2"], "reason": "Warum wird das benötigt?" }
+`;
 
     let executionPlan: any = null;
-    try {
-        if (planningResponse.content) {
-            executionPlan = JSON.parse(planningResponse.content);
-            await this.context.writeChatMessage('assistant', `Plan erstellt: ${executionPlan.summary}`, stepNumber);
+    let attempts = 0;
+    let feedback = "";
+
+    while (attempts < 3) {
+        const currentPlanningPrompt = feedback 
+            ? `${planningPrompt}\n\n### FEEDBACK VOM LETZTEN VERSUCH:\n${feedback}\nBitte korrigiere den Plan.`
+            : planningPrompt;
+
+        const planningRes = await this.provider.chat([
+            { role: "system", content: "Du bist ein präziser API Planning Agent." },
+            { role: "user", content: currentPlanningPrompt }
+        ], undefined, { response_format: { type: "json_object" } });
+
+        if (!planningRes.content) throw new Error("Kein Plan generiert.");
+        const draftPlan = JSON.parse(planningRes.content);
+
+        // Verifizierung
+        const verifRes = await this.provider.chat([
+            { role: "system", content: "Du bist ein strenger Verifizierer." },
+            { role: "user", content: verificationPrompt.replace('{{PLAN}}', JSON.stringify(draftPlan, null, 2)) }
+        ], undefined, { response_format: { type: "json_object" } });
+
+        const verification = JSON.parse(verifRes.content || '{"status":"valid"}');
+
+        if (verification.status === "valid") {
+            executionPlan = draftPlan;
+            await this.context.writeChatMessage('assistant', `Plan verifiziert: ${executionPlan.summary}`, stepNumber);
+            break;
+        } else {
+            feedback = `Der Plan ist unvollständig. Fehlende Endpunkte: ${verification.missing.join(', ')}. Grund: ${verification.reason}`;
+            attempts++;
         }
-    } catch (e) {
-        return { success: false, error: "Planung fehlgeschlagen (ungültiges JSON)", isLogicalFailure: true };
     }
 
-    if (!executionPlan || !executionPlan.plan || executionPlan.plan.length === 0) {
-        return { success: false, error: "Leerer Ausführungsplan generiert.", isLogicalFailure: true };
+    if (!executionPlan) {
+        return { success: false, error: "Konnte keinen validen Discovery-Plan erstellen.", isLogicalFailure: true };
     }
 
     // --- Phase 2: Execution Agent ---
@@ -107,7 +145,7 @@ ${discoveryScheme?.apiBaseUrl || "Nicht definiert"}
 ${JSON.stringify(executionPlan.plan, null, 2)}
 
 ### ZIEL-NAME (WICHTIG):
-Wir möchten einen neuen Bereich/Projekt namens "**${scopeConfig.targetName}**" anlegen.
+Wir möchten einen neuen Bereich/Projekt namens "**${targetName}**" anlegen.
 
 ### REGELN FÜR DIE AUSFÜHRUNG:
 1. Arbeite den Plan sequentiell ab.
@@ -216,7 +254,7 @@ Sobald alle Schritte ausgeführt wurden, antworte mit folgendem JSON:
 
     // Handle Name Conflict
     if (phase2Result.conflict || phase2Result.targetScope?.status === 'conflict') {
-      await this.context.writeChatMessage('assistant', `⚠️ **Namenskonflikt erkannt:** ${phase2Result.conflictReason || `Ein Bereich mit dem Namen '${scopeConfig.targetName}' existiert bereits.`}\n\nBitte wähle einen neuen Namen für den Zielbereich, um die Migration fortzusetzen.`, stepNumber);
+      await this.context.writeChatMessage('assistant', `⚠️ **Namenskonflikt erkannt:** ${phase2Result.conflictReason || `Ein Bereich mit dem Namen '${targetName}' existiert bereits.`}\n\nBitte wähle einen neuen Namen für den Zielbereich, um die Migration fortzusetzen.`, stepNumber);
       
       const actionContent = JSON.stringify({
           type: "action",
@@ -234,7 +272,7 @@ Sobald alle Schritte ausgeführt wurden, antworte mit folgendem JSON:
     }
 
     // Success
-    await this.context.writeChatMessage('assistant', `✅ Zielsystem ist bereit. Keine Namenskonflikte für "${scopeConfig.targetName}" gefunden.`, stepNumber);
+    await this.context.writeChatMessage('assistant', `✅ Zielsystem ist bereit. Keine Namenskonflikte für "${targetName}" gefunden.`, stepNumber);
     return {
         success: true,
         result: phase2Result
