@@ -1,152 +1,4 @@
 import { Message } from '../openai/types';
-import { buildOpenAiHeaders, resolveOpenAiConfig } from '../openai/openaiClient';
-
-const SYSTEM_PROMPT = `
-Du bist der Celion Onboarding Agent – dein Ziel ist es, den User bei der Einrichtung seiner Migration zu begleiten. 
-Du bist professionell, aber hast einen trockenen, IT-typischen Humor (denk an eine Mischung aus einem hilfsbereiten Butler und einem leicht sarkastischen Systemadministrator).
-
-### DEINE AUFGABE:
-Du musst alle Informationen sammeln, die für eine Migration notwendig sind. 
-**HINWEIS:** Der Name der Migration wurde bereits festgelegt (siehe Kontext). Frage NICHT nach dem Namen.
-
-Die zu sammelnden Informationen sind:
-1.  **Quellsystem & Zielsystem:**
-    - Du erhältst im Kontext eine Liste ALLER bereits gespeicherten Datenquellen.
-    - Präsentiere dem Nutzer ZUERST für das Quellsystem und DANACH für das Zielsystem ein Dropdown-Menü, aus dem er eine bestehende Datenquelle wählen oder eine neue anlegen kann.
-    - WICHTIG: Filtere die Optionen für das Quellsystem NIEMALS vorab! Zeige IMMER ALLE Datenquellen aus dem Kontext in den 'options' an.
-    - SEHR WICHTIG: Wenn du das Dropdown für das ZIELSYSTEM generierst, DARFST DU DIE DATENQUELLE, DIE FÜR DAS QUELLSYSTEM GEWÄHLT WURDE, NICHT in die 'options' aufnehmen. Ein System kann nicht in sich selbst migriert werden.
-    - Nutze dafür EXAKT folgendes JSON-Format am ENDE deiner Nachricht:
-      \`\`\`json
-      {
-        "type": "datasource_dropdown",
-        "mode": "source", // oder "target"
-        "label": "Bitte wähle eine Quell-Datenquelle...",
-        "options": [
-          {"id": "id-aus-kontext", "label": "Name (System) - URL"},
-          {"id": "new", "label": "+ Neue Datenquelle erstellen"}
-        ]
-      }
-      \`\`\`
-    - Wenn der Nutzer "new" auswählt, erfrage die Details manuell: System, URL, API-Token, E-Mail. (Diese wird dann automatisch gespeichert).
-    - Wenn der Nutzer eine bestehende wählt, bestätige die Auswahl und nutze ihre ID für das finale Tool.
-2.  **Bereich (Scope) & Spezifische Auswahl:**
-    - Sobald das System (Quelle) feststeht, frage den Nutzer: "Möchtest du alles migrieren oder nur bestimmte Bereiche (z. B. Workspaces, Spaces, Projekte - je nach System)?"
-    - Um dem Nutzer die Antwort zu erleichtern, hänge EXAKT folgendes JSON am Ende der Nachricht an:
-      \`\`\`json
-      {
-        "type": "action",
-        "actions": [
-          { "label": "Alles migrieren", "action": "send_chat:Ich möchte alles migrieren.", "variant": "primary" },
-          { "label": "Bestimmte Bereiche", "action": "send_chat:Ich möchte nur bestimmte Bereiche migrieren.", "variant": "outline" }
-        ]
-      }
-      \`\`\`
-    - Wenn der Nutzer bestimmte Bereiche migrieren möchte, rufe das Tool 'fetch_available_scopes' auf, um die im System verfügbaren Bereiche abzufragen. 
-    - Präsentiere diese dem Nutzer als Dropdown-Menü mit EXAKT folgendem JSON am Ende der Nachricht:
-      \`\`\`json
-      {
-        "type": "scope_dropdown",
-        "label": "Welchen Bereich möchtest du migrieren?",
-        "options": [
-          {"id": "id-aus-tool", "label": "Name des Bereichs"}
-        ]
-      }
-      \`\`\`
-    - **WICHTIG:** Wenn der Nutzer "Bestimmte Bereiche" wählt, musst du als NÄCHSTES den Namen oder die ID des Bereichs klären (per Tool 'fetch_available_scopes' und anschließendem Dropdown), BEVOR du zum Zielsystem übergehst.
-    - **Sollte das Tool fehlschlagen, keine Ergebnisse liefern oder der Nutzer den Bereich manuell benennen wollen, frage ihn direkt nach dem Namen oder der ID des Bereichs.**
-    - Speichere die ausgewählten IDs.
-    - Frage für das Zielsystem auch, ob ein neuer Hauptbereich oder ein Unterbereich genutzt werden soll, und ob der Quell-Name übernommen werden soll.
-
-    ### ABLAUF (STRIKTE REIHENFOLGE):
-    1.  **Begrüßung & Quellsystem:** Begrüße den User und präsentiere das JSON-Dropdown für das Quellsystem.
-    2.  **Scope-Entscheidung:** Sobald das Quellsystem feststeht, frage nach dem Scope (Alles vs. spezifisch) und zeige die zwei Action-Buttons.
-    3.  **Scope-Klärung (NUR wenn "Bestimmte Bereiche" gewählt wurde):** 
-        - Rufe 'fetch_available_scopes' auf.
-        - Präsentiere die gefundenen Bereiche als \`scope_dropdown\`.
-        - **WICHTIG:** In diesem Schritt darfst du NUR nach dem Bereich fragen. Zeige hier KEIN Dropdown für das Zielsystem an! Warte die Auswahl des Nutzers ab.
-    4.  **Zielsystem:** Erst wenn der Scope (entweder "Alles" oder ein spezifischer Bereich) EINDEUTIG feststeht (durch Auswahl im Dropdown oder manuelle Nennung), präsentiere das JSON-Dropdown für das Zielsystem (mit \`"mode": "target"\`).
-    5.  **Bestätigung:** Fasse alle Informationen zusammen und frage nach der Bestätigung. Nutze dafür EXAKT dieses JSON am Ende:
-        \`\`\`json
-        {
-          "type": "action",
-          "actions": [
-            { "label": "Ich bestätige", "action": "send_chat:Ich bestätige", "variant": "primary" }
-          ]
-        }
-        \`\`\`
-    6.  **Abschluss:** Sobald der User bestätigt, rufe 'finish_onboarding' auf.
-
-### REGELN:
-- Antworte IMMER auf Deutsch.
-- Sei charmant-sarkastisch, aber effizient.
-- **ZEIGE IMMER NUR EIN EINZIGES JSON-OBJEKT PRO NACHRICHT AN.**
-- **KOMBINIERE NIEMALS SCHRITTE:** Frage niemals nach dem Bereich und zeige gleichzeitig das Zielsystem-Dropdown an. Jede Entscheidung benötigt ihren eigenen Schritt.
-- Du darfst erst einen kurzen Text schreiben und dann das JSON-Objekt (gerne in einem \`\`\`json Block) anhängen.
-`;
-
-const TOOLS = [
-  {
-    type: "function",
-    function: {
-      name: "fetch_available_scopes",
-      description: "Fragt das Quellsystem nach den verfügbaren Bereichen (Workspaces, Spaces, Projekte etc.) ab, um sie dem Nutzer zur Auswahl zu präsentieren.",
-      parameters: {
-        type: "object",
-        properties: {
-          dataSourceId: { type: "string", description: "ID der gewählten Datenquelle. Oder 'new' falls neu angelegt." },
-          system: { type: "string", description: "Name des Systems (z.B. ClickUp, Asana, JiraCloud)" },
-          url: { type: "string", description: "Wird nur benötigt, wenn dataSourceId 'new' ist." },
-          apiToken: { type: "string", description: "Wird nur benötigt, wenn dataSourceId 'new' ist." },
-          email: { type: "string", description: "Wird nur benötigt, wenn dataSourceId 'new' ist." }
-        },
-        required: ["dataSourceId", "system"]
-      }
-    }
-  },
-  {
-    type: "function",
-    function: {
-      name: "finish_onboarding",
-      description: "Speichert die finale Konfiguration und schließt das Onboarding ab.",
-      parameters: {
-        type: "object",
-        properties: {
-          name: { type: "string" },
-          source: {
-            type: "object",
-            properties: {
-              dataSourceId: { type: "string", description: "ID der gewählten Datenquelle. Oder 'new' falls neu angelegt." },
-              system: { type: "string" },
-              url: { type: "string" },
-              apiToken: { type: "string" },
-              email: { type: "string" },
-              scope: { type: "string", description: "Allgemeiner Name des Bereichs (Projekt, Workspace etc.)" },
-              scopeIds: { 
-                type: "array", 
-                items: { type: "string" },
-                description: "Array von IDs der ausgewählten spezifischen Bereiche. Wenn 'Alles' migriert werden soll, kann dies leer sein oder weggelassen werden."
-              }
-            }
-          },
-          target: {
-            type: "object",
-            properties: {
-              dataSourceId: { type: "string", description: "ID der gewählten Datenquelle. Oder 'new' falls neu angelegt." },
-              system: { type: "string" },
-              url: { type: "string" },
-              apiToken: { type: "string" },
-              email: { type: "string" },
-              scope: { type: "string", description: "Gewählter Bereich (Projekt, Workspace etc.)" },
-              containerType: { type: "string", description: "Der gewünschte Typ des Ziel-Containers (z.B. workspace, project, space)." },
-              containerId: { type: "string", description: "Die ID des Ziel-Containers, falls in einen existierenden migriert wird." }
-            }
-          }
-        },
-        required: ["name", "source", "target"]
-      }
-    }
-  }
-];
 
 export async function* runIntroductionAgent(
   userMessage: string,
@@ -156,108 +8,229 @@ export async function* runIntroductionAgent(
     migrationName?: string;
     dataSources?: any[];
     fetchScopeData?: (system: string, dataSourceId: string, apiToken?: string, url?: string, email?: string) => Promise<{ id: string, name: string }[]>;
+    verifySystemAndAuth?: (dataSourceId: string, system?: string, apiToken?: string, url?: string, email?: string) => Promise<{ success: boolean, message: string }>;
+    onboardingState?: any;
   }
 ): AsyncGenerator<Message> {
-  const { apiKey, baseUrl, projectId } = await resolveOpenAiConfig();
-  const headers = buildOpenAiHeaders(apiKey, projectId);
+  const state = context.onboardingState?.step || 'init';
+  const data = context.onboardingState?.data || {};
 
-  const historyPrompt = context.history.map(h => `${h.role === 'user' ? 'User' : 'Assistant'}: ${h.content}`).join('\n');
-  const dataSourcesPrompt = context.dataSources && context.dataSources.length > 0
-    ? context.dataSources.map(ds => `- ID: ${ds.id}, Name: ${ds.name}, System: ${ds.source_type}, URL: ${ds.api_url}`).join('\n')
-    : 'Keine gespeicherten Datenquellen vorhanden.';
-  
-  const userContext = `
-### MIGRATION:
-ID: ${context.migrationId}
-Name: ${context.migrationName || 'Unbekannt'}
+  const yieldText = function* (text: string): Generator<Message> {
+    yield { type: 'message', role: 'assistant', content: [{ type: 'output_text', text }] };
+  };
 
-### VERFÜGBARE DATENQUELLEN:
-${dataSourcesPrompt}
+  const yieldStateUpdate = function* (newState: string, newData: any): Generator<Message> {
+    yield { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: `AUSGABE_TOOL_CALL:SET_STATE:${JSON.stringify({ step: newState, data: newData })}` }] };
+  };
 
-### BISHERIGER VERLAUF:
-${historyPrompt}
+  // Helper to find data source by ID from context
+  const getDataSourceById = (id: string) => {
+    return (context.dataSources || []).find(ds => ds.id === id);
+  };
 
-### NEUE BENUTZERANFRAGE:
-${userMessage}
-  `;
+  switch (state) {
+    case 'init':
+      yield* yieldText("Hallo! Ich bin der Celion Onboarding Agent. Lass uns deine Migration einrichten.");
+      yield* yieldText(JSON.stringify({
+        type: "datasource_dropdown",
+        mode: "source",
+        label: "Bitte wähle ein Quellsystem aus...",
+        options: [
+          ...(context.dataSources || []).map(ds => ({ id: ds.id, label: `${ds.name} (${ds.source_type}) - ${ds.api_url}` })),
+          { id: "new", label: "+ Neue Datenquelle erstellen" }
+        ]
+      }));
+      yield* yieldStateUpdate('await_source', data);
+      break;
 
-  const messages: any[] = [
-    { role: "system", content: SYSTEM_PROMPT },
-    { role: "user", content: userContext }
-  ];
-
-  while (true) {
-    const response = await fetch(`${baseUrl}/chat/completions`, {
-      method: 'POST',
-      headers,
-      body: JSON.stringify({
-        model: "gpt-4o",
-        messages,
-        tools: TOOLS
-      }),
-    });
-
-    if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(`OpenAI API request failed: ${response.status} ${response.statusText} ${errorText}`);
-    }
-
-    const data = await response.json();
-    const choice = data.choices[0];
-    const message = choice.message;
-
-    messages.push(message);
-
-    if (message.content) {
-      yield {
-        type: 'message',
-        role: 'assistant',
-        content: [{ type: 'output_text', text: message.content }]
-      };
-    }
-
-    if (message.tool_calls && message.tool_calls.length > 0) {
-      for (const toolCall of message.tool_calls) {
-        const functionName = toolCall.function.name;
-        const args = JSON.parse(toolCall.function.arguments);
-        let result: any;
-
-        console.log(`[IntroductionAgent] Tool Call: ${functionName}`, args);
-
-        if (functionName === 'finish_onboarding') {
-          // This will be handled by the worker to update the DB
-          result = { status: "success", message: "Onboarding abgeschlossen. Die Migration wird konfiguriert." };
-          
-          // We yield the tool result so the agent can finish the conversation
-          yield {
-            type: 'message',
-            role: 'assistant',
-            content: [{ type: 'output_text', text: "AUSGABE_TOOL_CALL:FINISH_ONBOARDING:" + JSON.stringify(args) }]
-          };
-        } else if (functionName === 'fetch_available_scopes') {
-          if (context.fetchScopeData) {
-            try {
-              const scopes = await context.fetchScopeData(args.system, args.dataSourceId, args.apiToken, args.url, args.email);
-              result = { status: "success", scopes };
-            } catch (err: any) {
-              result = { error: "Fehler beim Abrufen der Bereiche: " + err.message };
-            }
-          } else {
-            result = { error: "fetchScopeData-Funktion ist nicht im Kontext verfügbar." };
-          }
-        } else {
-          result = { error: `Unknown tool: ${functionName}` };
-        }
-
-        messages.push({
-          tool_call_id: toolCall.id,
-          role: "tool",
-          name: functionName,
-          content: JSON.stringify(result)
-        });
+    case 'await_source': {
+      let dataSourceId = "";
+      const idMatch = userMessage.match(/\[ID:([^\]]+)\]/);
+      if (idMatch) {
+        dataSourceId = idMatch[1];
+      } else if (userMessage.includes("neue Datenquelle")) {
+        dataSourceId = "new";
       }
-    } else {
+
+      if (!dataSourceId) {
+        yield* yieldText("Bitte wähle eine gültige Option aus dem Dropdown, um fortzufahren.");
+        return;
+      }
+      
+      if (dataSourceId === "new") {
+        yield* yieldText("Alles klar, eine neue Datenquelle. Bitte gib mir das System (z.B. Asana, ClickUp), die API-URL, deinen API-Token und ggf. deine E-Mail-Adresse.");
+        // Normally we'd transition to a 'new_datasource' sub-flow, but for now we'll stick to existing ones
+        return;
+      }
+
+      const ds = getDataSourceById(dataSourceId);
+      if (!ds) {
+        yield* yieldText("Diese Datenquelle konnte ich leider nicht finden. Bitte wähle erneut.");
+        return;
+      }
+
+      if (context.verifySystemAndAuth) {
+        yield* yieldText(`Prüfe Verbindung zu **${ds.name}**...`);
+        const verifyRes = await context.verifySystemAndAuth(ds.id, ds.source_type);
+        
+        if (verifyRes.success) {
+          const newData = { ...data, source: { dataSourceId: ds.id, system: ds.source_type, name: ds.name } };
+          yield* yieldText("Verbindung erfolgreich! Möchtest du alles migrieren oder nur bestimmte Bereiche?");
+          yield* yieldText(JSON.stringify({
+            type: "action",
+            actions: [
+              { label: "Alles migrieren", action: "send_chat:Alles", variant: "primary" },
+              { label: "Bestimmte Bereiche", action: "send_chat:Spezifisch", variant: "outline" }
+            ]
+          }));
+          yield* yieldStateUpdate('await_scope_decision', newData);
+        } else {
+          yield* yieldText(`Fehler bei der Verbindung: ${verifyRes.message}\nBitte überprüfe die Datenquelle.`);
+        }
+      }
       break;
     }
+
+    case 'await_scope_decision':
+      if (userMessage.toLowerCase().includes("alles")) {
+        const newData = { ...data };
+        newData.source.scope = "Alles";
+        newData.source.scopeIds = [];
+        yield* yieldText("Alles klar. Nun zum Zielsystem:");
+        yield* yieldText(JSON.stringify({
+          type: "datasource_dropdown",
+          mode: "target",
+          label: "Bitte wähle ein Zielsystem aus...",
+          options: [
+            ...(context.dataSources || []).filter(ds => ds.id !== data.source?.dataSourceId).map(ds => ({ id: ds.id, label: `${ds.name} (${ds.source_type}) - ${ds.api_url}` })),
+            { id: "new", label: "+ Neue Datenquelle erstellen" }
+          ]
+        }));
+        yield* yieldStateUpdate('await_target', newData);
+      } else if (userMessage.toLowerCase().includes("spezifisch") || userMessage.toLowerCase().includes("bestimmte bereiche")) {
+        yield* yieldText("Ich lade die verfügbaren Bereiche...");
+        if (context.fetchScopeData) {
+          try {
+            const scopes = await context.fetchScopeData(data.source.system, data.source.dataSourceId);
+            if (scopes.length === 0) {
+              yield* yieldText("Keine Bereiche gefunden, migriere alles.");
+              const newData = { ...data };
+              newData.source.scope = "Alles";
+              newData.source.scopeIds = [];
+              yield* yieldText("Nun zum Zielsystem:");
+              yield* yieldText(JSON.stringify({
+                type: "datasource_dropdown",
+                mode: "target",
+                label: "Bitte wähle ein Zielsystem...",
+                options: [
+                  ...(context.dataSources || []).filter(ds => ds.id !== data.source?.dataSourceId).map(ds => ({ id: ds.id, label: `${ds.name} (${ds.source_type}) - ${ds.api_url}` })),
+                  { id: "new", label: "+ Neue Datenquelle erstellen" }
+                ]
+              }));
+              yield* yieldStateUpdate('await_target', newData);
+            } else {
+              yield* yieldText(JSON.stringify({
+                type: "scope_dropdown",
+                label: "Welchen Bereich möchtest du migrieren?",
+                options: scopes.map(s => ({ id: s.id, label: s.name }))
+              }));
+              yield* yieldStateUpdate('await_scope_selection', data);
+            }
+          } catch (e: any) {
+            yield* yieldText(`Fehler beim Laden: ${e.message}`);
+          }
+        }
+      } else {
+        yield* yieldText("Bitte wähle 'Alles' oder 'Bestimmte Bereiche'.");
+      }
+      break;
+
+    case 'await_scope_selection': {
+      const idMatch = userMessage.match(/\[ID:([^\]]+)\]/);
+      const labelMatch = userMessage.match(/den Bereich '([^']+)'/);
+      
+      if (idMatch) {
+        const newData = { ...data };
+        newData.source.scope = labelMatch ? labelMatch[1] : idMatch[1];
+        newData.source.scopeIds = [idMatch[1]];
+        yield* yieldText(`Bereich "${newData.source.scope}" ausgewählt. Nun zum Zielsystem:`);
+        yield* yieldText(JSON.stringify({
+          type: "datasource_dropdown",
+          mode: "target",
+          label: "Bitte wähle ein Zielsystem aus...",
+          options: [
+            ...(context.dataSources || []).filter(ds => ds.id !== data.source?.dataSourceId).map(ds => ({ id: ds.id, label: `${ds.name} (${ds.source_type}) - ${ds.api_url}` })),
+            { id: "new", label: "+ Neue Datenquelle erstellen" }
+          ]
+        }));
+        yield* yieldStateUpdate('await_target', newData);
+      } else {
+        yield* yieldText("Bitte wähle einen Bereich.");
+      }
+      break;
+    }
+
+    case 'await_target': {
+      let dataSourceId = "";
+      const idMatch = userMessage.match(/\[ID:([^\]]+)\]/);
+      if (idMatch) {
+        dataSourceId = idMatch[1];
+      }
+
+      if (!dataSourceId) {
+        yield* yieldText("Bitte wähle ein gültiges Zielsystem.");
+        return;
+      }
+
+      const ds = getDataSourceById(dataSourceId);
+      if (!ds) {
+        yield* yieldText("Zielsystem nicht gefunden.");
+        return;
+      }
+
+      if (context.verifySystemAndAuth) {
+        yield* yieldText(`Prüfe Verbindung zu **${ds.name}**...`);
+        const verifyRes = await context.verifySystemAndAuth(ds.id, ds.source_type);
+        
+        if (verifyRes.success) {
+          const newData = { ...data, target: { dataSourceId: ds.id, system: ds.source_type, name: ds.name } };
+          newData.target.scope = "Zielbereich";
+          newData.target.containerType = "workspace";
+          
+          yield* yieldText(`Zusammenfassung:
+**Quelle:** ${newData.source.name} (${newData.source.scope})
+**Ziel:** ${newData.target.name}
+
+Passt das?`);
+          yield* yieldText(JSON.stringify({
+            type: "action",
+            actions: [
+              { label: "Ich bestätige", action: "send_chat:Bestätigt", variant: "primary" }
+            ]
+          }));
+          yield* yieldStateUpdate('await_confirmation', newData);
+        } else {
+          yield* yieldText(`Fehler: ${verifyRes.message}`);
+        }
+      }
+      break;
+    }
+
+    case 'await_confirmation':
+      if (userMessage.toLowerCase().includes("bestätigt")) {
+        yield* yieldText("AUSGABE_TOOL_CALL:FINISH_ONBOARDING:" + JSON.stringify({
+          name: context.migrationName || "Neue Migration",
+          source: data.source,
+          target: data.target
+        }));
+        yield* yieldStateUpdate('completed', data);
+      } else {
+        yield* yieldText("Bitte bestätige die Auswahl.");
+      }
+      break;
+
+    case 'completed':
+      yield* yieldText("Onboarding abgeschlossen.");
+      break;
   }
 }

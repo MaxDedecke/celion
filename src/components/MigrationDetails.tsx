@@ -54,7 +54,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         }
       }
 
-      if (stepToRun > 10) {
+      if (stepToRun > 8) {
         toast.info("Migration bereits abgeschlossen.");
         return;
       }

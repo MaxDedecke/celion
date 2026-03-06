@@ -664,15 +664,17 @@ async function processJob(job: any) {
 
     } else if (agentName === 'runIntroductionAgent') {
       const userMessage = agentParams?.userMessage;
-      const context = agentParams?.context;
+      const agentContext = agentParams?.context;
       
       // Set status to thinking
       await pool.query('UPDATE migrations SET consultant_status = $1 WHERE id = $2', ['thinking', migrationId]);
       
-      // Fetch current migration name and user_id
-      const { rows: migRows } = await pool.query('SELECT name, user_id FROM migrations WHERE id = $1', [migrationId]);
+      // Fetch current migration name, user_id, and context
+      const { rows: migRows } = await pool.query('SELECT name, user_id, context FROM migrations WHERE id = $1', [migrationId]);
       const migrationName = migRows[0]?.name;
       const userId = migRows[0]?.user_id;
+      const migrationContextObj = migRows[0]?.context || {};
+      const onboardingState = migrationContextObj.onboardingState;
 
       // Fetch available data sources
       const { rows: dataSources } = await pool.query(
@@ -757,18 +759,46 @@ async function processJob(job: any) {
           return [];
       };
 
+      const verifySystemAndAuth = async (dataSourceId: string, system?: string, apiToken?: string, url?: string, email?: string): Promise<{ success: boolean, message: string }> => {
+        try {
+          let resolvedSystem = system;
+          if (dataSourceId && dataSourceId !== 'new') {
+            const { rows: dsRows } = await pool.query(
+               'SELECT source_type FROM data_sources WHERE id = $1',
+               [dataSourceId]
+            );
+            if (dsRows.length > 0) {
+              resolvedSystem = dsRows[0].source_type;
+            }
+          }
+          if (!resolvedSystem) throw new Error("System konnte nicht ermittelt werden.");
+          
+          await fetchScopeData(resolvedSystem, dataSourceId, apiToken, url, email);
+          return { success: true, message: "System erfolgreich verifiziert und Authentifizierung gültig." };
+        } catch (err: any) {
+          return { success: false, message: "Fehler bei der Verifizierung: " + err.message };
+        }
+      };
+
       const messageGenerator = runIntroductionAgent(userMessage, {
-          ...context,
+          ...agentContext,
           migrationId,
           migrationName,
           dataSources,
-          fetchScopeData
+          fetchScopeData,
+          verifySystemAndAuth,
+          onboardingState
       });
       
       for await (const message of messageGenerator) {
         if (message.content && message.content.length > 0 && message.content[0].text) {
           const text = message.content[0].text;
-          if (text.startsWith("AUSGABE_TOOL_CALL:FINISH_ONBOARDING:")) {
+          if (text.startsWith("AUSGABE_TOOL_CALL:SET_STATE:")) {
+              const stateStr = text.replace("AUSGABE_TOOL_CALL:SET_STATE:", "");
+              const newState = JSON.parse(stateStr);
+              migrationContextObj.onboardingState = newState;
+              await pool.query('UPDATE migrations SET context = $1 WHERE id = $2', [JSON.stringify(migrationContextObj), migrationId]);
+          } else if (text.startsWith("AUSGABE_TOOL_CALL:FINISH_ONBOARDING:")) {
               const argsStr = text.replace("AUSGABE_TOOL_CALL:FINISH_ONBOARDING:", "");
               const args = JSON.parse(argsStr);
 

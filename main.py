@@ -1315,8 +1315,8 @@ async def create_mapping_chat_message(id: str, payload: CreateMappingChatMessage
 @app.post("/api/migrations/{id}/action/{step}")
 async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
     """Trigger a specific step in the migration process."""
-    if not 1 <= step <= 10:
-        raise HTTPException(status_code=400, detail="Step number must be between 1 and 10.")
+    if not 1 <= step <= 8:
+        raise HTTPException(status_code=400, detail="Step number must be between 1 and 8.")
 
     try:
         with _get_db_connection() as conn, conn.cursor() as cur:
@@ -1340,16 +1340,14 @@ async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
             if "nodes" in wf_state and isinstance(wf_state["nodes"], list):
                 new_nodes = []
                 step_map = {
-                    "system-detection": 1,
-                    "auth-flow": 2,
-                    "schema-discovery": 3,
-                    "target-schema": 4,
-                    "data-staging": 5,
-                    "mapping-verification": 6,
-                    "quality-enhancement": 7,
-                    "data-transfer": 8,
-                    "verification": 9,
-                    "report": 10
+                    "schema-discovery": 1,
+                    "target-schema": 2,
+                    "data-staging": 3,
+                    "mapping-verification": 4,
+                    "quality-enhancement": 5,
+                    "data-transfer": 6,
+                    "verification": 7,
+                    "report": 8
                 }
                 
                 for node in wf_state["nodes"]:
@@ -1390,20 +1388,16 @@ async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
             
             # 1. Clear structured results for steps >= this step
             if step <= 1:
-                cur.execute("DELETE FROM public.step_1_results WHERE migration_id = %s", (id,))
-            if step <= 2:
-                cur.execute("DELETE FROM public.step_2_results WHERE migration_id = %s", (id,))
-            if step <= 3:
                 cur.execute("DELETE FROM public.step_3_results WHERE migration_id = %s", (id,))
-            if step <= 4:
+            if step <= 2:
                 cur.execute("DELETE FROM public.step_4_results WHERE migration_id = %s", (id,))
-            if step <= 5:
+            if step <= 3:
                 cur.execute("DELETE FROM public.step_5_results WHERE migration_id = %s", (id,))
-            if step <= 6:
+            if step <= 4:
                 cur.execute("DELETE FROM public.step_6_results WHERE migration_id = %s", (id,))
             
-            # 2. Reset overall migration complexity if step 3 is retried
-            if step <= 3:
+            # 2. Reset overall migration complexity if step 1 is retried
+            if step <= 1:
                 cur.execute("UPDATE public.migrations SET complexity_score = 0 WHERE id = %s", (id,))
 
             # 3. Clear/Reset migration_steps for all steps >= current retry step
@@ -1453,18 +1447,16 @@ async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
 
             # 3. Enqueue job for the worker
             step_agent_mapping = {
-                1: "runSystemDetection",
-                2: "runAuthFlow",
-                3: "runCapabilityDiscovery",
-                4: "runTargetSchema",
-                5: "runDataStaging",
-                6: "runMappingVerification",
-                7: "runQualityEnhancement",
-                8: "runDataTransfer",
-                9: "runVerification",
-                10: "runReport",
+                1: "runCapabilityDiscovery",
+                2: "runTargetSchema",
+                3: "runDataStaging",
+                4: "runMappingVerification",
+                5: "runQualityEnhancement",
+                6: "runDataTransfer",
+                7: "runVerification",
+                8: "runReport",
             }
-            agent_name = step_agent_mapping.get(step, "runSystemDetection")
+            agent_name = step_agent_mapping.get(step, "runCapabilityDiscovery")
 
             payload_base = {
                 "migrationId": id,
@@ -1473,52 +1465,21 @@ async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
                 "agentName": agent_name,
             }
 
-            if step in [1, 2]:
-                # Enqueue Source Verification/Auth Job
-                payload_source = {
-                    **payload_base,
-                    "agentParams": {
-                        "url": migration_row["source_url"],
-                        "expectedSystem": migration_row["source_system"],
-                        "instructions": migration_row["notes"],
-                        "mode": "source"
-                    }
-                }
-                cur.execute(
-                    "INSERT INTO public.jobs (step_id, payload, status) VALUES (%s, %s, 'pending')",
-                    (step_id, json.dumps(payload_source)),
-                )
-                
-                # Enqueue Target Verification/Auth Job
-                payload_target = {
-                    **payload_base,
-                    "agentParams": {
-                        "url": migration_row["target_url"],
-                        "expectedSystem": migration_row["target_system"],
-                        "instructions": migration_row["notes"],
-                        "mode": "target"
-                    }
-                }
-                cur.execute(
-                    "INSERT INTO public.jobs (step_id, payload, status) VALUES (%s, %s, 'pending')",
-                    (step_id, json.dumps(payload_target)),
-                )
-            else:
-                agent_params = {
-                    "sourceUrl": migration_row["source_url"],
-                    "sourceExpectedSystem": migration_row["source_system"],
-                    "targetUrl": migration_row["target_url"],
-                    "targetExpectedSystem": migration_row["target_system"],
-                    "instructions": migration_row["notes"],
-                }
-                payload = {
-                    **payload_base,
-                    "agentParams": agent_params,
-                }
-                cur.execute(
-                    "INSERT INTO public.jobs (step_id, payload, status) VALUES (%s, %s, 'pending')",
-                    (step_id, json.dumps(payload)),
-                )
+            agent_params = {
+                "sourceUrl": migration_row["source_url"],
+                "sourceExpectedSystem": migration_row["source_system"],
+                "targetUrl": migration_row["target_url"],
+                "targetExpectedSystem": migration_row["target_system"],
+                "instructions": migration_row["notes"],
+            }
+            payload = {
+                **payload_base,
+                "agentParams": agent_params,
+            }
+            cur.execute(
+                "INSERT INTO public.jobs (step_id, payload, status) VALUES (%s, %s, 'pending')",
+                (step_id, json.dumps(payload)),
+            )
 
             # We need to publish to RabbitMQ for EACH job created in this turn
             # But the 'job_row' logic below only handles the last one.

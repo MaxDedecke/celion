@@ -518,7 +518,7 @@ const Dashboard = () => {
   const headerInfo = useMemo(() => {
     if (!currentMigration) return null;
 
-    const totalSteps = 10;
+    const totalSteps = 8;
     const rawStep = currentMigration.current_step || 0;
     const isStepRunning = currentMigration.step_status === 'running' || currentMigration.step_status === 'pending';
     const hasCurrentStepFailed = currentMigration.step_status === 'failed';

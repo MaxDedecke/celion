@@ -1,21 +1,5 @@
 export const AGENT_WORKFLOW_STEPS = [
   {
-    id: "system-detection",
-    title: "System Detection",
-    description: "Erkennt automatisch, welches System (z. B. Jira Cloud, Asana, Azure DevOps) hinter einer angegebenen URL steckt und welche API-Version verfügbar ist.",
-    phase: "System Detection",
-    agentType: "system-detection",
-    color: "sky",
-  },
-  {
-    id: "auth-flow",
-    title: "Authentication",
-    description: "Leitet anhand des erkannten Systems den passenden Authentifizierungsprozess ein (API Token, OAuth2, Basic Auth etc.) und prüft die Berechtigungen.",
-    phase: "Authentication",
-    agentType: "auth-flow",
-    color: "violet",
-  },
-  {
     id: "schema-discovery",
     title: "Source Discovery",
     description: "Findet automatisch die API-Spezifikation, analysiert Entities, Endpunkte, Auth, Pagination und Limits über autonome httpClient-Probes.",

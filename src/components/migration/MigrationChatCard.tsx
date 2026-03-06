@@ -120,7 +120,7 @@ const MigrationChatCard = ({
     };
   }, [migration.id]);
 
-  const totalSteps = 10;
+  const totalSteps = 8;
   const rawStep = migrationData.current_step || 0;
   const isStepRunning = migrationData.step_status === 'running' || migrationData.step_status === 'pending';
   const hasCurrentStepFailed = migrationData.step_status === 'failed';
