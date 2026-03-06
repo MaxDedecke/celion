@@ -481,6 +481,9 @@ const MappingDialog = ({ open, onOpenChange, migrationId }: MappingDialogProps) 
                 <ArrowLeftRight className="w-5 h-5 text-primary" />
                 Model Mapping
               </DialogTitle>
+              <DialogDescription className="sr-only">
+                Definieren Sie die Feld-Zuweisungen zwischen Quell- und Zielsystem.
+              </DialogDescription>
             </div>
             <div className="flex items-center gap-4">
               <Button size="sm" onClick={handleSave} disabled={isSaving} className="min-w-[100px]">

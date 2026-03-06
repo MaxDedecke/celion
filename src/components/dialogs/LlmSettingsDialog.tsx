@@ -2,6 +2,7 @@ import React, { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
   DialogFooter,
@@ -109,6 +110,9 @@ export function LlmSettingsDialog({
             <Brain className="w-5 h-5 text-primary" />
             <DialogTitle>LLM Provider Einstellungen</DialogTitle>
           </div>
+          <DialogDescription className="sr-only">
+            Konfigurieren Sie Ihre API-Schlüssel und Modellpräferenzen für die KI-Agenten.
+          </DialogDescription>
         </DialogHeader>
 
         {loading ? (

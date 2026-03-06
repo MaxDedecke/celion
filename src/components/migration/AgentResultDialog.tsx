@@ -72,11 +72,9 @@ const AgentResultDialog = ({
         <DialogHeader className="px-8 flex flex-row items-center justify-between">
           <div className="space-y-1.5">
             <DialogTitle>Agenten-Output</DialogTitle>
-            {step && (
-              <DialogDescription>
-                Schritt {step.index + 1}: {step.title}
-              </DialogDescription>
-            )}
+            <DialogDescription className={cn(!step && "sr-only")}>
+              {step ? `Schritt ${step.index + 1}: ${step.title}` : "Detaillierte Agenten-Ergebnisse"}
+            </DialogDescription>
           </div>
           {(formattedResult || structuredResult) && (
             <Button variant="outline" size="sm" onClick={handleCopy} className="gap-2">

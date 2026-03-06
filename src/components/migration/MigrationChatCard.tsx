@@ -1,7 +1,7 @@
 import { useMemo, useRef, useEffect, useState } from "react";
 import { Card, CardContent} from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { ChevronDown, ArrowRight, Play } from "lucide-react";
+import { ChevronDown, ArrowRight, Play, ArrowLeftRight, Sparkles } from "lucide-react";
 import { cn } from "@/lib/utils";
 import ChatMessageList from "./ChatMessageList";
 import ChatInput from "./ChatInput";
@@ -31,6 +31,7 @@ const MigrationChatCard = ({
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [migrationData, setMigrationData] = useState<Migration>(migration);
   const [mappingRules, setMappingRules] = useState<any[]>([]);
+  const [isProcessingMessages, setIsProcessingMessages] = useState(false);
 
   const prevMessageCountRef = useRef(0);
   const currentStepRef = useRef(migration.current_step || 0);
@@ -170,7 +171,7 @@ const MigrationChatCard = ({
 
   useEffect(() => {
     let intervalId: ReturnType<typeof setInterval> | null = null;
-    if (isStepRunning || isConsultantThinking) {
+    if (isStepRunning || isConsultantThinking || isProcessingMessages) {
       intervalId = setInterval(() => {
         if (isNearBottom) {
           scrollToBottom('smooth');
@@ -180,7 +181,7 @@ const MigrationChatCard = ({
     return () => {
       if (intervalId) clearInterval(intervalId);
     };
-  }, [isStepRunning, isConsultantThinking, isNearBottom]);
+  }, [isStepRunning, isConsultantThinking, isProcessingMessages, isNearBottom]);
 
   const lastActionMessage = useMemo(() => {
     const findActionJson = (content: string) => {
@@ -385,6 +386,7 @@ const MigrationChatCard = ({
               isConsultantThinking={isConsultantThinking}
               onOpenAgentOutput={onOpenAgentOutput}
               onAction={onAction}
+              onProcessingChange={setIsProcessingMessages}
               currentStepTitle={runningStep?.title}
               currentStep={rawStep}
             />

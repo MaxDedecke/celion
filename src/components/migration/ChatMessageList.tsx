@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import ChatMessage, { ChatMessage as ChatMessageType } from "./ChatMessage";
 import { useMessageQueue } from "@/hooks/useMessageQueue";
 import { Brain } from "lucide-react";
@@ -8,6 +9,7 @@ interface ChatMessageListProps {
   isConsultantThinking?: boolean;
   onOpenAgentOutput?: (stepId: string) => void;
   onAction?: (action: string) => void;
+  onProcessingChange?: (isProcessing: boolean) => void;
   showContinueButton?: boolean;
   onContinue?: () => void;
   continueButtonText?: string;
@@ -47,18 +49,24 @@ const ChatMessageList = ({
   isConsultantThinking,
   onOpenAgentOutput,
   onAction,
+  onProcessingChange,
   onContinue,
   currentStepTitle,
   currentStep
 }: ChatMessageListProps) => {
   const { 
     visibleMessages, 
+    isProcessing,
     animatingId,
     completedAnimations,
     onAnimationComplete
   } = useMessageQueue(messages, {
-    delayMs: 100,
+    delayMs: 300,
   });
+
+  useEffect(() => {
+    onProcessingChange?.(isProcessing);
+  }, [isProcessing, onProcessingChange]);
 
   const handleAction = (action: string) => {
     if (onAction) {
@@ -107,12 +115,13 @@ const ChatMessageList = ({
   return (
     <div className="flex flex-col gap-2 pb-4 pr-3">
       {visibleMessages.map((message, index) => {
-        // Only skip the LATEST action message, keep older ones in the flow
-        if (lastActionMessage && message.id === lastActionMessage.id) {
+        const shouldAnimate = animatingId === message.id && !completedAnimations.has(message.id);
+
+        // Only skip the LATEST action message if it's NOT currently being animated.
+        // If it's being animated, we MUST render it so the animation/typewriter can complete and trigger the next message.
+        if (lastActionMessage && message.id === lastActionMessage.id && !shouldAnimate) {
           return null;
         }
-
-        const shouldAnimate = animatingId === message.id && !completedAnimations.has(message.id);
         
         // Determine if we should show a divider
         const previousMessage = index > 0 ? visibleMessages[index - 1] : null;

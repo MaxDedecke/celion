@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -39,6 +40,9 @@ const EditMigrationDialog = ({ open, onOpenChange, onUpdate, currentName }: Edit
       <DialogContent className="bg-popover border-border max-w-md">
         <DialogHeader>
           <DialogTitle className="text-xl">Edit migration</DialogTitle>
+          <DialogDescription className="sr-only">
+            Edit the name and settings for this migration.
+          </DialogDescription>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">

@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -29,6 +30,9 @@ const AccountDialog = ({ open, onOpenChange }: AccountDialogProps) => {
       <DialogContent className="bg-popover border-border max-w-md">
         <DialogHeader>
           <DialogTitle className="sr-only">Account & Einstellungen</DialogTitle>
+          <DialogDescription className="sr-only">
+            Verwalten Sie Ihre Profileinstellungen, E-Mail-Präferenzen und Design-Optionen.
+          </DialogDescription>
         </DialogHeader>
         
         {/* Profile Section */}

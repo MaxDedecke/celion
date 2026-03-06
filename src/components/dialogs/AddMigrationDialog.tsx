@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
@@ -154,6 +155,9 @@ const AddMigrationDialog = ({
             <DialogTitle className="text-xl">
               {title ?? (isEditMode ? "Migration konfigurieren" : "Migration hinzufügen")}
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              Erstellen oder bearbeiten Sie Ihre Migrationskonfiguration.
+            </DialogDescription>
           </DialogHeader>
         </div>
 

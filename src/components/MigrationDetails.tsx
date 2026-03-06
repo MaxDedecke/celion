@@ -8,7 +8,7 @@ import { toast } from "sonner";
 import { databaseClient } from "@/api/databaseClient";
 import type { MigrationDetailsProps } from "./migration/migrationDetails.types";
 import { cn } from "@/lib/utils";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Button } from "@/components/ui/button";
@@ -253,6 +253,9 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         <DialogContent>
           <DialogHeader>
             <DialogTitle>Neuen Ziel-Namen wählen</DialogTitle>
+            <DialogDescription className="sr-only">
+              Geben Sie einen neuen Namen für den Zielbereich ein, um Namenskonflikte zu vermeiden.
+            </DialogDescription>
           </DialogHeader>
           <div className="py-4 space-y-4">
             <div className="space-y-2">

@@ -303,6 +303,9 @@ const DataSources = () => {
             <DialogTitle>
               {editingSource ? "Datenquelle bearbeiten" : "Neue Datenquelle"}
             </DialogTitle>
+            <DialogDescription className="sr-only">
+              Geben Sie die Verbindungsdetails für die neue oder bestehende Datenquelle ein.
+            </DialogDescription>
           </DialogHeader>
           <div className="space-y-6 py-2">
             <div className="space-y-6">

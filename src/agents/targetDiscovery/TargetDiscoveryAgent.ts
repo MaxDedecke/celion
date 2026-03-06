@@ -55,8 +55,11 @@ export class TargetDiscoveryAgent extends AgentBase {
 
     const planningPrompt = `
 Du bist der Planning Agent für eine Datenmigration in das Zielsystem ${targetSystem}.
-Deine Aufgabe ist es, einen sequentiellen Ausführungsplan für API-Aufrufe zu erstellen, um die Top-Level-Strukturen (Workspaces, Projekte, Ordner etc.) des Zielsystems abzufragen.
+Deine Aufgabe ist es, einen sequentiellen Ausführungsplan für API-Aufrufe zu erstellen, um NUR die Top-Level-Strukturen (wie Workspaces, Spaces oder Projekte) des Zielsystems abzufragen.
 Dein Hauptziel ist es herauszufinden, ob ein Bereich/Projekt mit dem Namen "${targetName}" bereits existiert.
+
+### WICHTIG:
+Ignoriere alle Endpunkte für Details (z.B. Tasks, Folder-Details, Listen-Inhalte). Es geht NUR darum festzustellen, ob der Name "${targetName}" auf der obersten Ebene (oder der Ebene, in der wir erstellen wollen) bereits vergeben ist.
 
 ### VERFÜGBARE ENDPUNKTE (AUS SPEC):
 ${JSON.stringify(availableEndpoints, null, 2)}
@@ -64,7 +67,7 @@ ${JSON.stringify(availableEndpoints, null, 2)}
 ### DEIN AUFTRAG:
 1. Erstelle einen Plan im JSON-Format mit Schritten.
 2. Jeder Schritt muss einen 'endpoint_key' aus der obigen Liste verwenden.
-3. Der Plan MUSS alle relevanten Top-Level Endpunkte enthalten, um eine vollständige Namensprüfung zu ermöglichen.
+3. Beschränke dich auf die Endpunkte, die nötig sind, um die Namen der obersten Container-Ebenen aufzulisten.
 
 ### JSON OUTPUT FORMAT:
 {
@@ -77,9 +80,12 @@ ${JSON.stringify(availableEndpoints, null, 2)}
 
     const verificationPrompt = `
 Du bist der Plan-Verifizierer. Prüfe den folgenden Plan gegen die verfügbaren Endpunkte.
-Stelle sicher, dass ALLE relevanten Top-Level Endpunkte (z.B. Workspaces, Projekte, Spaces) im Plan enthalten sind.
-Falls etwas fehlt, gib eine Liste der fehlenden 'endpoint_keys' zurück.
-Antworte zwingend im JSON-Format.
+Stelle sicher, dass die RELEVANTEN Top-Level Endpunkte (z.B. Workspaces, Projekte, Spaces) im Plan enthalten sind, um Namenskonflikte für "${targetName}" zu prüfen.
+
+### REGELN:
+1. Akzeptiere den Plan, wenn er die obersten Ebenen abdeckt.
+2. Fordere KEINE Endpunkte für Details (Tasks, Kommentare etc.) an. Diese sind in diesem Schritt NICHT erwünscht.
+3. Antworte zwingend im JSON-Format.
 
 ### VERFÜGBARE ENDPUNKTE:
 ${endpointKeys.join(', ')}
@@ -98,11 +104,11 @@ Falls etwas fehlt: { "status": "incomplete", "missing": ["key1", "key2"], "reaso
 
     while (attempts < 3) {
         const currentPlanningPrompt = feedback 
-            ? `${planningPrompt}\n\n### FEEDBACK VOM LETZTEN VERSUCH:\n${feedback}\nBitte korrigiere den Plan.`
+            ? `${planningPrompt}\n\n### DEIN VORHERIGER PLAN WAR UNVOLLSTÄNDIG.\n### FEEDBACK VOM VERIFIZIERER:\n${feedback}\n\nBitte korrigiere den Plan und stelle sicher, dass er alle genannten Punkte erfüllt.`
             : planningPrompt;
 
         const planningRes = await this.provider.chat([
-            { role: "system", content: "Du bist ein präziser API Planning Agent." },
+            { role: "system", content: "Du bist ein präziser API Planning Agent. Antworte im JSON-Format." },
             { role: "user", content: currentPlanningPrompt }
         ], undefined, { response_format: { type: "json_object" } });
 
@@ -111,7 +117,7 @@ Falls etwas fehlt: { "status": "incomplete", "missing": ["key1", "key2"], "reaso
 
         // Verifizierung
         const verifRes = await this.provider.chat([
-            { role: "system", content: "Du bist ein strenger Verifizierer." },
+            { role: "system", content: "Du bist ein strenger Verifizierer. Antworte im JSON-Format." },
             { role: "user", content: verificationPrompt.replace('{{PLAN}}', JSON.stringify(draftPlan, null, 2)) }
         ], undefined, { response_format: { type: "json_object" } });
 
@@ -119,10 +125,15 @@ Falls etwas fehlt: { "status": "incomplete", "missing": ["key1", "key2"], "reaso
 
         if (verification.status === "valid") {
             executionPlan = draftPlan;
-            await this.context.writeChatMessage('assistant', `Plan verifiziert: ${executionPlan.summary}`, stepNumber);
+            await this.context.writeChatMessage('assistant', `✅ Target-Discovery-Plan verifiziert: ${executionPlan.summary}`, stepNumber);
             break;
         } else {
-            feedback = `Der Plan ist unvollständig. Fehlende Endpunkte: ${verification.missing.join(', ')}. Grund: ${verification.reason}`;
+            const missingInfo = verification.missing && verification.missing.length > 0 
+                ? `Fehlende Endpunkte: ${verification.missing.join(', ')}.` 
+                : "";
+            feedback = `${missingInfo} Grund: ${verification.reason || "Unbekannter Fehler in der Plan-Logik."}`;
+            
+            await this.context.writeChatMessage('assistant', `⚠️ **Plan-Verifizierung fehlgeschlagen (Versuch ${attempts + 1}/3):**\n${feedback}`, stepNumber);
             attempts++;
         }
     }

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, Fragment } from "react";
 import { User, SquareArrowOutUpRight, CheckCircle2, XCircle, Play, Copy, Rocket, FileJson, ArrowRight, Clock, Brain } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import TypewriterText from "./TypewriterText";
@@ -840,6 +840,9 @@ const ChatMessage = ({ message, allMessages, onOpenAgentOutput, onAction, enable
           </Button>
           <DialogHeader>
             <DialogTitle>Agent Output Details</DialogTitle>
+            <DialogDescription className="sr-only">
+              Detaillierte JSON-Daten des Agenten-Ergebnisses.
+            </DialogDescription>
           </DialogHeader>
           <ScrollArea className="max-h-[60vh] w-full rounded-md border p-4 bg-muted/30">
             <pre className="text-xs font-mono whitespace-pre-wrap break-all">

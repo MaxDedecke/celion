@@ -8,16 +8,30 @@ export const useMessageQueue = <T extends { id: string; role?: string; created_a
   allMessages: T[],
   options: UseMessageQueueOptions = {}
 ) => {
-  const { delayMs = 300 } = options;
+  const { delayMs = 600 } = options; // Increased default delay
   
   const [visibleIds, setVisibleIds] = useState<Set<string>>(new Set());
   const [animatingId, setAnimatingId] = useState<string | null>(null);
   const [completedAnimations, setCompletedAnimations] = useState<Set<string>>(new Set());
+  
   const queueRef = useRef<string[]>([]);
-  const previousIdsRef = useRef<Set<string>>(new Set());
+  // Use processedIdsRef instead of previousIdsRef to ensure we never re-evaluate or skip queued items
+  const processedIdsRef = useRef<Set<string>>(new Set());
   
   // Ref to track if we have done the initial load.
   const isInitializedRef = useRef(false);
+
+  const processNextInQueue = useCallback(() => {
+    if (queueRef.current.length > 0) {
+      const nextId = queueRef.current.shift();
+      if (nextId) {
+        setVisibleIds(prev => new Set([...prev, nextId]));
+        setAnimatingId(nextId);
+      }
+    } else {
+      setAnimatingId(null);
+    }
+  }, []);
 
   // Callback wenn Animation fertig ist
   const onAnimationComplete = useCallback((messageId: string) => {
@@ -26,13 +40,9 @@ export const useMessageQueue = <T extends { id: string; role?: string; created_a
     
     // Nächste Nachricht aus Queue holen (mit kleiner Verzögerung)
     setTimeout(() => {
-      const nextId = queueRef.current.shift();
-      if (nextId) {
-        setVisibleIds(prev => new Set([...prev, nextId]));
-        setAnimatingId(nextId);
-      }
+      processNextInQueue();
     }, delayMs);
-  }, [delayMs]);
+  }, [delayMs, processNextInQueue]);
 
   useEffect(() => {
     // Wenn keine Nachrichten da sind (z.B. beim Wechsel der Migration), Initialisierung zurücksetzen
@@ -41,14 +51,10 @@ export const useMessageQueue = <T extends { id: string; role?: string; created_a
       setVisibleIds(new Set());
       setCompletedAnimations(new Set());
       setAnimatingId(null);
-      previousIdsRef.current = new Set();
+      processedIdsRef.current = new Set();
       queueRef.current = [];
       return;
     }
-
-    const currentIds = new Set(allMessages.map(m => m.id));
-    // Check for NEW messages (not in previous render)
-    const newMessages = allMessages.filter(m => !previousIdsRef.current.has(m.id));
 
     // Case 1: Initial Load
     // If not initialized yet, we treat ALL currently present messages as history -> Show instantly, no animation.
@@ -57,56 +63,55 @@ export const useMessageQueue = <T extends { id: string; role?: string; created_a
         
         allMessages.forEach(m => {
              idsToShowInstantly.push(m.id);
+             processedIdsRef.current.add(m.id);
         });
 
         setVisibleIds(new Set([...visibleIds, ...idsToShowInstantly]));
         setCompletedAnimations(new Set([...completedAnimations, ...idsToShowInstantly]));
         
-        previousIdsRef.current = currentIds;
         isInitializedRef.current = true;
         return;
     }
 
     // Case 2: Update during session (new messages arriving)
+    // ONLY look at messages we haven't processed (queued or shown) yet
+    const newMessages = allMessages.filter(m => !processedIdsRef.current.has(m.id));
+
     if (newMessages.length > 0) {
+      let addedToQueue = false;
       newMessages.forEach(m => {
-        // Prevent duplicate queuing if somehow id is already in queue
         if (!queueRef.current.includes(m.id)) {
              queueRef.current.push(m.id);
+             processedIdsRef.current.add(m.id);
+             addedToQueue = true;
         }
       });
       
       // Start processing if not already animating
-      if (!animatingId && queueRef.current.length > 0) {
-        const nextId = queueRef.current.shift();
-        if (nextId) {
-          setVisibleIds(prev => new Set([...prev, nextId]));
-          setAnimatingId(nextId);
-        }
+      if (addedToQueue && animatingId === null) {
+          processNextInQueue();
       }
     }
-    
-    previousIdsRef.current = currentIds;
-  }, [allMessages, animatingId]); // Re-run when messages change or animation status changes
+  }, [allMessages, animatingId, processNextInQueue]);
 
-  // Sicherheits-Timeout: Falls Animation nicht innerhalb von 30 Sekunden abgeschlossen wird
+  // Sicherheits-Timeout: Falls Animation nicht innerhalb von 60 Sekunden abgeschlossen wird
   useEffect(() => {
     if (animatingId === null) return;
     
     const timeoutId = setTimeout(() => {
       console.warn(`[MessageQueue] Animation timeout for message ${animatingId}, forcing completion`);
       onAnimationComplete(animatingId);
-    }, 30000);
+    }, 60000); // Increased timeout to 60s
     
     return () => clearTimeout(timeoutId);
   }, [animatingId, onAnimationComplete]);
 
   const visibleMessages = allMessages.filter(m => visibleIds.has(m.id));
-  const hasQueuedMessages = queueRef.current.length > 0 || animatingId !== null;
+  const isProcessing = queueRef.current.length > 0 || animatingId !== null;
 
   return {
     visibleMessages, 
-    hasQueuedMessages,
+    isProcessing,
     animatingId,
     completedAnimations,
     onAnimationComplete
