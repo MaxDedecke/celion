@@ -70,15 +70,38 @@ const ChatMessageList = ({
   };
 
   // Find the latest action message to pin it to the bottom
-  // ÄNDERUNG: Wir suchen in ALLEN Nachrichten, nicht nur in den sichtbaren.
-  // Damit verhindern wir, dass der Fallback-Button erscheint, während die echte Action-Message noch in der Animation-Queue steckt.
   const actionMessages = messages.filter(m => {
-    try {
-      const parsed = JSON.parse(m.content);
-      return parsed.type === 'action';
-    } catch {
-      return false;
+    const content = m.content.trim();
+    
+    // Check for direct JSON match
+    if (content.startsWith('{') && content.endsWith('}')) {
+      try {
+        const parsed = JSON.parse(content);
+        return parsed.type === 'action';
+      } catch { /* skip */ }
     }
+
+    // Check for markdown code blocks
+    const codeBlockMatch = content.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+    if (codeBlockMatch) {
+      try {
+        const json = JSON.parse(codeBlockMatch[1]);
+        return json.type === 'action';
+      } catch { /* skip */ }
+    }
+
+    // Check for JSON embedded in text
+    const firstBrace = content.indexOf("{");
+    const lastBrace = content.lastIndexOf("}");
+    if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) {
+      try {
+        const potentialJson = content.substring(firstBrace, lastBrace + 1);
+        const json = JSON.parse(potentialJson);
+        return json.type === 'action';
+      } catch { /* skip */ }
+    }
+
+    return false;
   });
   const lastActionMessage = actionMessages[actionMessages.length - 1];
 

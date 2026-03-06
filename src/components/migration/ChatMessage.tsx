@@ -557,6 +557,10 @@ const ChatMessage = ({ message, allMessages, onOpenAgentOutput, onAction, enable
 
   const displayTime = message.created_at || message.timestamp;
 
+  if (!textContent && !jsonContent) {
+    return null;
+  }
+
   return (
     <div
       className={cn(
@@ -614,43 +618,41 @@ const ChatMessage = ({ message, allMessages, onOpenAgentOutput, onAction, enable
                 ) : jsonContent.entities ? (
                   <DiscoveryReport data={jsonContent} />
                 ) : jsonContent.type === "action" ? (
-                  currentStep === 0 ? null : (
-                    <div className="flex w-full justify-center gap-3 py-2 animate-fade-in flex-wrap">
-                      {actualActionSubmitted ? (
-                        <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-md text-emerald-700 w-full justify-center">
-                          <CheckCircle2 className="h-5 w-5 shrink-0" />
-                          <span className="font-medium text-sm">
-                            {actualActionText || "Aktion bestätigt"}
-                          </span>
-                        </div>
-                      ) : (
-                        (jsonContent.actions || (jsonContent.action ? [jsonContent] : [])).map((action: any, idx: number) => {
-                          if (action.action === "continue" && currentStep !== undefined && message.step_number !== undefined && message.step_number < currentStep) return null;
-                          return (
-                            <Button 
-                              key={idx}
-                              onClick={() => {
-                                if (typeof action.action === 'string' && action.action.startsWith('send_chat:')) {
-                                  setIsActionSubmitted(true);
-                                  setLocalActionText(action.label);
-                                }
-                                if (onAction) onAction(action.action === "retry" ? `retry:${action.stepNumber}` : action.action);
-                              }} 
-                              variant={action.variant || "outline"} 
-                              size="sm"
-                              className={cn(
-                                "gap-2",
-                                action.variant === "primary" ? "bg-primary text-primary-foreground hover:bg-primary/90" : "border-primary/20 hover:bg-primary/5 text-primary"
-                              )}
-                            >
-                              {action.label}
-                              {action.action === "continue" ? <ArrowRight className="h-4 w-4" /> : <Play className="h-3 w-3" />}
-                            </Button>
-                          );
-                        })
-                      )}
-                    </div>
-                  )
+                  <div className="flex w-full justify-center gap-3 py-2 animate-fade-in flex-wrap">
+                    {actualActionSubmitted ? (
+                      <div className="flex items-center gap-2 p-3 bg-emerald-500/10 border border-emerald-500/20 rounded-md text-emerald-700 w-full justify-center">
+                        <CheckCircle2 className="h-5 w-5 shrink-0" />
+                        <span className="font-medium text-sm">
+                          {actualActionText || "Aktion bestätigt"}
+                        </span>
+                      </div>
+                    ) : (
+                      (jsonContent.actions || (jsonContent.action ? [jsonContent] : [])).map((action: any, idx: number) => {
+                        if (action.action === "continue" && currentStep !== undefined && message.step_number !== undefined && message.step_number < currentStep) return null;
+                        return (
+                          <Button 
+                            key={idx}
+                            onClick={() => {
+                              if (typeof action.action === 'string' && action.action.startsWith('send_chat:')) {
+                                setIsActionSubmitted(true);
+                                setLocalActionText(action.label);
+                              }
+                              if (onAction) onAction(action.action === "retry" ? `retry:${action.stepNumber}` : action.action);
+                            }} 
+                            variant={action.variant || "outline"} 
+                            size="sm"
+                            className={cn(
+                              "gap-2",
+                              action.variant === "primary" ? "bg-primary text-primary-foreground hover:bg-primary/90" : "border-primary/20 hover:bg-primary/5 text-primary"
+                            )}
+                          >
+                            {action.label}
+                            {action.action === "continue" ? <ArrowRight className="h-4 w-4" /> : <Play className="h-3 w-3" />}
+                          </Button>
+                        );
+                      })
+                    )}
+                  </div>
                 ) : jsonContent.type === "datasource_dropdown" ? (
                   <div className="flex w-full justify-start py-2 animate-fade-in">
                     <div className="flex flex-col gap-3 p-4 rounded-xl border border-primary/20 bg-primary/5 w-full">
@@ -810,10 +812,6 @@ const ChatMessage = ({ message, allMessages, onOpenAgentOutput, onAction, enable
                   </Button>
                 )}
               </div>
-            )}
-
-            {!jsonContent && !textContent && (
-               <span className="text-xs italic text-muted-foreground">[Leere Nachricht]</span>
             )}
           </div>
 
