@@ -413,7 +413,7 @@ const MigrationChatCard = ({
           <ChatInput 
             disabled={isStepRunning || isConsultantThinking} 
             onSend={handleSendMessage} 
-            placeholder={isStepRunning ? "Celion arbeitet..." : isConsultantThinking ? "Celion denkt nach..." : "Nächsten Schritt starten oder Befehl eingeben..."} 
+            placeholder={isStepRunning || isConsultantThinking ? "Denke nach ..." : "Nächsten Schritt starten oder Befehl eingeben..."} 
           />
         </div>
       </CardContent>

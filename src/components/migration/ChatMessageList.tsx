@@ -22,14 +22,13 @@ const ThinkingIndicator = ({ stepTitle, role = "agent" }: { stepTitle?: string, 
     </div>
     <div className="flex flex-col gap-1.5">
       <span className="text-sm text-muted-foreground font-medium">
-        {role === "consultant" ? "Celion denkt nach..." : (stepTitle ? `Analysiere ${stepTitle}...` : "Celion arbeitet...")}
+        Denke nach ...
       </span>
       <div className="flex gap-1.5">
-        <div 
-          className="h-1.5 w-1.5 rounded-full bg-primary/40 animate-bounce" 
-          style={{ animationDelay: "0ms", animationDuration: "1s" }} 
-        />
-        <div 
+        <div
+          className="h-1.5 w-1.5 rounded-full bg-primary/40 animate-bounce"
+          style={{ animationDelay: "0ms", animationDuration: "1s" }}
+        />        <div 
           className="h-1.5 w-1.5 rounded-full bg-primary/40 animate-bounce" 
           style={{ animationDelay: "150ms", animationDuration: "1s" }} 
         />
