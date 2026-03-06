@@ -75,7 +75,9 @@ export async function* runIntroductionAgent(
         
         if (verifyRes.success) {
           const newData = { ...data, source: { dataSourceId: ds.id, system: ds.source_type, name: ds.name } };
-          yield* yieldText("Verbindung erfolgreich! Möchtest du alles migrieren oder nur bestimmte Bereiche?");
+          yield* yieldText("✅ Verbindung zum System erfolgreich.");
+          yield* yieldText("✅ Authentifizierung mit den API Credentials war erfolgreich.");
+          yield* yieldText("Möchtest du alles migrieren oder nur bestimmte Bereiche?");
           yield* yieldText(JSON.stringify({
             type: "action",
             actions: [
@@ -196,6 +198,9 @@ export async function* runIntroductionAgent(
           const newData = { ...data, target: { dataSourceId: ds.id, system: ds.source_type, name: ds.name } };
           newData.target.scope = "Zielbereich";
           newData.target.containerType = "workspace";
+          
+          yield* yieldText("✅ Verbindung zum System erfolgreich.");
+          yield* yieldText("✅ Authentifizierung mit den API Credentials war erfolgreich.");
           
           yield* yieldText(`Zusammenfassung:
 **Quelle:** ${newData.source.name} (${newData.source.scope})

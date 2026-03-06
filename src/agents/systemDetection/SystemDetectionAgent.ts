@@ -25,6 +25,7 @@ Compare with 'Expected System'.
 Return JSON:
 {
   "systemMatchesUrl": boolean,
+  "summary": string, // A human-readable summary of the detection (e.g. "Verbindung zum System erfolgreich")
   "apiTypeDetected": "REST" | "GraphQL" | "SOAP" | "gRPC" | "unknown",
   "apiSubtype": string | null,
   "recommendedBaseUrl": string | null,

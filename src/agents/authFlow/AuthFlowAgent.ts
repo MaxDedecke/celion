@@ -52,6 +52,7 @@ SECURITY:
 Return JSON:
 {
   "success": boolean,
+  "summary": string, // A human-readable summary (e.g. "Authentifizierung mit den API Credentials war erfolgreich")
   "authenticatedAs": string | null,
   "status": number | null,
   "error": string | null,

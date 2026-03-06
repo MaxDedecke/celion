@@ -13,6 +13,7 @@ import { MappingRulesAgent } from '../mapping/MappingRulesAgent';
 import { EnhancementRulesAgent } from '../enhancement/EnhancementRulesAgent';
 import { DataTransferAgent } from '../dataTransfer/DataTransferAgent';
 import { VerificationAgent } from '../verification/VerificationAgent';
+import { FailureAnalysisAgent } from '../failureAnalysis/FailureAnalysisAgent';
 
 export class StepFactory {
   private static provider: LlmProvider | null = null;
@@ -70,6 +71,8 @@ export class StepFactory {
         return new DataTransferAgent(provider, context);
       case 'runVerification':
         return new VerificationAgent(provider, context);
+      case 'runFailureAnalysis':
+        return new FailureAnalysisAgent(provider, context);
       default:
         return null;
     }

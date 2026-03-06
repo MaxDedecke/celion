@@ -118,6 +118,21 @@ const updateWorkflowForStep = (state: any, workflowStepId: string, result: any, 
   return { nextState, progress, completedCount, totalSteps };
 };
 
+async function runFailureAnalysis(pool: Pool, migrationId: string, stepNumber: number, agentName: string, agentError: string, agentLogs: any, mode?: string) {
+  const context = {
+    migrationId,
+    stepNumber,
+    writeChatMessage: async (role: string, content: string, stepNum?: number) => await writeChatMessage(migrationId, role, content, stepNum),
+    logActivity: async (type: any, title: string) => await logActivity(migrationId, type, title),
+    dbPool: pool
+  };
+
+  const agent = await StepFactory.createAgent('runFailureAnalysis', context as any);
+  if (agent) {
+    await agent.execute({ agentName, agentError, agentLogs, mode });
+  }
+}
+
 async function processJob(job: any) {
   let { step_id, payload } = job;
   
@@ -234,7 +249,16 @@ async function processJob(job: any) {
         resultMessageText = failureMessage;
       }
 
-      await writeChatMessage(migrationId, 'assistant', resultMessageText, currentStepNumber);
+      if (result.summary) {
+        await writeChatMessage(migrationId, 'assistant', result.summary, currentStepNumber);
+      } else {
+        await writeChatMessage(migrationId, 'assistant', resultMessageText, currentStepNumber);
+      }
+
+      if (isLogicalFailure) {
+        await runFailureAnalysis(pool, migrationId, currentStepNumber, agentName, failureMessage, result, mode);
+      }
+
       if (!isLogicalFailure) {
         await saveStep1Result(pool, migrationId, mode, result);
       }
@@ -562,7 +586,16 @@ async function processJob(job: any) {
         resultMessageText = failureMessage;
       }
 
-      await writeChatMessage(migrationId, 'assistant', resultMessageText, currentStepNumber);
+      if (result.summary) {
+        await writeChatMessage(migrationId, 'assistant', result.summary, currentStepNumber);
+      } else {
+        await writeChatMessage(migrationId, 'assistant', resultMessageText, currentStepNumber);
+      }
+
+      if (isLogicalFailure) {
+        await runFailureAnalysis(pool, migrationId, currentStepNumber, agentName, failureMessage, result, mode);
+      }
+
       if (!isLogicalFailure) {
         await saveStep2Result(pool, migrationId, mode, result);
       }
