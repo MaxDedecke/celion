@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState, Fragment } from "react";
-import { User, SquareArrowOutUpRight, CheckCircle2, XCircle, Play, Copy, Rocket, FileJson, ArrowRight, Clock, Brain } from "lucide-react";
+import { User, SquareArrowOutUpRight, CheckCircle2, XCircle, Play, Copy, Rocket, FileJson, ArrowRight, Clock, Brain, HelpCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -477,6 +477,20 @@ const ChatMessage = ({ message, allMessages, onOpenAgentOutput, onAction, enable
     }
   };
 
+  // Scroll to bottom when a dropdown is rendered
+  useEffect(() => {
+    if (jsonContent?.type === "datasource_dropdown" || jsonContent?.type === "scope_dropdown") {
+      const timeoutId = setTimeout(() => {
+        const scrollContainers = document.querySelectorAll('.overflow-y-auto');
+        // Just update the scroll position for the chat containers
+        scrollContainers.forEach(container => {
+          container.scrollTop = container.scrollHeight;
+        });
+      }, 150);
+      return () => clearTimeout(timeoutId);
+    }
+  }, [jsonContent?.type]);
+
   useEffect(() => {
     if (!onTypewriterComplete || !enableTypewriter) return;
 
@@ -601,15 +615,28 @@ const ChatMessage = ({ message, allMessages, onOpenAgentOutput, onAction, enable
           message.role === "system" && "bg-muted/20 border-muted/20 italic text-muted-foreground"
         )}>
           <div className="flex flex-col gap-3">
-            {textContent && (
-              <div className="prose prose-sm dark:prose-invert max-w-none text-foreground">
-                {enableTypewriter && message.role !== "user" ? (
-                  <TypewriterText text={textContent} speed={8} onComplete={onTypewriterComplete} />
-                ) : (
-                  renderFormattedContent(textContent.replace(/\[ID:[^\]]+\]/g, ''))
+            <div className="flex justify-between items-start gap-4 w-full">
+              <div className="prose prose-sm dark:prose-invert max-w-none text-foreground flex-1">
+                {textContent && (
+                  enableTypewriter && message.role !== "user" ? (
+                    <TypewriterText text={textContent} speed={8} onComplete={onTypewriterComplete} />
+                  ) : (
+                    renderFormattedContent(textContent.replace(/\[ID:[^\]]+\]/g, ''))
+                  )
                 )}
               </div>
-            )}
+              {jsonContent && !["live-transfer-status", "action", "datasource_dropdown", "scope_dropdown"].includes(jsonContent.type) && !jsonContent.entities && (
+                <Button 
+                  variant="ghost" 
+                  size="icon" 
+                  onClick={() => setShowJsonDialog(true)} 
+                  className="h-6 w-6 text-muted-foreground hover:text-primary shrink-0 -mt-1 -mr-1"
+                  title="Details anzeigen"
+                >
+                  <HelpCircle className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
 
             {jsonContent && (
               <div className="flex flex-col gap-2">
@@ -799,17 +826,6 @@ const ChatMessage = ({ message, allMessages, onOpenAgentOutput, onAction, enable
                       </div>
                     )}
                   </div>
-                )}
-                {!["live-transfer-status", "action", "datasource_dropdown"].includes(jsonContent.type) && !jsonContent.entities && (
-                  <Button 
-                    variant="outline" 
-                    size="sm" 
-                    onClick={() => setShowJsonDialog(true)} 
-                    className="h-7 text-xs bg-background/80 hover:bg-accent mt-1 w-48 self-center"
-                  >
-                    <FileJson className="w-3 h-3 mr-2" />
-                    Details anzeigen
-                  </Button>
                 )}
               </div>
             )}
