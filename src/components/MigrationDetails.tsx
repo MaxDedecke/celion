@@ -25,8 +25,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
   onViewChange
 }, ref) => {
   const [isStepRunning, setIsStepRunning] = useState(project.step_status === 'running');
-  const [isRenamePromptOpen, setIsRenamePromptOpen] = useState(false);
-  const [newTargetName, setNewTargetName] = useState("");
 
   useImperativeHandle(ref, () => ({
     openWorkflowPanel: () => {
@@ -83,6 +81,74 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
       toast.error(`Fehler beim Fortschreiten des Workflows: ${errorMessage}`);
     }
   }, [project.id, project.current_step, project.step_status, isStepRunning, onRefresh]);
+
+  const handleSendChatMessage = useCallback(
+    async (message: string) => {
+      const trimmed = message.trim();
+      const lower = trimmed.toLowerCase();
+
+      if (
+        lower === "start" ||
+        lower === "weiter" ||
+        lower === "nächster schritt" ||
+        lower === "fortsetzen"
+      ) {
+        handleNextWorkflowStep();
+        return;
+      }
+
+      // Check if we are waiting for target name input in Step 2
+      if (
+        project.current_step === 2 && 
+        (project.step_status === 'completed' || project.step_status === 'failed') && 
+        !project.scopeConfig?.targetNameConfirmed
+      ) {
+        try {
+          const newScopeConfig = {
+            ...(project.scopeConfig || {}),
+            targetName: trimmed,
+            targetNameConfirmed: true
+          };
+          const { error } = await databaseClient.updateMigration(project.id, {
+            scope_config: newScopeConfig
+          });
+          if (error) throw error;
+          
+          // Create a chat message for the user's input to show up in the history
+          await fetch(`/api/migrations/${project.id}/chat`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ role: 'user', content: trimmed }),
+          });
+
+          handleNextWorkflowStep(2);
+          return;
+        } catch (error) {
+          console.error("Error updating target name via chat:", error);
+          toast.error("Fehler beim Speichern des Namens.");
+          return;
+        }
+      }
+
+      try {
+        const response = await fetch(`/api/migrations/${project.id}/chat/answer`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            content: trimmed,
+          }),
+        });
+
+        if (!response.ok) throw new Error("Consultant request failed");
+
+        await onRefresh();
+      } catch (error) {
+        console.error("Fehler beim Senden der Consultant-Anfrage:", error);
+        toast.error("Fehler beim Senden der Nachricht.");
+      }
+    },
+    [handleNextWorkflowStep, project.id, project.current_step, project.step_status, project.scopeConfig, onRefresh]
+  );
 
   const handleAction = useCallback(async (action: string) => {
     if (action === 'continue') {
@@ -142,9 +208,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         console.error("Error updating target name:", error);
         toast.error("Fehler beim Speichern des Namens.");
       }
-    } else if (action === 'prompt_target_name') {
-      setNewTargetName(project.scopeConfig?.targetName || project.scopeConfig?.sourceScope || project.name || "");
-      setIsRenamePromptOpen(true);
     } else if (action.startsWith('retry:')) {
       const stepNum = parseInt(action.split(':')[1], 10);
       if (!isNaN(stepNum)) {
@@ -158,65 +221,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
       const msg = action.substring('send_chat:'.length);
       handleSendChatMessage(msg);
     }
-  }, [handleNextWorkflowStep, onViewChange, project.id, project.scopeConfig, project.name]);
-
-  const handleTargetNameSubmit = async () => {
-    if (!newTargetName.trim()) return;
-    try {
-      const newScopeConfig = {
-        ...(project.scopeConfig || {}),
-        targetName: newTargetName.trim(),
-        targetNameConfirmed: true
-      };
-      const { error } = await databaseClient.updateMigration(project.id, {
-        scope_config: newScopeConfig
-      });
-      if (error) throw error;
-
-      setIsRenamePromptOpen(false);
-      toast.success("Name aktualisiert. Target Discovery wird gestartet...");
-      // Step 2 is Target Discovery
-      handleNextWorkflowStep(2);
-    } catch (error) {
-      console.error("Error updating target name:", error);
-      toast.error("Fehler beim Speichern des Namens.");
-    }
-  };
-
-  const handleSendChatMessage = useCallback(
-    async (message: string) => {
-      const trimmed = message.trim();
-      const lower = trimmed.toLowerCase();
-      
-      if (
-        lower === "start" || 
-        lower === "weiter" || 
-        lower === "nächster schritt" || 
-        lower === "fortsetzen"
-      ) {
-        handleNextWorkflowStep();
-        return;
-      }
-
-      try {
-        const response = await fetch(`/api/migrations/${project.id}/chat/answer`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            content: trimmed,
-          }),
-        });
-
-        if (!response.ok) throw new Error("Consultant request failed");
-        
-        await onRefresh(); 
-      } catch (error) {
-        console.error("Fehler beim Senden der Consultant-Anfrage:", error);
-        toast.error("Fehler beim Senden der Nachricht.");
-      }
-    },
-    [handleNextWorkflowStep, project.id, onRefresh]
-  );
+  }, [handleNextWorkflowStep, onViewChange, project.id, project.scopeConfig, project.name, handleSendChatMessage]);
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -267,38 +272,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
           </div>
         )}
       </div>
-
-      <Dialog open={isRenamePromptOpen} onOpenChange={setIsRenamePromptOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Neuen Ziel-Namen wählen</DialogTitle>
-            <DialogDescription className="sr-only">
-              Geben Sie einen neuen Namen für den Zielbereich ein, um Namenskonflikte zu vermeiden.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="py-4 space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="new-target-name">Bitte gib einen Namen für das Projekt/den Workspace im Zielsystem ein (z.B. auch um einen Namenskonflikt zu beheben):</Label>
-              <Input
-                id="new-target-name"
-                value={newTargetName}
-                onChange={(e) => setNewTargetName(e.target.value)}
-                placeholder="Neuer Name..."
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter') {
-                    e.preventDefault();
-                    handleTargetNameSubmit();
-                  }
-                }}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setIsRenamePromptOpen(false)}>Abbrechen</Button>
-            <Button onClick={handleTargetNameSubmit}>Speichern & Wiederholen</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 });

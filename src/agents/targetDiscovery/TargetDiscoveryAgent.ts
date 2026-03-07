@@ -21,14 +21,19 @@ export class TargetDiscoveryAgent extends AgentBase {
     const sourceScope = scopeConfig.sourceScope;
     const isTargetNameConfirmed = scopeConfig.targetNameConfirmed === true;
     
+    const isResuming = isTargetNameConfirmed && sourceScope && sourceScope !== "Alles";
+    if (!isResuming) {
+        const headerMsg = "Starte **Target Discovery**";
+        await this.context.writeChatMessage('assistant', headerMsg, stepNumber);
+    }
+
     if (sourceScope && sourceScope !== "Alles" && !isTargetNameConfirmed) {
-        await this.context.writeChatMessage('assistant', `Unter welchem Namen soll der Quell-Bereich "**${sourceScope}**" im Zielsystem angelegt werden?`, stepNumber);
+        await this.context.writeChatMessage('assistant', `Unter welchem Namen soll der Quell-Bereich "**${sourceScope}**" im Zielsystem angelegt werden?\n\nSchreibe den Namen einfach hier in den Chat, oder übernimm den Namen aus der Quelle.`, stepNumber);
         
         const actionContent = JSON.stringify({
             type: "action",
             actions: [
-                { action: `confirm_target_name:${sourceScope}`, label: `"${sourceScope}" übernehmen`, variant: "primary" },
-                { action: "prompt_target_name", label: "Eigenen Namen wählen", variant: "outline" }
+                { action: `confirm_target_name:${sourceScope}`, label: `"${sourceScope}" übernehmen`, variant: "primary" }
             ]
         });
         await this.context.writeChatMessage('assistant', `\`\`\`json\n${actionContent}\n\`\`\``, stepNumber);
@@ -294,16 +299,8 @@ Sobald alle Schritte ausgeführt wurden, antworte mit folgendem JSON:
 
     // Handle Name Conflict
     if (phase2Result.conflict || phase2Result.targetScope?.status === 'conflict') {
-      await this.context.writeChatMessage('assistant', `⚠️ **Namenskonflikt erkannt:** ${phase2Result.conflictReason || `Ein Bereich mit dem Namen '${targetName}' existiert bereits.`}\n\nBitte wähle einen neuen Namen für den Zielbereich, um die Migration fortzusetzen.`, stepNumber);
+      await this.context.writeChatMessage('assistant', `⚠️ **Namenskonflikt erkannt:** ${phase2Result.conflictReason || `Ein Bereich mit dem Namen '${targetName}' existiert bereits.`}\n\nBitte schreibe einen neuen Namen für den Zielbereich in den Chat, um die Migration fortzusetzen.`, stepNumber);
       
-      const actionContent = JSON.stringify({
-          type: "action",
-          actions: [
-              { action: "prompt_target_name", label: "Neuen Namen eingeben", variant: "primary" }
-          ]
-      });
-      await this.context.writeChatMessage('assistant', `\`\`\`json\n${actionContent}\n\`\`\``, stepNumber);
-
       return {
           success: true,
           isEarlyReturnForPlan: true,

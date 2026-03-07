@@ -357,8 +357,7 @@ const MigrationChatCard = ({
       id: `optimistic-${Date.now()}`,
       role: 'user',
       content: trimmed,
-      created_at: new Date().toISOString(),
-      migration_id: migration.id
+      created_at: new Date().toISOString()
     };
     
     setChatMessages(prev => [...prev, optimisticMsg]);
