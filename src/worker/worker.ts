@@ -801,21 +801,43 @@ async function processJob(job: any) {
           return [];
       };
 
-      const verifySystemAndAuth = async (dataSourceId: string, system?: string, apiToken?: string, url?: string, email?: string): Promise<{ success: boolean, message: string }> => {
+      const verifySystemAndAuth = async (mode: 'source' | 'target', dataSourceId: string, system?: string, apiToken?: string, url?: string, email?: string): Promise<{ success: boolean, message: string }> => {
         try {
           let resolvedSystem = system;
+          let dsUrl = url || "";
           if (dataSourceId && dataSourceId !== 'new') {
             const { rows: dsRows } = await pool.query(
-               'SELECT source_type FROM data_sources WHERE id = $1',
+               'SELECT source_type, api_url FROM data_sources WHERE id = $1',
                [dataSourceId]
             );
             if (dsRows.length > 0) {
               resolvedSystem = dsRows[0].source_type;
+              dsUrl = dsRows[0].api_url || dsUrl;
             }
           }
           if (!resolvedSystem) throw new Error("System konnte nicht ermittelt werden.");
           
           await fetchScopeData(resolvedSystem, dataSourceId, apiToken, url, email);
+
+          // Save dummy step 1 and step 2 results so "Erkenntnisse" view gets populated
+          const step1Result = {
+            systemMatchesUrl: true,
+            apiTypeDetected: "REST",
+            apiSubtype: resolvedSystem,
+            recommendedBaseUrl: dsUrl,
+            confidenceScore: 1.0,
+            detectionEvidence: { message: "System selection via Data Source UI" },
+            rawOutput: `System recognized: ${resolvedSystem}`
+          };
+          await saveStep1Result(pool, migrationId, mode, step1Result);
+
+          const step2Result = {
+            authenticated: true,
+            recommended_probe: { auth_scheme: "token", endpoint: "N/A" },
+            raw_output: "Authentication successfully verified."
+          };
+          await saveStep2Result(pool, migrationId, mode, step2Result);
+
           return { success: true, message: "System erfolgreich verifiziert und Authentifizierung gültig." };
         } catch (err: any) {
           return { success: false, message: "Fehler bei der Verifizierung: " + err.message };

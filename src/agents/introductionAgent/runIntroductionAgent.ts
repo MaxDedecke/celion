@@ -8,7 +8,7 @@ export async function* runIntroductionAgent(
     migrationName?: string;
     dataSources?: any[];
     fetchScopeData?: (system: string, dataSourceId: string, apiToken?: string, url?: string, email?: string) => Promise<{ id: string, name: string }[]>;
-    verifySystemAndAuth?: (dataSourceId: string, system?: string, apiToken?: string, url?: string, email?: string) => Promise<{ success: boolean, message: string }>;
+    verifySystemAndAuth?: (mode: 'source' | 'target', dataSourceId: string, system?: string, apiToken?: string, url?: string, email?: string) => Promise<{ success: boolean, message: string }>;
     onboardingState?: any;
   }
 ): AsyncGenerator<Message> {
@@ -71,11 +71,10 @@ export async function* runIntroductionAgent(
 
       if (context.verifySystemAndAuth) {
         yield* yieldText(`Prüfe Verbindung zu **${ds.name}**...`);
-        const verifyRes = await context.verifySystemAndAuth(ds.id, ds.source_type);
-        
+        const verifyRes = await context.verifySystemAndAuth('source', ds.id, ds.source_type);
+
         if (verifyRes.success) {
-          const newData = { ...data, source: { dataSourceId: ds.id, system: ds.source_type, name: ds.name } };
-          yield* yieldText("✅ Verbindung zum System erfolgreich.");
+          const newData = { ...data, source: { dataSourceId: ds.id, system: ds.source_type, name: ds.name } };          yield* yieldText("✅ Verbindung zum System erfolgreich.");
           yield* yieldText("✅ Authentifizierung mit den API Credentials war erfolgreich.");
           yield* yieldText("Möchtest du alles migrieren oder nur bestimmte Bereiche?");
           yield* yieldText(JSON.stringify({
@@ -192,11 +191,10 @@ export async function* runIntroductionAgent(
 
       if (context.verifySystemAndAuth) {
         yield* yieldText(`Prüfe Verbindung zu **${ds.name}**...`);
-        const verifyRes = await context.verifySystemAndAuth(ds.id, ds.source_type);
-        
+        const verifyRes = await context.verifySystemAndAuth('target', ds.id, ds.source_type);
+
         if (verifyRes.success) {
-          const newData = { ...data, target: { dataSourceId: ds.id, system: ds.source_type, name: ds.name } };
-          newData.target.scope = "Zielbereich";
+          const newData = { ...data, target: { dataSourceId: ds.id, system: ds.source_type, name: ds.name } };          newData.target.scope = "Zielbereich";
           newData.target.containerType = "workspace";
           
           yield* yieldText("✅ Verbindung zum System erfolgreich.");

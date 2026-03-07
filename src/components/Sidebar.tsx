@@ -214,7 +214,7 @@ const Sidebar = ({
                       <PanelLeftClose className="h-4 w-4" />
                     </Button>
                   </TooltipTrigger>
-                  <TooltipContent side="left" sideOffset={10}>
+                  <TooltipContent side="bottom" sideOffset={10}>
                     <p>Sidebar einklappen</p>
                   </TooltipContent>
                 </Tooltip>

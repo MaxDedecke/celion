@@ -67,8 +67,19 @@ const WorkflowPanel = ({ migrationId }: WorkflowPanelProps) => {
 
   const getStepResults = (stepIndex: number): WorkflowStepResult[] => {
     if (!results) return [];
-    const stepNum = stepIndex + 1;
-    const key = `step_${stepNum}` as keyof MigrationResults;
+    
+    // Virtual Step 0: Onboarding (System Detection & Auth)
+    if (stepIndex === 0) {
+      return [...(results.step_1 || []), ...(results.step_2 || [])];
+    }
+    
+    // Other steps follow with offset
+    // Step 1 (Source Discovery) -> DB step_3
+    // Step 2 (Target Discovery) -> DB step_4
+    // Step 3 (Data Staging) -> DB step_5
+    // ...
+    const dbStepNum = stepIndex + 2; 
+    const key = `step_${dbStepNum}` as keyof MigrationResults;
     return results[key] || [];
   };
 
@@ -79,18 +90,32 @@ const WorkflowPanel = ({ migrationId }: WorkflowPanelProps) => {
     if (!results) return;
     
     const newResults = { ...results };
-    const stepNum = selectedStepIndex + 1;
-    const key = `step_${stepNum}` as keyof MigrationResults;
+    let dbStepNum: number;
+    
+    if (selectedStepIndex === 0) {
+      // In Onboarding, we need to know if it was step_1 or step_2
+      dbStepNum = currentResult.step === 1 ? 1 : 2;
+    } else {
+      dbStepNum = selectedStepIndex + 2;
+    }
+    
+    const key = `step_${dbStepNum}` as keyof MigrationResults;
     const targetList = newResults[key];
 
-    if (targetList && targetList[selectedSubItemIndex]) {
-      const updatedJson = { ...targetList[selectedSubItemIndex].raw_json };
+    // Find the actual item in the list (Onboarding might have multiple from different steps)
+    const itemIndex = targetList.findIndex(item => 
+      item.system_mode === currentResult.system_mode && 
+      item.entity_name === currentResult.entity_name
+    );
+
+    if (itemIndex !== -1) {
+      const updatedJson = { ...targetList[itemIndex].raw_json };
       let current = updatedJson;
       for (let i = 0; i < path.length - 1; i++) {
         current = current[path[i]];
       }
       current[path[path.length - 1]] = value;
-      targetList[selectedSubItemIndex].raw_json = updatedJson;
+      targetList[itemIndex].raw_json = updatedJson;
       setResults(newResults);
     }
   };
@@ -99,8 +124,16 @@ const WorkflowPanel = ({ migrationId }: WorkflowPanelProps) => {
     if (!currentResult) return;
     try {
       setIsSaving(true);
+      
+      let dbStepNum: number;
+      if (selectedStepIndex === 0) {
+        dbStepNum = currentResult.step === 1 ? 1 : 2;
+      } else {
+        dbStepNum = selectedStepIndex + 2;
+      }
+
       const payload = {
-        step: selectedStepIndex + 1,
+        step: dbStepNum,
         system_mode: currentResult.system_mode,
         entity_name: currentResult.entity_name,
         new_json: currentResult.raw_json
@@ -177,17 +210,78 @@ const WorkflowPanel = ({ migrationId }: WorkflowPanelProps) => {
         <ScrollArea className="flex-1 p-4">
           <div className="space-y-6 relative">
             <div className="absolute left-[19px] top-4 bottom-4 w-0.5 bg-border -z-10" />
+
+            {/* Virtual Step: Onboarding */}
+            {(() => {
+              const onboardingResults = getStepResults(0);
+              const hasData = onboardingResults.length > 0;
+              const isSelected = selectedStepIndex === 0;
+
+              return (
+                <div className="space-y-2">
+                  <button
+                    onClick={() => {
+                      setSelectedStepIndex(0);
+                      setSelectedSubItemIndex(0);
+                    }}
+                    className={cn(
+                      "w-full flex items-start gap-4 p-3 rounded-xl transition-all text-left group",
+                      isSelected ? "bg-background shadow-md ring-1 ring-primary/20" : "hover:bg-background/50"
+                    )}
+                  >
+                    <div className={cn(
+                      "mt-0.5 shrink-0 w-10 h-10 rounded-full flex items-center justify-center border-2 transition-colors",
+                      hasData ? "border-emerald-500 bg-emerald-500/10 text-emerald-600" : "border-muted bg-muted/50 text-muted-foreground",
+                      isSelected && !hasData && "border-primary text-primary bg-primary/5"
+                    )}>
+                      {hasData ? <CheckCircle2 className="h-5 w-5" /> : <Circle className="h-5 w-5" />}
+                    </div>
+                    <div className="min-w-0">
+                      <p className={cn("text-xs font-bold uppercase tracking-wider", isSelected ? "text-primary" : "text-muted-foreground")}>
+                        Vorbereitung
+                      </p>
+                      <h3 className="text-sm font-semibold truncate">Onboarding</h3>
+                      {hasData && (
+                        <Badge variant="outline" className="mt-1 text-[10px] bg-emerald-500/5 text-emerald-600 border-emerald-500/20">
+                          {onboardingResults.length} Resultat{onboardingResults.length > 1 ? 'e' : ''}
+                        </Badge>
+                      )}
+                    </div>
+                  </button>
+
+                  {isSelected && hasData && (
+                    <div className="ml-14 flex flex-col gap-1 pr-2 animate-in slide-in-from-left-2 duration-200">
+                      {onboardingResults.map((res, subIdx) => (
+                        <button
+                          key={subIdx}
+                          onClick={() => setSelectedSubItemIndex(subIdx)}
+                          className={cn(
+                            "text-xs px-3 py-2 rounded-lg text-left transition-colors truncate",
+                            selectedSubItemIndex === subIdx 
+                              ? "bg-primary text-primary-foreground font-medium shadow-sm" 
+                              : "bg-muted/50 hover:bg-muted text-muted-foreground"
+                          )}
+                        >
+                          {res.system_mode ? (res.system_mode === 'source' ? 'Quellsystem' : 'Zielsystem') : (res.entity_name || `Resultat ${subIdx + 1}`)}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
             
             {AGENT_WORKFLOW_STEPS.map((step, idx) => {
-              const stepResults = getStepResults(idx);
+              const displayStepIdx = idx + 1; // Internal index for getStepResults
+              const stepResults = getStepResults(displayStepIdx);
               const hasData = stepResults.length > 0;
-              const isSelected = selectedStepIndex === idx;
+              const isSelected = selectedStepIndex === displayStepIdx;
 
               return (
                 <div key={step.id} className="space-y-2">
                   <button
                     onClick={() => {
-                      setSelectedStepIndex(idx);
+                      setSelectedStepIndex(displayStepIdx);
                       setSelectedSubItemIndex(0);
                     }}
                     className={cn(
