@@ -8,19 +8,90 @@ export class TargetDiscoveryAgent extends AgentBase {
     const { stepNumber, migrationId } = this.context;
     const targetUrl = params?.targetUrl;
     const targetSystem = params?.targetExpectedSystem;
-
-    const headerMsg = "Starte **Target Discovery**";
-    await this.context.writeChatMessage('assistant', headerMsg, stepNumber);
+    const userInput = params?.userInput;
 
     const migrationDetails = await this.context.getMigrationDetails();
     const migrationName = migrationDetails?.name;
     const scopeConfig = migrationDetails?.scope_config || {};
     
     // Check if we need to prompt the user for a target name
-    // The property name in scope_config is 'sourceScope', not 'sourceScopeName'
     const sourceScope = scopeConfig.sourceScope;
-    const isTargetNameConfirmed = scopeConfig.targetNameConfirmed === true;
-    
+    let isTargetNameConfirmed = scopeConfig.targetNameConfirmed === true;
+    let targetName = scopeConfig.targetName;
+
+    // --- INTERPRETATION PHASE ---
+    // If the user provided text input, we interpret it using the LLM
+    if (userInput && !isTargetNameConfirmed) {
+        const interpPrompt = `
+Du bist ein hilfreicher Assistent für eine Datenmigration. Der Benutzer möchte den Namen für einen Zielbereich (z.B. ein Projekt oder Workspace) im Zielsystem "${targetSystem}" festlegen oder bestätigen.
+
+Bisheriger Vorschlag (aus der Quelle): "${sourceScope}"
+Nachricht des Benutzers: "${userInput}"
+
+Aufgabe:
+Extrahiere den vom Benutzer gewünschten Namen. 
+- Wenn der Benutzer zustimmt (z.B. "ja", "ok", "übernimm das", "passt", "bitte"), verwende den bisherigen Vorschlag ("${sourceScope}").
+- Wenn der Benutzer einen neuen Namen nennt (z.B. "Nenn es X", "Projekt Y"), extrahiere diesen Namen.
+- Wenn der Benutzer unentschlossen ist oder eine Frage stellt, setze 'confirmed' auf false.
+
+Gib IMMER ein JSON-Objekt zurück:
+{
+  "name": "der extrahierte Name",
+  "confirmed": true,
+  "explanation": "kurze Erklärung was du verstanden hast"
+}
+`;
+        try {
+            const interpRes = await this.provider.chat(
+                [{ role: 'user', content: interpPrompt }],
+                [],
+                { response_format: { type: "json_object" } }
+            );
+            
+            let content = interpRes.content || "{}";
+            // Strip markdown code blocks if present
+            if (content.includes("```json")) {
+                content = content.split("```json")[1].split("```")[0].trim();
+            } else if (content.includes("```")) {
+                content = content.split("```")[1].split("```")[0].trim();
+            }
+            
+            const interpData = JSON.parse(content);
+            
+            if (interpData.name && interpData.confirmed) {
+                targetName = interpData.name;
+                isTargetNameConfirmed = true;
+                
+                await this.context.writeChatMessage('assistant', `Alles klar, ich verwende **${targetName}** als Name für den Zielbereich.`, stepNumber);
+                
+                // Persist the interpreted name
+                if (this.context.updateMigrationScopeConfig) {
+                    await this.context.updateMigrationScopeConfig({
+                        targetName: targetName,
+                        targetNameConfirmed: true
+                    });
+                }
+            } else {
+                await this.context.writeChatMessage('assistant', `Ich bin mir nicht sicher, welchen Namen du meinst. Möchtest du den Namen "**${sourceScope}**" übernehmen oder einen anderen Namen wählen?`, stepNumber);
+                return {
+                    success: true,
+                    isEarlyReturnForPlan: true,
+                    result: { status: 'waiting_for_name_clarification' }
+                };
+            }
+        } catch (e) {
+            console.error("Interpretation failed:", e);
+            // Fallback: if it's a simple confirmation, use sourceScope, otherwise literal
+            const lowerInput = userInput.toLowerCase();
+            if (lowerInput === "ja" || lowerInput === "yes" || lowerInput === "ok" || lowerInput.includes("übernimm")) {
+                targetName = sourceScope;
+            } else {
+                targetName = userInput;
+            }
+            isTargetNameConfirmed = true;
+        }
+    }
+
     const isResuming = isTargetNameConfirmed && sourceScope && sourceScope !== "Alles";
     if (!isResuming) {
         const headerMsg = "Starte **Target Discovery**";
@@ -45,16 +116,9 @@ export class TargetDiscoveryAgent extends AgentBase {
         };
     }
 
-    // Normalize targetName:
-    // 1. Check if the user specified a name (stored in targetName)
-    // 2. Fallback to source scope name
-    // 3. Fallback to the overall migration name
-    let targetName = scopeConfig.targetName;
-    if (!isTargetNameConfirmed) {
-        // If not confirmed yet (e.g. "Alles" migration), try to find a good default
-        if (!targetName || targetName === "-" || targetName === "Zielbereich") {
-            targetName = sourceScope && sourceScope !== "Alles" ? sourceScope : (migrationName || "New Project");
-        }
+    // Normalize targetName for the rest of the execution:
+    if (!targetName || targetName === "-" || targetName === "Zielbereich") {
+        targetName = sourceScope && sourceScope !== "Alles" ? sourceScope : (migrationName || "New Project");
     }
 
     const connector = await this.context.getConnector('out');

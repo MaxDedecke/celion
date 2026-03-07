@@ -8,6 +8,7 @@ export interface AgentContext {
   logActivity: (type: 'success' | 'error' | 'info' | 'warning', title: string) => Promise<void>;
   getConnector: (type: 'in' | 'out') => Promise<any>;
   getMigrationDetails: () => Promise<any>;
+  updateMigrationScopeConfig?: (config: Record<string, any>) => Promise<void>;
   saveResult?: (result: any) => Promise<void>;
   dbPool?: any; // The pg Pool instance, just in case
 }

@@ -371,6 +371,20 @@ const MigrationChatCard = ({
     }, 300);
   };
 
+  const chatPlaceholder = useMemo(() => {
+    if (isStepRunning || isConsultantThinking) return "Denke nach ...";
+    
+    const isStep2WaitingForName = migrationData.current_step === 2 && 
+                                 (migrationData.step_status === 'completed' || migrationData.step_status === 'failed') && 
+                                 !migrationData.scopeConfig?.targetNameConfirmed;
+    
+    if (isStep2WaitingForName) {
+      return "Gib den gewünschten Namen für den Zielbereich ein...";
+    }
+    
+    return "Nächsten Schritt starten oder Befehl eingeben...";
+  }, [isStepRunning, isConsultantThinking, migrationData.current_step, migrationData.step_status, migrationData.scopeConfig]);
+
   return (
     <Card 
       className="flex flex-1 flex-col overflow-hidden bg-transparent border-transparent"
@@ -414,7 +428,7 @@ const MigrationChatCard = ({
           <ChatInput 
             disabled={isStepRunning || isConsultantThinking} 
             onSend={handleSendMessage} 
-            placeholder={isStepRunning || isConsultantThinking ? "Denke nach ..." : "Nächsten Schritt starten oder Befehl eingeben..."} 
+            placeholder={chatPlaceholder} 
           />
         </div>
       </CardContent>

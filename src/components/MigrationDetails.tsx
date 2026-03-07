@@ -38,7 +38,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
     onStepRunningChange?.(running);
   }, [project.step_status, onStepRunningChange]);
 
-  const handleNextWorkflowStep = useCallback(async (explicitStep?: number) => {
+  const handleNextWorkflowStep = useCallback(async (explicitStep?: number, agentParams?: Record<string, any>) => {
     const validatedStep = typeof explicitStep === 'number' ? explicitStep : undefined;
     
     // Allow proceeding if the current step is completed and we're clicking 'continue'
@@ -66,6 +66,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
       const response = await fetch(`/api/migrations/${project.id}/action/${stepToRun}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ agent_params: agentParams }),
       });
 
       if (!response.ok) {
@@ -104,16 +105,6 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         !project.scopeConfig?.targetNameConfirmed
       ) {
         try {
-          const newScopeConfig = {
-            ...(project.scopeConfig || {}),
-            targetName: trimmed,
-            targetNameConfirmed: true
-          };
-          const { error } = await databaseClient.updateMigration(project.id, {
-            scope_config: newScopeConfig
-          });
-          if (error) throw error;
-          
           // Create a chat message for the user's input to show up in the history
           await fetch(`/api/migrations/${project.id}/chat`, {
             method: 'POST',
@@ -121,11 +112,12 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
             body: JSON.stringify({ role: 'user', content: trimmed }),
           });
 
-          handleNextWorkflowStep(2);
+          // Trigger Step 2 with the user's input for interpretation
+          handleNextWorkflowStep(2, { userInput: trimmed });
           return;
         } catch (error) {
-          console.error("Error updating target name via chat:", error);
-          toast.error("Fehler beim Speichern des Namens.");
+          console.error("Error triggering target name interpretation:", error);
+          toast.error("Fehler beim Senden der Antwort.");
           return;
         }
       }

@@ -463,6 +463,12 @@ async function processJob(job: any) {
         getMigrationDetails: async () => {
             const { rows } = await pool.query('SELECT name, scope_config, context FROM migrations WHERE id = $1', [migrationId]);
             return rows[0];
+        },
+        updateMigrationScopeConfig: async (config: Record<string, any>) => {
+            const { rows } = await pool.query('SELECT scope_config FROM migrations WHERE id = $1', [migrationId]);
+            const existing = rows[0]?.scope_config || {};
+            const merged = { ...existing, ...config };
+            await pool.query('UPDATE migrations SET scope_config = $1 WHERE id = $2', [JSON.stringify(merged), migrationId]);
         }
       };
 

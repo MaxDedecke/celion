@@ -1312,8 +1312,11 @@ async def create_mapping_chat_message(id: str, payload: CreateMappingChatMessage
 
 
 
+class StepTriggerParams(BaseModel):
+    agent_params: Optional[Dict[str, Any]] = None
+
 @app.post("/api/migrations/{id}/action/{step}")
-async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
+async def trigger_migration_step(id: str, step: int, params: Optional[StepTriggerParams] = None) -> dict[str, Any]:
     """Trigger a specific step in the migration process."""
     if not 1 <= step <= 8:
         raise HTTPException(status_code=400, detail="Step number must be between 1 and 8.")
@@ -1385,42 +1388,45 @@ async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
             # --- Consistency Rollback ---
             # If we are re-running an earlier step, we must clear results of all subsequent steps
             # to maintain data integrity.
+            # ONLY do this if we are not just providing input (i.e. params.agent_params is None)
             
-            # 1. Clear structured results for steps >= this step
-            if step <= 1:
-                cur.execute("DELETE FROM public.step_3_results WHERE migration_id = %s", (id,))
-            if step <= 2:
-                cur.execute("DELETE FROM public.step_4_results WHERE migration_id = %s", (id,))
-            if step <= 3:
-                cur.execute("DELETE FROM public.step_5_results WHERE migration_id = %s", (id,))
-            if step <= 4:
-                cur.execute("DELETE FROM public.step_6_results WHERE migration_id = %s", (id,))
-            
-            # 2. Reset overall migration complexity if step 1 is retried
-            if step <= 1:
-                cur.execute("UPDATE public.migrations SET complexity_score = 0 WHERE id = %s", (id,))
+            is_continuation = params is not None and params.agent_params is not None
 
-            # 3. Clear/Reset migration_steps for all steps >= current retry step
-            cur.execute(
-                """
-                DELETE FROM public.migration_steps 
-                WHERE migration_id = %s 
-                AND workflow_step_id ~ '^step-[0-9]+$'
-                AND CAST(substring(workflow_step_id from 6) AS INTEGER) >= %s
-                """,
-                (id, step),
-            )
+            if not is_continuation:
+                # 1. Clear structured results for steps >= this step
+                if step <= 1:
+                    cur.execute("DELETE FROM public.step_3_results WHERE migration_id = %s", (id,))
+                if step <= 2:
+                    cur.execute("DELETE FROM public.step_4_results WHERE migration_id = %s", (id,))
+                if step <= 3:
+                    cur.execute("DELETE FROM public.step_5_results WHERE migration_id = %s", (id,))
+                if step <= 4:
+                    cur.execute("DELETE FROM public.step_6_results WHERE migration_id = %s", (id,))
+                
+                # 2. Reset overall migration complexity if step 1 is retried
+                if step <= 1:
+                    cur.execute("UPDATE public.migrations SET complexity_score = 0 WHERE id = %s", (id,))
 
-            # 4. Clear chat messages from this step onwards
-            # We keep messages strictly before this step.
-            cur.execute(
-                """
-                DELETE FROM public.migration_chat_messages 
-                WHERE migration_id = %s 
-                AND step_number >= %s
-                """,
-                (id, step),
-            )
+                # 3. Clear/Reset migration_steps for all steps >= current retry step
+                cur.execute(
+                    """
+                    DELETE FROM public.migration_steps 
+                    WHERE migration_id = %s 
+                    AND workflow_step_id ~ '^step-[0-9]+$'
+                    AND CAST(substring(workflow_step_id from 6) AS INTEGER) >= %s
+                    """,
+                    (id, step),
+                )
+
+                # 4. Clear chat messages from this step onwards
+                cur.execute(
+                    """
+                    DELETE FROM public.migration_chat_messages 
+                    WHERE migration_id = %s 
+                    AND step_number >= %s
+                    """,
+                    (id, step),
+                )
 
             # 5. Reset migration current_step if needed
             cur.execute(
@@ -1472,6 +1478,11 @@ async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
                 "targetExpectedSystem": migration_row["target_system"],
                 "instructions": migration_row["notes"],
             }
+            
+            # Merge extra params if provided
+            if params and params.agent_params:
+                agent_params.update(params.agent_params)
+
             payload = {
                 **payload_base,
                 "agentParams": agent_params,
@@ -1482,8 +1493,6 @@ async def trigger_migration_step(id: str, step: int) -> dict[str, Any]:
             )
 
             # We need to publish to RabbitMQ for EACH job created in this turn
-            # But the 'job_row' logic below only handles the last one.
-            # I'll change it to fetch all pending jobs for this step and publish them.
             cur.execute("SELECT id FROM public.jobs WHERE step_id = %s AND status = 'pending'", (step_id,))
             job_rows = cur.fetchall()
             for job_row in job_rows:
