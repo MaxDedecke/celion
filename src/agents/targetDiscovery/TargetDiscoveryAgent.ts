@@ -16,16 +16,40 @@ export class TargetDiscoveryAgent extends AgentBase {
     const migrationName = migrationDetails?.name;
     const scopeConfig = migrationDetails?.scope_config || {};
     
+    // Check if we need to prompt the user for a target name
+    // The property name in scope_config is 'sourceScope', not 'sourceScopeName'
+    const sourceScope = scopeConfig.sourceScope;
+    const isTargetNameConfirmed = scopeConfig.targetNameConfirmed === true;
+    
+    if (sourceScope && sourceScope !== "Alles" && !isTargetNameConfirmed) {
+        await this.context.writeChatMessage('assistant', `Unter welchem Namen soll der Quell-Bereich "**${sourceScope}**" im Zielsystem angelegt werden?`, stepNumber);
+        
+        const actionContent = JSON.stringify({
+            type: "action",
+            actions: [
+                { action: `confirm_target_name:${sourceScope}`, label: `"${sourceScope}" übernehmen`, variant: "primary" },
+                { action: "prompt_target_name", label: "Eigenen Namen wählen", variant: "outline" }
+            ]
+        });
+        await this.context.writeChatMessage('assistant', `\`\`\`json\n${actionContent}\n\`\`\``, stepNumber);
+
+        return {
+            success: true,
+            isEarlyReturnForPlan: true,
+            result: { status: 'waiting_for_name' }
+        };
+    }
+
     // Normalize targetName:
-    // 1. Check if the user specified a name during introduction (or via rename dialog)
-    // 2. Fallback to source scope name if available
+    // 1. Check if the user specified a name (stored in targetName)
+    // 2. Fallback to source scope name
     // 3. Fallback to the overall migration name
-    // 4. Default to "New Project"
     let targetName = scopeConfig.targetName;
-    if (!targetName || targetName === "-" || targetName === "Zielbereich") {
-        targetName = scopeConfig.sourceScopeName || migrationName || "New Project";
-        // Update scopeConfig for consistency in subsequent steps
-        scopeConfig.targetName = targetName;
+    if (!isTargetNameConfirmed) {
+        // If not confirmed yet (e.g. "Alles" migration), try to find a good default
+        if (!targetName || targetName === "-" || targetName === "Zielbereich") {
+            targetName = sourceScope && sourceScope !== "Alles" ? sourceScope : (migrationName || "New Project");
+        }
     }
 
     const connector = await this.context.getConnector('out');

@@ -124,8 +124,26 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         console.error("Error resetting transfer:", error);
         toast.error("Fehler beim Zurücksetzen des Transfers.");
       }
+    } else if (action.startsWith('confirm_target_name:')) {
+      const nameToConfirm = action.substring('confirm_target_name:'.length);
+      try {
+        const newScopeConfig = {
+          ...(project.scopeConfig || {}),
+          targetName: nameToConfirm,
+          targetNameConfirmed: true
+        };
+        const { error } = await databaseClient.updateMigration(project.id, {
+          scope_config: newScopeConfig
+        });
+        if (error) throw error;
+        toast.success(`Name '${nameToConfirm}' übernommen. Target Discovery wird gestartet...`);
+        handleNextWorkflowStep(2);
+      } catch (error) {
+        console.error("Error updating target name:", error);
+        toast.error("Fehler beim Speichern des Namens.");
+      }
     } else if (action === 'prompt_target_name') {
-      setNewTargetName(project.scopeConfig?.targetName || project.scopeConfig?.sourceScopeName || project.name || "");
+      setNewTargetName(project.scopeConfig?.targetName || project.scopeConfig?.sourceScope || project.name || "");
       setIsRenamePromptOpen(true);
     } else if (action.startsWith('retry:')) {
       const stepNum = parseInt(action.split(':')[1], 10);
@@ -147,7 +165,8 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
     try {
       const newScopeConfig = {
         ...(project.scopeConfig || {}),
-        targetName: newTargetName.trim()
+        targetName: newTargetName.trim(),
+        targetNameConfirmed: true
       };
       const { error } = await databaseClient.updateMigration(project.id, {
         scope_config: newScopeConfig
@@ -155,7 +174,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
       if (error) throw error;
 
       setIsRenamePromptOpen(false);
-      toast.success("Name aktualisiert. Target Discovery wird neu gestartet...");
+      toast.success("Name aktualisiert. Target Discovery wird gestartet...");
       // Step 2 is Target Discovery
       handleNextWorkflowStep(2);
     } catch (error) {
@@ -259,7 +278,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
           </DialogHeader>
           <div className="py-4 space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="new-target-name">Der gewählte Name existiert im Zielsystem bereits. Bitte gib einen neuen Namen für das Projekt/den Workspace ein:</Label>
+              <Label htmlFor="new-target-name">Bitte gib einen Namen für das Projekt/den Workspace im Zielsystem ein (z.B. auch um einen Namenskonflikt zu beheben):</Label>
               <Input
                 id="new-target-name"
                 value={newTargetName}

@@ -215,7 +215,7 @@ export class DataStagingAgent extends AgentBase {
       
       ### STRIKTE SCOPE-BESCHRÄNKUNG:
       ${scopeConfig?.sourceScope ? `
-      ACHTUNG: Dies ist eine BEREICHS-MIGRATION (Scope: ${scopeConfig.sourceScopeName || scopeConfig.sourceScope}).
+      ACHTUNG: Dies ist eine BEREICHS-MIGRATION (Scope: ${scopeConfig.sourceScope}).
       - Nutze NIEMALS globale Such-Endpunkte oder Endpunkte, die alle Objekte des Systems auflisten (z.B. '/api/1.0/tasks/search').
       - Folge zwingend der Hierarchie im NAVIGATION GUIDE (z.B. erst Projekt abrufen, dann Aufgaben NUR dieses Projekts).
       - Jedes Objekt, das du importierst, MUSS direkt oder indirekt zum oben genannten SCOPE gehören.

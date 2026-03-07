@@ -74,7 +74,7 @@ export class DataTransferAgent extends AgentBase {
       const scopeConfig = migRowsScope[0]?.scope_config || {};
       const migrationContext = migRowsScope[0]?.context || {};
       
-      const sourceScopeName = scopeConfig.sourceScopeName;
+      const sourceScopeName = scopeConfig.sourceScope;
       const preferredTargetName = (scopeConfig.targetName && scopeConfig.targetName !== "-") 
         ? scopeConfig.targetName 
         : (sourceScopeName || migrationName || "New Migration Project");

@@ -473,6 +473,13 @@ async function processJob(job: any) {
           isLogicalFailure = !!agentResult.isLogicalFailure;
           failureMessage = agentResult.error || "";
           result = agentResult.result || agentResult;
+          
+          if (agentResult.isEarlyReturnForPlan) {
+              await pool.query('UPDATE migrations SET step_status = $1, status = $2 WHERE id = $3', ['completed', 'processing', migrationId]);
+              await pool.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+              return;
+          }
+          
           resultMessageText = JSON.stringify(result);
         } catch (err) {
           isLogicalFailure = true;
