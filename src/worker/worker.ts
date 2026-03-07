@@ -1038,11 +1038,10 @@ async function processJob(job: any) {
           await writeChatMessage(migrationId, 'assistant', `Schritt ${currentStepNumber} **Data Staging** erfolgreich abgeschlossen (${totalImported} Objekte geladen).`, currentStepNumber);
           const nextStepIndex = currentStepNumber;
           if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
-              const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
               const actionContent = JSON.stringify({
                   type: "action",
                   actions: [
-                    { action: "continue", label: `Weiter zu Schritt ${nextStepIndex + 1} ${nextStep.title}`, variant: "primary" },
+                    { action: "open-mapping-ui", label: "Mappings erstellen", variant: "primary" },
                     { action: "retry", label: `Schritt ${currentStepNumber} wiederholen`, variant: "outline", stepNumber: currentStepNumber }
                   ]
               });
@@ -1158,11 +1157,11 @@ async function processJob(job: any) {
           
           const nextStepIndex = currentStepNumber;
           if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
-              const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
               const actionContent = JSON.stringify({
                   type: "action",
                   actions: [
-                    { action: "continue", label: `Weiter zu Schritt ${nextStepIndex + 1} ${nextStep.title}`, variant: "primary" },
+                    { action: "open-enhancement-ui", label: "Datenqualität verbessern", variant: "primary" },
+                    { action: "continue", label: "Ohne Aufbereitung fortfahren", variant: "outline" },
                     { action: "retry", label: `Schritt ${currentStepNumber} wiederholen`, variant: "outline", stepNumber: currentStepNumber }
                   ]
               });

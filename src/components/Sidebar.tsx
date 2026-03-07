@@ -229,9 +229,9 @@ const Sidebar = ({
             <div className="h-px w-full bg-gradient-to-r from-transparent via-border/60 to-transparent mb-3 flex-shrink-0" />
 
             <nav className="flex-1 flex flex-col min-h-0 overflow-hidden">
-              <div className="flex-shrink-0">
-                <Collapsible open={!projectsCollapsed} onOpenChange={(open) => setProjectsCollapsed(!open)}>
-                  <div className="flex items-center justify-between px-2 py-2">
+              <div className="flex flex-col flex-shrink-0 min-h-[120px] max-h-[50%]">
+                <Collapsible open={!projectsCollapsed} onOpenChange={(open) => setProjectsCollapsed(!open)} className="flex flex-col min-h-0">
+                  <div className="flex items-center justify-between px-2 py-2 flex-shrink-0">
                     <h3 
                       className="flex items-center gap-1.5 text-[10px] font-medium text-muted-foreground/70 uppercase tracking-wider cursor-pointer hover:text-foreground transition-colors"
                       onClick={() => navigate("/projects")}
@@ -253,7 +253,7 @@ const Sidebar = ({
                     </CollapsibleTrigger>
                   </div>
 
-                  <CollapsibleContent className="animate-accordion-down data-[state=closed]:animate-accordion-up">
+                  <CollapsibleContent className="flex-1 overflow-y-auto min-h-0 animate-accordion-down data-[state=closed]:animate-accordion-up pr-2 mr-[-8px]">
                     <div className="space-y-1">
                       {projects.map((project) => {
                         const projectMigs = projectMigrations.filter(m => m.projectId === project.id);
