@@ -1,6 +1,8 @@
 import { AgentBase, AgentContext } from './AgentBase';
 import { LlmProvider } from './LlmProvider';
 import { OpenAiProvider } from './OpenAiProvider';
+import { AnthropicProvider } from './AnthropicProvider';
+import { GoogleGeminiProvider } from './GoogleGeminiProvider';
 import { Pool } from 'pg';
 import { CapabilityDiscoveryAgent } from '../discovery/CapabilityDiscoveryAgent';
 import { SystemDetectionAgent } from '../systemDetection/SystemDetectionAgent';
@@ -22,7 +24,7 @@ export class StepFactory {
     if (this.provider) return this.provider;
 
     // Default to OpenAI
-    let selectedProvider = new OpenAiProvider();
+    let selectedProvider: LlmProvider = new OpenAiProvider();
 
     if (dbPool) {
       try {
@@ -32,8 +34,9 @@ export class StepFactory {
           if (settings.provider === 'openai') {
             selectedProvider = new OpenAiProvider();
           } else if (settings.provider === 'anthropic') {
-              // TODO: Implement AnthropicProvider tomorrow
-              console.log("Anthropic provider selected, but not yet implemented. Falling back to OpenAI.");
+            selectedProvider = new AnthropicProvider();
+          } else if (settings.provider === 'google' || settings.provider === 'gemini') {
+            selectedProvider = new GoogleGeminiProvider();
           }
         }
       } catch (e) {

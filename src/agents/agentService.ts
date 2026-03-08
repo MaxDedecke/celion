@@ -10,3 +10,10 @@ export { runMappingRules } from './mappingRules/runMappingRules';
 export { runEnhancementRules } from './enhancementRules/runEnhancementRules';
 export { runEnhancementVerification } from './enhancementRules/runEnhancementVerification';
 export { runDataTransformation } from './dataTransformation/runDataTransformation';
+
+// Core Providers & Factory
+export { StepFactory } from './core/StepFactory';
+export type { LlmProvider } from './core/LlmProvider';
+export { OpenAiProvider } from './core/OpenAiProvider';
+export { GoogleGeminiProvider } from './core/GoogleGeminiProvider';
+export { AnthropicProvider } from './core/AnthropicProvider';
