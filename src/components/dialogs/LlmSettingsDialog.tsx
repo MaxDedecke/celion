@@ -19,6 +19,7 @@ import {
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
 import { Settings, Loader2, Key, Globe, Layers, Brain } from "lucide-react";
+import { databaseClient } from "@/api/databaseClient";
 
 interface LlmSettings {
   id?: string;
@@ -54,12 +55,9 @@ export function LlmSettingsDialog({
   const fetchSettings = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/llm-settings");
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.length > 0) {
-          setSettings(data[0]);
-        }
+      const { data } = await databaseClient.fetchLlmSettings();
+      if (data && data.length > 0) {
+        setSettings(data[0]);
       }
     } catch (e) {
       console.error("Failed to fetch LLM settings:", e);
@@ -77,19 +75,15 @@ export function LlmSettingsDialog({
         delete payload.api_key;
       }
 
-      const res = await fetch("/api/llm-settings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      });
-      if (res.ok) {
+      const { error } = await databaseClient.saveLlmSettings(payload);
+      if (!error) {
         toast({
           title: "Einstellungen gespeichert",
           description: "Die LLM-Konfiguration wurde erfolgreich aktualisiert.",
         });
         onOpenChange(false);
       } else {
-        throw new Error("Fehler beim Speichern");
+        throw error;
       }
     } catch (e) {
       toast({

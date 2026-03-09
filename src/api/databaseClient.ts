@@ -363,4 +363,13 @@ export const databaseClient = {
 
   removeProjectMember: (projectId: string, userId: string) =>
     fetchFromApi<void>(`/project_members?project_id=eq.${projectId}&user_id=eq.${userId}`, { method: "DELETE" }),
+
+  // LLM Settings
+  fetchLlmSettings: () => fetchFromApi<any[]>("/llm-settings"),
+
+  saveLlmSettings: (settings: any) => fetchFromApi<any>("/llm-settings", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(settings),
+  }),
 };

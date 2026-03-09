@@ -20,6 +20,7 @@ import {
 import { DATA_SOURCE_TYPE_OPTIONS } from "@/constants/sourceTypes";
 import type { NewMigrationInput } from "@/types/migration";
 import InfoTooltip from "@/components/InfoTooltip";
+import { databaseClient } from "@/api/databaseClient";
 
 interface AddMigrationDialogProps {
   open: boolean;
@@ -91,10 +92,23 @@ const AddMigrationDialog = ({
     }
   }, [open, resetForm]);
 
-  const handleSubmit = () => {
+  const handleSubmit = async () => {
     if (!name.trim()) {
       setError("Bitte gib einen Namen für die Migration ein.");
       return;
+    }
+
+    // Check for LLM settings
+    try {
+      const { data: llmSettings } = await databaseClient.fetchLlmSettings();
+      const hasKey = llmSettings && llmSettings.length > 0 && llmSettings[0].api_key;
+      
+      if (!hasKey) {
+        setError("Kein LLM-Provider konfiguriert. Bitte hinterlege zuerst einen API-Key in den KI-Einstellungen (Gehirn-Icon in der Sidebar).");
+        return;
+      }
+    } catch (e) {
+      console.error("Failed to check LLM settings:", e);
     }
 
     if (isEditMode) {

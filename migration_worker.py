@@ -896,8 +896,8 @@ def process_migration_step(job_payload: Dict[str, Any]):
         print(f" [!] Error processing step {step_number} for migration {migration_id}: {error_msg}")
         
         user_facing_error = error_msg
-        if "OPENAI_API_KEY_MISSING" in error_msg:
-            user_facing_error = "⚠️ **Konfiguration fehlt**: Kein OpenAI API-Key gefunden. Bitte öffne die Einstellungen in der Sidebar und hinterlege einen API-Key, um fortzufahren."
+        if any(msg in error_msg for msg in ["OPENAI_API_KEY_MISSING", "ANTHROPIC_API_KEY_MISSING", "GEMINI_API_KEY_MISSING"]):
+            user_facing_error = "⚠️ **Konfiguration fehlt**: Kein API-Key für den gewählten LLM-Provider gefunden. Bitte öffne die Einstellungen (Gehirn-Icon in der Sidebar) und hinterlege einen gültigen API-Key, um fortzufahren."
         else:
             user_facing_error = f"❌ **Fehler während Schritt {step_number}**: {error_msg}"
             
