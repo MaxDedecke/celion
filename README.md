@@ -1,67 +1,143 @@
-# Celion
+# Celion 🚀
 
-Celion ist eine hochperformante, KI-gestützte Migrations-Plattform für den Datentransfer zwischen verschiedenen SaaS-Ökosystemen (z. B. ClickUp, Notion, Asana, Jira). Durch den Einsatz von Graphen-Datenbanken und Large Language Models (LLMs) ermöglicht Celion nicht nur den reinen Transfer, sondern auch die intelligente Veredelung von Daten während des Prozesses.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+[![Stack: TypeScript](https://img.shields.io/badge/Stack-TypeScript-blue.svg)](https://www.typescriptlang.org/)
+[![Framework: React](https://img.shields.io/badge/Framework-React-blue.svg)](https://react.dev/)
+[![Backend: FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
+[![Database: Neo4j](https://img.shields.io/badge/Database-Neo4j-008CC1.svg)](https://neo4j.com/)
+[![Powered by: OpenAI](https://img.shields.io/badge/Powered%20by-OpenAI-41ADFF.svg)](https://openai.com/)
 
-## 🚀 Kern-Features
+**Celion** is a high-performance, AI-powered migration platform designed for seamless data transfer between SaaS ecosystems (e.g., ClickUp, Notion, Asana, Jira). By leveraging Graph Databases and Large Language Models (LLMs), Celion goes beyond simple "copy-paste" migrations, enabling intelligent data enrichment, structural transformation, and automated error recovery.
 
-- **KI-Driven Data Enhancement:** Automatische Korrektur von Rechtschreibung, Tonalitäts-Anpassung, Zusammenfassungen und PII-Redaktion während der Migration.
-- **Graph-basierte Transformation:** Nutzung von Neo4j als Intermediate Store, um komplexe Relationen (Parent-Child, Verknüpfungen) systemübergreifend abzubilden.
-- **Smart Transfer Recipes:** Dynamische Generierung von API-Transfer-Rezepten durch LLMs, um Zielsystem-spezifische Anforderungen (wie das Block-Modell von Notion) präzise zu erfüllen.
-- **Interaktiver Migrations-Agent:** Ein Chat-basierter Workflow führt den Nutzer durch alle Phasen: System-Detection, Auth-Validierung, Mapping und Transfer.
-- **Surgical Updates:** Minimale API-Last durch punktuelle Transformationen und effiziente Batch-Verarbeitung.
+---
 
-## 🏗 Architektur
+## 📖 Table of Contents
 
-Celion besteht aus vier Hauptkomponenten:
+- [Key Features](#-key-features)
+- [Architecture](#-architecture)
+- [Tech Stack](#-tech-stack)
+- [Getting Started](#-getting-started)
+  - [Prerequisites](#prerequisites)
+  - [Installation](#installation)
+  - [Configuration](#configuration)
+- [Migration Workflow](#-migration-workflow)
+- [Security & Reliability](#-security--reliability)
+- [Contributing](#-contributing)
+- [License](#-license)
 
-1.  **Frontend (React + Vite):** Eine moderne Single-Page-Application mit Shadcn UI für die Verwaltung von Projekten, Datenquellen und den interaktiven Migrations-Workflow.
-2.  **Backend (FastAPI / Python):** Das zentrale API-Gateway für die Orchestrierung der Migrationen, Benutzerverwaltung und Anbindung an PostgreSQL.
-3.  **Worker (Node.js + tsx):** Ein dedizierter Background-Worker für rechenintensive Aufgaben wie Datenabruf, KI-Transformationen und den finalen API-Transfer.
-4.  **Datenhaltung:**
-    *   **PostgreSQL:** Persistenz für Metadaten, Jobs und Migrations-Konfigurationen.
-    *   **Neo4j:** Graph-Datenbank für die Modellierung und Veredelung der zu migrierenden Entitäten.
+---
+
+## ✨ Key Features
+
+- **AI-Driven Data Enhancement:** Automatically correct spelling, adjust tone, summarize content, and redact PII during the migration process.
+- **Graph-Based Transformation:** Uses **Neo4j** as an intermediate store to model complex relationships (parent-child, linked entities) across different systems.
+- **Smart Transfer Recipes:** Dynamically generates API transfer logic via LLMs to meet platform-specific requirements (e.g., Notion's block model).
+- **Interactive Migration Agent:** A chat-based workflow guides you through all phases: System Detection, Auth Validation, Mapping, and Transfer.
+- **Surgical Updates:** Minimizes API load through targeted transformations and efficient batch processing.
+- **Revisions-Safe Logging:** Every action, API request, and data change is documented for full auditability.
+
+---
+
+## 🏗 Architecture
+
+Celion's modular architecture is built for scalability and robustness:
+
+1.  **Frontend (React + Vite):** A modern SPA using **Shadcn UI** for project management, data source configuration, and the interactive workflow.
+2.  **Backend (FastAPI / Python):** The central API gateway orchestrating migrations, user management, and PostgreSQL persistence.
+3.  **Worker (Node.js + TypeScript):** A high-throughput background worker handling data fetching, AI transformations, and final API transfers.
+4.  **Data Layer:**
+    *   **PostgreSQL:** Stores metadata, job states, and migration configurations.
+    *   **Neo4j:** The graph engine for modeling and refining entities.
+    *   **RabbitMQ:** Message broker for reliable task distribution and background processing.
+
+---
 
 ## 🛠 Tech Stack
 
-*   **Frontend:** React, TypeScript, Tailwind CSS, Lucide Icons, Shadcn UI
-*   **Backend:** Python 3.9+, FastAPI, SQLAlchemy
-*   **Worker:** Node.js, TypeScript, Neo4j-Driver, OpenAI API
-*   **Infrastructure:** Docker, Docker Compose, PostgreSQL, Neo4j, RabbitMQ
+- **Frontend:** React 18, TypeScript, Tailwind CSS, Shadcn UI, Lucide Icons, TanStack Query
+- **Backend:** Python 3.9+, FastAPI, SQLAlchemy, Pydantic
+- **Worker:** Node.js, TypeScript, Neo4j Driver, OpenAI/Anthropic/Gemini APIs
+- **Infra:** Docker & Docker Compose, PostgreSQL 15, Neo4j, RabbitMQ, Keycloak (Auth)
 
-## 🚥 Quick Start
+---
 
-Stelle sicher, dass Docker und Docker Compose auf deinem System installiert sind.
+## 🚥 Getting Started
 
-1.  **Repository klonen:**
+### Prerequisites
+
+- [Docker](https://www.docker.com/get-started) and [Docker Compose](https://docs.docker.com/compose/install/)
+- [Node.js](https://nodejs.org/) (optional, for local development)
+- [Python 3.9+](https://www.python.org/) (optional, for local development)
+
+### Installation
+
+1.  **Clone the repository:**
     ```bash
-    git clone https://github.com/your-repo/celion.git
+    git clone https://github.com/your-org/celion.git
     cd celion
     ```
 
-2.  **Umgebungsvariablen konfigurieren:**
-    Erstelle eine `.env` Datei basierend auf der `.env.example` und trage deine Datenbank-Credentials ein. Den `OPENAI_API_KEY` kannst du nun direkt über die Sidebar in der Benutzeroberfläche (LLM-Einstellungen) konfigurieren.
+2.  **Configuration:**
+    Copy the example environment file and fill in your credentials:
+    ```bash
+    cp .env.example .env
+    ```
+    *Note: OpenAI API keys can also be configured directly within the application settings.*
 
-3.  **Anwendung starten:**
+3.  **Launch the application:**
     ```bash
     docker compose up --build
     ```
 
-Die Anwendung ist anschließend unter `http://localhost:8080` (Frontend) und `http://localhost:8000` (Backend API) erreichbar.
+The application will be available at:
+- **Frontend:** `http://localhost:8080`
+- **Backend API:** `http://localhost:8000`
+- **Keycloak (Auth):** `http://localhost:8888`
 
-## 📋 Migrations-Workflow
-
-1.  **System Detection:** Celion erkennt Quell- und Zielsysteme automatisch.
-2.  **Authentication:** Validierung der API-Verbindungen.
-3.  **Inventory:** Erfassung aller migrierbaren Objekte (Tasks, Spaces, Pages etc.).
-4.  **Mapping:** Definition der Feld-Zuordnungen.
-5.  **Quality Enhancement:** KI-gestützte Veredelung der Daten in Neo4j.
-6.  **Transfer:** Sicherer Export in das Zielsystem mittels dynamischer Rezepte.
-
-## 🛡 Sicherheitsmechanismen
-
-*   **Retry-Limit:** Automatischer Abbruch nach 3 fehlgeschlagenen Transfer-Versuchen pro Objekt, um Infinite Loops zu vermeiden.
-*   **Error Tracking:** Detaillierte Fehlerspeicherung direkt am betroffenen Datenknoten in Neo4j.
-*   **PII Redaction:** Optionale Anonymisierung sensibler Daten vor dem Export.
+### Initial Setup
+After the first launch, Celion automatically initializes the PostgreSQL database and imports the Keycloak realm configuration.
 
 ---
-© 2026 Celion Migration Tools.
+
+## 📋 Migration Workflow
+
+Celion guides you through a structured 8-step process:
+
+1.  **Source Discovery:** Automatically identifies the source API, entities, and limits.
+2.  **Target Discovery:** Analyzes the destination system to map structures.
+3.  **Data Staging:** Prepares the source data for transformation.
+4.  **Mapping Verification:** Ensures field-to-field consistency.
+5.  **Quality Enhancement:** Applies AI rules (translations, summaries, etc.).
+6.  **Data Transfer:** Orchestrates the actual migration into the target system.
+7.  **Verification:** Validates that all objects were created correctly.
+8.  **Reporting:** Generates a final audit report.
+
+---
+
+## 🛡 Security & Reliability
+
+- **Enterprise Auth:** Powered by Keycloak for secure OIDC/SAML authentication.
+- **Retry Mechanism:** Automatic retry with exponential backoff for failed API calls.
+- **PII Protection:** Built-in agents for identifying and redacting sensitive information before transfer.
+- **Audit Logs:** Full traceability of all data transformations within the graph database.
+
+---
+
+## 🤝 Contributing
+
+We welcome contributions! Please feel free to submit Pull Requests or open Issues for bugs and feature requests.
+
+1.  Fork the Project
+2.  Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
+3.  Commit your Changes (`git commit -m 'Add some AmazingFeature'`)
+4.  Push to the Branch (`git push origin feature/AmazingFeature`)
+5.  Open a Pull Request
+
+---
+
+## 📄 License
+
+Distributed under the **MIT License**. See `LICENSE` for more information (coming soon).
+
+---
+© 2026 Celion Migration Tools. Built with ❤️ for the open-source community.
