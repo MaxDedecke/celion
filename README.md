@@ -133,10 +133,4 @@ I welcome contributions! Please feel free to submit Pull Requests or open Issues
 5.  Open a Pull Request
 
 ---
-
-## 📄 License
-
-Distributed under the **MIT License**. See `LICENSE` for more information (coming soon).
-
----
-© 2026 Celion Migration Tools. Built with ❤️ for the open-source community.
+© 2026 Celion - Built with ❤️ for the open-source community.
