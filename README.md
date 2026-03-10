@@ -1,6 +1,5 @@
 # Celion 🚀
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Stack: TypeScript](https://img.shields.io/badge/Stack-TypeScript-blue.svg)](https://www.typescriptlang.org/)
 [![Framework: React](https://img.shields.io/badge/Framework-React-blue.svg)](https://react.dev/)
 [![Backend: FastAPI](https://img.shields.io/badge/Backend-FastAPI-009688.svg)](https://fastapi.tiangolo.com/)
