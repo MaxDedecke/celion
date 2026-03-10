@@ -159,7 +159,7 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
         if (error) throw error;
         
         toast.success("Transfer-Plan bestätigt. Migration wird gestartet...");
-        handleNextWorkflowStep(8);
+        handleNextWorkflowStep(6);
       } catch (error) {
         console.error("Error confirming transfer plan:", error);
         toast.error("Fehler bei der Plan-Bestätigung.");
@@ -175,9 +175,9 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
           scope_config: newScopeConfig
         });
 
-        // 2. Step 8 will handle the rest (Neo4j reset and DB reset) if we trigger it fresh
+        // 2. Step 6 will handle the rest (Neo4j reset and DB reset) if we trigger it fresh
         toast.success("Transfer wird zurückgesetzt...");
-        handleNextWorkflowStep(8);
+        handleNextWorkflowStep(6);
       } catch (error) {
         console.error("Error resetting transfer:", error);
         toast.error("Fehler beim Zurücksetzen des Transfers.");
