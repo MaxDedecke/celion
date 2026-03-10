@@ -124,7 +124,7 @@ Celion guides you through a structured 8-step process:
 
 ## 🤝 Contributing
 
-We welcome contributions! Please feel free to submit Pull Requests or open Issues for bugs and feature requests.
+I welcome contributions! Please feel free to submit Pull Requests or open Issues for bugs and feature requests.
 
 1.  Fork the Project
 2.  Create your Feature Branch (`git checkout -b feature/AmazingFeature`)
