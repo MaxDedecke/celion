@@ -13,6 +13,7 @@ export default defineConfig(({ mode }) => ({
       "/api": {
         target: "http://backend:8000",
         changeOrigin: true,
+        ws: true,
       },
     },
   },

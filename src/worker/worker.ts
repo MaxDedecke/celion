@@ -10,6 +10,51 @@ const pool = new Pool({
 
 const POLL_INTERVAL = 30000; // 30 seconds fallback
 
+// Helper for publishing RabbitMQ events
+let rabbitmqConnection: amqp.Connection | null = null;
+let rabbitmqChannel: amqp.Channel | null = null;
+
+async function getRabbitChannel() {
+  if (rabbitmqChannel) return rabbitmqChannel;
+  try {
+    const host = process.env.RABBITMQ_HOST || 'localhost';
+    const user = process.env.RABBITMQ_DEFAULT_USER || 'celion';
+    const pass = process.env.RABBITMQ_DEFAULT_PASS || 'celion';
+    const url = `amqp://${user}:${pass}@${host}:5672`;
+    
+    rabbitmqConnection = await amqp.connect(url);
+    rabbitmqChannel = await rabbitmqConnection.createChannel();
+    await rabbitmqChannel.assertExchange('celion.events', 'topic', { durable: true });
+    
+    // Auto-reconnect
+    rabbitmqConnection.on('error', () => { rabbitmqConnection = null; rabbitmqChannel = null; });
+    rabbitmqConnection.on('close', () => { rabbitmqConnection = null; rabbitmqChannel = null; });
+    
+    return rabbitmqChannel;
+  } catch (error) {
+    console.error('[RabbitMQ Event Publisher] Failed to connect:', error);
+    return null;
+  }
+}
+
+export async function publishEvent(migrationId: string, type: string, data: any) {
+  const channel = await getRabbitChannel();
+  if (channel) {
+    try {
+      const routingKey = `migration.${migrationId}.${type}`;
+      const message = JSON.stringify({
+        migration_id: migrationId,
+        type,
+        data,
+        timestamp: new Date().toISOString()
+      });
+      channel.publish('celion.events', routingKey, Buffer.from(message), { persistent: true });
+    } catch (e) {
+      console.error('[RabbitMQ Event Publisher] Failed to publish:', e);
+    }
+  }
+}
+
 async function logActivity(migrationId: string, type: 'success' | 'error' | 'info' | 'warning', title: string) {
   const timestamp = new Date().toISOString();
   await pool.query('INSERT INTO migration_activities (migration_id, type, title, timestamp) VALUES ($1, $2, $3, $4)', [
@@ -18,6 +63,7 @@ async function logActivity(migrationId: string, type: 'success' | 'error' | 'inf
     title,
     timestamp,
   ]);
+  await publishEvent(migrationId, 'activity_added', { type, title, timestamp });
 }
 
 // Hilfsfunktion zum Schreiben von Chat-Nachrichten (Verwendet eigene Connection für Sofort-Commit)
@@ -26,6 +72,7 @@ async function writeChatMessage(migrationId: string, role: string, content: stri
     'INSERT INTO migration_chat_messages (migration_id, role, content, step_number) VALUES ($1, $2, $3, $4) RETURNING id',
     [migrationId, role, content, stepNumber]
   );
+  await publishEvent(migrationId, 'chat_message_added', { role, content, step_number: stepNumber });
   return res.rows[0]?.id;
 }
 
@@ -35,6 +82,7 @@ async function upsertChatMessage(id: string | null, migrationId: string, role: s
       'UPDATE migration_chat_messages SET content = $1, created_at = now() WHERE id = $2',
       [content, id]
     );
+    await publishEvent(migrationId, 'chat_message_updated', { id, role, content, step_number: stepNumber });
     return id;
   } else {
     return await writeChatMessage(migrationId, role, content, stepNumber);

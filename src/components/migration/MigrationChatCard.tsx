@@ -8,6 +8,7 @@ import ChatInput from "./ChatInput";
 import type { ChatMessage } from "./ChatMessage";
 import { AGENT_WORKFLOW_STEPS } from "@/constants/agentWorkflow";
 import type { MigrationProject as Migration } from "./types";
+import { useMigrationWebSocket } from "@/hooks/useMigrationWebSocket";
 
 interface MigrationChatCardProps {
   migration: Migration;
@@ -95,6 +96,8 @@ const MigrationChatCard = ({
      }
   };
 
+  const { lastEvent, isConnected } = useMigrationWebSocket(migration.id);
+
   useEffect(() => {
     let isActive = true;
     
@@ -103,23 +106,27 @@ const MigrationChatCard = ({
     prevMessageCountRef.current = 0;
     initialScrollDone.current = null;
 
+    // Initial fetch
     fetchChatMessages(isActive);
     fetchMigration(isActive);
     fetchMappingRules(isActive);
 
-    const interval = setInterval(() => {
-      if (isActive) {
-        fetchChatMessages(isActive);
-        fetchMigration(isActive);
-        fetchMappingRules(isActive);
-      }
-    }, 2000); 
-
     return () => {
       isActive = false;
-      clearInterval(interval);
     };
   }, [migration.id]);
+
+  // Refetch data when a real-time event arrives from RabbitMQ via WebSocket
+  useEffect(() => {
+    let isActive = true;
+    if (lastEvent) {
+      console.log("[Event] Real-time update received:", lastEvent.type);
+      fetchChatMessages(isActive);
+      fetchMigration(isActive);
+      fetchMappingRules(isActive);
+    }
+    return () => { isActive = false; };
+  }, [lastEvent]);
 
   const totalSteps = 8;
   const rawStep = migrationData.current_step || 0;

@@ -5,9 +5,48 @@ import json
 import psycopg
 import psycopg.rows
 import requests
+from datetime import datetime
 from typing import Any, Callable, Dict, Optional
 from openai import OpenAI
 from neo4j import GraphDatabase
+
+# ----------------------------------------------------------------------------
+# Event Publishing
+# ----------------------------------------------------------------------------
+def publish_event(migration_id: str, event_type: str, data: dict):
+    """Publishes a real-time event to the RabbitMQ exchange."""
+    try:
+        rabbitmq_host = os.getenv("RABBITMQ_HOST", "localhost")
+        rabbitmq_user = os.getenv("RABBITMQ_DEFAULT_USER", "guest")
+        rabbitmq_pass = os.getenv("RABBITMQ_DEFAULT_PASS", "guest")
+        credentials = pika.PlainCredentials(rabbitmq_user, rabbitmq_pass)
+        
+        # We use a short timeout to not block the worker if RabbitMQ is struggling
+        params = pika.ConnectionParameters(host=rabbitmq_host, credentials=credentials, connection_attempts=1)
+        connection = pika.BlockingConnection(params)
+        channel = connection.channel()
+
+        # Ensure the exchange exists
+        exchange_name = 'celion.events'
+        channel.exchange_declare(exchange=exchange_name, exchange_type='topic', durable=True)
+
+        routing_key = f"migration.{migration_id}.{event_type}"
+        message = {
+            "migration_id": migration_id,
+            "type": event_type,
+            "data": data,
+            "timestamp": datetime.utcnow().isoformat()
+        }
+
+        channel.basic_publish(
+            exchange=exchange_name,
+            routing_key=routing_key,
+            body=json.dumps(message),
+            properties=pika.BasicProperties(delivery_mode=2) # Persistent
+        )
+        connection.close()
+    except Exception as e:
+        print(f" [!] Failed to publish event {event_type} for migration {migration_id}: {e}")
 
 # ----------------------------------------------------------------------------
 # Database Utilities
@@ -35,6 +74,13 @@ def _write_chat_message(conn: psycopg.Connection, migration_id: str, role: str, 
             (migration_id, role, content, step_number),
         )
         conn.commit()
+
+    # Publish real-time event
+    publish_event(migration_id, 'chat_message_added', {
+        'role': role,
+        'content': content,
+        'step_number': step_number
+    })
 
 def _write_action_buttons(conn: psycopg.Connection, migration_id: str, step_number: int, next_step_title: Optional[str] = None):
     """Writes action buttons (Continue/Retry) to the chat."""
@@ -97,6 +143,15 @@ def _update_migration_step_status(conn: psycopg.Connection, migration_id: str, s
         )
         conn.commit()
 
+    # Publish real-time event
+    publish_event(migration_id, 'step_status_changed', {
+        'step_number': step_number,
+        'status': status,
+        'overall_status': overall_migration_status,
+        'progress': progress,
+        'message': message
+    })
+
 def _increment_global_stats(conn, steps=0, objects=0, success=0, total_agents=0, accuracy=None):
     """Helper to update the daily global statistics."""
     try:
@@ -125,6 +180,11 @@ def _update_workflow_state(conn: psycopg.Connection, migration_id: str, workflow
             (json.dumps(workflow_state), migration_id),
         )
         conn.commit()
+
+    # Publish real-time event
+    publish_event(migration_id, 'workflow_state_updated', {
+        'workflow_state': workflow_state
+    })
 
 def _get_connector(conn: psycopg.Connection, migration_id: str, connector_type: str = 'in'):
     """Fetches connector details for a migration."""

@@ -14,11 +14,14 @@ import os
 import psycopg
 import psycopg.rows
 import requests
-from fastapi import FastAPI, HTTPException, Response
+from fastapi import FastAPI, HTTPException, Response, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, HttpUrl
 from starlette.concurrency import run_in_threadpool
 import pika
+import aio_pika
+import asyncio
+from collections import defaultdict
 from uuid import UUID
 from decimal import Decimal
 import neo4j
@@ -81,6 +84,90 @@ def publish_to_rabbitmq(job_id: int):
         # If RabbitMQ fails, we don't want to fail the whole request,
         # but we should log it. The DB-polling worker could still pick it up.
         print(f" [!] Failed to send job '{job_id}' to RabbitMQ: {e}", file=sys.stderr)
+
+
+# --- WebSockets & Event Streaming ---
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[str, list[WebSocket]] = defaultdict(list)
+
+    async def connect(self, websocket: WebSocket, migration_id: str):
+        await websocket.accept()
+        self.active_connections[migration_id].append(websocket)
+
+    def disconnect(self, websocket: WebSocket, migration_id: str):
+        if migration_id in self.active_connections:
+            if websocket in self.active_connections[migration_id]:
+                self.active_connections[migration_id].remove(websocket)
+            if not self.active_connections[migration_id]:
+                del self.active_connections[migration_id]
+
+    async def broadcast_to_migration(self, migration_id: str, message: dict):
+        if migration_id in self.active_connections:
+            connections_to_remove = []
+            for connection in self.active_connections[migration_id]:
+                try:
+                    await connection.send_json(message)
+                except Exception:
+                    connections_to_remove.append(connection)
+            for conn in connections_to_remove:
+                self.disconnect(conn, migration_id)
+
+manager = ConnectionManager()
+
+async def rabbitmq_listener():
+    rabbitmq_host = os.getenv("RABBITMQ_HOST", "localhost")
+    rabbitmq_user = os.getenv("RABBITMQ_DEFAULT_USER", "guest")
+    rabbitmq_pass = os.getenv("RABBITMQ_DEFAULT_PASS", "guest")
+    
+    connection = None
+    for _ in range(10):
+        try:
+            connection = await aio_pika.connect_robust(
+                f"amqp://{rabbitmq_user}:{rabbitmq_pass}@{rabbitmq_host}/"
+            )
+            print("Successfully connected to aio-pika for WebSockets.")
+            break
+        except Exception as e:
+            print(f"Waiting for RabbitMQ for WebSockets... {e}")
+            await asyncio.sleep(5)
+            
+    if not connection:
+        print("Failed to connect to RabbitMQ for WebSockets after 10 attempts.")
+        return
+
+    async with connection:
+        channel = await connection.channel()
+        exchange = await channel.declare_exchange('celion.events', aio_pika.ExchangeType.TOPIC, durable=True)
+        
+        # Exclusive queue that dies when the server stops
+        queue = await channel.declare_queue(exclusive=True)
+        await queue.bind(exchange, routing_key='migration.#')
+
+        async with queue.iterator() as queue_iter:
+            async for message in queue_iter:
+                async with message.process():
+                    try:
+                        data = json.loads(message.body.decode())
+                        migration_id = data.get('migration_id')
+                        if migration_id:
+                            await manager.broadcast_to_migration(migration_id, data)
+                    except Exception as e:
+                        print(f"Error processing websocket event: {e}")
+
+@app.on_event("startup")
+async def startup_event():
+    asyncio.create_task(rabbitmq_listener())
+
+@app.websocket("/api/v1/ws/migrations/{migration_id}")
+async def websocket_endpoint(websocket: WebSocket, migration_id: str):
+    await manager.connect(websocket, migration_id)
+    try:
+        while True:
+            # Keep connection open, client doesn't need to send data
+            data = await websocket.receive_text()
+    except WebSocketDisconnect:
+        manager.disconnect(websocket, migration_id)
 
 
 def _get_db_connection() -> psycopg.Connection:
@@ -837,6 +924,18 @@ async def ask_consultant(id: str, payload: AnswerAgentRequest) -> dict[str, Any]
             )
             user_msg_id = cur.fetchone()["id"]
 
+            # Broadcast user message immediately
+            import asyncio
+            asyncio.create_task(manager.broadcast_to_migration(id, {
+                "migration_id": id,
+                "type": "chat_message_added",
+                "data": {
+                    "role": "user",
+                    "content": payload.content,
+                    "step_number": None
+                }
+            }))
+
             # 2. Fetch context (Step Results)
             step_results = {"step_1": [], "step_2": [], "step_3": [], "step_4": [], "step_5": [], "step_6": []}
             cur.execute("SELECT * FROM public.step_1_results WHERE migration_id = %s", (id,))
@@ -922,6 +1021,18 @@ async def create_migration_chat_message(id: str, payload: CreateMigrationChatMes
 
             if not row:
                 raise HTTPException(status_code=500, detail="Failed to create chat message.")
+
+            # Broadcast message immediately
+            import asyncio
+            asyncio.create_task(manager.broadcast_to_migration(id, {
+                "migration_id": id,
+                "type": "chat_message_added",
+                "data": {
+                    "role": row["role"],
+                    "content": row["content"],
+                    "step_number": row["step_number"]
+                }
+            }))
 
             return MigrationChatMessage(
                 id=str(row["id"]),
