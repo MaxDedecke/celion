@@ -23,12 +23,22 @@ export class MappingVerificationAgent extends AgentBase {
 
     const { rows: s3Rows6 } = await dbPool.query('SELECT entity_name, count, is_ignored FROM step_3_results WHERE migration_id = $1', [migrationId]);
     const userRelatedTerms = ['user', 'member', 'participant', 'assignee', 'owner', 'creator', 'author', 'collaborator'];
+    const metaEntityTerms = ['story', 'comment', 'activity', 'attachment', 'history', 'event', 'audit'];
+    const structuralTerms = ['workspace', 'team', 'project', 'portfolio', 'folder', 'space', 'list', 'section'];
+    
     const sourceEntities = s3Rows6
       .map((r: any) => ({ name: r.entity_name, count: r.count, isIgnored: r.is_ignored }))
       .filter((ent: any) => {
         const nameLower = ent.name.toLowerCase();
         const isUserRelated = userRelatedTerms.some(term => nameLower.includes(term));
-        return ent.count > 0 && !isUserRelated;
+        const isMetaEntity = metaEntityTerms.some(term => nameLower.includes(term));
+        
+        // Only include structural terms if they are NOT ignored and have count > 0
+        // BUT if they are common structural objects like 'project' or 'workspace', 
+        // we might want to be more lenient if the user didn't map them explicitly 
+        // because the migration script often creates them automatically.
+        
+        return ent.count > 0 && !isUserRelated && !isMetaEntity;
       });
 
     const { rows: ruleRows6 } = await dbPool.query('SELECT * FROM public.mapping_rules WHERE migration_id = $1', [migrationId]);
@@ -46,23 +56,15 @@ Du bist ein Mapping Verification Agent. Deine Aufgabe ist es, die bestehenden Ma
 ### DEINE ZIELE:
 1. **Fokus auf Inventar (Schritt 3) & Semantische Zuordnung:** Beziehe dich auf die in "Source Entities" aufgeführten Entitäten.
    - **WICHTIG:** Ein Inventar-Item (z.B. "Project Tasks" oder "Task Details") gilt als VOLLSTÄNDIG gemappt, wenn entsprechende Regeln für den zugehörigen technischen Objekt-Key (z.B. "task") in den Mapping Rules existieren.
-   - Nutze die "Source Object Specs", um herauszufinden, welches technische Objekt zu welchem Inventar-Item passt (z.B. über Namensähnlichkeit oder DisplayName).
    - Melde fehlende Mappings NUR, wenn für eine Entität aus dem Inventar WEDER unter ihrem Namen NOCH unter ihrem technischen Key (laut Specs) Regeln existieren.
-   - Ignoriere alle Entitäten, die NICHT in "Source Entities" enthalten sind oder dort einen Count von 0 haben (diese wurden bereits vorab gefiltert).
-2. **Keine User-Migration:** Es werden KEINE User, Member, Assignees oder Collaborators migriert. 
-   - Ignoriere alle Regeln oder Objekte, die sich auf User/Accounts beziehen. Schaue nicht nach User-Mappings.
-3. **Vollständigkeit:** Prüfe, ob für alle im Inventar gefundenen Entitäten (direkt oder über ihren technischen Key) entsprechende Mapping-Regeln existieren.
-   - **WICHTIG:** Ignorierte Entitäten (isIgnored: true) müssen NICHT gemappt werden.
+   - **Strukturelle Objekte:** Objekte wie 'workspace', 'team', 'project', 'section' oder 'list' werden oft automatisch durch die Migrations-Logik angelegt. Wenn für diese KEIN explizites Mapping existiert, ist das KEIN FEHLER, solange die Kern-Daten (wie Tasks/Issues) gemappt sind.
+2. **Keine User-Migration:** Es werden KEINE User, Member, Assignees oder Collaborators migriert. Ignoriere diese komplett.
+3. **Vollständigkeit:** Prüfe, ob für alle RELEVANTEN Entitäten (Tasks, Subtasks, Custom Fields) Mappings existieren.
+   - Ignorierte Entitäten (isIgnored: true) müssen NICHT gemappt werden.
 4. **Validität & Semantik:** Bewerte, ob die Mappings semantisch sinnvoll sind.
-   - Prüfe Datentypen: Passt ein "date" Feld zu einer "id" (wahrscheinlich nicht)?
    - **IGNORE-Regeln:** Wenn eine Regel den Typ 'IGNORE' hat, ist dies eine gültige Zuordnung.
-5. **Pflichtfelder:** Prüfe, ob alle Pflichtfelder im Zielsystem abgedeckt werden (für die Objekte, für die Mappings existieren).
-
-### INPUTS:
-- **Source Entities:** Relevantes Inventar aus Schritt 3 (bereits gefiltert: nur count > 0, keine User).
-- **Mapping Rules:** Die aktuell definierten Regeln.
-- **Source Object Specs:** Feldspezifikationen des Quellsystems.
-- **Target Object Specs:** Feldspezifikationen des Zielsystems.
+5. **Pflichtfelder:** Prüfe, ob alle Pflichtfelder im Zielsystem abgedeckt werden.
+   - Beachte: Viele "Required" Felder im Zielsystem werden durch Standardwerte oder IDs der neu angelegten Container (Projekt/Workspace) automatisch gefüllt. Sei hier nachsichtig, außer es fehlt etwas offensichtlich Kritisches wie ein 'Name' oder 'Title'.
 
 ### OUTPUT FORMAT:
 Antworte ausschließlich mit einem validen JSON-OBjekt im folgenden Format:
@@ -78,16 +80,11 @@ Antworte ausschließlich mit einem validen JSON-OBjekt im folgenden Format:
       }
     ],
     "target_readiness": {
-      "score": number, // 0-100
-      "missing_required_fields": [
-        {
-          "targetEntity": "string",
-          "field": "string"
-        }
-      ]
+      "score": number,
+      "missing_required_fields": []
     }
   },
-  "summary": "Detaillierte deutsche Zusammenfassung. Konzentriere dich auf echte semantische Fehler oder fehlende Pflichtfelder für die relevanten Entitäten."
+  "summary": "Detaillierte deutsche Zusammenfassung."
 }
     `;
 

@@ -133,13 +133,14 @@ const ChatMessageList = ({
         content.startsWith("Analysiere **") ||
         content.startsWith("Bereite **") ||
         content.startsWith("Prüfe **") ||
-        content.startsWith("Erstelle **") ||
         content.startsWith("Führe **") ||
+        content.startsWith("Erstelle **") ||
         content.includes("Celion Onboarding Agent") ||
         content.includes("Lass uns deine Migration einrichten") ||
         content.includes("Bereite Daten für das Mapping vor") ||
         content.includes("Starte Datentransfer") ||
         content.includes("führe Mapping-Verifizierung durch") ||
+        content.includes("Mapping-Verifizierung wird gestartet") ||
         content.includes("Erstelle Migrations-Plan")
       );
     };
@@ -148,30 +149,26 @@ const ChatMessageList = ({
       const step = msg.step_number ?? currentStepNumber;
       
       // Detect if this is a new attempt within the SAME step
-      // This happens if we see a start marker and we already have messages in the current chunk
-      const isNewAttemptStart = step === currentStepNumber && 
+      const isNewAttemptStart = step > 0 && 
+                               step === currentStepNumber && 
                                currentAttemptChunk.length > 0 && 
                                isStartMarker(msg);
 
-      if (step !== currentStepNumber || isNewAttemptStart) {
+      if ((step !== currentStepNumber && currentStepNumber !== -1) || isNewAttemptStart) {
         if (currentAttemptChunk.length > 0) {
-          // If it was a retry or we are starting a new attempt/step, group the previous chunk if it's not the last one
-          // or if it was specifically a failed attempt.
-          // For now, if we are starting a NEW ATTEMPT in the same step, we definitely group the old ones.
-          if (isNewAttemptStart) {
-            items.push({
-              id: `attempt-${currentAttemptChunk[0].id}-${idx}`,
-              type: 'attempt_group',
-              messages: [...currentAttemptChunk],
-              step_number: currentStepNumber,
-              attemptNumber: attemptCounter
-            });
-            attemptCounter++;
-          } else {
-            // New step number - just flush previous messages as single messages
-            // (Unless they were already grouped by a retry action)
-            currentAttemptChunk.forEach(m => items.push({ type: 'single', message: m }));
+          // Group the previous chunk as an attempt
+          items.push({
+            id: `attempt-${currentAttemptChunk[0].id}-${idx}`,
+            type: 'attempt_group',
+            messages: [...currentAttemptChunk],
+            step_number: currentStepNumber,
+            attemptNumber: attemptCounter
+          });
+          
+          if (step !== currentStepNumber) {
             attemptCounter = 1;
+          } else {
+            attemptCounter++;
           }
           currentAttemptChunk = [];
         }

@@ -1184,6 +1184,12 @@ async function processJob(job: any) {
       }
 
     } else if (agentName === 'runMappingVerification') {
+      // Set status to thinking
+      await pool.query('UPDATE migrations SET consultant_status = $1 WHERE id = $2', ['thinking', migrationId]);
+      await publishEvent(migrationId, 'status_updated', { consultant_status: 'thinking' });
+
+      await writeChatMessage(migrationId, 'assistant', `Prüfe **Mapping-Verifizierung** wird gestartet...`, currentStepNumber);
+      
       const context = {
         migrationId,
         stepNumber: currentStepNumber,
@@ -1300,6 +1306,9 @@ async function processJob(job: any) {
         await finishClient6.query('ROLLBACK');
         throw e;
       } finally {
+        // Reset status to idle
+        await pool.query('UPDATE migrations SET consultant_status = $1 WHERE id = $2', ['idle', migrationId]);
+        await publishEvent(migrationId, 'status_updated', { consultant_status: 'idle' });
         finishClient6.release();
       }
 
