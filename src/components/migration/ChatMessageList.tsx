@@ -133,11 +133,14 @@ const ChatMessageList = ({
         content.startsWith("Analysiere **") ||
         content.startsWith("Bereite **") ||
         content.startsWith("Prüfe **") ||
+        content.startsWith("Erstelle **") ||
+        content.startsWith("Führe **") ||
         content.includes("Celion Onboarding Agent") ||
         content.includes("Lass uns deine Migration einrichten") ||
         content.includes("Bereite Daten für das Mapping vor") ||
         content.includes("Starte Datentransfer") ||
-        content.includes("führe Mapping-Verifizierung durch")
+        content.includes("führe Mapping-Verifizierung durch") ||
+        content.includes("Erstelle Migrations-Plan")
       );
     };
 
