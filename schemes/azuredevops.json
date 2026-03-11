@@ -30,5 +30,29 @@
   "headers": {
     "accept": "application/json",
     "contentType": "application/json"
+  },
+  "agentInstructions": "Führe die Inventur für Azure DevOps durch. Beachte, dass Projekte und Work Items die zentrale Struktur bilden. Nutze die 'id' aus den Projekt-Abfragen für weitere API-Aufrufe.",
+  "navigationGuide": {
+    "hierarchy": "Organization -> Project -> Work Item",
+    "phase0_scope_identification": [
+      "1. Rufe '/_apis/projects' auf.",
+      "2. Finde das Projekt, das dem 'sourceScope' entspricht, und speichere seine 'id' als 'project_id' in deinem Scope-Report."
+    ],
+    "phase1_exploration_and_staging": [
+      "1. Rufe '/_apis/wit/workitems' mit den entsprechenden Parametern auf, um Work Items zu sammeln.",
+      "2. Achte auf Continuation Tokens für Pagination."
+    ]
+  },
+  "exportInstructions": {
+    "preferredContainerType": "project",
+    "availableContainerTypes": [
+      { "id": "organization", "name": "Organization" },
+      { "id": "project", "name": "Neues Projekt in existierender Organization" }
+    ],
+    "sequence": [
+      "project",
+      "workItem"
+    ],
+    "logic": "1. Erstelle das Projekt über 'POST /_apis/projects'. 2. Erstelle Work Items innerhalb des Projekts über 'POST /{project}/_apis/wit/workitems/${type}'. WICHTIG: Nutze die 'id' der neu erstellten Parent-Container aus dem Graphen für die API-Aufrufe der Kinder."
   }
 }

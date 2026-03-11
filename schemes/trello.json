@@ -1,14 +1,18 @@
 {
   "system": "Trello",
   "apiType": "REST",
+  "apiBaseUrl": "https://api.trello.com",
   "baseUrlPattern": "api.trello.com",
-  "auth": {
+  "authentication": {
     "type": "api_key_token_query",
-    "headerTemplate": null,
-    "requiresApiToken": true,
-    "requiresEmail": false,
-    "probeEndpoint": "/1/members/me",
-    "successStatus": 200
+    "headerName": null,
+    "tokenPrefix": "",
+    "emailRequired": false,
+    "whoami": {
+      "endpoint": "/1/members/me",
+      "method": "GET",
+      "usernamePath": "username"
+    }
   },
   "discovery": {
     "endpoints": {
@@ -24,5 +28,30 @@
   "headers": {
     "accept": "application/json",
     "contentType": "application/json"
+  },
+  "agentInstructions": "Führe die Inventur für Trello durch. Beachte, dass Boards, Listen und Karten die zentrale Hierarchie bilden.",
+  "navigationGuide": {
+    "hierarchy": "Board -> List -> Card",
+    "phase0_scope_identification": [
+      "1. Rufe '/1/members/me/boards' auf, um alle Boards zu erhalten.",
+      "2. Finde das Board, das dem 'sourceScope' entspricht, und speichere seine 'id' als 'board_id' in deinem Scope-Report."
+    ],
+    "phase1_exploration_and_staging": [
+      "1. Rufe '/1/boards/{board_id}/lists' auf, um alle Listen des Boards zu erhalten.",
+      "2. Rufe '/1/boards/{board_id}/cards' auf, um alle Karten des Boards zu erhalten."
+    ]
+  },
+  "exportInstructions": {
+    "preferredContainerType": "board",
+    "availableContainerTypes": [
+      { "id": "workspace", "name": "Neuer Workspace" },
+      { "id": "board", "name": "Neues Board in existierendem Workspace" }
+    ],
+    "sequence": [
+      "board",
+      "list",
+      "card"
+    ],
+    "logic": "1. Erstelle das Board über 'POST /1/boards/'. 2. Erstelle Listen innerhalb des Boards über 'POST /1/lists' mit idBoard. 3. Erstelle Cards in den Listen über 'POST /1/cards' mit idList. WICHTIG: Nutze die 'id' der neu erstellten Parent-Container aus dem Graphen für die API-Aufrufe der Kinder."
   }
 }

@@ -28,5 +28,29 @@
   "headers": {
     "accept": "application/json",
     "contentType": "application/json"
+  },
+  "agentInstructions": "Führe die Inventur für Jira Cloud durch. Projekte und Issues bilden die Kernstruktur. JQL (Jira Query Language) kann über den Search-Endpunkt verwendet werden.",
+  "navigationGuide": {
+    "hierarchy": "Site -> Project -> Issue",
+    "phase0_scope_identification": [
+      "1. Rufe '/rest/api/3/project' auf, um alle Projekte zu erhalten.",
+      "2. Finde das Projekt, das dem 'sourceScope' entspricht, und speichere seine 'id' oder 'key' als 'project_id' in deinem Scope-Report."
+    ],
+    "phase1_exploration_and_staging": [
+      "1. Nutze '/rest/api/3/search' mit JQL (z.B. 'project={project_id}'), um alle Issues des Projekts abzurufen.",
+      "2. Beachte die Pagination mittels 'startAt' und 'maxResults'."
+    ]
+  },
+  "exportInstructions": {
+    "preferredContainerType": "project",
+    "availableContainerTypes": [
+      { "id": "site", "name": "Jira Site" },
+      { "id": "project", "name": "Neues Projekt" }
+    ],
+    "sequence": [
+      "project",
+      "issue"
+    ],
+    "logic": "1. Erstelle das Projekt über 'POST /rest/api/3/project'. 2. Erstelle Issues innerhalb des Projekts über 'POST /rest/api/3/issue'. WICHTIG: Nutze die 'id' der neu erstellten Parent-Container aus dem Graphen für die API-Aufrufe der Kinder."
   }
 }
