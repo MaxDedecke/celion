@@ -720,18 +720,29 @@ async def update_project(id: str, payload: UpdateProjectPayload) -> Project:
 
 @app.delete("/api/projects/{id}")
 async def delete_project(id: str) -> dict[str, str]:
-    """Delete a project and all related records."""
+    """Delete a project and all related records, including Neo4j data for migrations."""
     try:
         with _get_db_connection() as conn, conn.cursor() as cur:
             cur.execute("SELECT id FROM public.projects WHERE id = %s", (id,))
             if not cur.fetchone():
                 raise HTTPException(status_code=404, detail="Project not found.")
 
-            # Delete project (cascades to project_members and migrations)
+            # Get all migration IDs associated with this project to clean up Neo4j
+            cur.execute("SELECT id FROM public.migrations WHERE project_id = %s", (id,))
+            migration_ids = [str(row["id"]) for row in cur.fetchall()]
+
+            # Delete Neo4j data for each migration
+            for mig_id in migration_ids:
+                try:
+                    await _delete_neo4j_data(mig_id)
+                except Exception as neo_err:
+                    print(f"Warning: Failed to delete Neo4j data for migration {mig_id}: {neo_err}")
+
+            # Delete project (cascades to project_members, migrations, and other related PG tables)
             cur.execute("DELETE FROM public.projects WHERE id = %s", (id,))
             conn.commit()
             
-            return {"message": f"Project {id} deleted successfully."}
+            return {"message": f"Project {id} and its {len(migration_ids)} migrations deleted successfully."}
     except HTTPException:
         raise
     except Exception as exc:
