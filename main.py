@@ -1530,14 +1530,14 @@ async def trigger_migration_step(id: str, step: int, params: Optional[StepTrigge
                 )
 
                 # 4. Clear chat messages from this step onwards
-                cur.execute(
-                    """
-                    DELETE FROM public.migration_chat_messages 
-                    WHERE migration_id = %s 
-                    AND step_number >= %s
-                    """,
-                    (id, step),
-                )
+                # cur.execute(
+                #     """
+                #     DELETE FROM public.migration_chat_messages 
+                #     WHERE migration_id = %s 
+                #     AND step_number >= %s
+                #     """,
+                #     (id, step),
+                # )
 
             # 5. Reset migration current_step if needed
             cur.execute(
