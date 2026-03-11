@@ -3565,43 +3565,53 @@ class UpdateResultPayload(BaseModel):
 
 @app.patch("/api/migrations/{id}/results")
 async def update_migration_result(id: str, payload: UpdateResultPayload) -> dict[str, Any]:
-    """Update a specific agent result record."""
+    """Update or create a specific agent result record (UPSERT)."""
     try:
         with _get_db_connection() as conn, conn.cursor() as cur:
             if payload.step == 1:
                 cur.execute(
-                    "UPDATE public.step_1_results SET raw_json = %s, updated_at = now() WHERE migration_id = %s AND system_mode = %s",
-                    (json.dumps(payload.new_json), id, payload.system_mode)
+                    """
+                    INSERT INTO public.step_1_results (migration_id, system_mode, raw_json, updated_at)
+                    VALUES (%s, %s, %s, now())
+                    ON CONFLICT (migration_id, system_mode) DO UPDATE SET
+                        raw_json = EXCLUDED.raw_json,
+                        updated_at = now()
+                    """,
+                    (id, payload.system_mode, json.dumps(payload.new_json))
                 )
             elif payload.step == 2:
                 cur.execute(
-                    "UPDATE public.step_2_results SET raw_json = %s, updated_at = now() WHERE migration_id = %s AND system_mode = %s",
-                    (json.dumps(payload.new_json), id, payload.system_mode)
+                    """
+                    INSERT INTO public.step_2_results (migration_id, system_mode, raw_json, updated_at)
+                    VALUES (%s, %s, %s, now())
+                    ON CONFLICT (migration_id, system_mode) DO UPDATE SET
+                        raw_json = EXCLUDED.raw_json,
+                        updated_at = now()
+                    """,
+                    (id, payload.system_mode, json.dumps(payload.new_json))
                 )
             elif payload.step == 3:
                 cur.execute(
-                    "UPDATE public.step_3_results SET raw_json = %s, updated_at = now() WHERE migration_id = %s AND entity_name = %s",
-                    (json.dumps(payload.new_json), id, payload.entity_name)
+                    """
+                    INSERT INTO public.step_3_results (migration_id, entity_name, raw_json, updated_at)
+                    VALUES (%s, %s, %s, now())
+                    ON CONFLICT (migration_id, entity_name) DO UPDATE SET
+                        raw_json = EXCLUDED.raw_json,
+                        updated_at = now()
+                    """,
+                    (id, payload.entity_name, json.dumps(payload.new_json))
                 )
-            elif payload.step == 4:
+            elif payload.step in [4, 5, 6, 7, 8, 9]:
+                table_name = f"step_{payload.step}_results"
                 cur.execute(
-                    "UPDATE public.step_4_results SET raw_json = %s, updated_at = now() WHERE migration_id = %s",
-                    (json.dumps(payload.new_json), id)
-                )
-            elif payload.step == 5:
-                cur.execute(
-                    "UPDATE public.step_5_results SET raw_json = %s, updated_at = now() WHERE migration_id = %s",
-                    (json.dumps(payload.new_json), id)
-                )
-            elif payload.step == 6:
-                cur.execute(
-                    "UPDATE public.step_6_results SET raw_json = %s, updated_at = now() WHERE migration_id = %s",
-                    (json.dumps(payload.new_json), id)
-                )
-            elif payload.step == 7:
-                cur.execute(
-                    "UPDATE public.step_7_results SET raw_json = %s, updated_at = now() WHERE migration_id = %s",
-                    (json.dumps(payload.new_json), id)
+                    f"""
+                    INSERT INTO public.{table_name} (migration_id, raw_json, updated_at)
+                    VALUES (%s, %s, now())
+                    ON CONFLICT (migration_id) DO UPDATE SET
+                        raw_json = EXCLUDED.raw_json,
+                        updated_at = now()
+                    """,
+                    (id, json.dumps(payload.new_json))
                 )
             conn.commit()
         return {"message": "Result updated successfully"}

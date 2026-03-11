@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -25,6 +25,7 @@ import { toast } from "sonner";
 import ChatMessageList from "@/components/migration/ChatMessageList";
 import ChatInput from "@/components/migration/ChatInput";
 import type { ChatMessage } from "@/components/migration/ChatMessage";
+import { useMigrationWebSocket } from "@/hooks/useMigrationWebSocket";
 import { ResizableHandle, ResizablePanel, ResizablePanelGroup } from "@/components/ui/resizable";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Input } from "@/components/ui/input";
@@ -112,6 +113,7 @@ const MappingPanel = ({ migrationId, onClose, onTriggerStep }: MappingPanelProps
   const chatScrollRef = useRef<HTMLDivElement>(null);
   const bottomSpacerRef = useRef<HTMLDivElement>(null);
   const [isNearBottom, setIsNearBottom] = useState(true);
+  const [isConsultantThinking, setIsConsultantThinking] = useState(false);
   const prevMessageCountRef = useRef(0);
 
   // Fetch migration, specs and then existing results
@@ -124,6 +126,7 @@ const MappingPanel = ({ migrationId, onClose, onTriggerStep }: MappingPanelProps
 
         setSourceSystemName(migration.source_system);
         setTargetSystemName(migration.target_system);
+        setIsConsultantThinking(migration.consultant_status === 'thinking');
 
         const [sourceSpecsRes, targetSpecsRes, resultsRes] = await Promise.all([
           databaseClient.fetchObjectSpecs(migration.source_system),
@@ -219,69 +222,117 @@ const MappingPanel = ({ migrationId, onClose, onTriggerStep }: MappingPanelProps
     fetchData();
   }, [migrationId]);
 
+  const fetchChatMessages = useCallback(async (isActive: boolean) => {
+    try {
+      const response = await fetch(`/api/migrations/${migrationId}/mapping-chat?t=${Date.now()}`);
+      if (!isActive) return;
+      const data = await response.json();
+      setChatMessages(prev => {
+        const optimisticMessages = prev.filter(m => m.id.startsWith('optimistic-'));
+        const filteredOptimistic = optimisticMessages.filter(opt => {
+          // Normalize content for comparison (remove ID tags and trim)
+          const normalize = (c: string) => c.replace(/\[ID:[^\]]+\]/g, '').trim();
+          const optContent = normalize(opt.content);
+          
+          return !data.some((real: ChatMessage) => {
+            if (real.role !== opt.role) return false;
+            return normalize(real.content) === optContent;
+          });
+        });
+        return [...data, ...filteredOptimistic];
+      });
+      setIsChatLoaded(true);
+    } catch (error) {
+      console.error("Failed to fetch chat messages:", error);
+    }
+  }, [migrationId]);
+
+  const fetchRules = useCallback(async (isActive: boolean) => {
+    try {
+        const response = await fetch(`/api/migrations/${migrationId}/mapping-rules`);
+        if (!isActive) return;
+        if (response.ok) {
+            const rules = await response.json();
+            setMappingRules(rules);
+        }
+    } catch (error) {
+        console.error("Failed to fetch rules:", error);
+    }
+  }, [migrationId]);
+
+  const fetchMigration = useCallback(async (isActive: boolean) => {
+    try {
+      const response = await fetch(`/api/migrations/${migrationId}?t=${Date.now()}`);
+      if (!isActive) return;
+      if (response.ok) {
+        const data = await response.json();
+        setIsConsultantThinking(data.consultant_status === 'thinking');
+      }
+    } catch (error) {
+      console.error("Failed to fetch migration:", error);
+    }
+  }, [migrationId]);
+
   // Chat Fetching Logic
   useEffect(() => {
     let isActive = true;
-    // Do not reset chatMessages here to avoid flickering if we just poll
-    // But we do need to reset if migrationId changes.
-    // However, this effect runs on migrationId change.
     
-    // We only reset if we are switching migrations, but the dependency is migrationId.
-    // So we should reset.
-    // BUT: The welcome message logic relies on knowing when the *first* load for this migration is done.
-    
-    // Let's keep the reset but ensure we track loading state properly.
-    if (migrationId) {
-        // Resetting state for new migration
-        // Note: We might want to do this only if migrationId actually changed from previous render
-        // but react handles dependencies.
-    }
-    
-    const fetchChatMessages = async () => {
-      try {
-        const response = await fetch(`/api/migrations/${migrationId}/mapping-chat?t=${Date.now()}`);
-        if (!isActive) return;
-        const data = await response.json();
-        setChatMessages(data);
-        setIsChatLoaded(true);
-      } catch (error) {
-        console.error("Failed to fetch chat messages:", error);
-      }
-    };
-
-    const fetchRules = async () => {
-        try {
-            const response = await fetch(`/api/migrations/${migrationId}/mapping-rules`);
-            if (!isActive) return;
-            if (response.ok) {
-                const rules = await response.json();
-                setMappingRules(rules);
-            }
-        } catch (error) {
-            console.error("Failed to fetch rules:", error);
-        }
-    };
-
     // Reset for new migration
     setChatMessages([]);
     setIsChatLoaded(false);
     welcomeCheckedRef.current = false;
     prevMessageCountRef.current = 0;
 
-    fetchChatMessages();
-    fetchRules();
-    const interval = setInterval(() => {
-      if (isActive) {
-        fetchChatMessages();
-        fetchRules();
-      }
-    }, 3000);
+    fetchChatMessages(isActive);
+    fetchRules(isActive);
+    fetchMigration(isActive);
 
     return () => {
       isActive = false;
-      clearInterval(interval);
     };
-  }, [migrationId]);
+  }, [migrationId, fetchChatMessages, fetchRules, fetchMigration]);
+
+  const { lastEvent, isConnected } = useMigrationWebSocket(migrationId);
+
+  // Refetch on WebSocket events
+  useEffect(() => {
+    let isActive = true;
+    if (lastEvent) {
+      const timer = setTimeout(() => {
+        if (isActive) {
+          fetchChatMessages(isActive);
+          fetchRules(isActive);
+          fetchMigration(isActive);
+        }
+      }, 100);
+      return () => {
+        isActive = false;
+        clearTimeout(timer);
+      };
+    }
+    return () => { isActive = false; };
+  }, [lastEvent, fetchChatMessages, fetchRules, fetchMigration]);
+
+  // Fallback Polling
+  useEffect(() => {
+    let isActive = true;
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+    if (!isConnected) {
+      pollInterval = setInterval(() => {
+        if (isActive) {
+          fetchChatMessages(isActive);
+          fetchRules(isActive);
+          fetchMigration(isActive);
+        }
+      }, 3000);
+    }
+
+    return () => {
+      isActive = false;
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [isConnected, fetchChatMessages, fetchRules, fetchMigration]);
 
   // Initial Welcome Message
   useEffect(() => {
@@ -333,19 +384,33 @@ const MappingPanel = ({ migrationId, onClose, onTriggerStep }: MappingPanelProps
   useEffect(() => {
     const newMessageCount = chatMessages.length;
     if (newMessageCount > prevMessageCountRef.current) {
-        setTimeout(() => scrollToBottom('smooth'), 100);
+        if (isNearBottom) {
+          setTimeout(() => scrollToBottom('smooth'), 100);
+        }
     }
     prevMessageCountRef.current = newMessageCount;
-  }, [chatMessages.length]);
+  }, [chatMessages.length, isNearBottom]);
 
   const handleSendMessage = async (message: string) => {
     try {
+      // Optimistic update
+      const optimisticMsg: ChatMessage = {
+        id: `optimistic-${Date.now()}`,
+        role: 'user',
+        content: message,
+        created_at: new Date().toISOString()
+      };
+      setChatMessages(prev => [...prev, optimisticMsg]);
+      setIsConsultantThinking(true);
+      
+      // Optimistic scroll
+      setTimeout(() => scrollToBottom('smooth'), 50);
+
       await fetch(`/api/migrations/${migrationId}/mapping-chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ content: message, role: 'user' })
       });
-      setTimeout(() => scrollToBottom('smooth'), 50);
     } catch (error) {
       console.error("Failed to send message:", error);
       toast.error("Nachricht konnte nicht gesendet werden");
@@ -943,7 +1008,8 @@ const MappingPanel = ({ migrationId, onClose, onTriggerStep }: MappingPanelProps
                    <div ref={chatScrollRef} onScroll={handleScroll} className="absolute inset-0 overflow-y-auto px-4 py-4 scroll-smooth">
                       <ChatMessageList 
                         messages={chatMessages} 
-                        isAgentRunning={chatMessages.length > 0 && chatMessages[chatMessages.length - 1].role === 'user'} 
+                        isAgentRunning={isConsultantThinking}
+                        isConsultantThinking={isConsultantThinking}
                       />
                       <div ref={bottomSpacerRef} className="h-2" />
                    </div>
@@ -955,6 +1021,7 @@ const MappingPanel = ({ migrationId, onClose, onTriggerStep }: MappingPanelProps
                       size="sm" 
                       className="text-xs h-7 gap-1.5 text-primary border-primary/20 hover:bg-primary/5"
                       onClick={() => handleSendMessage("Bitte erstelle automatisch alle notwendigen Mappings für die aktuellen Objekte und ignoriere Felder, die nicht benötigt werden.")}
+                      disabled={isConsultantThinking}
                     >
                       <Sparkles className="w-3.5 h-3.5" />
                       Automatisches Mapping
@@ -963,7 +1030,7 @@ const MappingPanel = ({ migrationId, onClose, onTriggerStep }: MappingPanelProps
                   <ChatInput 
                     onSend={handleSendMessage} 
                     placeholder="Fragen zum Mapping stellen..."
-                    disabled={false}
+                    disabled={isConsultantThinking}
                   />
                 </div>
               </ResizablePanel>

@@ -501,6 +501,7 @@ CREATE TABLE IF NOT EXISTS public.step_1_results (
   recommended_base_url text,
   raw_json jsonb DEFAULT '{}'::jsonb,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
   UNIQUE(migration_id, system_mode)
 );
 
@@ -514,6 +515,7 @@ CREATE TABLE IF NOT EXISTS public.step_2_results (
   error_message text,
   raw_json jsonb DEFAULT '{}'::jsonb,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
   UNIQUE(migration_id, system_mode)
 );
 
@@ -528,6 +530,7 @@ CREATE TABLE IF NOT EXISTS public.step_3_results (
   is_ignored boolean NOT NULL DEFAULT false,
   raw_json jsonb DEFAULT '{}'::jsonb,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
   UNIQUE(migration_id, entity_name)
 );
 
@@ -547,6 +550,7 @@ CREATE TABLE IF NOT EXISTS public.step_4_results (
   summary text,
   raw_json jsonb DEFAULT '{}'::jsonb,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
   UNIQUE(migration_id)
 );
 
@@ -557,6 +561,7 @@ CREATE TABLE IF NOT EXISTS public.step_5_results (
   summary text,
   raw_json jsonb DEFAULT '{}'::jsonb,
   created_at timestamp with time zone NOT NULL DEFAULT now(),
+  updated_at timestamp with time zone DEFAULT now(),
   UNIQUE(migration_id)
 );
 

@@ -102,6 +102,15 @@ async function writeChatMessage(migrationId: string, role: string, content: stri
   return res.rows[0]?.id;
 }
 
+async function writeMappingChatMessage(migrationId: string, role: string, content: string) {
+  const res = await pool.query(
+    'INSERT INTO mapping_chat_messages (migration_id, role, content) VALUES ($1, $2, $3) RETURNING id',
+    [migrationId, role, content]
+  );
+  await publishEvent(migrationId, 'chat_message_added', { role, content, is_mapping: true });
+  return res.rows[0]?.id;
+}
+
 async function upsertChatMessage(id: string | null, migrationId: string, role: string, content: string, stepNumber?: number) {
   if (id) {
     await pool.query(
@@ -1295,10 +1304,14 @@ async function processJob(job: any) {
       }
 
     } else if (agentName === 'runMappingRules' || agentName === 'runEnhancementRules') {
+      // Set status to thinking
+      await pool.query('UPDATE migrations SET consultant_status = $1 WHERE id = $2', ['thinking', migrationId]);
+      await publishEvent(migrationId, 'status_updated', { consultant_status: 'thinking' });
+
       const context = {
         migrationId,
         stepNumber: currentStepNumber,
-        writeChatMessage: async (role, content, stepNum) => await writeChatMessage(migrationId, role, content, stepNum),
+        writeChatMessage: async (role, content, _stepNum) => await writeMappingChatMessage(migrationId, role, content),
         logActivity: async (type, title) => await logActivity(migrationId, type, title),
         getConnector: async () => null,
         getMigrationDetails: async () => null,
@@ -1315,6 +1328,10 @@ async function processJob(job: any) {
       } else {
         console.error(`Agent not found in StepFactory: ${agentName}`);
       }
+
+      // Reset status to idle
+      await pool.query('UPDATE migrations SET consultant_status = $1 WHERE id = $2', ['idle', migrationId]);
+      await publishEvent(migrationId, 'status_updated', { consultant_status: 'idle' });
 
       await pool.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
       return;
