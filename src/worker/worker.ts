@@ -1294,7 +1294,7 @@ async function processJob(job: any) {
                   type: "action",
                   actions: [
                     { action: "open-enhancement-ui", label: "Datenqualität verbessern", variant: "primary" },
-                    { action: "continue", label: "Ohne Aufbereitung fortfahren", variant: "outline" },
+                    { action: "skip_enhancement", label: "Ohne Aufbereitung fortfahren", variant: "outline" },
                     { action: "retry", label: `Schritt ${currentStepNumber} wiederholen`, variant: "outline", stepNumber: currentStepNumber }
                   ]
               });

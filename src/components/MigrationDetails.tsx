@@ -157,6 +157,9 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
   const handleAction = useCallback(async (action: string) => {
     if (action === 'continue') {
       handleNextWorkflowStep();
+    } else if (action === 'skip_enhancement') {
+      // Explicitly skip step 5 (Enhancement) and start step 6 (Transfer)
+      handleNextWorkflowStep(6);
     } else if (action === 'confirm_transfer_plan') {
       try {
         const newScopeConfig = {

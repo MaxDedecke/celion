@@ -37,6 +37,14 @@ const MigrationChatCard = ({
   const prevMessageCountRef = useRef(0);
   const currentStepRef = useRef(migration.current_step || 0);
   const initialScrollDone = useRef<string | null>(null);
+  const isActiveRef = useRef(true);
+
+  useEffect(() => {
+    isActiveRef.current = true;
+    return () => {
+      isActiveRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     currentStepRef.current = migration.current_step || 0;
@@ -413,8 +421,8 @@ const MigrationChatCard = ({
     onSendMessage(trimmed);
     
     setTimeout(() => {
-      fetchChatMessages(true);
-      fetchMigration(true);
+      fetchChatMessages(isActiveRef.current);
+      fetchMigration(isActiveRef.current);
     }, 300);
   };
 

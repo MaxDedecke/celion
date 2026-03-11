@@ -12,7 +12,9 @@ import { Progress } from "@/components/ui/progress";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 
 const LiveTransferStatus = ({ data }: { data: any }) => {
-  const percentage = data.total > 0 ? Math.round((data.processed / data.total) * 100) : 0;
+  // Ensure we don't divide by zero and handle cases where processed > total
+  const displayTotal = Math.max(data.total || 0, data.processed || 0);
+  const percentage = displayTotal > 0 ? Math.round((data.processed / displayTotal) * 100) : 0;
   
   return (
     <div className="mt-2 space-y-3 w-full animate-in fade-in duration-500 min-w-[300px] sm:min-w-[400px] md:min-w-[500px]">
@@ -23,7 +25,9 @@ const LiveTransferStatus = ({ data }: { data: any }) => {
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-primary opacity-75"></span>
               <span className="relative inline-flex rounded-full h-3 w-3 bg-primary"></span>
             </div>
-            <h4 className="text-sm font-semibold text-primary">Datentransfer läuft...</h4>
+            <h4 className="text-sm font-semibold text-primary">
+              {data.status === 'completed' ? 'Transfer abgeschlossen' : 'Datentransfer läuft...'}
+            </h4>
           </div>
           <Badge variant="outline" className="bg-background/50 border-primary/30 text-primary tabular-nums">
             {percentage}%
@@ -33,8 +37,8 @@ const LiveTransferStatus = ({ data }: { data: any }) => {
         <div className="space-y-2">
           <Progress value={percentage} className="h-2 bg-primary/10" />
           <div className="flex justify-between text-[10px] text-muted-foreground font-medium uppercase tracking-wider">
-            <span>{data.processed} von {data.total} Objekten</span>
-            <span>{data.currentEntity || "Initialisierung"}</span>
+            <span>{data.processed} von {displayTotal} Objekten</span>
+            <span className="max-w-[150px] truncate text-right">{data.currentEntity || "Initialisierung"}</span>
           </div>
         </div>
       </div>

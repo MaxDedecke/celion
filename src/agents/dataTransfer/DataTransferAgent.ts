@@ -572,6 +572,7 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                   { migrationId }
               );
               totalNodesToTransfer = countRes.records[0].get('total').toNumber();
+              console.log(`[DataTransferAgent] Calculated ${totalNodesToTransfer} unique nodes to transfer from Neo4j.`);
           } finally {
               await countSession.close();
           }
