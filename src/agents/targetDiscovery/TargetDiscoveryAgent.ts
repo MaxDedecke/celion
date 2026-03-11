@@ -154,6 +154,9 @@ Dein Hauptziel ist es herauszufinden, ob ein Bereich/Projekt mit dem Namen "${ta
 ### WICHTIG:
 Ignoriere alle Endpunkte für Details (z.B. Tasks, Folder-Details, Listen-Inhalte). Es geht NUR darum festzustellen, ob der Name "${targetName}" auf der obersten Ebene (oder der Ebene, in der wir erstellen wollen) bereits vergeben ist.
 
+### ZIELSYSTEM INSTRUKTIONEN (WICHTIG FÜR SPEZIELLE REGELN WIE HTTP METHODEN):
+${discoveryScheme?.agentInstructions || "Keine spezifischen Instruktionen vorhanden."}
+
 ### VERFÜGBARE ENDPUNKTE (AUS SPEC):
 ${JSON.stringify(availableEndpoints, null, 2)}
 
@@ -161,12 +164,13 @@ ${JSON.stringify(availableEndpoints, null, 2)}
 1. Erstelle einen Plan im JSON-Format mit Schritten.
 2. Jeder Schritt muss einen 'endpoint_key' aus der obigen Liste verwenden.
 3. Beschränke dich auf die Endpunkte, die nötig sind, um die Namen der obersten Container-Ebenen aufzulisten.
+4. BEACHTE DIE ZIELSYSTEM INSTRUKTIONEN: Wenn dort für den Endpunkt eine bestimmte Methode (z.B. POST) gefordert ist, dann merke dir das.
 
 ### JSON OUTPUT FORMAT:
 {
   "summary": "Erklärung",
   "plan": [
-    { "step": 1, "endpoint_key": "string", "url_template": "string", "description": "string" }
+    { "step": 1, "endpoint_key": "string", "url_template": "string", "description": "string", "method": "GET | POST" }
   ]
 }
 `;
@@ -245,6 +249,9 @@ Deine Aufgabe ist es, den übergebenen 'Execution Plan' SCHRITT FÜR SCHRITT abz
 ### API BASE URL:
 ${discoveryScheme?.apiBaseUrl || "Nicht definiert"}
 
+### ZIELSYSTEM INSTRUKTIONEN (WICHTIG FÜR HTTP METHODEN UND BODYS):
+${discoveryScheme?.agentInstructions || "Keine spezifischen Instruktionen vorhanden."}
+
 ### DEIN PLAN:
 ${JSON.stringify(executionPlan.plan, null, 2)}
 
@@ -257,6 +264,7 @@ Wir möchten einen neuen Bereich/Projekt namens "**${targetName}**" anlegen.
 3. Analysiere die zurückgegebenen Daten. Prüfe, ob es bereits eine Entität (Workspace, Projekt etc.) gibt, die EXAKT so heißt wie der ZIEL-NAME.
 4. Falls ein Namenskonflikt besteht, setze "conflict" auf true.
 5. Führe für jeden relevanten Endpunkt aus dem Plan Tool-Calls aus.
+6. BEACHTE ZWINGEND DIE ZIELSYSTEM INSTRUKTIONEN: Falls für einen Endpunkt 'POST' vorgeschrieben ist, MUSST du als method 'POST' an das Tool übergeben. Falls dort gefordert ist, einen leeren Body zu senden, musst du 'body: {}' mitgeben.
 
 ### FINAL JSON FORMAT:
 Sobald alle Schritte ausgeführt wurden, antworte mit folgendem JSON:
@@ -283,7 +291,8 @@ Sobald alle Schritte ausgeführt wurden, antworte mit folgendem JSON:
             type: "object",
             properties: {
               url: { type: "string" },
-              method: { type: "string", enum: ["GET", "POST"] }
+              method: { type: "string", enum: ["GET", "POST"] },
+              body: { type: "object", description: "Optionaler JSON Body (z.B. {} falls gefordert)." }
             },
             required: ["url"]
           }
@@ -423,6 +432,7 @@ Sobald alle Schritte ausgeführt wurden, antworte mit folgendem JSON:
             url: finalUrl,
             method: args.method || 'GET',
             headers: requestHeaders,
+            body: args.body,
             paginationConfig: discoveryScheme?.discovery?.pagination
         });
 
