@@ -8,32 +8,58 @@ const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
-const POLL_INTERVAL = 30000; // 30 seconds fallback
+const POLL_INTERVAL = 3000; // 3 seconds fallback (instead of 30s)
 
 // Helper for publishing RabbitMQ events
 let rabbitmqConnection: amqp.Connection | null = null;
 let rabbitmqChannel: amqp.Channel | null = null;
+let isConnecting = false;
 
 async function getRabbitChannel() {
   if (rabbitmqChannel) return rabbitmqChannel;
+  if (isConnecting) {
+    // Wait for existing connection attempt
+    for (let i = 0; i < 50; i++) {
+      await new Promise(resolve => setTimeout(resolve, 100));
+      if (rabbitmqChannel) return rabbitmqChannel;
+      if (!isConnecting) break;
+    }
+  }
+
+  isConnecting = true;
   try {
     const host = process.env.RABBITMQ_HOST || 'localhost';
     const user = process.env.RABBITMQ_DEFAULT_USER || 'celion';
     const pass = process.env.RABBITMQ_DEFAULT_PASS || 'celion';
     const url = `amqp://${user}:${pass}@${host}:5672`;
     
+    console.log(`[RabbitMQ] Connecting to ${host}...`);
+    // amqplib connect doesn't have a direct timeout option in the string, 
+    // but we can use a Promise.race if needed.
     rabbitmqConnection = await amqp.connect(url);
     rabbitmqChannel = await rabbitmqConnection.createChannel();
     await rabbitmqChannel.assertExchange('celion.events', 'topic', { durable: true });
     
+    console.log(`[RabbitMQ] Connected and channel created.`);
+
     // Auto-reconnect
-    rabbitmqConnection.on('error', () => { rabbitmqConnection = null; rabbitmqChannel = null; });
-    rabbitmqConnection.on('close', () => { rabbitmqConnection = null; rabbitmqChannel = null; });
+    rabbitmqConnection.on('error', (err) => { 
+      console.error('[RabbitMQ] Connection error:', err);
+      rabbitmqConnection = null; 
+      rabbitmqChannel = null; 
+    });
+    rabbitmqConnection.on('close', () => { 
+      console.log('[RabbitMQ] Connection closed.');
+      rabbitmqConnection = null; 
+      rabbitmqChannel = null; 
+    });
     
     return rabbitmqChannel;
   } catch (error) {
     console.error('[RabbitMQ Event Publisher] Failed to connect:', error);
     return null;
+  } finally {
+    isConnecting = false;
   }
 }
 
@@ -734,6 +760,7 @@ async function processJob(job: any) {
       
       // Set status to thinking
       await pool.query('UPDATE migrations SET consultant_status = $1 WHERE id = $2', ['thinking', migrationId]);
+      await publishEvent(migrationId, 'status_updated', { consultant_status: 'thinking' });
       
       const { rows: migrationRows } = await pool.query('SELECT source_system FROM migrations WHERE id = $1', [migrationId]);
       const sourceSystem = migrationRows[0]?.source_system;
@@ -755,6 +782,7 @@ async function processJob(job: any) {
       
       // Reset status to idle
       await pool.query('UPDATE migrations SET consultant_status = $1 WHERE id = $2', ['idle', migrationId]);
+      await publishEvent(migrationId, 'status_updated', { consultant_status: 'idle' });
 
       await pool.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
       return;
@@ -765,7 +793,8 @@ async function processJob(job: any) {
       
       // Set status to thinking
       await pool.query('UPDATE migrations SET consultant_status = $1 WHERE id = $2', ['thinking', migrationId]);
-      
+      await publishEvent(migrationId, 'status_updated', { consultant_status: 'thinking' });
+
       // Fetch current migration name, user_id, and context
       const { rows: migRows } = await pool.query('SELECT name, user_id, context FROM migrations WHERE id = $1', [migrationId]);
       const migrationName = migRows[0]?.name;
@@ -839,21 +868,32 @@ async function processJob(job: any) {
             throw new Error(`Bereichsabfrage für System '${system}' wird aktuell nicht automatisch unterstützt.`);
           }
 
-          const response = await fetch(endpoint, { 
-             headers,
-             method: sys === 'notion' ? 'POST' : 'GET',
-             body: sys === 'notion' ? JSON.stringify({ filter: { property: "object", value: "database" } }) : undefined
-          });
-          if (!response.ok) throw new Error(`HTTP error ${response.status} from ${system}`);
-          const data = await response.json();
-          
-          if (sys === 'clickup') return (data.teams || []).map((t: any) => ({ id: t.id, name: t.name }));
-          if (sys === 'asana') return (data.data || []).map((w: any) => ({ id: w.gid, name: w.name }));
-          if (sys === 'jiracloud') return (Array.isArray(data) ? data : data.values || []).map((p: any) => ({ id: p.id || p.key, name: p.name }));
-          if (sys === 'gitlab') return (Array.isArray(data) ? data : []).map((p: any) => ({ id: p.id, name: p.name }));
-          if (sys === 'notion') return (data.results || []).map((p: any) => ({ id: p.id, name: p.title?.[0]?.plain_text || 'Unnamed' }));
-          
-          return [];
+          const controller = new AbortController();
+          const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
+
+          try {
+            const response = await fetch(endpoint, { 
+               headers,
+               method: sys === 'notion' ? 'POST' : 'GET',
+               body: sys === 'notion' ? JSON.stringify({ filter: { property: "object", value: "database" } }) : undefined,
+               signal: controller.signal
+            });
+            clearTimeout(timeoutId);
+            if (!response.ok) throw new Error(`HTTP error ${response.status} from ${system}`);
+            const data = await response.json();
+            
+            if (sys === 'clickup') return (data.teams || []).map((t: any) => ({ id: t.id, name: t.name }));
+            if (sys === 'asana') return (data.data || []).map((w: any) => ({ id: w.gid, name: w.name }));
+            if (sys === 'jiracloud') return (Array.isArray(data) ? data : data.values || []).map((p: any) => ({ id: p.id || p.key, name: p.name }));
+            if (sys === 'gitlab') return (Array.isArray(data) ? data : []).map((p: any) => ({ id: p.id, name: p.name }));
+            if (sys === 'notion') return (data.results || []).map((p: any) => ({ id: p.id, name: p.title?.[0]?.plain_text || 'Unnamed' }));
+            
+            return [];
+          } catch (e: any) {
+            clearTimeout(timeoutId);
+            if (e.name === 'AbortError') throw new Error(`Timeout bei der Abfrage von ${system} (10s)`);
+            throw e;
+          }
       };
 
       const verifySystemAndAuth = async (mode: 'source' | 'target', dataSourceId: string, system?: string, apiToken?: string, url?: string, email?: string): Promise<{ success: boolean, message: string }> => {
@@ -1030,6 +1070,7 @@ async function processJob(job: any) {
       
       // Reset status to idle
       await pool.query('UPDATE migrations SET consultant_status = $1 WHERE id = $2', ['idle', migrationId]);
+      await publishEvent(migrationId, 'status_updated', { consultant_status: 'idle' });
       await pool.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
       return;
 

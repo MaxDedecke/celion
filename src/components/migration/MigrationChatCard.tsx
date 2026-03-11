@@ -54,9 +54,16 @@ const MigrationChatCard = ({
       const data = await response.json();
       setChatMessages(prev => {
         const optimisticMessages = prev.filter(m => m.id.startsWith('optimistic-'));
-        const filteredOptimistic = optimisticMessages.filter(opt => 
-          !data.some((real: ChatMessage) => real.role === opt.role && real.content === opt.content)
-        );
+        const filteredOptimistic = optimisticMessages.filter(opt => {
+          // Normalize content for comparison (remove ID tags and trim)
+          const normalize = (c: string) => c.replace(/\[ID:[^\]]+\]/g, '').trim();
+          const optContent = normalize(opt.content);
+          
+          return !data.some((real: ChatMessage) => {
+            if (real.role !== opt.role) return false;
+            return normalize(real.content) === optContent;
+          });
+        });
         return [...data, ...filteredOptimistic];
       });
     } catch (error) {
@@ -117,16 +124,49 @@ const MigrationChatCard = ({
   }, [migration.id]);
 
   // Refetch data when a real-time event arrives from RabbitMQ via WebSocket
+  // Debounced to handle bursts of events (e.g. from Introduction Agent)
   useEffect(() => {
     let isActive = true;
     if (lastEvent) {
       console.log("[Event] Real-time update received:", lastEvent.type);
-      fetchChatMessages(isActive);
-      fetchMigration(isActive);
-      fetchMappingRules(isActive);
+      
+      const timer = setTimeout(() => {
+        if (isActive) {
+          fetchChatMessages(isActive);
+          fetchMigration(isActive);
+          fetchMappingRules(isActive);
+        }
+      }, 100); // 100ms debounce
+      
+      return () => {
+        isActive = false;
+        clearTimeout(timer);
+      };
     }
     return () => { isActive = false; };
   }, [lastEvent]);
+
+  // Fallback Polling when WebSocket is disconnected
+  useEffect(() => {
+    let isActive = true;
+    let pollInterval: ReturnType<typeof setInterval> | null = null;
+
+    if (!isConnected) {
+      console.log("[Chat] WebSocket not connected, starting fallback polling...");
+      pollInterval = setInterval(() => {
+        if (isActive) {
+          fetchChatMessages(isActive);
+          fetchMigration(isActive);
+          fetchMappingRules(isActive);
+        }
+      }, 3000); // Poll every 3 seconds
+    }
+
+    return () => {
+      isActive = false;
+      if (pollInterval) clearInterval(pollInterval);
+    };
+  }, [isConnected, migration.id]);
 
   const totalSteps = 8;
   const rawStep = migrationData.current_step || 0;
@@ -261,7 +301,7 @@ const MigrationChatCard = ({
           return (
             <Button 
               key={idx}
-              onClick={() => onAction && onAction(action.action === 'retry' ? `retry:${action.stepNumber}` : action.action)} 
+              onClick={() => handleActionInternal(action.action === 'retry' ? `retry:${action.stepNumber}` : action.action)} 
               variant={action.variant === "primary" ? "default" : "outline"} 
               size="sm"
               className={cn(
@@ -313,7 +353,7 @@ const MigrationChatCard = ({
             
             {!isStartButton && rawStep > 0 && (
               <Button 
-                onClick={() => onAction && onAction(`retry:${rawStep}`)} 
+                onClick={() => handleActionInternal(`retry:${rawStep}`)} 
                 variant="outline" 
                 size="sm"
                 className="h-8 text-xs gap-1.5 animate-fade-in border-primary/20 hover:bg-primary/5 text-primary"
@@ -328,7 +368,7 @@ const MigrationChatCard = ({
           {currentStepNumber === 4 && !hasCurrentStepFailed && (
             <div className="flex flex-wrap gap-2 mt-1">
               <Button 
-                onClick={() => onAction && onAction('open-mapping-ui')} 
+                onClick={() => handleActionInternal('open-mapping-ui')} 
                 variant="outline" 
                 size="sm"
                 className="h-8 text-xs gap-1.5 animate-fade-in border-emerald-500/30 bg-emerald-500/5 hover:bg-emerald-500/10 text-emerald-700"
@@ -378,6 +418,34 @@ const MigrationChatCard = ({
     }, 300);
   };
 
+  const handleActionInternal = (action: string) => {
+    if (action.startsWith('send_chat:')) {
+      const msg = action.substring('send_chat:'.length);
+      // Strip out [ID:...] for the optimistic UI but keep it for the backend
+      const visibleMsg = msg.replace(/\[ID:[^\]]+\]/g, '').trim();
+      
+      const optimisticMsg: ChatMessage = {
+        id: `optimistic-${Date.now()}`,
+        role: 'user',
+        content: visibleMsg,
+        created_at: new Date().toISOString()
+      };
+      
+      setChatMessages(prev => [...prev, optimisticMsg]);
+      setTimeout(() => scrollToBottom('smooth'), 50);
+    }
+    
+    if (onAction) {
+      onAction(action);
+    }
+
+    // Refresh after a delay to catch the response if WebSocket fails
+    setTimeout(() => {
+      fetchChatMessages(true);
+      fetchMigration(true);
+    }, 1000);
+  };
+
   const chatPlaceholder = useMemo(() => {
     if (isStepRunning || isConsultantThinking) return "Denke nach ...";
     
@@ -405,7 +473,7 @@ const MigrationChatCard = ({
               isAgentRunning={isStepRunning} 
               isConsultantThinking={isConsultantThinking}
               onOpenAgentOutput={onOpenAgentOutput}
-              onAction={onAction}
+              onAction={handleActionInternal}
               onProcessingChange={setIsProcessingMessages}
               currentStepTitle={runningStep?.title}
               currentStep={rawStep}
