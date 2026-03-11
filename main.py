@@ -1364,8 +1364,8 @@ async def create_mapping_chat_message(id: str, payload: CreateMappingChatMessage
 
             # 4. Enqueue Job for Rules Agent
             if payload.role == 'user':
-                # Use Enhancement Agent if we are at step 7 OR if step 6 is completed (meaning we are ready for 7)
-                is_enhancement_phase = (current_step == 7) or (current_step == 6 and step_status == 'completed')
+                # Use Enhancement Agent if we are at step 5 (Enhancement) OR if step 4 is completed
+                is_enhancement_phase = (current_step == 5) or (current_step == 4 and step_status == 'completed')
                 agent_name = "runEnhancementRules" if is_enhancement_phase else "runMappingRules"
                 
                 # Fetch current rules for context

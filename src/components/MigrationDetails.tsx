@@ -42,26 +42,38 @@ const MigrationDetails = forwardRef<MigrationDetailsRef, MigrationDetailsProps>(
     const validatedStep = typeof explicitStep === 'number' ? explicitStep : undefined;
     
     // Allow proceeding if the current step is completed and we're clicking 'continue'
-    if (isStepRunning && !validatedStep) return;
+    if (isStepRunning && !validatedStep) {
+      console.log("Step is already running, ignoring continue request");
+      return;
+    }
 
     try {
       let stepToRun = validatedStep;
       
       if (!stepToRun) {
         if (project.step_status === 'failed') {
+          // Retry current failed step
           stepToRun = project.current_step || 1;
         } else if (project.step_status === 'completed' || project.step_status === 'idle') {
+          // Move to next step if current is done
           stepToRun = (project.current_step || 0) + 1;
         } else {
-          // Fallback
+          // Fallback: move to next step
           stepToRun = (project.current_step || 0) + 1;
         }
+      }
+
+      // Final safety check: if we are at step 5 and it's completed, we MUST run step 6
+      if (!validatedStep && project.current_step === 5 && project.step_status === 'completed') {
+        stepToRun = 6;
       }
 
       if (stepToRun > 8) {
         toast.info("Migration bereits abgeschlossen.");
         return;
       }
+
+      console.log(`Triggering step ${stepToRun} for migration ${project.id}`);
 
       const response = await fetch(`/api/migrations/${project.id}/action/${stepToRun}`, {
         method: 'POST',

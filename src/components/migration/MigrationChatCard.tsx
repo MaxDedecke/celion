@@ -435,14 +435,17 @@ const MigrationChatCard = ({
       setTimeout(() => scrollToBottom('smooth'), 50);
     }
     
-    if (onAction) {
+    if (action === 'continue' && rawStep === 5 && migrationData.step_status === 'completed') {
+      // Explicitly trigger step 6 if we are at step 5 and it's done
+      if (onAction) onAction('continue'); 
+    } else if (onAction) {
       onAction(action);
     }
 
     // Refresh after a delay to catch the response if WebSocket fails
     setTimeout(() => {
-      fetchChatMessages(true);
-      fetchMigration(true);
+      fetchChatMessages(isActiveRef.current);
+      fetchMigration(isActiveRef.current);
     }, 1000);
   };
 
