@@ -1,24 +1,14 @@
 import { Pool } from 'pg';
+import amqp from 'amqplib';
 import { runIntroductionAgent, runAnswerAgent} from '../agents/agentService';
 import { AGENT_WORKFLOW_STEPS } from '../constants/agentWorkflow';
 import { StepFactory } from '../agents/core/StepFactory';
-import { 
-  saveStep1Result, 
-  saveStep2Result, 
-  saveStep3Result, 
-  saveStep4Result, 
-  saveStep5Result, 
-  saveStep6Result, 
-  saveStep7Result,
-  saveStep8Result,
-  saveStep9Result
-} from '../lib/step-results';
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
 
-const POLL_INTERVAL = 5000; // 5 seconds
+const POLL_INTERVAL = 30000; // 30 seconds fallback
 
 async function logActivity(migrationId: string, type: 'success' | 'error' | 'info' | 'warning', title: string) {
   const timestamp = new Date().toISOString();
@@ -67,6 +57,17 @@ async function writeRetryAction(migrationId: string, stepNumber: number) {
 }
 
 // Result Persistence Helpers moved to ../lib/step-results.ts
+import { 
+  saveStep1Result, 
+  saveStep2Result, 
+  saveStep3Result, 
+  saveStep4Result, 
+  saveStep5Result, 
+  saveStep6Result, 
+  saveStep7Result,
+  saveStep8Result,
+  saveStep9Result
+} from '../lib/step-results';
 
 const ensureWorkflowState = (state: any = {}) => {
   const safeState = state || {};
@@ -1574,6 +1575,62 @@ async function processJob(job: any) {
   }
 }
 
+async function connectToRabbitMQ() {
+  const host = process.env.RABBITMQ_HOST || 'localhost';
+  const user = process.env.RABBITMQ_DEFAULT_USER || 'celion';
+  const pass = process.env.RABBITMQ_DEFAULT_PASS || 'celion';
+  const url = `amqp://${user}:${pass}@${host}:5672`;
+
+  try {
+    const connection = await amqp.connect(url);
+    const channel = await connection.createChannel();
+    const queue = 'migration_tasks';
+
+    await channel.assertQueue(queue, { durable: true });
+    channel.prefetch(1); // Process one job at a time
+
+    console.log(`[*] Waiting for messages in ${queue}.`);
+
+    channel.consume(queue, async (msg) => {
+      if (msg !== null) {
+        try {
+          const content = JSON.parse(msg.content.toString());
+          const jobId = content.job_id;
+          console.log(`[x] Received job_id via RabbitMQ: ${jobId}`);
+
+          const { rows: jobs } = await pool.query("SELECT * FROM jobs WHERE id = $1", [jobId]);
+          const job = jobs[0];
+
+          if (job && job.status === 'pending') {
+            await pool.query('UPDATE jobs SET status = $1, attempts = $2 WHERE id = $3', ['running', (job.attempts || 0) + 1, job.id]);
+            await processJob(job);
+          } else {
+             console.log(`[!] Job ${jobId} not found or not pending.`);
+          }
+          channel.ack(msg);
+        } catch (error) {
+          console.error(`[!] Error processing message:`, error);
+          // If it fails, we still ack to avoid infinite loops, but the processJob has its own error handling
+          channel.ack(msg);
+        }
+      }
+    });
+
+    connection.on('error', (err) => {
+      console.error('[AMQP] connection error', err);
+      setTimeout(connectToRabbitMQ, 5000);
+    });
+    connection.on('close', () => {
+      console.error('[AMQP] connection closed');
+      setTimeout(connectToRabbitMQ, 5000);
+    });
+
+  } catch (error) {
+    console.error('[AMQP] connection failed', error);
+    setTimeout(connectToRabbitMQ, 5000);
+  }
+}
+
 async function pollForJobs() {
   const { rows: jobs } = await pool.query("SELECT * FROM jobs WHERE status = 'pending' ORDER BY created_at ASC LIMIT 1");
   const job = jobs?.[0];
@@ -1587,7 +1644,8 @@ function main() {
     console.error('DATABASE_URL not found. The worker cannot start.');
     process.exit(1);
   }
-  console.log('Worker started.');
+  console.log('Worker started with RabbitMQ and DB polling fallback.');
+  connectToRabbitMQ();
   setInterval(() => pollForJobs(), POLL_INTERVAL);
 }
 

@@ -34,37 +34,14 @@ services:
       DATABASE_URL: "postgresql://celion:celion@postgres-db:5432/celion"
       INTERNAL_BACKEND_URL: "http://backend:8000"
       RABBITMQ_HOST: rabbitmq
+      RABBITMQ_DEFAULT_USER: celion
+      RABBITMQ_DEFAULT_PASS: celion
     volumes:
       - .:/app
       - worker_node_modules:/app/node_modules
     depends_on:
       backend:
         condition: service_started
-      rabbitmq:
-        condition: service_healthy
-    
-    networks:
-      - celion-net
-
-  migration_worker:
-    # Startet nur explizit mit: docker compose --profile tools up migration_worker
-    profiles: ["tools"]
-    build:
-      context: .
-      dockerfile: Dockerfile.migration_worker
-    env_file:
-      - .env
-      - .env.local
-    environment:
-      <<: *postgres-config
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_DEFAULT_USER: celion
-      RABBITMQ_DEFAULT_PASS: celion
-    volumes:
-      - .:/app
-    depends_on:
-      postgres-db:
-        condition: service_healthy
       rabbitmq:
         condition: service_healthy
     networks:
