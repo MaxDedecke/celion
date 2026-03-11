@@ -31,7 +31,7 @@ export class StepFactory {
         const { rows } = await dbPool.query("SELECT provider FROM public.llm_settings ORDER BY updated_at DESC LIMIT 1");
         if (rows.length > 0) {
           const settings = rows[0];
-          if (settings.provider === 'openai') {
+          if (settings.provider === 'openai' || settings.provider === 'ollama' || settings.provider === 'custom') {
             selectedProvider = new OpenAiProvider();
           } else if (settings.provider === 'anthropic') {
             selectedProvider = new AnthropicProvider();

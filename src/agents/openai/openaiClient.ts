@@ -17,7 +17,7 @@ export const resolveOpenAiConfig = async () => {
       );
       if (rows && rows.length > 0) {
         const settings = rows[0];
-        const apiKey = settings.api_key?.trim() || process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY;
+        const apiKey = settings.api_key?.trim() || process.env.OPENAI_API_KEY || process.env.VITE_OPENAI_API_KEY || (['ollama', 'custom'].includes(settings.provider) ? 'dummy-key' : '');
         const baseUrl = (settings.base_url?.trim() || process.env.VITE_OPENAI_API_BASE_URL || DEFAULT_OPENAI_BASE_URL).replace(/\/$/, "");
         const projectId = process.env.VITE_OPENAI_PROJECT_ID?.trim();
         const model = settings.model || process.env.OPENAI_MODEL || "gpt-4o";

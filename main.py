@@ -2020,6 +2020,10 @@ def _get_embeddings(text: str) -> list[float]:
         llm_settings = _get_llm_settings(conn)
         api_key = llm_settings.get('api_key') if llm_settings else os.getenv("OPENAI_API_KEY")
         base_url = llm_settings.get('base_url') if llm_settings else None
+        
+        provider = llm_settings.get('provider') if llm_settings else 'openai'
+        if provider in ['ollama', 'custom'] and not api_key:
+            api_key = "dummy-key"
     
     client = OpenAI(api_key=api_key, base_url=base_url)
     response = client.embeddings.create(
@@ -2037,6 +2041,10 @@ def _get_embeddings_batch(texts: list[str]) -> list[list[float]]:
         llm_settings = _get_llm_settings(conn)
         api_key = llm_settings.get('api_key') if llm_settings else os.getenv("OPENAI_API_KEY")
         base_url = llm_settings.get('base_url') if llm_settings else None
+        
+        provider = llm_settings.get('provider') if llm_settings else 'openai'
+        if provider in ['ollama', 'custom'] and not api_key:
+            api_key = "dummy-key"
     
     client = OpenAI(api_key=api_key, base_url=base_url)
     response = client.embeddings.create(

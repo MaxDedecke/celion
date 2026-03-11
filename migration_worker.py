@@ -153,8 +153,14 @@ def _get_llm_settings(conn: psycopg.Connection):
                 "api_key": api_key
             }
             
-        if not settings.get('api_key') and not os.environ.get("OPENAI_API_KEY"):
-            raise Exception("OPENAI_API_KEY_MISSING")
+        provider = settings.get('provider', 'openai')
+        if provider not in ['ollama', 'custom']:
+            if provider == 'anthropic' and not settings.get('api_key') and not os.environ.get("ANTHROPIC_API_KEY"):
+                raise Exception("ANTHROPIC_API_KEY_MISSING")
+            elif provider in ['google', 'gemini'] and not settings.get('api_key') and not os.environ.get("GEMINI_API_KEY"):
+                raise Exception("GEMINI_API_KEY_MISSING")
+            elif provider == 'openai' and not settings.get('api_key') and not os.environ.get("OPENAI_API_KEY"):
+                raise Exception("OPENAI_API_KEY_MISSING")
             
         return settings
 

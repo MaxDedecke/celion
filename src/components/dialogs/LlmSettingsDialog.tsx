@@ -23,7 +23,7 @@ import { databaseClient } from "@/api/databaseClient";
 
 interface LlmSettings {
   id?: string;
-  provider: "openai" | "anthropic" | "ollama";
+  provider: "openai" | "anthropic" | "ollama" | "custom";
   api_key?: string;
   base_url?: string;
   model: string;
@@ -123,8 +123,8 @@ export function LlmSettingsDialog({
               <Select
                 value={settings.provider}
                 onValueChange={(v: any) => {
-                    const defaultModel = v === 'anthropic' ? 'claude-3-5-sonnet-20240620' : (v === 'ollama' ? 'llama3' : 'gpt-4o');
-                    const defaultUrl = v === 'openai' ? 'https://api.openai.com/v1' : (v === 'anthropic' ? 'https://api.anthropic.com/v1' : 'http://localhost:11434/v1');
+                    const defaultModel = v === 'anthropic' ? 'claude-3-5-sonnet-20240620' : (v === 'ollama' ? 'llama3' : (v === 'custom' ? 'my-local-model' : 'gpt-4o'));
+                    const defaultUrl = v === 'openai' ? 'https://api.openai.com/v1' : (v === 'anthropic' ? 'https://api.anthropic.com/v1' : (v === 'ollama' ? 'http://ollama:11434/v1' : ''));
                     setSettings({ ...settings, provider: v, model: defaultModel, base_url: defaultUrl });
                 }}
               >
@@ -134,7 +134,8 @@ export function LlmSettingsDialog({
                 <SelectContent>
                   <SelectItem value="openai">OpenAI (ChatGPT)</SelectItem>
                   <SelectItem value="anthropic">Anthropic (Claude)</SelectItem>
-                  <SelectItem value="ollama">Ollama (Local LLM)</SelectItem>
+                  <SelectItem value="ollama">Ollama (Local LLM in Docker)</SelectItem>
+                  <SelectItem value="custom">Custom (OpenAI API Compatible / On-Prem)</SelectItem>
                 </SelectContent>
               </Select>
             </div>

@@ -153,6 +153,15 @@ services:
     networks:
       - celion-net
 
+  ollama:
+    image: ollama/ollama:latest
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    networks:
+      - celion-net
+
 networks:
   celion-net:
     driver: bridge
@@ -164,3 +173,4 @@ volumes:
   portainer_data:
   celion_neo4j_data:
   rabbitmq_data:
+  ollama_data:
