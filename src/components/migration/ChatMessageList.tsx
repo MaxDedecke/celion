@@ -141,6 +141,7 @@ const ChatMessageList = ({
         content.includes("Starte Datentransfer") ||
         content.includes("führe Mapping-Verifizierung durch") ||
         content.includes("Mapping-Verifizierung wird gestartet") ||
+        content.includes("Stichproben-Verifizierung im Zielsystem") ||
         content.includes("Erstelle Migrations-Plan")
       );
     };

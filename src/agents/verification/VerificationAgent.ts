@@ -1,6 +1,7 @@
 import { AgentBase } from '../core/AgentBase';
 import { Tool, ChatMessage } from '../core/LlmProvider';
 import { httpClient } from '../../tools/httpRequest';
+import { loadScheme } from '../../lib/scheme-loader';
 import neo4j from 'neo4j-driver';
 
 export class VerificationAgent extends AgentBase {
@@ -18,9 +19,29 @@ export class VerificationAgent extends AgentBase {
        return { success: false, error: "Kein Target Connector gefunden." };
     }
 
+    const targetScheme = await loadScheme(targetSystem || "");
+    if (!targetScheme) {
+        return { success: false, error: `Spezifikation für Zielsystem '${targetSystem}' konnte nicht geladen werden.` };
+    }
+
     const email = outConnector.username || "";
     const token = outConnector.api_key || "";
-    
+    const encodedBasicAuth = Buffer.from(`${email}:${token}`).toString('base64');
+
+    // Dynamically build Auth Instruction based on targetScheme
+    let authInstruction = "";
+    const auth = targetScheme.authentication;
+    if (auth?.type === 'header') {
+        const headerName = auth.headerName || 'Authorization';
+        const prefix = auth.tokenPrefix !== undefined ? auth.tokenPrefix : 'Bearer ';
+        authInstruction = `- ${targetSystem}: {"${headerName}": "${prefix}${token}"}`;
+    } else if (auth?.type === 'basic') {
+        authInstruction = `- ${targetSystem}: {"Authorization": "Basic ${encodedBasicAuth}"}`;
+    } else {
+        // Fallback or other types
+        authInstruction = `- ${targetSystem}: Nutze Standard-Authentifizierung für dieses System.`;
+    }
+
     // Connect to Neo4j to get sample nodes
     const driver = neo4j.driver(
       process.env.NEO4J_URI || "bolt://neo4j-db:7687",
@@ -58,8 +79,6 @@ export class VerificationAgent extends AgentBase {
 
     await this.context.writeChatMessage('assistant', `Es wurden ${samples.length} Objekte für die Stichprobe ausgewählt. Ich prüfe nun per API, ob sie im Zielsystem korrekt angelegt wurden...`, stepNumber);
 
-    const encodedBasicAuth = Buffer.from(`${email}:${token}`).toString('base64');
-
     const SYSTEM_PROMPT = `
 Du bist der Celion Validation Agent. Du überprüfst, ob Daten, die laut unserer Datenbank erfolgreich migriert wurden, auch tatsächlich im Zielsystem (${targetSystem}) existieren.
 Wir haben eine Liste von Objekten (Stichprobe), die jeweils einen 'namen' und eine 'target_id' (die ID im Zielsystem) besitzen.
@@ -74,21 +93,15 @@ DEINE AUFGABE:
 5. **WICHTIG:** Sobald du fertig bist, MUSST du ein finales Feedback als JSON-Block am Ende deiner Nachricht ausgeben. Ohne dieses JSON kann der Prozess nicht abgeschlossen werden.
 
 ZIEL-SYSTEM AUTHENTIFIZIERUNG:
-Du musst die passenden Header in 'http_request' mitgeben:
-- Asana: {"Authorization": "Bearer ${token}"}
-- ClickUp: {"Authorization": "${token}"}
-- Jira: {"Authorization": "Basic ${encodedBasicAuth}"}
-- Notion: {"Authorization": "Bearer ${token}", "Notion-Version": "2022-06-28"}
-- TargetProcess: {"Authorization": "Basic ${encodedBasicAuth}"} (base64 encoded username:token)
+Für das System ${targetSystem} MUSST du exakt folgende Header verwenden:
+${authInstruction}
 
 STICHPROBE:
 ${JSON.stringify(samples, null, 2)}
 
-HINWEIS ZU ENDPUNKTEN (Beispiele):
-- Asana Task: GET https://app.asana.com/api/1.0/tasks/{target_id}
-- ClickUp Task: GET https://api.clickup.com/api/v2/task/{target_id}
-- Jira Issue: GET https://deine-jira-domain.atlassian.net/rest/api/3/issue/{target_id} (ersetze durch die korrekte Domain)
-- Notion Page: GET https://api.notion.com/v1/pages/{target_id}
+HINWEIS ZU ENDPUNKTEN (Beispiele für ${targetSystem}):
+- API Base URL: ${targetScheme.apiBaseUrl || 'Nicht definiert'}
+- Endpunkte: ${JSON.stringify(targetScheme.discovery?.endpoints || {}, null, 2)}
 
 Am Ende der Verifizierung gib folgendes JSON aus (und beschreibe vorher das Ergebnis freundlich):
 \`\`\`json
