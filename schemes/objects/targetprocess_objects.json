@@ -1,0 +1,46 @@
+{
+  "system": "Targetprocess",
+  "objects": [
+    {
+      "key": "project",
+      "displayName": "Project / Projekt",
+      "endpoint": "/api/v1/Projects?include=[Id,Name,Description]",
+      "fields": [
+        { "id": "Id", "name": "Project ID", "type": "number" },
+        { "id": "Name", "name": "Project Name", "type": "text" },
+        { "id": "Description", "name": "Description", "type": "text" }
+      ]
+    },
+    {
+      "key": "userstory",
+      "displayName": "User Story",
+      "endpoint": "/api/v1/UserStories?include=[Id,Name,Description,Project]",
+      "fields": [
+        { "id": "Id", "name": "Story ID", "type": "number" },
+        { "id": "Name", "name": "Name", "type": "text" },
+        { "id": "Description", "name": "Description", "type": "text" },
+        { "id": "Project.Id", "name": "Project ID", "type": "number" }
+      ]
+    },
+    {
+      "key": "bug",
+      "displayName": "Bug / Fehler",
+      "endpoint": "/api/v1/Bugs?include=[Id,Name,Description,Project]",
+      "fields": [
+        { "id": "Id", "name": "Bug ID", "type": "number" },
+        { "id": "Name", "name": "Name", "type": "text" }
+      ]
+    },
+    {
+      "key": "user",
+      "displayName": "User / Nutzer",
+      "endpoint": "/api/v1/Users?include=[Id,FirstName,LastName,Email]",
+      "fields": [
+        { "id": "Id", "name": "User ID", "type": "number" },
+        { "id": "FirstName", "name": "First Name", "type": "text" },
+        { "id": "LastName", "name": "Last Name", "type": "text" },
+        { "id": "Email", "name": "Email", "type": "text" }
+      ]
+    }
+  ]
+}

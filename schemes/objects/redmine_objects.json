@@ -1,0 +1,51 @@
+{
+  "system": "Redmine",
+  "objects": [
+    {
+      "key": "project",
+      "displayName": "Project / Projekt",
+      "endpoint": "/projects.json",
+      "fields": [
+        { "id": "id", "name": "Project ID", "type": "number" },
+        { "id": "identifier", "name": "Identifier", "type": "text" },
+        { "id": "name", "name": "Project Name", "type": "text" },
+        { "id": "description", "name": "Description", "type": "text" }
+      ]
+    },
+    {
+      "key": "issue",
+      "displayName": "Issue / Aufgabe",
+      "endpoint": "/issues.json?project_id={project_id}",
+      "fields": [
+        { "id": "id", "name": "Issue ID", "type": "number" },
+        { "id": "subject", "name": "Subject / Titel", "type": "text" },
+        { "id": "description", "name": "Description", "type": "text" },
+        { "id": "status.name", "name": "Status", "type": "text" },
+        { "id": "created_on", "name": "Created On", "type": "date" }
+      ]
+    },
+    {
+      "key": "time_entry",
+      "displayName": "Time Entry / Zeiterfassung",
+      "endpoint": "/time_entries.json?project_id={project_id}",
+      "fields": [
+        { "id": "id", "name": "Entry ID", "type": "number" },
+        { "id": "hours", "name": "Hours", "type": "number" },
+        { "id": "spent_on", "name": "Date", "type": "date" },
+        { "id": "comments", "name": "Comment", "type": "text" }
+      ]
+    },
+    {
+      "key": "user",
+      "displayName": "User / Nutzer",
+      "endpoint": "/users.json",
+      "fields": [
+        { "id": "id", "name": "User ID", "type": "number" },
+        { "id": "login", "name": "Login", "type": "text" },
+        { "id": "firstname", "name": "First Name", "type": "text" },
+        { "id": "lastname", "name": "Last Name", "type": "text" },
+        { "id": "mail", "name": "Email", "type": "text" }
+      ]
+    }
+  ]
+}

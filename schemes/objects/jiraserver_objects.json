@@ -1,0 +1,49 @@
+{
+  "system": "Jira Server / Data Center",
+  "objects": [
+    {
+      "key": "project",
+      "displayName": "Project / Projekt",
+      "endpoint": "/rest/api/2/project",
+      "fields": [
+        { "id": "id", "name": "Project ID", "type": "text" },
+        { "id": "key", "name": "Project Key", "type": "text" },
+        { "id": "name", "name": "Project Name", "type": "text" }
+      ]
+    },
+    {
+      "key": "issue",
+      "displayName": "Issue / Aufgabe",
+      "endpoint": "/rest/api/2/search?jql=project='{project_id}'",
+      "fields": [
+        { "id": "id", "name": "Issue ID", "type": "text" },
+        { "id": "key", "name": "Issue Key", "type": "text" },
+        { "id": "fields.summary", "name": "Summary", "type": "text" },
+        { "id": "fields.description", "name": "Description", "type": "text" },
+        { "id": "fields.status.name", "name": "Status", "type": "text" },
+        { "id": "fields.created", "name": "Created", "type": "date" },
+        { "id": "fields.assignee", "name": "Assignee", "type": "object" }
+      ]
+    },
+    {
+      "key": "comment",
+      "displayName": "Comment / Kommentar",
+      "endpoint": "/rest/api/2/issue/{issue_id}/comment",
+      "fields": [
+        { "id": "id", "name": "Comment ID", "type": "text" },
+        { "id": "body", "name": "Content", "type": "text" },
+        { "id": "created", "name": "Created", "type": "date" }
+      ]
+    },
+    {
+      "key": "user",
+      "displayName": "User / Nutzer",
+      "endpoint": "/rest/api/2/user/search?username=.",
+      "fields": [
+        { "id": "name", "name": "User ID / Username", "type": "text" },
+        { "id": "displayName", "name": "Display Name", "type": "text" },
+        { "id": "emailAddress", "name": "Email", "type": "text" }
+      ]
+    }
+  ]
+}

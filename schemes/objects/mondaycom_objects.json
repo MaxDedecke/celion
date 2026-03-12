@@ -1,0 +1,44 @@
+{
+  "system": "Monday.com",
+  "objects": [
+    {
+      "key": "board",
+      "displayName": "Board",
+      "endpoint": "query { boards { id name description } }",
+      "fields": [
+        { "id": "id", "name": "Board ID", "type": "text" },
+        { "id": "name", "name": "Board Name", "type": "text" },
+        { "id": "description", "name": "Description", "type": "text" }
+      ]
+    },
+    {
+      "key": "group",
+      "displayName": "Group / Gruppe",
+      "endpoint": "query { boards (ids: {board_id}) { groups { id title } } }",
+      "fields": [
+        { "id": "id", "name": "Group ID", "type": "text" },
+        { "id": "title", "name": "Group Title", "type": "text" }
+      ]
+    },
+    {
+      "key": "item",
+      "displayName": "Item / Aufgabe",
+      "endpoint": "query { boards (ids: {board_id}) { items { id name column_values { id text } } } }",
+      "fields": [
+        { "id": "id", "name": "Item ID", "type": "text" },
+        { "id": "name", "name": "Item Name", "type": "text" },
+        { "id": "column_values", "name": "Column Values", "type": "array" }
+      ]
+    },
+    {
+      "key": "update",
+      "displayName": "Update / Kommentar",
+      "endpoint": "query { items (ids: {item_id}) { updates { id body created_at } } }",
+      "fields": [
+        { "id": "id", "name": "Update ID", "type": "text" },
+        { "id": "body", "name": "Content", "type": "text" },
+        { "id": "created_at", "name": "Created At", "type": "date" }
+      ]
+    }
+  ]
+}

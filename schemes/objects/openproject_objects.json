@@ -1,0 +1,76 @@
+{
+  "system": "OpenProject",
+  "objects": [
+    {
+      "key": "project",
+      "displayName": "Project / Projekt",
+      "endpoint": "/api/v3/projects",
+      "fields": [
+        { "id": "id", "name": "ID", "type": "number" },
+        { "id": "identifier", "name": "Identifier (Short name)", "type": "text" },
+        { "id": "name", "name": "Project Name", "type": "text" },
+        { "id": "description.raw", "name": "Description", "type": "text" },
+        { "id": "status", "name": "Status", "type": "text" }
+      ]
+    },
+    {
+      "key": "work_package",
+      "displayName": "Work Package / Aufgabe",
+      "endpoint": "/api/v3/work_packages",
+      "fields": [
+        { "id": "id", "name": "ID", "type": "number" },
+        { "id": "subject", "name": "Subject / Titel", "type": "text" },
+        { "id": "description.raw", "name": "Description", "type": "text" },
+        { "id": "startDate", "name": "Start Date", "type": "date" },
+        { "id": "dueDate", "name": "Due Date", "type": "date" },
+        { "id": "percentageDone", "name": "Percentage Done", "type": "number" },
+        { "id": "estimatedTime", "name": "Estimated Time", "type": "text" },
+        { "id": "createdAt", "name": "Created At", "type": "date" },
+        { "id": "updatedAt", "name": "Updated At", "type": "date" }
+      ]
+    },
+    {
+      "key": "activity",
+      "displayName": "Activity / Kommentar",
+      "endpoint": "/api/v3/work_packages/{work_package_id}/activities",
+      "fields": [
+        { "id": "id", "name": "Activity ID", "type": "number" },
+        { "id": "comment.raw", "name": "Comment Text", "type": "text" },
+        { "id": "createdAt", "name": "Date", "type": "date" }
+      ]
+    },
+    {
+      "key": "user",
+      "displayName": "User / Nutzer",
+      "endpoint": "/api/v3/users",
+      "fields": [
+        { "id": "id", "name": "User ID", "type": "number" },
+        { "id": "name", "name": "Full Name", "type": "text" },
+        { "id": "email", "name": "Email", "type": "text" },
+        { "id": "login", "name": "Login/Username", "type": "text" }
+      ]
+    },
+    {
+      "key": "time_entry",
+      "displayName": "Time Entry / Zeiterfassung",
+      "endpoint": "/api/v3/time_entries",
+      "fields": [
+        { "id": "id", "name": "Entry ID", "type": "number" },
+        { "id": "hours", "name": "Hours", "type": "number" },
+        { "id": "spentOn", "name": "Date", "type": "date" },
+        { "id": "comment.raw", "name": "Comment", "type": "text" }
+      ]
+    },
+    {
+      "key": "attachment",
+      "displayName": "Attachment / Anhang",
+      "endpoint": "/api/v3/work_packages/{work_package_id}/attachments",
+      "fields": [
+        { "id": "id", "name": "Attachment ID", "type": "number" },
+        { "id": "fileName", "name": "Filename", "type": "text" },
+        { "id": "fileSize", "name": "Size (Bytes)", "type": "number" },
+        { "id": "contentType", "name": "Content Type", "type": "text" }
+      ]
+    }
+  ]
+}

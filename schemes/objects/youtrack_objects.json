@@ -1,0 +1,85 @@
+{
+  "system": "YouTrack",
+  "objects": [
+    {
+      "key": "project",
+      "displayName": "Project / Projekt",
+      "endpoint": "/api/admin/projects?fields=id,name,shortName,description",
+      "fields": [
+        { "id": "id", "name": "Internal ID", "type": "text" },
+        { "id": "name", "name": "Project Name", "type": "text" },
+        { "id": "shortName", "name": "Project Key (shortName)", "type": "text" },
+        { "id": "description", "name": "Description", "type": "text" }
+      ]
+    },
+    {
+      "key": "issue",
+      "displayName": "Issue / Aufgabe",
+      "endpoint": "/api/issues?fields=id,idReadable,summary,description,project(id,name),customFields(name,value(name,id)),created,updated,resolved",
+      "fields": [
+        { "id": "id", "name": "Internal ID", "type": "text" },
+        { "id": "idReadable", "name": "ID (Readable)", "type": "text" },
+        { "id": "summary", "name": "Summary / Titel", "type": "text" },
+        { "id": "description", "name": "Description", "type": "text" },
+        { "id": "created", "name": "Created At", "type": "date" },
+        { "id": "updated", "name": "Updated At", "type": "date" },
+        { "id": "resolved", "name": "Resolved At", "type": "date" },
+        { "id": "customFields", "name": "Custom Fields", "type": "array" }
+      ]
+    },
+    {
+      "key": "comment",
+      "displayName": "Comment / Kommentar",
+      "endpoint": "/api/issues/{issue_id}/comments?fields=id,text,author(name),created",
+      "fields": [
+        { "id": "id", "name": "Comment ID", "type": "text" },
+        { "id": "text", "name": "Comment Text", "type": "text" },
+        { "id": "created", "name": "Created At", "type": "date" },
+        { "id": "author.name", "name": "Author", "type": "text" }
+      ]
+    },
+    {
+      "key": "work_item",
+      "displayName": "Work Item / Zeiterfassung",
+      "endpoint": "/api/workItems?fields=id,duration(minutes),date,author(name),issue(id,summary)",
+      "fields": [
+        { "id": "id", "name": "Work Item ID", "type": "text" },
+        { "id": "duration.minutes", "name": "Duration (min)", "type": "number" },
+        { "id": "date", "name": "Date", "type": "date" },
+        { "id": "author.name", "name": "Author", "type": "text" }
+      ]
+    },
+    {
+      "key": "attachment",
+      "displayName": "Attachment / Anhang",
+      "endpoint": "/api/issues/{issue_id}/attachments?fields=id,name,url,size",
+      "fields": [
+        { "id": "id", "name": "Attachment ID", "type": "text" },
+        { "id": "name", "name": "Filename", "type": "text" },
+        { "id": "url", "name": "Download URL", "type": "text" },
+        { "id": "size", "name": "Size (Bytes)", "type": "number" }
+      ]
+    },
+    {
+      "key": "user",
+      "displayName": "User / Nutzer",
+      "endpoint": "/api/users?fields=id,login,name,email",
+      "fields": [
+        { "id": "id", "name": "User ID", "type": "text" },
+        { "id": "login", "name": "Login", "type": "text" },
+        { "id": "name", "name": "Name", "type": "text" },
+        { "id": "email", "name": "Email", "type": "text" }
+      ]
+    },
+    {
+      "key": "custom_field_definition",
+      "displayName": "Custom Field Definition",
+      "endpoint": "/api/admin/customFields/issueCustomFields?fields=id,name,fieldType(id)",
+      "fields": [
+        { "id": "id", "name": "Field ID", "type": "text" },
+        { "id": "name", "name": "Field Name", "type": "text" },
+        { "id": "fieldType.id", "name": "Type", "type": "text" }
+      ]
+    }
+  ]
+}

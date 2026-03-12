@@ -1,0 +1,68 @@
+{
+  "system": "OpenProject",
+  "apiType": "REST",
+  "apiBaseUrl": "",
+  "baseUrlPattern": "*/api/v3",
+  "authentication": {
+    "type": "basic",
+    "username": "apikey",
+    "emailRequired": false,
+    "whoami": {
+      "endpoint": "/api/v3/users/me",
+      "method": "GET",
+      "usernamePath": "name"
+    }
+  },
+  "discovery": {
+    "endpoints": {
+      "projects": "/api/v3/projects",
+      "work_packages": "/api/v3/work_packages",
+      "project_work_packages": "/api/v3/projects/{project_id}/work_packages",
+      "users": "/api/v3/users",
+      "time_entries": "/api/v3/time_entries",
+      "work_package_activities": "/api/v3/work_packages/{work_package_id}/activities",
+      "work_package_attachments": "/api/v3/work_packages/{work_package_id}/attachments",
+      "queries": "/api/v3/queries",
+      "types": "/api/v3/types",
+      "statuses": "/api/v3/statuses",
+      "priorities": "/api/v3/priorities"
+    },
+    "pagination": {
+      "type": "page_limit",
+      "paramPage": "offset",
+      "paramLimit": "pageSize",
+      "defaultLimit": 100,
+      "firstPage": 1
+    }
+  },
+  "headers": {
+    "accept": "application/json",
+    "contentType": "application/json"
+  },
+  "agentInstructions": "OpenProject nutzt eine HATEOAS-Struktur. Die meisten Ressourcen sind über Links verknüpft. Nutze '/api/v3/projects' um die Projektliste zu erhalten. Wenn ein 'sourceScope' angegeben ist, suche das entsprechende Projekt. Work Packages können global über '/api/v3/work_packages' oder projektbezogen über '/api/v3/projects/{project_id}/work_packages' abgefragt werden. Beachte, dass 'offset' die Seitenzahl ist (beginnend bei 1).",
+  "navigationGuide": {
+    "hierarchy": "Project -> Work Package -> (Activity/Comment/Attachment)",
+    "phase0_scope_identification": [
+      "1. Rufe '/api/v3/projects' auf, um alle Projekte zu erhalten.",
+      "2. Identifiziere das Zielprojekt anhand des Namens aus 'sourceScope'.",
+      "3. Speichere die Projekt-'id' in deinem Scope-Report."
+    ],
+    "phase1_exploration_and_staging": [
+      "1. Rufe '/api/v3/projects/{project_id}/work_packages' auf, um die Aufgaben des Projekts zu laden.",
+      "2. Für jedes Work Package können Aktivitäten (Kommentare) über '/api/v3/work_packages/{id}/activities' geladen werden.",
+      "3. Nutze die Meta-Endpunkte '/api/v3/types' oder '/api/v3/statuses', falls du Mapping-Informationen benötigst."
+    ]
+  },
+  "exportInstructions": {
+    "preferredContainerType": "project",
+    "availableContainerTypes": [
+      { "id": "project", "name": "Neues Projekt" }
+    ],
+    "sequence": [
+      "project",
+      "work_package",
+      "activity"
+    ],
+    "logic": "1. Erstelle das Projekt über 'POST /api/v3/projects'. 2. Erstelle Work Packages über 'POST /api/v3/work_packages' oder 'POST /api/v3/projects/{project_id}/work_packages'. 3. Füge Kommentare/Aktivitäten hinzu. Beachte, dass OpenProject oft HAL+JSON Links für Relationen erwartet."
+  }
+}

@@ -1,0 +1,50 @@
+{
+  "system": "GitLab",
+  "objects": [
+    {
+      "key": "project",
+      "displayName": "Project / Projekt",
+      "endpoint": "/api/v4/projects",
+      "fields": [
+        { "id": "id", "name": "Project ID", "type": "number" },
+        { "id": "name", "name": "Project Name", "type": "text" },
+        { "id": "path_with_namespace", "name": "Full Path", "type": "text" },
+        { "id": "description", "name": "Description", "type": "text" }
+      ]
+    },
+    {
+      "key": "issue",
+      "displayName": "Issue / Aufgabe",
+      "endpoint": "/api/v4/projects/{project_id}/issues",
+      "fields": [
+        { "id": "id", "name": "Issue ID", "type": "number" },
+        { "id": "iid", "name": "Internal ID", "type": "number" },
+        { "id": "title", "name": "Title", "type": "text" },
+        { "id": "description", "name": "Description", "type": "text" },
+        { "id": "state", "name": "State", "type": "text" },
+        { "id": "created_at", "name": "Created At", "type": "date" },
+        { "id": "assignees", "name": "Assignees", "type": "array" }
+      ]
+    },
+    {
+      "key": "merge_request",
+      "displayName": "Merge Request",
+      "endpoint": "/api/v4/projects/{project_id}/merge_requests",
+      "fields": [
+        { "id": "id", "name": "MR ID", "type": "number" },
+        { "id": "title", "name": "Title", "type": "text" },
+        { "id": "state", "name": "State", "type": "text" }
+      ]
+    },
+    {
+      "key": "user",
+      "displayName": "User / Nutzer",
+      "endpoint": "/api/v4/users",
+      "fields": [
+        { "id": "id", "name": "User ID", "type": "number" },
+        { "id": "name", "name": "Name", "type": "text" },
+        { "id": "username", "name": "Username", "type": "text" }
+      ]
+    }
+  ]
+}

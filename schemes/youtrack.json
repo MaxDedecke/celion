@@ -1,32 +1,66 @@
 {
   "system": "YouTrack",
   "apiType": "REST",
+  "apiBaseUrl": "",
   "baseUrlPattern": "*/youtrack",
-  "auth": {
-    "type": "bearer_token",
-    "headerTemplate": "Authorization: Bearer <TOKEN>",
-    "requiresApiToken": true,
-    "requiresEmail": false,
-    "probeEndpoint": "/api/users/me",
-    "successStatus": 200
+  "authentication": {
+    "type": "header",
+    "headerName": "Authorization",
+    "tokenPrefix": "Bearer ",
+    "emailRequired": false,
+    "whoami": {
+      "endpoint": "/api/users/me?fields=id,login,name,email",
+      "method": "GET",
+      "usernamePath": "name"
+    }
   },
   "discovery": {
     "endpoints": {
-      "issues": "/api/issues",
-      "projects": "/api/projects",
-      "users": "/api/users",
-      "workItems": "/api/workItems",
-      "customFields": "/api/customFields"
+      "projects": "/api/admin/projects?fields=id,name,shortName,description",
+      "issues": "/api/issues?fields=id,idReadable,summary,description,project(id,name),customFields(name,value(name,id)),created,updated,resolved",
+      "project_issues": "/api/issues?query=project:{project_id}&fields=id,idReadable,summary,description,customFields(name,value(name,id))",
+      "users": "/api/users?fields=id,login,name,email",
+      "work_items": "/api/workItems?fields=id,duration(minutes),date,author(name),issue(id,summary)",
+      "issue_comments": "/api/issues/{issue_id}/comments?fields=id,text,author(name),created",
+      "issue_attachments": "/api/issues/{issue_id}/attachments?fields=id,name,url,size",
+      "custom_fields": "/api/admin/customFields/issueCustomFields?fields=id,name,fieldType(id)"
     },
     "pagination": {
       "type": "skip_top",
       "paramOffset": "$skip",
       "paramLimit": "$top",
-      "defaultLimit": 100
+      "defaultLimit": 100,
+      "firstPage": 0
     }
   },
   "headers": {
     "accept": "application/json",
     "contentType": "application/json"
+  },
+  "agentInstructions": "Verwende für YouTrack immer den 'fields' Parameter in den API-Aufrufen, um die benötigten Daten explizit anzufordern. Die Hierarchie ist flach (Projekte -> Issues). Nutze '/api/admin/projects' um die Projekt-IDs zu erhalten. Wenn ein 'sourceScope' (Projektname oder Key) angegeben ist, filtere die Projekte entsprechend. Für die Inventur der Issues kannst du entweder global über '/api/issues' gehen oder projektbezogen mit dem 'query' Parameter filtern (z.B. 'query=project:{project_id}').",
+  "navigationGuide": {
+    "hierarchy": "Project -> Issue -> (Comment/WorkItem/Attachment)",
+    "phase0_scope_identification": [
+      "1. Rufe '/api/admin/projects' auf, um alle Projekte zu listen.",
+      "2. Falls 'sourceScope' angegeben ist, identifiziere das Projekt anhand des Namens oder des Short-Names (Keys).",
+      "3. Speichere die 'id' und den 'shortName' des Projekts in deinem Scope-Report."
+    ],
+    "phase1_exploration_and_staging": [
+      "1. Rufe '/api/issues?query=project:{shortName}' auf, um die Issues des Projekts zu laden.",
+      "2. Für jedes Issue können Kommentare über '/api/issues/{issue_id}/comments' und Work Items über '/api/workItems' (mit Issue-Filter) geladen werden.",
+      "3. Nutze die 'id' (interne ID) für API-Aufrufe und 'idReadable' für die Anzeige."
+    ]
+  },
+  "exportInstructions": {
+    "preferredContainerType": "project",
+    "availableContainerTypes": [
+      { "id": "project", "name": "Neues Projekt" }
+    ],
+    "sequence": [
+      "project",
+      "issue",
+      "comment"
+    ],
+    "logic": "1. Erstelle das Projekt über 'POST /api/admin/projects'. 2. Erstelle Issues über 'POST /api/issues'. 3. Füge Kommentare zu Issues über 'POST /api/issues/{issue_id}/comments' hinzu. Beachte, dass benutzerdefinierte Felder (Custom Fields) bei der Erstellung von Issues im Body mitgegeben werden müssen."
   }
 }

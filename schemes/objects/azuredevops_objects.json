@@ -1,0 +1,48 @@
+{
+  "system": "Azure DevOps",
+  "objects": [
+    {
+      "key": "project",
+      "displayName": "Project / Projekt",
+      "endpoint": "/_apis/projects?api-version=7.1-preview.1",
+      "fields": [
+        { "id": "id", "name": "Project ID", "type": "text" },
+        { "id": "name", "name": "Project Name", "type": "text" },
+        { "id": "description", "name": "Description", "type": "text" },
+        { "id": "visibility", "name": "Visibility", "type": "text" }
+      ]
+    },
+    {
+      "key": "workItem",
+      "displayName": "Work Item / Aufgabe",
+      "endpoint": "/_apis/wit/workitems?ids={ids}&api-version=7.1-preview.1",
+      "fields": [
+        { "id": "id", "name": "ID", "type": "number" },
+        { "id": "fields['System.Title']", "name": "Title", "type": "text" },
+        { "id": "fields['System.Description']", "name": "Description", "type": "text" },
+        { "id": "fields['System.State']", "name": "State", "type": "text" },
+        { "id": "fields['System.AssignedTo']", "name": "Assigned To", "type": "object" },
+        { "id": "fields['System.CreatedDate']", "name": "Created Date", "type": "date" }
+      ]
+    },
+    {
+      "key": "repository",
+      "displayName": "Repository",
+      "endpoint": "/_apis/git/repositories?api-version=7.1-preview.1",
+      "fields": [
+        { "id": "id", "name": "Repo ID", "type": "text" },
+        { "id": "name", "name": "Repo Name", "type": "text" },
+        { "id": "remoteUrl", "name": "Remote URL", "type": "text" }
+      ]
+    },
+    {
+      "key": "pipeline",
+      "displayName": "Pipeline",
+      "endpoint": "/_apis/pipelines?api-version=7.1-preview.1",
+      "fields": [
+        { "id": "id", "name": "Pipeline ID", "type": "number" },
+        { "id": "name", "name": "Pipeline Name", "type": "text" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "system": "Trello",
+  "objects": [
+    {
+      "key": "board",
+      "displayName": "Board",
+      "endpoint": "/1/members/me/boards",
+      "fields": [
+        { "id": "id", "name": "Board ID", "type": "text" },
+        { "id": "name", "name": "Board Name", "type": "text" },
+        { "id": "desc", "name": "Description", "type": "text" },
+        { "id": "closed", "name": "Is Closed", "type": "boolean" },
+        { "id": "url", "name": "URL", "type": "text" }
+      ]
+    },
+    {
+      "key": "list",
+      "displayName": "List / Liste",
+      "endpoint": "/1/boards/{board_id}/lists",
+      "fields": [
+        { "id": "id", "name": "List ID", "type": "text" },
+        { "id": "name", "name": "List Name", "type": "text" },
+        { "id": "closed", "name": "Is Closed", "type": "boolean" }
+      ]
+    },
+    {
+      "key": "card",
+      "displayName": "Card / Karte",
+      "endpoint": "/1/boards/{board_id}/cards",
+      "fields": [
+        { "id": "id", "name": "Card ID", "type": "text" },
+        { "id": "name", "name": "Card Name", "type": "text" },
+        { "id": "desc", "name": "Description", "type": "text" },
+        { "id": "due", "name": "Due Date", "type": "date" },
+        { "id": "idList", "name": "List ID", "type": "text" },
+        { "id": "labels", "name": "Labels", "type": "array" }
+      ]
+    },
+    {
+      "key": "action",
+      "displayName": "Action / Aktivität",
+      "endpoint": "/1/boards/{board_id}/actions",
+      "fields": [
+        { "id": "id", "name": "Action ID", "type": "text" },
+        { "id": "type", "name": "Type", "type": "text" },
+        { "id": "data.text", "name": "Text", "type": "text" },
+        { "id": "date", "name": "Date", "type": "date" }
+      ]
+    }
+  ]
+}
