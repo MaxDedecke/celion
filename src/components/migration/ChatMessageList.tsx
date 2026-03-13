@@ -128,21 +128,15 @@ const ChatMessageList = ({
     const isStartMarker = (msg: ChatMessageType) => {
       if (msg.role !== 'assistant') return false;
       const content = msg.content.trim();
+      
+      // The primary start marker is the generic one written by the worker for Steps 1-10
+      // This is the most reliable way to group attempts.
+      if (content.startsWith("Starte Schritt")) return true;
+      
+      // Fallback markers for Onboarding (Step 0) or other special agents
       return (
-        content.startsWith("Starte **") ||
-        content.startsWith("Analysiere **") ||
-        content.startsWith("Bereite **") ||
-        content.startsWith("Prüfe **") ||
-        content.startsWith("Führe **") ||
-        content.startsWith("Erstelle **") ||
         content.includes("Celion Onboarding Agent") ||
-        content.includes("Lass uns deine Migration einrichten") ||
-        content.includes("Bereite Daten für das Mapping vor") ||
-        content.includes("Starte Datentransfer") ||
-        content.includes("führe Mapping-Verifizierung durch") ||
-        content.includes("Mapping-Verifizierung wird gestartet") ||
-        content.includes("Stichproben-Verifizierung im Zielsystem") ||
-        content.includes("Erstelle Migrations-Plan")
+        content.includes("Lass uns deine Migration einrichten")
       );
     };
 
@@ -155,21 +149,23 @@ const ChatMessageList = ({
                                currentAttemptChunk.length > 0 && 
                                isStartMarker(msg);
 
-      if ((step !== currentStepNumber && currentStepNumber !== -1) || isNewAttemptStart) {
-        if (currentAttemptChunk.length > 0) {
-          // Group the previous chunk as an attempt
-          items.push({
-            id: `attempt-${currentAttemptChunk[0].id}-${idx}`,
-            type: 'attempt_group',
-            messages: [...currentAttemptChunk],
-            step_number: currentStepNumber,
-            attemptNumber: attemptCounter
-          });
-          
-          if (step !== currentStepNumber) {
-            attemptCounter = 1;
-          } else {
+      if (step !== currentStepNumber || isNewAttemptStart) {
+        if (currentAttemptChunk.length > 0 && currentStepNumber !== -1) {
+          if (isNewAttemptStart) {
+            // Group the previous chunk as a failed attempt because a new attempt started in the same step
+            items.push({
+              id: `attempt-${currentAttemptChunk[0].id}-${idx}`,
+              type: 'attempt_group',
+              messages: [...currentAttemptChunk],
+              step_number: currentStepNumber,
+              attemptNumber: attemptCounter
+            });
             attemptCounter++;
+          } else {
+            // Normal step transition. The previous step's chunk represents the final, successful (or current) state.
+            // Do not hide it in an accordion.
+            currentAttemptChunk.forEach(m => items.push({ type: 'single', message: m }));
+            attemptCounter = 1;
           }
           currentAttemptChunk = [];
         }
@@ -177,49 +173,6 @@ const ChatMessageList = ({
       }
       
       currentAttemptChunk.push(msg);
-      
-      let isRetryAction = false;
-      const contentStr = msg.content.trim();
-      
-      const checkRetry = (parsed: any) => {
-        if (parsed?.action?.includes('retry')) return true;
-        if (parsed?.type === 'action') {
-          if (parsed.action?.includes('retry')) return true;
-          if (Array.isArray(parsed.actions) && parsed.actions.some((a: any) => a.action?.includes('retry'))) return true;
-        }
-        return false;
-      };
-
-      if ((msg.role === 'assistant' || msg.role === 'user') && (contentStr.toLowerCase().includes('retry') || contentStr.toLowerCase().includes('wiederholen'))) {
-        if (contentStr.startsWith('{') && contentStr.endsWith('}')) {
-          try {
-            const parsed = JSON.parse(contentStr);
-            isRetryAction = checkRetry(parsed);
-          } catch (e) {}
-        } else if (contentStr.includes('```')) {
-          const match = contentStr.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
-          if (match) {
-            try {
-              const parsed = JSON.parse(match[1]);
-              isRetryAction = checkRetry(parsed);
-            } catch (e) {}
-          }
-        } else if (msg.role === 'user' && (contentStr.toLowerCase() === 'wiederholen' || contentStr.toLowerCase().includes('schritt wiederholen'))) {
-          isRetryAction = true;
-        }
-      }
-      
-      if (isRetryAction) {
-        items.push({
-          id: `attempt-${msg.id}`,
-          type: 'attempt_group',
-          messages: [...currentAttemptChunk],
-          step_number: currentStepNumber,
-          attemptNumber: attemptCounter
-        });
-        currentAttemptChunk = [];
-        attemptCounter++;
-      }
     });
 
     if (currentAttemptChunk.length > 0) {

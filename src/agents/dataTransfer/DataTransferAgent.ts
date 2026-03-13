@@ -3,6 +3,7 @@ import neo4j from 'neo4j-driver';
 import { loadScheme } from '../../lib/scheme-loader';
 import { resolveOpenAiConfig, buildOpenAiHeaders } from '../openai/openaiClient';
 import { runDataTransformation } from '../agentService';
+import { OrchestratorAgent } from './orchestrator/OrchestratorAgent';
 
 export class DataTransferAgent extends AgentBase {
   async execute(params: any): Promise<any> {
@@ -15,41 +16,22 @@ export class DataTransferAgent extends AgentBase {
     let result;
     
     // We mock the worker variables/functions to match the context
-    const pool = dbPool;
     const currentStepNumber = stepNumber;
     
-    const writeChatMessage = async (migId: string, role: string, content: string, stepNum?: number) => {
+    const writeChatMessage = async (role: string, content: string, stepNum?: number) => {
         return await this.context.writeChatMessage(role, content, stepNum || currentStepNumber);
     };
     
-    const upsertChatMessage = async (id: string | null, migId: string, role: string, content: string, stepNum?: number) => {
+    const upsertChatMessage = async (id: string | null, role: string, content: string, stepNum?: number) => {
         if (this.context.upsertChatMessage) {
             return await this.context.upsertChatMessage(id, role, content, stepNum || currentStepNumber);
         }
         return undefined;
     };
     
-    const logActivity = async (migId: string, type: any, title: string) => {
+    const logActivity = async (type: any, title: string) => {
        if (this.context.logActivity) await this.context.logActivity(type, title);
     };
-    
-    const writeRetryAction = async (migId: string, stepNum: number) => {
-      const actionContent = JSON.stringify({
-        type: "action",
-        actions: [
-          {
-            action: "retry",
-            label: `Schritt ${stepNum} wiederholen`,
-            variant: "outline",
-            stepNumber: stepNum
-          }
-        ]
-      });
-      await writeChatMessage(migId, 'system', actionContent, stepNum);
-    };
-    
-    let isLogicalFailure = false;
-    let failureMessage = "";
     
     // Some worker variables that we don't need but they are referenced
     const step_id = params?.stepId || null;
@@ -60,8 +42,6 @@ export class DataTransferAgent extends AgentBase {
     const updateWorkflowForStep = (state: any, id: string, res: any, err: boolean) => { return { nextState: state, progress: 0 }; };
     const incrementGlobalStats = async (...args: any[]) => {};
     const AGENT_WORKFLOW_STEPS: any[] = [];
-    const agentParams = params;
-    
     
     // Start processing the data transfer
     console.log(`[Worker] Running Data Transfer for migration ${migrationId}`);
@@ -99,97 +79,7 @@ export class DataTransferAgent extends AgentBase {
           await driverReset.close();
       }
 
-      // --- PLANNING PHASE ---
-      if (!scopeConfig.transferPlanApproved) {
-          await writeChatMessage(migrationId, 'assistant', `Erstelle Migrations-Plan für den Transfer zu **${targetSystem}**...`, currentStepNumber);
-          
-          const driver = neo4j.driver(
-            process.env.NEO4J_URI || "bolt://neo4j-db:7687",
-            neo4j.auth.basic(process.env.NEO4J_USER || "neo4j", process.env.NEO4J_PASSWORD || "password")
-          );
-          
-          let stats = "";
-          const session = driver.session();
-          try {
-              const res = await session.run(
-                  `MATCH (n) WHERE n.migration_id = $migrationId 
-                   RETURN n.entity_type as type, count(n) as count`,
-                  { migrationId }
-              );
-              stats = res.records.map(r => `- **${r.get('type')}**: ${r.get('count')} Objekte`).join('\n');
-          } finally {
-              await session.close();
-              await driver.close();
-          }
-
-          const { rows: ruleRows } = await dbPool.query('SELECT source_object, target_object, rule_type FROM mapping_rules WHERE migration_id = $1 AND rule_type != \'IGNORE\'', [migrationId]);
-          const mappingSummary = ruleRows.map(r => `- ${r.source_object} → ${r.target_object} (${r.rule_type})`).join('\n');
-          
-          const targetScheme = await loadScheme(targetSystem);
-          const { apiKey, baseUrl, projectId: openAiProjectId } = await resolveOpenAiConfig();
-          const openAiHeaders = buildOpenAiHeaders(apiKey, openAiProjectId);
-
-          const planPrompt = `
-Du bist ein Migrations-Experte. Erstelle einen finalen Transfer-Plan für den Nutzer.
-System: ${sourceSystem} nach ${targetSystem}.
-
-### MIGRATIONS-GEDÄCHTNIS:
-${JSON.stringify(migrationContext, null, 2)}
-
-### DATEN-STATISTIK:
-${stats}
-
-### MAPPING-ZUSAMMENFASSUNG:
-${mappingSummary}
-
-### ZIEL-STRUKTUR (Export Logik):
-${targetScheme?.exportInstructions?.logic || "Standard-Hierarchie"}
-
-### AUFGABE:
-Fasse zusammen, wie die Migration ablaufen wird. 
-1. Welche Container werden im Ziel erstellt? (Basierend auf Name: "${preferredTargetName}")
-2. In welcher Reihenfolge werden die Objekte übertragen?
-3. Gibt es Besonderheiten?
-
-Antworte prägnant und strukturiert in Markdown.
-          `;
-
-          try {
-              const planRes = await this.provider.chat([{ role: "system", content: planPrompt }], undefined, {
-                  model: "gpt-4o"
-              });
-              
-              const planContent = planRes.content;
-              
-              if (planContent) {
-                  await writeChatMessage(migrationId, 'assistant', `### 📋 Migrations-Plan\n\n${planContent}`, currentStepNumber);
-                  
-                  const actionContent = JSON.stringify({
-                      type: "action",
-                      actions: [
-                        { action: "confirm_transfer_plan", label: "Plan bestätigen & Transfer starten", variant: "primary" },
-                        { action: "retry", label: "Plan neu generieren", variant: "outline", stepNumber: currentStepNumber },
-                        { action: "reset_and_retry_transfer", label: "Alles zurücksetzen & von vorne starten", variant: "destructive" }
-                      ]
-                  });
-                  await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
-                  
-                  // WICHTIG: Status der Migration auf 'completed' setzen, damit die UI die Buttons anzeigt
-                  await dbPool.query('UPDATE migrations SET step_status = $1, status = $2 WHERE id = $3', ['completed', 'processing', migrationId]);
-                  await dbPool.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
-                  return {
-                      success: true,
-                      isEarlyReturnForPlan: true,
-                      result: { status: 'planning_sent', plan: planContent },
-                      isLogicalFailure: false
-                  };
-              }
-          } catch (err) {
-              console.error("[Worker] Error generating plan:", err);
-          }
-      }
-
-      // --- EXECUTION PHASE (only if approved) ---
+      // --- EXECUTION PHASE ---
       
       const { rows: step4Rows } = await dbPool.query('SELECT target_scope_id FROM step_4_results WHERE migration_id = $1', [migrationId]);
       let targetScopeId = step4Rows[0]?.target_scope_id;
@@ -203,7 +93,12 @@ Antworte prägnant und strukturiert in Markdown.
           if (targetConnector && targetScheme) {
               const { apiKey, baseUrl, projectId: openAiProjectId } = await resolveOpenAiConfig();
               const openAiHeaders = buildOpenAiHeaders(apiKey, openAiProjectId);
-              const targetContainerType = scopeConfig.targetContainerType || targetScheme.exportInstructions?.preferredContainerType || "project";
+              
+              const requestedType = scopeConfig.targetContainerType;
+              const availableTypes = targetScheme.exportInstructions?.availableContainerTypes || [];
+              const preferredType = targetScheme.exportInstructions?.preferredContainerType || "project";
+              const isSupported = availableTypes.some((t: any) => t.id === requestedType);
+              const targetContainerType = isSupported ? requestedType : preferredType;
 
               const verifyPrompt = `
 Du bist ein Cloud-Integrations-Experte. Erstelle den API-Call, um die Existenz eines Haupt-Containers (ID: ${targetScopeId}) im System **${targetSystem}** zu prüfen.
@@ -254,7 +149,7 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
 
                   if (apiRes.status === 404) {
                       console.log(`[Worker] Target container ${targetScopeId} not found (404). Will recreate.`);
-                      await writeChatMessage(migrationId, 'assistant', `Der zuvor erstellte Ziel-Container (ID: ${targetScopeId}) wurde nicht mehr im Zielsystem gefunden. Ich setze den Transfer-Status zurück und lege den Container neu an...`, currentStepNumber);
+                      await writeChatMessage('assistant', `Der zuvor erstellte Ziel-Container (ID: ${targetScopeId}) wurde nicht mehr im Zielsystem gefunden. Ich setze den Transfer-Status zurück und lege den Container neu an...`, currentStepNumber);
 
                       // Reset database
                       await dbPool.query('DELETE FROM step_4_results WHERE migration_id = $1', [migrationId]);
@@ -293,7 +188,7 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
       }
 
       if (!targetScopeId) {
-          await writeChatMessage(migrationId, 'assistant', `Phase 0: Bereite Ziel-Container in **${targetSystem}** vor...`, currentStepNumber);
+          await writeChatMessage('assistant', `Phase 0: Bereite Ziel-Container in **${targetSystem}** vor...`, currentStepNumber);
           
           const { rows: targetConnectorRows } = await dbPool.query('SELECT api_url, api_key, username, auth_type FROM connectors WHERE migration_id = $1 AND connector_type = $2', [migrationId, 'out']);
           const targetConnector = targetConnectorRows[0];
@@ -304,7 +199,13 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
               const openAiHeaders = buildOpenAiHeaders(apiKey, openAiProjectId);
               
               // Bestimme Container-Typ (Nutzerwahl oder System-Standard)
-              const targetContainerType = scopeConfig.targetContainerType || targetScheme.exportInstructions?.preferredContainerType || "project";
+              const requestedType = scopeConfig.targetContainerType;
+              const availableTypes = targetScheme.exportInstructions?.availableContainerTypes || [];
+              const preferredType = targetScheme.exportInstructions?.preferredContainerType || "project";
+              
+              // Prüfe, ob der gewählte Typ für dieses System überhaupt unterstützt wird
+              const isSupported = availableTypes.some((t: any) => t.id === requestedType);
+              let targetContainerType = isSupported ? requestedType : preferredType;
 
               const containerPrompt = `
 Du bist ein Cloud-Integrations-Experte. Erstelle den API-Call, um einen neuen Haupt-Container im System **${targetSystem}** zu erstellen.
@@ -312,12 +213,17 @@ Du bist ein Cloud-Integrations-Experte. Erstelle den API-Call, um einen neuen Ha
 ### ZIEL-SYSTEM INFOS:
 ${JSON.stringify(targetScheme, null, 2)}
 
-### ZIEL-CONNECTOR URL (enthält ggf. IDs wie Team-ID):
+### ZIEL-CONNECTOR URL (enthält ggf. wichtige IDs wie Parent-Page, Workspace oder Team):
 ${targetConnector.api_url}
 
 ### AUFGABE:
 Erstelle einen Container vom Typ **"${targetContainerType}"** mit dem Namen: **"${preferredTargetName}"**.
-WICHTIG: Falls du eine Team-ID oder Workspace-ID aus der Connector-URL extrahieren kannst, nutze diese für den API-Call (z.B. in der URL).
+
+### WICHTIGE SYSTEM-SPEZIFISCHE REGELN:
+- **NOTION:** Falls das Zielsystem Notion ist, musst du zwingend ein "parent" Objekt im Body mitsenden. 
+  Extrahiere die Parent-ID aus der Connector-URL (der 32-stellige Hex-Code am Ende).
+  Beispiel Body für Notion: { "parent": { "type": "page_id", "page_id": "DEINE_EXTRAHIERTE_ID" }, "properties": { "title": [{ "text": { "content": "${preferredTargetName}" } }] } }
+- **ANDERE SYSTEME:** Falls du eine Team-ID oder Workspace-ID aus der Connector-URL extrahieren kannst, nutze diese für den API-Call (z.B. in der URL oder im Body).
 
 ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
 {
@@ -371,20 +277,24 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                                      target_status = EXCLUDED.target_status`,
                                   [migrationId, targetScopeId, preferredTargetName]
                               );
-                              await writeChatMessage(migrationId, 'assistant', `Ziel-Container **"${preferredTargetName}"** (${targetContainerType}) erfolgreich erstellt (ID: ${targetScopeId}).`, currentStepNumber);
+                              await writeChatMessage('assistant', `Ziel-Container **"${preferredTargetName}"** (${targetContainerType}) erfolgreich erstellt (ID: ${targetScopeId}).`, currentStepNumber);
                           }
                       } else {
                           const errText = await apiRes.text();
                           console.error(`[Worker] Container creation failed: ${errText}`);
-                          await writeChatMessage(migrationId, 'assistant', `⚠️ Konnte Container nicht automatisch erstellen. Nutze Standard-Scope.`, currentStepNumber);
+                          if (targetSystem === 'Notion') {
+                            throw new Error(`Notion-Container konnte nicht erstellt werden: ${errText}`);
+                          }
+                          await writeChatMessage('assistant', `⚠️ Konnte Container nicht automatisch erstellen. Nutze Standard-Scope.`, currentStepNumber);
                       }
               } catch (err) {
                   console.error(`[Worker] Error in Phase 0:`, err);
+                  throw err; // Re-throw to stop execution
               }
           }
       }
 
-      await writeChatMessage(migrationId, 'assistant', 'Phase 1: Datenveredelung in Neo4j...', currentStepNumber);
+      await writeChatMessage('assistant', 'Phase 1: Datenveredelung in Neo4j...', currentStepNumber);
 
       // 1. Fetch migration details (already done above, but keeping structure for minimal changes)
       let rateLimitResult = { delay: 1.0, batch_size: 50 };
@@ -443,7 +353,7 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
 
           // 2. PROCESSING: Loop until no more _enhanced = false nodes exist
           for (const [entityType, config] of Object.entries(rulesByEntity)) {
-            await writeChatMessage(migrationId, 'assistant', `Veredele Entität: **${entityType}**...`, currentStepNumber);
+            await writeChatMessage('assistant', `Veredele Entität: **${entityType}**...`, currentStepNumber);
             
             let processedInEntity = 0;
             while (true) {
@@ -516,7 +426,7 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                   
                   // Periodic progress update in chat
                   if (processedInEntity % 10 === 0 || processedInEntity % 10 < batch.length) {
-                      await writeChatMessage(migrationId, 'assistant', `Fortschritt ${entityType}: **${processedInEntity}** Objekte veredelt...`, currentStepNumber);
+                      await writeChatMessage('assistant', `Fortschritt ${entityType}: **${processedInEntity}** Objekte veredelt...`, currentStepNumber);
                   }
                   
                   await new Promise(resolve => setTimeout(resolve, 500));
@@ -526,530 +436,64 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
               }
             }
           }
-          await writeChatMessage(migrationId, 'assistant', 'Datenveredelung in Neo4j erfolgreich abgeschlossen.', currentStepNumber);
+          await writeChatMessage('assistant', 'Datenveredelung in Neo4j erfolgreich abgeschlossen.', currentStepNumber);
         } finally {
           await driver.close();
         }
       } else {
-        await writeChatMessage(migrationId, 'assistant', 'Keine Qualitäts-Enhancements konfiguriert. Überspringe Phase 1.', currentStepNumber);
+        await writeChatMessage('assistant', 'Keine Qualitäts-Enhancements konfiguriert. Überspringe Phase 1.', currentStepNumber);
       }
 
-      // Phase 2: Agent-Driven Data Transfer
-      await writeChatMessage(migrationId, 'assistant', 'Phase 2: Transfer der veredelten Daten in das Zielsystem startet...', currentStepNumber);
+      // Phase 2: Orchestrator-Driven Data Transfer
+      await writeChatMessage('assistant', 'Phase 2: Orchestrator startet den Transfer der Daten...', currentStepNumber);
       
       const targetScheme = await loadScheme(targetSystem);
-      const { rows: targetConnectorRows } = await dbPool.query('SELECT api_url, api_key, username, auth_type FROM connectors WHERE migration_id = $1 AND connector_type = $2', [migrationId, 'out']);
-      const targetConnector = targetConnectorRows[0];
-      const exportSeq = targetScheme?.exportInstructions?.sequence || [];
-      const exportLogic = targetScheme?.exportInstructions?.logic || "Transfer data using provided mappings and endpoints.";
+      const sourceScheme = await loadScheme(sourceSystem);
+      
+      const { rows: allRules } = await dbPool.query('SELECT * FROM public.mapping_rules WHERE migration_id = $1 AND rule_type != \'IGNORE\'', [migrationId]);
 
-      console.log(`[Worker] Using targetScopeId for migration: ${targetScopeId}`);
-
-      if (exportSeq.length === 0) {
-          await writeChatMessage(migrationId, 'assistant', '⚠️ Keine Export-Sequenz im Zielschema definiert. Transfer abgebrochen.', currentStepNumber);
-          throw new Error("Missing export sequence in target scheme.");
+      if (allRules.length === 0) {
+          throw new Error("Keine aktiven Mappings gefunden. Bitte konfiguriere die Mapping-Regeln (nicht auf IGNORE), bevor du den Transfer startest.");
       }
 
-      if (!targetConnector) {
-          throw new Error("Target connector credentials not found.");
+      // Extrahiere alle zu migrierenden Entitäten
+      const sourceEntitiesSet = new Set<string>();
+      const targetEntitiesSet = new Set<string>();
+      
+      for (const rule of allRules) {
+        sourceEntitiesSet.add(rule.source_object);
+        targetEntitiesSet.add(rule.target_object);
       }
-
-      const driver = neo4j.driver(
-        process.env.NEO4J_URI || "bolt://neo4j-db:7687",
-        neo4j.auth.basic(process.env.NEO4J_USER || "neo4j", process.env.NEO4J_PASSWORD || "password")
-      );
+      
+      const sourceEntities = Array.from(sourceEntitiesSet);
+      const targetEntities = Array.from(targetEntitiesSet);
 
       try {
-          // 1. Calculate total nodes to transfer for progress bar
-          const countSession = driver.session();
-          let totalNodesToTransfer = 0;
-          try {
-              const countRes = await countSession.run(
-                  `MATCH (n:\`${sourceSystem}\`) 
-                   WHERE n.migration_id = $migrationId 
-                   AND n.target_id IS NULL
-                   RETURN count(n) as total`,
-                  { migrationId }
-              );
-              totalNodesToTransfer = countRes.records[0].get('total').toNumber();
-              console.log(`[DataTransferAgent] Calculated ${totalNodesToTransfer} unique nodes to transfer from Neo4j.`);
-          } finally {
-              await countSession.close();
-          }
+        const orchestrator = new OrchestratorAgent(this.provider, {
+            ...this.context,
+            // Override getConnector to easily pass it down
+            getConnector: async (type: 'in' | 'out') => {
+                const { rows } = await dbPool.query('SELECT api_url, api_key, username, auth_type FROM connectors WHERE migration_id = $1 AND connector_type = $2', [migrationId, type]);
+                return rows[0];
+            }
+        });
 
-          let totalTransferred = 0;
-          let transferErrors = 0;
-          
-          // Create initial live status message
-          let liveStatusId = await writeChatMessage(migrationId, 'assistant', JSON.stringify({
-              type: 'live-transfer-status',
-              total: totalNodesToTransfer,
-              processed: 0,
-              successCount: 0,
-              errorCount: 0,
-              currentEntity: 'Vorbereitung',
-              status: 'running'
-          }), currentStepNumber);
+        await orchestrator.execute({
+            migrationId,
+            mappingRules: allRules,
+            sourceSchema: sourceScheme,
+            targetSchema: targetScheme,
+            sourceEntities,
+            targetEntities,
+            sourceSystem,
+            targetSystem,
+            targetScopeId
+        } as any); // Passing extra params that Orchestrator might pass to Subagent
 
-          const { rows: ruleRows8 } = await dbPool.query('SELECT * FROM public.mapping_rules WHERE migration_id = $1', [migrationId]);
-
-          // Process entities in sequence
-          for (const targetEntityType of exportSeq) {
-              // Find source objects that map to this target type
-              const { rows: entityRules } = await dbPool.query(
-                  "SELECT DISTINCT source_object FROM mapping_rules WHERE migration_id = $1 AND target_object = $2 AND rule_type != 'IGNORE'",
-                  [migrationId, targetEntityType]
-              );
-              
-              const sourceObjectTypes = entityRules.map(r => r.source_object);
-              if (sourceObjectTypes.length === 0) {
-                  console.log(`[Worker] No source objects map to target type ${targetEntityType}. Skipping.`);
-                  continue;
-              }
-
-              for (const sourceObjectType of sourceObjectTypes) {
-                  let processedInBatch = 0;
-                  
-                  // --- FETCH SAMPLE NODE FOR BETTER PROMPTING ---
-                  let sampleNode: any = null;
-                  const sampleSession = driver.session();
-                  try {
-                      const sampleRes = await sampleSession.run(
-                          `MATCH (n:\`${sourceSystem}\`) 
-                           WHERE n.migration_id = $migrationId 
-                           AND (toLower(n.entity_type) = toLower($sourceObjectType) OR toLower(n.entity_type) = toLower($sourceObjectType) + "s")
-                           RETURN properties(n) as props LIMIT 1`,
-                          { migrationId, sourceObjectType }
-                      );
-                      if (sampleRes.records.length > 0) {
-                          sampleNode = sampleRes.records[0].get('props');
-                      }
-                  } finally {
-                      await sampleSession.close();
-                  }
-
-                  // Update live status for current entity
-                  await upsertChatMessage(liveStatusId, migrationId, 'assistant', JSON.stringify({
-                      type: 'live-transfer-status',
-                      total: totalNodesToTransfer,
-                      processed: totalTransferred + transferErrors,
-                      successCount: totalTransferred,
-                      errorCount: transferErrors,
-                      currentEntity: `Initialisiere ${sourceObjectType}...`,
-                      status: 'running'
-                  }), currentStepNumber);
-                  
-                  // 1. GENERATE RECIPE ONCE PER ENTITY PAIR
-                  const { apiKey, baseUrl, projectId: openAiProjectId } = await resolveOpenAiConfig();
-                  const openAiHeaders = buildOpenAiHeaders(apiKey, openAiProjectId);
-
-                  const entityMappingRules = ruleRows8.filter(r => 
-                      (r.source_object === sourceObjectType) && 
-                      r.target_object === targetEntityType
-                  );
-
-                  const recipePrompt = `
-Du bist ein technischer Architekt. Erstelle ein Transfer-Rezept (Template) für die Migration von ${sourceObjectType} zu ${targetEntityType} im System ${targetSystem}.
-
-### ZIEL-LOGIK:
-${exportLogic}
-
-### MAPPING-REGELN:
-${JSON.stringify(entityMappingRules, null, 2)}
-
-### BEISPIEL-DATEN (Quelle - nutze NUR diese Felder für Platzhalter):
-${sampleNode ? JSON.stringify(sampleNode, null, 2) : "Keine Beispieldaten verfügbar."}
-
-### ZIEL-ENDPUNKTE:
-${JSON.stringify(targetScheme?.discovery?.endpoints || {}, null, 2)}
-
-### ZIEL-SCOPE (Haupt-Container):
-ID: ${targetScopeId || 'Nicht definiert'}
-
-### ZIEL-CONNECTOR URL (enthält ggf. Team/Workspace-IDs):
-${targetConnector.api_url}
-
-### AUFGABE:
-Erstelle ein JSON-Rezept, das beschreibt, wie ein API-Call für ein einzelnes Objekt aufgebaut wird. 
-WICHTIG: Halte dich STRIKT an die API-Struktur von ${targetSystem}. 
-
-Nutze folgende Platzhalter-Syntax:
-- \${property_name}: Wert einer Eigenschaft des Quell-Objekts (z.B. \${name}, \${notes}). Nutze NUR Felder aus den BEISPIEL-DATEN.
-- \${parent:RELATIONSHIP_TYPE:target_id}: Die im Zielsystem bereits existierende ID eines Parent-Objekts, das über RELATIONSHIP_TYPE verknüpft ist.
-- \${GLOBAL_ROOT_ID}: Die ID des Ziel-Containers (ID: ${targetScopeId}), falls kein spezifisches Parent-Objekt gefunden wird.
-- \${TEAM_ID} / \${WORKSPACE_ID}: Eine aus der ZIEL-CONNECTOR URL extrahierte globale ID (z.B. ClickUp Team-ID).
-
-### REGELN FÜR DIE STRUKTUR:
-1. **NAMEN:** Das Feld "name" (oder äquivalent) im Ziel DARF NIEMALS leer sein. Nutze \${name} oder einen statischen Fallback.
-2. **DATENTYPEN:** Felder wie "description" oder "content" müssen Strings sein. Erzeuge KEINE verschachtelten Objekte für diese Felder.
-3. **IDS:** Nutze für URLs und Body-Felder, die eine ID erwarten, ENTWEDER einen Platzhalter (wie \${GLOBAL_ROOT_ID}, \${TEAM_ID}) ODER extrahiere eine statische ID aus der ZIEL-CONNECTOR URL.
-4. **UNTERSCHEIDUNG:** Beachte, dass \${GLOBAL_ROOT_ID} die ID des in Phase 0 erstellten Containers ist (z.B. ein Space). \${TEAM_ID} ist die übergeordnete Workspace-Ebene.
-5. **VERBOT:** Nutze NIEMALS Platzhalter wie "---", "0", "null" oder "undefined" für ID-Felder. Falls du keine ID hast, nutze \${GLOBAL_ROOT_ID} als Fallback oder lasse das Feld weg, falls optional.
-
-${targetSystem === 'Notion' ? `
-WICHTIG FÜR NOTION:
-- Pages benötigen ein "parent" Objekt.
-- DAS FELD "id" EXISTIERT NICHT IN "parent". NUTZE ZWINGEND "page_id" ODER "database_id".
-- Nutze \${GLOBAL_ROOT_ID} als Fallback für die Parent-ID: {"parent": {"page_id": "\${GLOBAL_ROOT_ID}"}}
-- In "properties" ist bei Pages NUR der "title" erlaubt: {"title": {"title": [{"text": {"content": "\${name}"}}]}}
-- JEDER WEITERE INHALT (wie eine Description) muss in das "children" Array als Block-Objekt.
-- WICHTIG: Der "content" String darf NIEMALS leer oder null sein. Falls ein Feld leer ist, nutze einen Fallback-String wie "---" oder "Keine Information".
-- Beispiel für Description als Paragraph-Block: 
-  "children": [{
-    "object": "block",
-    "type": "paragraph",
-    "paragraph": { "rich_text": [{ "type": "text", "text": { "content": "\${description}" } }] }
-  }]
-- Notion API Version: 2022-06-28
-` : ''}
-
-ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
-{
-  "urlTemplate": "string",
-  "method": "POST" | "PATCH",
-  "bodyTemplate": {
-     "key": "value",
-     ...
-  }
-}
-                  `;
-
-                  let recipe: any = null;
-                  try {
-                      const recipeRes = await fetch(`${baseUrl}/chat/completions`, {
-                          method: 'POST',
-                          headers: openAiHeaders,
-                          body: JSON.stringify({
-                              model: "gpt-4o-mini", // Use mini for recipe generation to save even more
-                              messages: [{ role: "system", content: recipePrompt }],
-                              response_format: { type: "json_object" }
-                          })
-                      });
-                      if (!recipeRes.ok) throw new Error("Failed to generate recipe");
-                      const recipeData = await recipeRes.json();
-                      recipe = JSON.parse(recipeData.choices[0].message.content);
-                      console.log(`[Worker] Generated recipe for ${sourceObjectType} -> ${targetEntityType}:`, JSON.stringify(recipe));
-                  } catch (err) {
-                      console.error(`[Worker] Failed to generate transfer recipe:`, err);
-                      await writeChatMessage(migrationId, 'assistant', `⚠️ Fehler bei der Rezept-Erstellung für ${sourceObjectType}. Nutze Einzel-Agenten Modus...`, currentStepNumber);
-                  }
-
-                  // 2. EXECUTE PROGRAMMATICALLY USING RECIPE
-                  console.log(`[Worker] Starting transfer loop for ${sourceObjectType} -> ${targetEntityType}`);
-                  while (true) {
-                      const session = driver.session();
-                      try {
-                          // Fetch nodes that haven't been transferred yet (target_id is NULL) and haven't exceeded retry limit
-                          const nodeRes = await session.run(
-                              `MATCH (n:\`${sourceSystem}\`) 
-                               WHERE n.migration_id = $migrationId 
-                               AND (
-                                 toLower(n.entity_type) = toLower($sourceObjectType) OR 
-                                 toLower(n.entity_type) = toLower($sourceObjectType) + "s" OR 
-                                 toLower(n.entity_type) = toLower($sourceObjectType) + "es" OR
-                                 toLower(n.entity_type) CONTAINS toLower($sourceObjectType)
-                               )
-                               AND n.target_id IS NULL
-                               AND (n.transfer_attempts IS NULL OR n.transfer_attempts < 3)
-                               OPTIONAL MATCH (n)-[r]->(p) 
-                               WHERE p.target_id IS NOT NULL
-                               RETURN n, collect({ type: type(r), target_id: p.target_id, entity_type: p.entity_type }) as parents
-                               LIMIT 20`, 
-                              { migrationId, sourceObjectType }
-                          );
-
-                          const records = nodeRes.records;
-                          console.log(`[Worker] Found ${records.length} nodes to transfer for ${sourceObjectType}`);
-                          if (records.length === 0) break;
-
-                          for (const record of records) {
-                              const node = record.get('n').properties;
-                              const parents = record.get('parents') as any[];
-                              
-                              let callConfig: any;
-
-                              if (recipe) {
-                                  // APPLY RECIPE PROGRAMMATICALLY
-                                  try {
-                                      // Extract potential global IDs from connector URL (e.g. ClickUp Team ID)
-                                      const connectorUrl = targetConnector.api_url || "";
-                                      const urlIds = connectorUrl.match(/\d{5,}/g) || [];
-                                      const teamIdFromUrl = urlIds[0] || "";
-
-                                      const resolveValue = (val: string): any => {
-                                          if (typeof val !== 'string') return val;
-                                          
-                                          // Global Root fallback
-                                          if (val === '${GLOBAL_ROOT_ID}') return targetScopeId;
-                                          if (val === '${TEAM_ID}' || val === '${WORKSPACE_ID}') return teamIdFromUrl;
-
-                                          // Parent lookup: ${parent:TYPE:target_id}
-                                          if (val.startsWith('${parent:')) {
-                                              const match = val.match(/\${parent:([^:]+):([^}]+)}/);
-                                              if (match) {
-                                                  const relType = match[1];
-                                                  const prop = match[2];
-                                                  // Fuzzy match relationship type
-                                                  const parent = parents.find(p => p.type && (p.type === relType || p.type.startsWith(relType) || relType.startsWith(p.type)));
-                                                  const res = parent ? parent[prop] : null;
-                                                  
-                                                  if (!res) {
-                                                      console.log(`[Worker] Could not resolve parent ${val} for node ${node.external_id}. Fallback to root.`);
-                                                      return targetScopeId;
-                                                  }
-                                                  return res;
-                                              }
-                                          }
-                                          
-                                          // Property lookup: ${prop}
-                                          if (val.startsWith('${') && val.endsWith('}')) {
-                                              const propName = val.slice(2, -1);
-                                              if (propName === 'GLOBAL_ROOT_ID') return targetScopeId;
-                                              if (propName === 'TEAM_ID' || propName === 'WORKSPACE_ID') return teamIdFromUrl;
-                                              const nodeVal = node[propName];
-                                              return (nodeVal !== undefined && nodeVal !== null) ? nodeVal : null; 
-                                          }
-                                          
-                                          // Inline string replacement
-                                          return val.replace(/\${([^}]+)}/g, (_, propName) => {
-                                              if (propName === 'GLOBAL_ROOT_ID') return targetScopeId || '';
-                                              if (propName === 'TEAM_ID' || propName === 'WORKSPACE_ID') return teamIdFromUrl;
-                                              if (propName.startsWith('parent:')) {
-                                                  const parts = propName.split(':');
-                                                  const parent = parents.find(p => p.type && (p.type === parts[1] || p.type.startsWith(parts[1])));
-                                                  return parent ? parent[parts[2]] : (targetScopeId || '');
-                                              }
-                                              const nodeVal = node[propName];
-                                              return (nodeVal !== undefined && nodeVal !== null) ? String(nodeVal) : "";
-                                          });
-                                      };
-
-                                      const processObject = (obj: any): any => {
-                                          if (Array.isArray(obj)) return obj.map(processObject);
-                                          if (obj !== null && typeof obj === 'object') {
-                                              const result: any = {};
-                                              for (const [k, v] of Object.entries(obj)) {
-                                                  result[k] = processObject(v);
-                                              }
-                                              return result;
-                                          }
-                                          return resolveValue(obj);
-                                      };
-
-                                      const resolvedUrl = resolveValue(recipe.urlTemplate);
-                                      if (!resolvedUrl) throw new Error("URL template resolved to empty/null");
-
-                                      callConfig = {
-                                          url: resolvedUrl,
-                                          method: recipe.method || 'POST',
-                                          body: processObject(recipe.bodyTemplate)
-                                      };
-                                  } catch (recipeErr) {
-                                      console.error(`[Worker] Error applying recipe to ${node.external_id}:`, recipeErr);
-                                      // UPDATE NEO4J SO WE DON'T LOOP INFINITELY
-                                      await session.run(
-                                          `MATCH (n:\`${sourceSystem}\` { migration_id: $migrationId, external_id: $extId }) 
-                                           SET n.transfer_attempts = coalesce(n.transfer_attempts, 0) + 1, 
-                                               n.transfer_error = $errText`,
-                                          { migrationId, extId: String(node.external_id), errText: `Recipe Error: ${String(recipeErr).substring(0, 100)}` }
-                                      );
-                                      transferErrors++;
-                                      continue;
-                                  }
-                              } else {
-                                  // FALLBACK: AGENT-DRIVEN FOR SINGLE OBJECT
-                                  const agentPrompt = `
-Du bist ein Data Export Agent. Erstelle den exakten API-Call für dieses Objekt im System ${targetSystem}.
-
-### ZIEL-LOGIK:
-${exportLogic}
-
-### MAPPING-REGELN:
-${JSON.stringify(entityMappingRules, null, 2)}
-
-### ZIEL-ENDPUNKTE:
-${JSON.stringify(targetScheme?.discovery?.endpoints || {}, null, 2)}
-
-### ZIEL-SCOPE (Haupt-Container):
-ID: ${targetScopeId || 'Nicht definiert'}
-
-### OBJEKT-DATEN (Quelle):
-${JSON.stringify(node)}
-
-### VERKNÜPFTE PARENTS (Ziel-IDs):
-${JSON.stringify(parents)}
-
-ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
-{
-  "url": "string",
-  "method": "POST" | "PATCH",
-  "body": { ... }
-}
-                                  `;
-
-                                  try {
-                                      const agentRes = await this.provider.chat([{ role: "system", content: agentPrompt }], undefined, {
-                                          model: "gpt-4o-mini",
-                                          response_format: { type: "json_object" }
-                                      });
-                                      const callResult = JSON.parse(agentRes.content || "{}");
-                                      callConfig = {
-                                          url: callResult.url,
-                                          method: callResult.method,
-                                          body: callResult.body
-                                      };
-                                  } catch (err) {
-                                      console.error(`[Worker] Fallback agent failed for ${node.external_id}:`, err);
-                                      await session.run(
-                                          `MATCH (n:\`${sourceSystem}\` { migration_id: $migrationId, external_id: $extId }) 
-                                           SET n.transfer_attempts = coalesce(n.transfer_attempts, 0) + 1, 
-                                               n.transfer_error = 'Fallback agent failed'`,
-                                          { migrationId, extId: String(node.external_id) }
-                                      );
-                                      transferErrors++;
-                                      await upsertChatMessage(liveStatusId, migrationId, 'assistant', JSON.stringify({
-                                          type: 'live-transfer-status',
-                                          total: totalNodesToTransfer,
-                                          processed: totalTransferred + transferErrors,
-                                          successCount: totalTransferred,
-                                          errorCount: transferErrors,
-                                          currentEntity: sourceObjectType,
-                                          status: 'running'
-                                      }), currentStepNumber);
-                                      continue;
-                                  }
-                              }
-
-                              // EXECUTE TARGET API CALL
-                              try {
-                                  const targetHeaders: any = { 
-                                      "Accept": "application/json",
-                                      "Content-Type": "application/json",
-                                      ...(targetScheme?.headers || {})
-                                  };
-
-                                  // GENERIC AUTH LOGIC
-                                  const authConf = targetScheme?.authentication;
-                                  const token = targetConnector.api_key || targetConnector.username;
-                                  if (token) {
-                                      const prefix = authConf?.tokenPrefix !== undefined ? authConf.tokenPrefix : 'Bearer ';
-                                      const headerName = authConf?.headerName || 'Authorization';
-                                      targetHeaders[headerName] = `${prefix}${token.trim()}`;
-                                  }
-
-                                  const finalUrl = callConfig.url.startsWith('http') ? callConfig.url : (targetScheme?.apiBaseUrl || "") + callConfig.url;
-
-                                  const apiRes = await fetch(finalUrl, {
-                                      method: callConfig.method,
-                                      headers: targetHeaders,
-                                      body: callConfig.method === 'GET' ? undefined : JSON.stringify(callConfig.body)
-                                  });
-
-                                  if (apiRes.ok) {
-                                      const apiData = await apiRes.json();
-                                      const targetId = apiData.id || apiData.gid || apiData.key || (apiData.data?.id) || (apiData.data?.gid);
-
-                                      if (targetId) {
-                                          await session.run(
-                                              `MATCH (n:\`${sourceSystem}\` { migration_id: $migrationId, external_id: $extId }) 
-                                               SET n.target_id = $targetId`,
-                                              { migrationId, extId: String(node.external_id), targetId: String(targetId) }
-                                          );
-                                          totalTransferred++;
-                                          processedInBatch++;
-
-                                          // Update status message
-                                          await upsertChatMessage(liveStatusId, migrationId, 'assistant', JSON.stringify({
-                                              type: 'live-transfer-status',
-                                              total: totalNodesToTransfer,
-                                              processed: totalTransferred + transferErrors,
-                                              successCount: totalTransferred,
-                                              errorCount: transferErrors,
-                                              currentEntity: sourceObjectType,
-                                              status: 'running'
-                                          }), currentStepNumber);
-                                      } else {
-                                          console.error(`[Worker] API Response OK but no ID found for ${node.external_id}`);
-                                          await session.run(
-                                              `MATCH (n:\`${sourceSystem}\` { migration_id: $migrationId, external_id: $extId }) 
-                                               SET n.transfer_attempts = coalesce(n.transfer_attempts, 0) + 1, 
-                                                   n.transfer_error = 'No ID in response'`,
-                                              { migrationId, extId: String(node.external_id) }
-                                          );
-                                          transferErrors++;
-                                          await upsertChatMessage(liveStatusId, migrationId, 'assistant', JSON.stringify({
-                                              type: 'live-transfer-status',
-                                              total: totalNodesToTransfer,
-                                              processed: totalTransferred + transferErrors,
-                                              successCount: totalTransferred,
-                                              errorCount: transferErrors,
-                                              currentEntity: sourceObjectType,
-                                              status: 'running'
-                                          }), currentStepNumber);
-                                      }
-                                  } else {
-                                      const errText = await apiRes.text();
-                                      console.error(`[Worker] API Transfer failed: ${apiRes.status} ${errText}`);
-                                      await session.run(
-                                          `MATCH (n:\`${sourceSystem}\` { migration_id: $migrationId, external_id: $extId }) 
-                                           SET n.transfer_attempts = coalesce(n.transfer_attempts, 0) + 1, 
-                                               n.transfer_error = $errText`,
-                                          { migrationId, extId: String(node.external_id), errText: `${apiRes.status}: ${errText.substring(0, 200)}` }
-                                      );
-                                      transferErrors++;
-                                      await upsertChatMessage(liveStatusId, migrationId, 'assistant', JSON.stringify({
-                                          type: 'live-transfer-status',
-                                          total: totalNodesToTransfer,
-                                          processed: totalTransferred + transferErrors,
-                                          successCount: totalTransferred,
-                                          errorCount: transferErrors,
-                                          currentEntity: sourceObjectType,
-                                          status: 'running'
-                                          }), currentStepNumber);
-                                  }
-                              } catch (apiErr) {
-                                  console.error(`[Worker] API Error:`, apiErr);
-                                  await session.run(
-                                      `MATCH (n:\`${sourceSystem}\` { migration_id: $migrationId, external_id: $extId }) 
-                                       SET n.transfer_attempts = coalesce(n.transfer_attempts, 0) + 1, 
-                                           n.transfer_error = $errText`,
-                                      { migrationId, extId: String(node.external_id), errText: String(apiErr).substring(0, 200) }
-                                  );
-                                  transferErrors++;                                  await upsertChatMessage(liveStatusId, migrationId, 'assistant', JSON.stringify({
-                                      type: 'live-transfer-status',
-                                      total: totalNodesToTransfer,
-                                      processed: totalTransferred + transferErrors,
-                                      successCount: totalTransferred,
-                                      errorCount: transferErrors,
-                                      currentEntity: sourceObjectType,
-                                      status: 'running'
-                                  }), currentStepNumber);
-                              }
-                              
-                              await new Promise(r => setTimeout(r, (rateLimitResult.delay || 0.5) * 1000));
-                          }
-                      } finally {
-                          await session.close();
-                      }
-                  }
-              }
-          }
-
-          // Final update
-          await upsertChatMessage(liveStatusId, migrationId, 'assistant', JSON.stringify({
-              type: 'live-transfer-status',
-              total: totalNodesToTransfer,
-              processed: totalTransferred + transferErrors,
-              successCount: totalTransferred,
-              errorCount: transferErrors,
-              currentEntity: 'Fertig',
-              status: 'completed'
-          }), currentStepNumber);
-
-          result = { status: 'success', transferredCount: totalTransferred, errors: transferErrors };
-
-      } finally {
-          await driver.close();
+        result = { status: 'success' };
+      } catch (err: any) {
+        console.error("[DataTransferAgent] Orchestrator failed:", err);
+        throw new Error(`Transfer fehlgeschlagen: ${err.message}`);
       }
 
       const finishClientTransfer = await dbPool.connect();
@@ -1082,9 +526,9 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                   { action: "retry", label: `Schritt ${currentStepNumber} wiederholen`, variant: "outline", stepNumber: currentStepNumber }
                 ]
             });
-            await writeChatMessage(migrationId, 'system', actionContent, currentStepNumber);
+            await writeChatMessage('system', actionContent, currentStepNumber);
         }
-        await logActivity(migrationId, 'success', 'Data Transfer abgeschlossen.');
+        await logActivity('success', 'Data Transfer abgeschlossen.');
       } catch (e) {
         await finishClientTransfer.query('ROLLBACK');
         throw e;
@@ -1092,6 +536,7 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
         finishClientTransfer.release();
       }
       
+      let isLogicalFailure = false;
       return { 
           success: !isLogicalFailure, 
           result, 

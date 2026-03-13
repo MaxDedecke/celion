@@ -55,11 +55,45 @@
     "availableContainerTypes": [
       { "id": "page", "name": "Neue Hauptseite (Page)" }
     ],
+    "note": "Workspaces können über die Notion API nicht erstellt werden. Daher ist 'page' der einzige verfügbare Haupt-Container-Typ.",
     "sequence": [
       "page",
       "database",
       "block"
     ],
-    "logic": "1. Erstelle die Hauptseite (Parent) über 'POST /v1/pages'. 2. Erstelle Datenbanken oder Unterseiten innerhalb dieser Seite. 3. Inhalte werden als 'children' Blöcke über 'PATCH /v1/blocks/{block_id}/children' hinzugefügt. Achte STRIKT auf das spezifische Block-JSON-Format von Notion (z.B. { 'type': 'paragraph', 'paragraph': { 'rich_text': [...] } })."
+    "logic": "1. Erstelle die Hauptseite (Parent) über 'POST /v1/pages'. 2. Erstelle Datenbanken oder Unterseiten innerhalb dieser Seite. 3. Inhalte werden als 'children' Blöcke über 'PATCH /v1/blocks/{block_id}/children' hinzugefügt. Achte STRIKT auf das spezifische Block-JSON-Format von Notion (z.B. { 'type': 'paragraph', 'paragraph': { 'rich_text': [...] } }).",
+    "requestTemplates": {
+      "page": {
+        "method": "POST",
+        "url": "/v1/pages",
+        "body_structure": {
+          "parent": {
+            "type": "page_id",
+            "page_id": "{targetScopeId}"
+          },
+          "properties": {
+            "title": [
+              {
+                "text": {
+                  "content": "{title}"
+                }
+              }
+            ]
+          }
+        },
+        "critical_note": "Jeder POST /v1/pages Call MUSS zwingend das 'parent' Objekt enthalten, sonst schlägt der Request fehl. Nutze die 'targetScopeId' als 'page_id'."
+      },
+      "database_item": {
+        "method": "POST",
+        "url": "/v1/pages",
+        "body_structure": {
+          "parent": {
+            "type": "database_id",
+            "database_id": "{database_id}"
+          },
+          "properties": "{...}"
+        }
+      }
+    }
   }
 }
