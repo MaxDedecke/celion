@@ -19,7 +19,10 @@ export class OrchestratorAgent extends AgentBase {
     sourceSchema: any,
     targetSchema: any,
     sourceEntities: any[],
-    targetEntities: any[]
+    targetEntities: any[],
+    sourceSystem: string,
+    targetSystem: string,
+    targetScopeId: string
   }): Promise<void> {
     await this.context.logActivity('info', `[Orchestrator] Starting orchestration for migration ${params.migrationId}`);
 
@@ -117,7 +120,6 @@ export class OrchestratorAgent extends AgentBase {
       await this.context.logActivity('info', '[Orchestrator] Generating new Execution Plan...');
       const planner = new TransferPlannerAgent(this.provider, this.context);
       plan = await planner.execute({
-        mappingRules: params.mappingRules,
         sourceSchema: params.sourceSchema,
         targetSchema: params.targetSchema,
         sourceEntities: params.sourceEntities,

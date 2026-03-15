@@ -467,6 +467,10 @@ const MigrationChatCard = ({
     if (isStep2WaitingForName) {
       return "Gib den gewünschten Namen für den Zielbereich ein...";
     }
+
+    if (migrationData.current_step === 4 && migrationData.scopeConfig?.execution_plan) {
+      return "Schlage Änderungen am Plan vor...";
+    }
     
     return "Nächsten Schritt starten oder Befehl eingeben...";
   }, [isStepRunning, isConsultantThinking, migrationData.current_step, migrationData.step_status, migrationData.scopeConfig]);

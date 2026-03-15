@@ -1318,10 +1318,12 @@ async def create_mapping_chat_message(id: str, payload: CreateMappingChatMessage
             current_mappings = step6_row['raw_json'].get('mappings', []) if step6_row and step6_row['raw_json'] else []
             
             # Get Migration details (Source/Target Systems)
-            cur.execute("SELECT source_system, target_system FROM public.migrations WHERE id = %s", (id,))
+            cur.execute("SELECT source_system, target_system, scope_config FROM public.migrations WHERE id = %s", (id,))
             migration_info = cur.fetchone()
             source_system = migration_info["source_system"] if migration_info else None
             target_system = migration_info["target_system"] if migration_info else None
+            scope_config = migration_info["scope_config"] if migration_info else {}
+            execution_plan = scope_config.get("execution_plan") if scope_config else None
 
             # Load Schemas
             import re
@@ -1375,8 +1377,9 @@ async def create_mapping_chat_message(id: str, payload: CreateMappingChatMessage
 
             # 4. Enqueue Job for Rules Agent
             if payload.role == 'user':
-                # Use Enhancement Agent if we are at step 5 (Enhancement) OR if step 4 is completed
-                is_enhancement_phase = (current_step == 5) or (current_step == 4 and step_status == 'completed')
+                # Use Enhancement Agent if we are at step 5 (Enhancement)
+                # If we are at step 4, we use Mapping Rules Agent (even if completed due to planning phase)
+                is_enhancement_phase = (current_step == 5)
                 agent_name = "runEnhancementRules" if is_enhancement_phase else "runMappingRules"
                 
                 # Fetch current rules for context
@@ -1389,7 +1392,8 @@ async def create_mapping_chat_message(id: str, payload: CreateMappingChatMessage
                         "sourceEntities": source_entities,
                         "sourceSchema": source_schema,
                         "history": history,
-                        "migrationId": id
+                        "migrationId": id,
+                        "executionPlan": execution_plan
                     }
                 }
 

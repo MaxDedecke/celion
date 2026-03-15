@@ -480,6 +480,7 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
 
         await orchestrator.execute({
             migrationId,
+            initialPlan: scopeConfig.execution_plan,
             mappingRules: allRules,
             sourceSchema: sourceScheme,
             targetSchema: targetScheme,

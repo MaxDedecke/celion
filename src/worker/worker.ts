@@ -562,7 +562,8 @@ async function processJob(job: any) {
           result = agentResult.result || agentResult;
           
           if (agentResult.isEarlyReturnForPlan) {
-              await pool.query('UPDATE migrations SET step_status = $1, status = $2 WHERE id = $3', ['completed', 'processing', migrationId]);
+              await pool.query('UPDATE migrations SET step_status = $1, status = $2, consultant_status = $3 WHERE id = $4', ['completed', 'processing', 'idle', migrationId]);
+              await publishEvent(migrationId, 'status_updated', { consultant_status: 'idle' });
               await pool.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
               return;
           }
@@ -768,13 +769,16 @@ async function processJob(job: any) {
       await pool.query('UPDATE migrations SET consultant_status = $1 WHERE id = $2', ['thinking', migrationId]);
       await publishEvent(migrationId, 'status_updated', { consultant_status: 'thinking' });
       
-      const { rows: migrationRows } = await pool.query('SELECT source_system FROM migrations WHERE id = $1', [migrationId]);
+      const { rows: migrationRows } = await pool.query('SELECT source_system, scope_config FROM migrations WHERE id = $1', [migrationId]);
       const sourceSystem = migrationRows[0]?.source_system;
+      const executionPlan = migrationRows[0]?.scope_config?.execution_plan;
 
       const messageGenerator = runAnswerAgent(userMessage, {
           ...context,
           migrationId,
-          sourceSystem
+          sourceSystem,
+          executionPlan,
+          dbPool: pool
       });
       let assistantResponse = "";
       for await (const message of messageGenerator) {
@@ -1162,10 +1166,11 @@ async function processJob(job: any) {
           await writeChatMessage(migrationId, 'assistant', `Schritt ${currentStepNumber} **Data Staging** erfolgreich abgeschlossen (${totalImported} Objekte geladen).`, currentStepNumber);
           const nextStepIndex = currentStepNumber;
           if (nextStepIndex < AGENT_WORKFLOW_STEPS.length) {
+              const nextStep = AGENT_WORKFLOW_STEPS[nextStepIndex];
               const actionContent = JSON.stringify({
                   type: "action",
                   actions: [
-                    { action: "open-mapping-ui", label: "Mappings erstellen", variant: "primary" },
+                    { action: "continue", label: `Weiter zu Schritt ${nextStepIndex + 1} ${nextStep.title}`, variant: "primary" },
                     { action: "retry", label: `Schritt ${currentStepNumber} wiederholen`, variant: "outline", stepNumber: currentStepNumber }
                   ]
               });
@@ -1197,7 +1202,7 @@ async function processJob(job: any) {
             return rows[0];
         },
         getMigrationDetails: async () => {
-            const { rows } = await pool.query('SELECT source_system, target_system, context FROM migrations WHERE id = $1', [migrationId]);
+            const { rows } = await pool.query('SELECT source_system, target_system, scope_config, context FROM migrations WHERE id = $1', [migrationId]);
             return rows[0];
         },
         dbPool: pool
@@ -1210,6 +1215,14 @@ async function processJob(job: any) {
           isLogicalFailure = !!agentResult.isLogicalFailure;
           failureMessage = agentResult.error || "";
           result = agentResult.result || agentResult;
+
+          if (agentResult.isEarlyReturnForPlan) {
+              await pool.query('UPDATE migrations SET step_status = $1, status = $2, consultant_status = $3 WHERE id = $4', ['completed', 'processing', 'idle', migrationId]);
+              await publishEvent(migrationId, 'status_updated', { consultant_status: 'idle' });
+              await pool.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+              return;
+          }
+
           resultMessageText = JSON.stringify(result);
         } catch (err) {
           isLogicalFailure = true;
@@ -1224,33 +1237,33 @@ async function processJob(job: any) {
         resultMessageText = failureMessage;
       }
 
-      if (!isLogicalFailure) {
-        await saveStep6Result(pool, migrationId, result);
+      if (!isLogicalFailure && result && !result.isEarlyReturnForPlan) {
+        await saveStep4Result(pool, migrationId, result);
       }
 
-      const finishClient6 = await pool.connect();
+      const finishClient4 = await pool.connect();
       try {
-        await finishClient6.query('BEGIN');
-        await finishClient6.query('UPDATE migration_steps SET status = $1, result = $2, status_message = $3 WHERE id = $4', [
+        await finishClient4.query('BEGIN');
+        await finishClient4.query('UPDATE migration_steps SET status = $1, result = $2, status_message = $3 WHERE id = $4', [
           isLogicalFailure ? 'failed' : 'completed', result, isLogicalFailure ? failureMessage : 'Mapping verification completed.', step_id,
         ]);
 
-        const { rows: migRowsFinal } = await finishClient6.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
+        const { rows: migRowsFinal } = await finishClient4.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
         const migDataFinal = migRowsFinal[0];
         const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migDataFinal?.workflow_state, stepRecord.workflow_step_id || step_id, result, isLogicalFailure);
         
-        await finishClient6.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
+        await finishClient4.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
           nextState, progress, isLogicalFailure ? 'paused' : 'processing', isLogicalFailure ? 'failed' : 'completed', currentStepNumber, migrationId,
         ]);
-        await finishClient6.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+        await finishClient4.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
         
         if (!isLogicalFailure) {
-          await incrementGlobalStats(finishClient6, { steps: 1, success: 1, total_agents: 1 });
+          await incrementGlobalStats(finishClient4, { steps: 1, success: 1, total_agents: 1 });
         } else {
-          await incrementGlobalStats(finishClient6, { total_agents: 1 });
+          await incrementGlobalStats(finishClient4, { total_agents: 1 });
         }
 
-        await finishClient6.query('COMMIT');
+        await finishClient4.query('COMMIT');
 
         if (isLogicalFailure) {
           if (result?.verification_report && result.verification_report.is_complete === false) {
@@ -1480,7 +1493,8 @@ async function processJob(job: any) {
           result = agentResult.result || agentResult;
           
           if (agentResult.isEarlyReturnForPlan) {
-              await pool.query('UPDATE migrations SET step_status = $1, status = $2 WHERE id = $3', ['completed', 'processing', migrationId]);
+              await pool.query('UPDATE migrations SET step_status = $1, status = $2, consultant_status = $3 WHERE id = $4', ['completed', 'processing', 'idle', migrationId]);
+              await publishEvent(migrationId, 'status_updated', { consultant_status: 'idle' });
               await pool.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
               return;
           }

@@ -1,6 +1,7 @@
 import { AgentBase } from '../core/AgentBase';
 import { ChatMessage } from '../core/LlmProvider';
-import { loadObjectScheme } from '../../lib/scheme-loader';
+import { loadObjectScheme, loadScheme } from '../../lib/scheme-loader';
+import { TransferPlannerAgent } from '../dataTransfer/planner/TransferPlannerAgent';
 
 export class MappingVerificationAgent extends AgentBase {
   async execute(params: any): Promise<any> {
@@ -10,8 +11,8 @@ export class MappingVerificationAgent extends AgentBase {
         return { success: false, error: "Database pool not provided in context", isLogicalFailure: true };
     }
 
-    console.log(`[MappingVerificationAgent] Running Mapping Verification for migration ${migrationId}`);
-    await this.context.writeChatMessage('assistant', 'Verifiziere Mapping-Konfiguration...', stepNumber);
+    const migrationDetails = await this.context.getMigrationDetails();
+    const scopeConfig = migrationDetails?.scope_config || {};
 
     const { rows: migRows6 } = await dbPool.query('SELECT source_system, target_system FROM migrations WHERE id = $1', [migrationId]);
     const sSys6 = migRows6[0]?.source_system;
@@ -22,24 +23,51 @@ export class MappingVerificationAgent extends AgentBase {
     }
 
     const { rows: s3Rows6 } = await dbPool.query('SELECT entity_name, count, is_ignored FROM step_3_results WHERE migration_id = $1', [migrationId]);
-    const userRelatedTerms = ['user', 'member', 'participant', 'assignee', 'owner', 'creator', 'author', 'collaborator'];
-    const metaEntityTerms = ['story', 'comment', 'activity', 'attachment', 'history', 'event', 'audit'];
-    const structuralTerms = ['workspace', 'team', 'project', 'portfolio', 'folder', 'space', 'list', 'section'];
     
-    const sourceEntities = s3Rows6
-      .map((r: any) => ({ name: r.entity_name, count: r.count, isIgnored: r.is_ignored }))
-      .filter((ent: any) => {
-        const nameLower = ent.name.toLowerCase();
-        const isUserRelated = userRelatedTerms.some(term => nameLower.includes(term));
-        const isMetaEntity = metaEntityTerms.some(term => nameLower.includes(term));
+    // Phase 1: Planning (If no plan exists yet)
+    if (!scopeConfig.execution_plan) {
+        console.log(`[MappingVerificationAgent] Phase 1: Generating Execution Plan for migration ${migrationId}`);
+        await this.context.writeChatMessage('assistant', 'Erstelle initialen Ausführungsplan (Phase 1)...', stepNumber);
         
-        // Only include structural terms if they are NOT ignored and have count > 0
-        // BUT if they are common structural objects like 'project' or 'workspace', 
-        // we might want to be more lenient if the user didn't map them explicitly 
-        // because the migration script often creates them automatically.
+        const sourceSchema = await loadScheme(sSys6);
+        const targetSchema = await loadScheme(tSys6);
         
-        return ent.count > 0 && !isUserRelated && !isMetaEntity;
-      });
+        const sourceEntitiesList = s3Rows6.map((r: any) => r.entity_name);
+        const targetObjectSpecs = await loadObjectScheme(tSys6);
+        const targetEntitiesList = targetObjectSpecs ? targetObjectSpecs.objects.map((o: any) => o.key) : [];
+
+        const planner = new TransferPlannerAgent(this.provider, this.context);
+        try {
+            const plan = await planner.execute({
+                sourceSchema,
+                targetSchema,
+                sourceEntities: sourceEntitiesList,
+                targetEntities: targetEntitiesList
+            });
+
+            const updatedScopeConfig = { ...scopeConfig, execution_plan: plan };
+            await dbPool.query('UPDATE migrations SET scope_config = $1 WHERE id = $2', [JSON.stringify(updatedScopeConfig), migrationId]);
+
+            const message = `Ich habe einen **Ausführungsplan** für die Migration entworfen.\n\nFolgende Schritte sind vorgesehen:\n${plan.tasks.map(t => `- **${t.description}** (${t.sourceEntityType} ➔ ${t.targetEntityType})`).join('\n')}\n\nBitte prüfe den Plan im Chat. Wenn du Änderungswünsche hast, teile sie mir mit. Wenn alles passt, bestätige den Plan und wechsle in den "Mappings"-Tab (oben rechts), um die Mapping-Regeln zu erstellen.`;
+            
+            const actionContent = JSON.stringify({
+                type: "action",
+                actions: [
+                  { action: "open-mapping-ui", label: "Plan bestätigen", variant: "primary" }
+                ]
+            });
+
+            await this.context.writeChatMessage('assistant', message, stepNumber);
+            await this.context.writeChatMessage('system', actionContent, stepNumber);
+
+            return { isEarlyReturnForPlan: true, success: true, result: plan };
+        } catch (error: any) {
+            return { success: false, error: `Plan-Generierung fehlgeschlagen: ${error.message}`, isLogicalFailure: true };
+        }
+    }
+
+    console.log(`[MappingVerificationAgent] Running Mapping Verification for migration ${migrationId}`);
+    await this.context.writeChatMessage('assistant', 'Verifiziere Mapping-Konfiguration auf Basis des Plans...', stepNumber);
 
     const { rows: ruleRows6 } = await dbPool.query('SELECT * FROM public.mapping_rules WHERE migration_id = $1', [migrationId]);
 
@@ -54,17 +82,20 @@ export class MappingVerificationAgent extends AgentBase {
 Du bist ein Mapping Verification Agent. Deine Aufgabe ist es, die bestehenden Mapping-Regeln für eine Migration zu überprüfen.
 
 ### DEINE ZIELE:
-1. **Fokus auf Inventar (Schritt 3) & Semantische Zuordnung:** Beziehe dich auf die in "Source Entities" aufgeführten Entitäten.
-   - **WICHTIG:** Ein Inventar-Item (z.B. "Project Tasks" oder "Task Details") gilt als VOLLSTÄNDIG gemappt, wenn entsprechende Regeln für den zugehörigen technischen Objekt-Key (z.B. "task") in den Mapping Rules existieren.
-   - Melde fehlende Mappings NUR, wenn für eine Entität aus dem Inventar WEDER unter ihrem Namen NOCH unter ihrem technischen Key (laut Specs) Regeln existieren.
-   - **Strukturelle Objekte:** Objekte wie 'workspace', 'team', 'project', 'section' oder 'list' werden oft automatisch durch die Migrations-Logik angelegt. Wenn für diese KEIN explizites Mapping existiert, ist das KEIN FEHLER, solange die Kern-Daten (wie Tasks/Issues) gemappt sind.
-2. **Keine User-Migration:** Es werden KEINE User, Member, Assignees oder Collaborators migriert. Ignoriere diese komplett.
-3. **Vollständigkeit:** Prüfe, ob für alle RELEVANTEN Entitäten (Tasks, Subtasks, Custom Fields) Mappings existieren.
-   - Ignorierte Entitäten (isIgnored: true) müssen NICHT gemappt werden.
-4. **Validität & Semantik:** Bewerte, ob die Mappings semantisch sinnvoll sind.
-   - **IGNORE-Regeln:** Wenn eine Regel den Typ 'IGNORE' hat, ist dies eine gültige Zuordnung.
-5. **Pflichtfelder:** Prüfe, ob alle Pflichtfelder im Zielsystem abgedeckt werden.
-   - Beachte: Viele "Required" Felder im Zielsystem werden durch Standardwerte oder IDs der neu angelegten Container (Projekt/Workspace) automatisch gefüllt. Sei hier nachsichtig, außer es fehlt etwas offensichtlich Kritisches wie ein 'Name' oder 'Title'.
+1. **Fokus auf den Ausführungsplan:** Der bereitgestellte Execution Plan ist deine absolute Referenz. Er definiert, welche Übertragungen (Tasks) geplant sind.
+   - Prüfe für **jeden Task** im Plan, ob passende Mapping-Regeln existieren.
+   - Ein Task (z.B. source: 'workspace' -> target: 'spaces') gilt als abgedeckt, wenn es mindestens eine Mapping-Regel für dieses Paar gibt.
+   - **WICHTIG:** Sei tolerant bei Plural/Singular (z.B. 'task' vs 'tasks', 'space' vs 'spaces', 'folder' vs 'folders'). Wenn der Plan 'tasks' sagt und die Regel 'task', ist das korrekt.
+   - **WICHTIG:** Sei tolerant bei Benennungen (z.B. 'lists_in_folders' im Plan vs 'list' in den Regeln). Wenn das Zielobjekt im Kern das gleiche ist, akzeptiere es.
+2. **Keine User-Migration:** Celion migriert KEINE Benutzer. Falls im Plan ein Task zur Migration von Benutzern (User, Member, Assignee) steht, IGNORE diesen Task komplett. Er gilt als "nicht relevant für die Verifizierung".
+3. **Validität & Semantik:** Bewerte, ob die Mappings semantisch sinnvoll sind.
+   - **IGNORE-Regeln:** Eine 'IGNORE' Regel für ein Quell-Feld ist eine gültige Zuordnung.
+4. **Pflichtfelder:** Prüfe, ob kritische Felder (wie 'Name' oder 'Title') gemappt sind.
+
+### FEHLERMELDUNG:
+Falls ein Task aus dem Plan (der kein User-Task ist) nicht durch Mappings abgedeckt ist:
+- Gib in \`missing_entities\` die **Beschreibung** des Tasks (z.B. "Migration von Projekten") an.
+- Erkläre in der \`summary\` genau, welches Paar (Source -> Target) laut Plan fehlt.
 
 ### OUTPUT FORMAT:
 Antworte ausschließlich mit einem validen JSON-OBjekt im folgenden Format:
@@ -89,8 +120,8 @@ Antworte ausschließlich mit einem validen JSON-OBjekt im folgenden Format:
     `;
 
     const userContext = `
-Source Entities (Inventory):
-${JSON.stringify(sourceEntities, null, 2)}
+Ausführungsplan (Execution Plan):
+${JSON.stringify(scopeConfig.execution_plan, null, 2)}
 
 Existing Mapping Rules:
 ${JSON.stringify(ruleRows6, null, 2)}

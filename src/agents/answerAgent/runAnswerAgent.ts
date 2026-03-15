@@ -1,13 +1,15 @@
 import { Message } from '../openai/types';
 import { buildOpenAiHeaders, resolveOpenAiConfig } from '../openai/openaiClient';
+import { Pool } from 'pg';
 
 const SYSTEM_PROMPT = `
 Du bist der Celion Migration Consultant. Deine Aufgabe ist es, den User während des Migrationsprozesses zu beraten.
 
 ### DEINE RESSOURCEN:
 1.  **Migrations-Kontext:** Dir werden (falls vorhanden) die Ergebnisse der bisherigen Schritte zur Verfügung gestellt.
-2.  **Live-Daten (Neo4j):** Du kannst live auf die importierten Daten zugreifen.
-3.  **Vektorsuche:** Du kannst eine semantische Suche durchführen.
+2.  **Ausführungsplan (Execution Plan):** Dir wird der aktuelle Ausführungsplan übergeben, falls einer existiert. Du kannst mit dem User über diesen Plan diskutieren und ihn anpassen.
+3.  **Live-Daten (Neo4j):** Du kannst live auf die importierten Daten zugreifen.
+4.  **Vektorsuche:** Du kannst eine semantische Suche durchführen.
 
 ### DATEN-STRUKTUR IN NEO4J:
 - **Labels:** Das Label entspricht meist dem Systemnamen (z.B. ':ClickUp', ':JiraCloud').
@@ -19,16 +21,16 @@ Du bist der Celion Migration Consultant. Deine Aufgabe ist es, den User während
 ### DEINE TOOLS:
 - **query_neo4j:** Führe Cypher-Queries aus. 
   - Nutze IMMER '{migration_id: $migrationId}' in deiner Abfrage.
-  - Beispiel für Tasks: "MATCH (n {migration_id: $migrationId}) WHERE n.entity_type = 'tasks' RETURN n.name, n.status LIMIT 5"
 - **vector_search_neo4j:** Suche semantisch nach Inhalten.
 - **vectorize_data:** Bereite Daten für die Vektorsuche vor.
+- **update_execution_plan:** Aktualisiere den Ausführungsplan (Execution Plan) nach Absprache mit dem User. Nutze dieses Tool, wenn der User Aufgaben entfernen, hinzufügen oder ändern möchte (z.B. "Migriere keine Status", "Ändere das Ziel von Tasks auf Issues").
 
 ### DEINE REGELN:
 - Antworte IMMER auf Deutsch.
 - Sei professionell, präzise und fasse dich kurz.
 - Vermeide unnötige Einleitungen und Füllsätze. Antworte direkt auf die Frage.
 - Nutze Cypher, um konkrete Fragen zu den Daten zu beantworten.
-- Falls eine Query leere Ergebnisse liefert, versuche 'DISTINCT n.entity_type' abzufragen, um zu sehen, ob die Benennung anders ist (z.B. 'task' vs 'tasks').
+- Wenn der User den Ausführungsplan ändern will, aktualisiere ihn zwingend über das \`update_execution_plan\` Tool. Bestätige danach kurz die Änderung.
 
 ### FORMATIERUNG:
 - Nutze Markdown-Tabellen für Daten-Ergebnisse.
@@ -75,6 +77,36 @@ const TOOLS = [
         properties: {}
       }
     }
+  },
+  {
+    type: "function",
+    function: {
+      name: "update_execution_plan",
+      description: "Aktualisiert den Ausführungsplan (Execution Plan) in der Datenbank. Sende IMMER den GESAMTEN neuen Plan (alle Tasks), auch wenn du nur einen entfernst oder änderst.",
+      parameters: {
+        type: "object",
+        properties: {
+          tasks: {
+            type: "array",
+            description: "Die vollständige Liste der Aufgaben in der korrekten Ausführungsreihenfolge.",
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "string", description: "Eindeutige ID des Tasks" },
+                description: { type: "string", description: "Beschreibung des Tasks" },
+                sourceEntityType: { type: "string", description: "Quell-Entität" },
+                targetEntityType: { type: "string", description: "Ziel-Entität" },
+                dependsOn: { type: "array", items: { type: "string" }, description: "Abhängigkeiten (IDs)" },
+                status: { type: "string", description: "Immer 'pending'" },
+                retries: { type: "number", description: "Immer 0" }
+              },
+              required: ["id", "description", "sourceEntityType", "targetEntityType", "dependsOn"]
+            }
+          }
+        },
+        required: ["tasks"]
+      }
+    }
   }
 ];
 
@@ -85,6 +117,8 @@ export async function* runAnswerAgent(
     history: { role: string; content: string }[];
     migrationId: string;
     sourceSystem: string;
+    executionPlan?: any;
+    dbPool?: Pool;
   }
 ): AsyncGenerator<Message> {
   const { apiKey, baseUrl, projectId } = await resolveOpenAiConfig();
@@ -102,6 +136,9 @@ ${context.sourceSystem}
 
 ### AKTUELLE ERGEBNISSE DER SCHRITTE:
 ${JSON.stringify(context.stepResults, null, 2)}
+
+### AKTUELLER AUSFÜHRUNGSPLAN (Execution Plan):
+${context.executionPlan ? JSON.stringify(context.executionPlan, null, 2) : "Noch kein Plan vorhanden."}
 
 ### BISHERIGER VERLAUF:
 ${historyPrompt}
@@ -181,6 +218,26 @@ ${userMessage}
                 method: 'POST'
             });
             result = await queryResponse.json();
+          } else if (functionName === 'update_execution_plan') {
+            if (context.dbPool) {
+                const { rows } = await context.dbPool.query('SELECT scope_config FROM migrations WHERE id = $1', [context.migrationId]);
+                const existingConfig = rows[0]?.scope_config || {};
+                
+                // Ensure default values for new tasks
+                const updatedTasks = args.tasks.map((t: any) => ({
+                    ...t,
+                    status: t.status || 'pending',
+                    retries: t.retries || 0
+                }));
+                
+                const updatedPlan = { tasks: updatedTasks };
+                existingConfig.execution_plan = updatedPlan;
+                
+                await context.dbPool.query('UPDATE migrations SET scope_config = $1 WHERE id = $2', [JSON.stringify(existingConfig), context.migrationId]);
+                result = { success: true, message: "Execution Plan wurde erfolgreich in der Datenbank aktualisiert." };
+            } else {
+                result = { error: "Database pool not available in Answer Agent context." };
+            }
           } else {
             result = { error: `Unknown tool: ${functionName}` };
           }
