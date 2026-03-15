@@ -34,7 +34,11 @@ export class MappingVerificationAgent extends AgentBase {
         
         const sourceEntitiesList = s3Rows6.map((r: any) => r.entity_name);
         const targetObjectSpecs = await loadObjectScheme(tSys6);
-        const targetEntitiesList = targetObjectSpecs ? targetObjectSpecs.objects.map((o: any) => o.key) : [];
+        let targetEntitiesList = targetObjectSpecs ? targetObjectSpecs.objects.map((o: any) => o.key) : [];
+
+        if (targetSchema?.exportInstructions?.sequence) {
+            targetEntitiesList = targetEntitiesList.filter((key: string) => targetSchema.exportInstructions.sequence.includes(key));
+        }
 
         const planner = new TransferPlannerAgent(this.provider, this.context);
         try {

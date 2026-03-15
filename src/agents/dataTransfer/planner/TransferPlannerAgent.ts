@@ -27,6 +27,7 @@ Identifiziere logische Paare für die Migration (z.B. "Asana Project" -> "ClickU
 - **WICHTIG (QUELLSYSTEM):** Wenn eine Entität aus den QUELL-ENTITÄTEN (z.B. 'project_tasks') gemappt wird, suche das dazu passende Objekt im QUELL-SCHEMA und nutze dessen 'key' (z.B. 'task') für das Feld 'sourceEntityType'. Verwende für 'sourceEntityType' **ausschließlich** die 'key'-Werte aus dem 'QUELL-SCHEMA'.
   - **Beispiel:** Wenn in den QUELL-ENTITÄTEN 'project_tasks' steht, aber im QUELL-SCHEMA das Objekt den Key 'task' hat, dann schreibe 'task' in das Feld 'sourceEntityType'.
 - **WICHTIG (ZIELSYSTEM):** Nutze für das Ziel-System IMMER die 'key'-Werte (Singular-Formen) aus dem 'ZIEL-SCHEMA' (z.B. "space", "task", "folder") für das Feld 'targetEntityType'.
+- **STRIKTE ZIEL-AUSWAHL:** Du darfst NUR Ziel-Entitäten aus der Liste 'ZIEL-ENTITÄTEN' verwenden. Wenn für eine Quell-Entität (z.B. 'workspace' oder 'team') kein passendes sinnvolles Ziel in der 'ZIEL-ENTITÄTEN' Liste existiert, dann IGNORIERE diese Quell-Entität komplett und erstelle KEINEN Task dafür! (Erzwinge keine unpassenden Mappings).
 - **BENUTZER-MIGRATION:** Celion unterstützt KEINE automatische Migration von Benutzern (Users/Members). Plane DAHER KEINEN Task für die Migration von Benutzern ein. (Der User wird über das Mapping 'assignee' -> 'assignee' später referenziert, aber nicht als Entität migriert).
 
 ### DEIN OUTPUT (JSON via Tool Call):

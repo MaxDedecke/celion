@@ -118,12 +118,18 @@ export class OrchestratorAgent extends AgentBase {
     
     if (!plan) {
       await this.context.logActivity('info', '[Orchestrator] Generating new Execution Plan...');
+      
+      let targetEntitiesList = params.targetEntities;
+      if (params.targetSchema?.exportInstructions?.sequence) {
+          targetEntitiesList = targetEntitiesList.filter((key: string) => params.targetSchema.exportInstructions.sequence.includes(key));
+      }
+      
       const planner = new TransferPlannerAgent(this.provider, this.context);
       plan = await planner.execute({
         sourceSchema: params.sourceSchema,
         targetSchema: params.targetSchema,
         sourceEntities: params.sourceEntities,
-        targetEntities: params.targetEntities
+        targetEntities: targetEntitiesList
       });
       await this.context.logActivity('info', `[Orchestrator] Generated plan with ${plan.tasks.length} tasks.`);
     }
