@@ -62,6 +62,8 @@ IDs: ${JSON.stringify(scopeIds)}
    - Nutze die vorhandenen IDs (${JSON.stringify(scopeIds)}), um API-Platzhalter zu füllen.
    - Falls eine 'team_id' oder ähnliche Root-ID benötigt wird, plane zuerst einen Aufruf ein, um diese zu ermitteln (siehe Navigation Guide).
    - Der Plan MUSS die logische Hierarchie einhalten.
+   - **WICHTIG:** Wenn der Nutzer einen spezifischen Scope gewählt hat (nicht 'Alles'), dann MUSST du Endpunkte bevorzugen, die sich auf diesen Scope beziehen (z.B. '/projects/{project_id}/tasks' statt des globalen '/tasks'). Ein globaler Endpunkt wie 'tasks' würde zu viele irrelevante Daten erfassen und darf bei einem spezifischen Scope NICHT verwendet werden, es sei denn, es gibt keine andere Möglichkeit.
+   - **WICHTIG:** Benenne die Entitäten in deinem Plan exakt so, wie sie in den Endpunkten heißen (z.B. nutze 'project_tasks' anstatt sie zu 'tasks' umzubenennen).
 4. Erstelle einen Plan im JSON-Format.
 
 ### JSON OUTPUT FORMAT:
@@ -180,12 +182,13 @@ IDs: ${JSON.stringify(scopeIds)}
 3. Wenn ein Schritt IDs benötigt (z.B. {folder_id}), die du nicht in den 'BEKANNTE SCOPE IDs' hast, MUSST du diese aus den API-Antworten der VORHERIGEN Schritte extrahieren. Rufe das Tool dann ggf. in einer Schleife (oder mehrfach) für alle gefundenen IDs auf.
 4. Generiere NIEMALS Fake-IDs.
 5. Führe für jeden relevanten Endpunkt aus dem Plan Tool-Calls aus.
+6. **WICHTIG:** Benenne die gesammelten Entities im Output exakt so, wie sie in den Endpunkten heißen (z.B. 'project_tasks' anstatt sie zu 'tasks' umzubenennen). Belasse die Bezeichnungen spezifisch!
 
 ### FINAL JSON FORMAT:
 Sobald alle Schritte ausgeführt und alle Daten gesammelt wurden, antworte mit folgendem JSON:
 {
   "entities": [
-    { "name": "string (z.B. tasks, lists)", "count": number (Echter totalCount aus der API), "complexity": "low" | "medium" | "high" }
+    { "name": "string (exakter Endpunkt/Objekt-Name, z.B. project_tasks, lists)", "count": number (Echter totalCount aus der API), "complexity": "low" | "medium" | "high" }
   ],
   "coverage": {
     "totalEndpoints": number,
@@ -276,58 +279,6 @@ Sobald alle Schritte ausgeführt und alle Daten gesammelt wurden, antworte mit f
 
     if (!phase2Result || !phase2Result.entities) {
          return { success: false, error: "Ausführung fehlgeschlagen oder kein gültiges Ergebnis geliefert.", isLogicalFailure: true };
-    }
-
-    // --- Phase 3: Inventory Normalization ---
-    try {
-        const sourceObjectSpecs = await loadObjectScheme(sourceSystem);
-        if (sourceObjectSpecs && phase2Result.entities && phase2Result.entities.length > 0) {
-            await this.context.writeChatMessage('assistant', 'Phase 3: Normalisierung der Inventar-Daten...', stepNumber);
-            
-            const normalizationPrompt = `
-            Du bist ein Data Normalization Agent. Dein Ziel ist es, ein rohes System-Inventar auf standardisierte Objekt-Keys zu bereinigen.
-
-            ### RAW INVENTORY:
-            ${JSON.stringify(phase2Result.entities)}
-
-            ### TARGET OBJECT KEYS (aus der technischen Spezifikation):
-            ${JSON.stringify(sourceObjectSpecs.objects.map((o: any) => ({ key: o.key, displayName: o.displayName })))}
-
-            ### SCOPE KONFIGURATION:
-            ${JSON.stringify(scopeConfig)}
-
-            ### AUFGABE:
-            1. Analysiere jedes Item im 'Raw Inventory'.
-            2. Ordne es dem passendsten 'key' aus den 'Target Object Keys' zu. (Beispiel: 'project_tasks' -> 'task', 'sections' -> 'section').
-            3. Führe Duplikate zusammen (Summiere die 'count' Werte).
-            4. Falls ein Item zu absolut keinem technischen Key passt, behalte es unter seinem ursprünglichen Namen bei.
-
-            ### OUTPUT FORMAT:
-            {
-              "entities": [
-                { "name": "technical_key", "count": number, "complexity": "low|medium|high" }
-              ],
-              "normalization_summary": "Kurze Beschreibung was zusammengeführt wurde."
-            }
-            `;
-
-            const normResponse = await this.provider.chat([
-                { role: "system", content: "Du bist ein Experte für Daten-Strukturen. Antworte im JSON-Format." },
-                { role: "user", content: normalizationPrompt }
-            ], undefined, { response_format: { type: "json_object" } });
-
-            if (normResponse.content) {
-                const normResult = JSON.parse(normResponse.content);
-                if (normResult.entities) {
-                    phase2Result.raw_entities_pre_normalization = [...phase2Result.entities];
-                    phase2Result.entities = normResult.entities;
-                    phase2Result.normalization_summary = normResult.normalization_summary;
-                    await this.context.writeChatMessage('assistant', `Inventar bereinigt: ${normResult.normalization_summary}`, stepNumber);
-                }
-            }
-        }
-    } catch (normErr: any) {
-        console.error(`[CapabilityDiscoveryAgent] Normalization failed:`, normErr);
     }
 
     const result = phase2Result;
