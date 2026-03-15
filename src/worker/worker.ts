@@ -282,7 +282,15 @@ async function processJob(job: any) {
 
   // Start-Nachricht im Chat (Sofort sichtbar)
   if (!conversationalAgents.includes(agentName) && (agentParams?.mode || 'source') === 'source') {
-    await writeChatMessage(migrationId, 'assistant', `Starte Schritt ${currentStepNumber}: **${stepTitle}**...`, currentStepNumber);
+    const { rows: existingMsgs } = await pool.query(
+      "SELECT id FROM migration_chat_messages WHERE migration_id = $1 AND step_number = $2 LIMIT 1",
+      [migrationId, currentStepNumber]
+    );
+    if (existingMsgs.length > 0) {
+      await writeChatMessage(migrationId, 'assistant', `Fortsetzung Schritt ${currentStepNumber}: **${stepTitle}**...`, currentStepNumber);
+    } else {
+      await writeChatMessage(migrationId, 'assistant', `Starte Schritt ${currentStepNumber}: **${stepTitle}**...`, currentStepNumber);
+    }
   }
 
 
@@ -1279,8 +1287,14 @@ async function processJob(job: any) {
             
             if (result.verification_report.target_readiness?.missing_required_fields && result.verification_report.target_readiness.missing_required_fields.length > 0) {
               message += `**Fehlende Pflichtfelder:**\n`;
-              result.verification_report.target_readiness.missing_required_fields.forEach((f) => {
-                message += `- ${f.targetEntity}: ${f.field}\n`;
+              result.verification_report.target_readiness.missing_required_fields.forEach((f: any) => {
+                if (typeof f === 'string') {
+                  message += `- ${f}\n`;
+                } else if (f && typeof f === 'object') {
+                  const entity = f.targetEntity || f.entity || f.object || "Unbekannt";
+                  const field = f.field || f.property || f.name || "Unbekannt";
+                  message += `- ${entity}: ${field}\n`;
+                }
               });
             }
 
@@ -1313,13 +1327,13 @@ async function processJob(job: any) {
           await logActivity(migrationId, 'success', 'Mapping Verification erfolgreich abgeschlossen.');
         }
       } catch (e) {
-        await finishClient6.query('ROLLBACK');
+        await finishClient4.query('ROLLBACK');
         throw e;
       } finally {
         // Reset status to idle
         await pool.query('UPDATE migrations SET consultant_status = $1 WHERE id = $2', ['idle', migrationId]);
         await publishEvent(migrationId, 'status_updated', { consultant_status: 'idle' });
-        finishClient6.release();
+        finishClient4.release();
       }
 
     } else if (agentName === 'runMappingRules' || agentName === 'runEnhancementRules') {

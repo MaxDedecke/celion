@@ -86,7 +86,8 @@ Du bist ein Mapping Verification Agent. Deine Aufgabe ist es, die bestehenden Ma
    - Prüfe für **jeden Task** im Plan, ob passende Mapping-Regeln existieren.
    - Ein Task (z.B. source: 'workspace' -> target: 'spaces') gilt als abgedeckt, wenn es mindestens eine Mapping-Regel für dieses Paar gibt.
    - **WICHTIG:** Sei tolerant bei Plural/Singular (z.B. 'task' vs 'tasks', 'space' vs 'spaces', 'folder' vs 'folders'). Wenn der Plan 'tasks' sagt und die Regel 'task', ist das korrekt.
-   - **WICHTIG:** Sei tolerant bei Benennungen (z.B. 'lists_in_folders' im Plan vs 'list' in den Regeln). Wenn das Zielobjekt im Kern das gleiche ist, akzeptiere es.
+   - **WICHTIG:** Sei tolerant bei Benennungen (z.B. 'lists_in_folders' oder 'sections' im Plan vs 'list' or 'section' in den Regeln). Wenn das Zielobjekt im Kern das gleiche ist, akzeptiere es.
+   - **SPEZIALFALL ASANA:** Akzeptiere 'project_tasks' im Plan als Abdeckung durch 'task' Regeln (und umgekehrt).
 2. **Keine User-Migration:** Celion migriert KEINE Benutzer. Falls im Plan ein Task zur Migration von Benutzern (User, Member, Assignee) steht, IGNORE diesen Task komplett. Er gilt als "nicht relevant für die Verifizierung".
 3. **Validität & Semantik:** Bewerte, ob die Mappings semantisch sinnvoll sind.
    - **IGNORE-Regeln:** Eine 'IGNORE' Regel für ein Quell-Feld ist eine gültige Zuordnung.

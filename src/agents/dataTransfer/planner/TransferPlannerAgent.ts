@@ -24,8 +24,9 @@ Deine Aufgabe ist es, einen strikten, sequenziellen und abhängigkeitsbasierten 
 
 ### DEINE AUFGABE:
 Identifiziere logische Paare für die Migration (z.B. "Asana Project" -> "ClickUp folder").
-- Nutze für \`sourceEntityType\` und \`targetEntityType\` EXAKT die Begriffe aus den unten bereitgestellten Listen.
-- **WICHTIG:** Nutze für das Ziel-System IMMER die Singular-Formen aus der Liste "ZIEL-ENTITÄTEN" (z.B. "space" statt "spaces", "task" statt "tasks", "folder" statt "folders").
+- **WICHTIG (QUELLSYSTEM):** Wenn eine Entität aus den QUELL-ENTITÄTEN (z.B. 'project_tasks') gemappt wird, suche das dazu passende Objekt im QUELL-SCHEMA und nutze dessen 'key' (z.B. 'task') für das Feld 'sourceEntityType'. Verwende für 'sourceEntityType' **ausschließlich** die 'key'-Werte aus dem 'QUELL-SCHEMA'.
+  - **Beispiel:** Wenn in den QUELL-ENTITÄTEN 'project_tasks' steht, aber im QUELL-SCHEMA das Objekt den Key 'task' hat, dann schreibe 'task' in das Feld 'sourceEntityType'.
+- **WICHTIG (ZIELSYSTEM):** Nutze für das Ziel-System IMMER die 'key'-Werte (Singular-Formen) aus dem 'ZIEL-SCHEMA' (z.B. "space", "task", "folder") für das Feld 'targetEntityType'.
 - **BENUTZER-MIGRATION:** Celion unterstützt KEINE automatische Migration von Benutzern (Users/Members). Plane DAHER KEINEN Task für die Migration von Benutzern ein. (Der User wird über das Mapping 'assignee' -> 'assignee' später referenziert, aber nicht als Entität migriert).
 
 ### DEIN OUTPUT (JSON via Tool Call):
