@@ -178,7 +178,72 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                   } else if (!apiRes.ok) {
                       console.log(`[Worker] Verification check failed with status ${apiRes.status}. Proceeding assuming it might exist.`);
                   } else {
-                      console.log(`[Worker] Target container ${targetScopeId} verified.`);
+                      console.log(`[Worker] Target container ${targetScopeId} verified. Proceeding to clean up (delete) to ensure a fresh state.`);
+                      await writeChatMessage('assistant', `Der Ziel-Container (ID: ${targetScopeId}) existiert. Er wird bereinigt (gelöscht), um einen frischen Zustand für den Transfer zu gewährleisten...`, currentStepNumber);
+
+                      const cleanupPrompt = `
+Du bist ein Cloud-Integrations-Experte. Erstelle den API-Call, um einen bestehenden Haupt-Container (ID: ${targetScopeId}) vom Typ **"${targetContainerType}"** im System **${targetSystem}** komplett zu LÖSCHEN.
+
+### ZIEL-SYSTEM INFOS:
+${JSON.stringify(targetScheme, null, 2)}
+
+### ZIEL-CONNECTOR URL:
+${targetConnector.api_url}
+
+ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
+{
+  "url": "string", // Relativ zur Base-URL oder absolut
+  "method": "DELETE"
+}
+                      `;
+
+                      try {
+                          const cleanupRes = await this.provider.chat([{ role: "system", content: cleanupPrompt }], undefined, {
+                              model: "gpt-4o",
+                              response_format: { type: "json_object" }
+                          });
+
+                          const cleanupCallConfig = JSON.parse(cleanupRes.content || "{}");
+                          const cleanupUrl = cleanupCallConfig.url.startsWith('http') ? cleanupCallConfig.url : (targetScheme.apiBaseUrl || "") + cleanupCallConfig.url;
+                          
+                          const cleanupApiRes = await fetch(cleanupUrl, {
+                              method: cleanupCallConfig.method || 'DELETE',
+                              headers: targetHeaders
+                          });
+
+                          if (cleanupApiRes.ok) {
+                              console.log(`[Worker] Target container ${targetScopeId} successfully deleted for cleanup.`);
+                          } else {
+                              console.warn(`[Worker] Failed to delete target container ${targetScopeId} for cleanup. Status: ${cleanupApiRes.status}`);
+                          }
+                      } catch (cleanupErr) {
+                          console.error(`[Worker] Error during container cleanup:`, cleanupErr);
+                      }
+
+                      // Reset database
+                      await dbPool.query('DELETE FROM step_4_results WHERE migration_id = $1', [migrationId]);
+
+                      // Reset Neo4j
+                      const driver = neo4j.driver(
+                        process.env.NEO4J_URI || "bolt://neo4j-db:7687",
+                        neo4j.auth.basic(process.env.NEO4J_USER || "neo4j", process.env.NEO4J_PASSWORD || "password")
+                      );
+                      const session = driver.session();
+                      try {
+                          await session.run(
+                              `MATCH (n) WHERE n.migration_id = $migrationId 
+                               SET n.target_id = null, n.transfer_attempts = null, n.transfer_error = null`,
+                              { migrationId }
+                          );
+                          console.log(`[Worker] Neo4j target_ids cleared for migration ${migrationId} after container cleanup.`);
+                      } catch (neoErr) {
+                          console.error(`[Worker] Failed to clear Neo4j target_ids:`, neoErr);
+                      } finally {
+                          await session.close();
+                          await driver.close();
+                      }
+
+                      targetScopeId = null; // Forces recreation in the next step
                   }
               } catch (err) {
                   console.error(`[Worker] Error in existence verification:`, err);
@@ -372,7 +437,7 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
                 const nodes = nodeRes.records.map(r => r.get('n').properties);
                 if (nodes.length === 0) break; 
 
-                const BATCH_SIZE = 5; 
+                const BATCH_SIZE = 25; 
                 for (let i = 0; i < nodes.length; i += BATCH_SIZE) {
                   const batch = nodes.slice(i, i + BATCH_SIZE);
                   

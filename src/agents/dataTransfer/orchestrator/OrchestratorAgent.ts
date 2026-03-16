@@ -112,26 +112,56 @@ export class OrchestratorAgent extends AgentBase {
   }
 
   private async loadOrInitializeState(params: any): Promise<OrchestratorState> {
-    // In a real scenario, check DB or cache first via this.context
-    // For now, always initialize fresh.
     let plan = params.initialPlan;
     
-    if (!plan) {
-      await this.context.logActivity('info', '[Orchestrator] Generating new Execution Plan...');
-      
-      let targetEntitiesList = params.targetEntities;
-      if (params.targetSchema?.exportInstructions?.sequence) {
-          targetEntitiesList = targetEntitiesList.filter((key: string) => params.targetSchema.exportInstructions.sequence.includes(key));
-      }
-      
-      const planner = new TransferPlannerAgent(this.provider, this.context);
-      plan = await planner.execute({
-        sourceSchema: params.sourceSchema,
-        targetSchema: params.targetSchema,
-        sourceEntities: params.sourceEntities,
-        targetEntities: targetEntitiesList
-      });
-      await this.context.logActivity('info', `[Orchestrator] Generated plan with ${plan.tasks.length} tasks.`);
+    if (!plan || !plan.tasks || plan.tasks.length === 0) {
+      await this.context.logActivity('warning', '[Orchestrator] No existing plan from Step 4 found. Proceeding with fallback sequence.');
+      plan = { tasks: [] };
+    }
+
+    await this.context.logActivity('info', '[Orchestrator] Refining Step 4 plan into a concrete Insertion Plan...');
+
+    const prompt = `
+Du bist ein Data Transfer Orchestrator. 
+Dir liegt ein grober Ausführungsplan aus Step 4 vor:
+${JSON.stringify(plan, null, 2)}
+
+Quell-Entitäten: ${JSON.stringify(params.sourceEntities)}
+Ziel-Entitäten: ${JSON.stringify(params.targetEntities)}
+Ziel-System Spezifikation (Export Instructions): ${JSON.stringify(params.targetSchema?.exportInstructions || {}, null, 2)}
+
+Aufgabe:
+Definiere basierend auf dem groben Plan die konkreten "Sub Goals" (Tasks) und die exakte Reihenfolge (dependsOn), in der die Objekte transferiert werden müssen.
+Besonders wichtig: Analysiere, wann Parent-IDs gecached werden müssen und an den Agenten übergeben werden müssen, und füge diese Info zum Task hinzu (z.B. in der Description oder als neues Feld).
+
+Antworte strikt im JSON Format für einen ExecutionPlan:
+{
+  "tasks": [
+    {
+      "id": "string",
+      "description": "string (inklusive Info ob/welche Parent IDs gecached werden)",
+      "sourceEntityType": "string",
+      "targetEntityType": "string",
+      "dependsOn": ["task_id_1"],
+      "status": "pending",
+      "retries": 0
+    }
+  ]
+}
+`;
+
+    try {
+        const refineRes = await this.provider.chat([{ role: "system", content: prompt }], undefined, {
+            model: "gpt-4o",
+            response_format: { type: "json_object" }
+        });
+        const refinedPlan = JSON.parse(refineRes.content || "{}");
+        if (refinedPlan.tasks && Array.isArray(refinedPlan.tasks)) {
+            plan = refinedPlan;
+            await this.context.logActivity('success', `[Orchestrator] Generated concrete Insertion Plan with ${plan.tasks.length} tasks.`);
+        }
+    } catch (e) {
+        await this.context.logActivity('error', '[Orchestrator] Failed to refine plan, using initial plan directly.');
     }
 
     return {
