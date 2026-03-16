@@ -227,8 +227,19 @@ ${JSON.stringify(targetSchema?.objects?.[task.targetEntityType] || targetSchema,
                    }
 
                    for (const req of args.requests) {
-                       const finalUrl = req.url.startsWith('http') ? req.url : (targetSchema?.apiBaseUrl || "") + req.url;
+                       let finalUrl = req.url.startsWith('http') ? req.url : (targetSchema?.apiBaseUrl || "") + req.url;
                        
+                       // GENERIC FIX: Replace common URL placeholders with targetScopeId if the LLM didn't do it
+                       if (targetScopeId) {
+                           const placeholders = ["{team_id}", "{workspace_id}", "{project_id}", "{space_id}", "{list_id}", "{board_id}"];
+                           for (const p of placeholders) {
+                               if (finalUrl.includes(p)) {
+                                   finalUrl = finalUrl.replace(p, targetScopeId);
+                                   logs.push(`[Worker] Auto-replaced URL placeholder ${p} with targetScopeId ${targetScopeId}`);
+                               }
+                           }
+                       }
+
                        // GENERIC FIX: If the schema defines a parent template and it's missing or incomplete in the POST body, inject it
                        if (req.method === 'POST' && req.body && targetScopeId) {
                            const templates = targetSchema?.exportInstructions?.requestTemplates || {};
@@ -260,6 +271,8 @@ ${JSON.stringify(targetSchema?.objects?.[task.targetEntityType] || targetSchema,
 
                            if (!apiRes.ok) {
                                const errText = await apiRes.text();
+                               console.error(`[Worker] API Call failed: ${apiRes.status} - ${errText}`);
+                               await this.context.writeChatMessage('assistant', `⚠️ API-Call fehlgeschlagen: **${apiRes.status}** beim Übertragen von Objekt ${req.sourceId}. Details: ${errText.substring(0, 100)}...`, this.context.stepNumber);
                                results.push({ sourceId: req.sourceId, success: false, status: apiRes.status, error: errText });
                            } else {
                                const apiData = await apiRes.json();

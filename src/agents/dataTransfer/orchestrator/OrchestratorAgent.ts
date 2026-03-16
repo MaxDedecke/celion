@@ -29,6 +29,9 @@ export class OrchestratorAgent extends AgentBase {
     // 1. Initialize or Load State
     this.state = await this.loadOrInitializeState(params);
 
+    const planSummary = this.state.plan.tasks.map(t => `- **${t.id}**: ${t.description}`).join('\n');
+    await this.context.writeChatMessage('assistant', `📍 **Ausführungsplan bereit:**\n${planSummary}`, params.stepNumber);
+
     if (!this.hasPendingTasks()) {
       await this.context.logActivity('info', '[Orchestrator] All tasks completed or no pending tasks. Orchestration finished.');
       return;
@@ -41,10 +44,14 @@ export class OrchestratorAgent extends AgentBase {
       if (!nextTask) {
         const errorMsg = 'Deadlock detected: There are pending tasks, but none have their dependencies met.';
         await this.context.logActivity('error', errorMsg);
+        await this.context.writeChatMessage('assistant', `⚠️ **Orchestrator Fehler:** Sackgasse erkannt. Es gibt noch Aufgaben, aber Abhängigkeiten sind nicht erfüllt.`, params.stepNumber);
         throw new Error(errorMsg);
       }
 
+      const taskMsg = `🚀 **Starte Teilaufgabe:** ${nextTask.description} (${nextTask.sourceEntityType} ➡️ ${nextTask.targetEntityType})`;
       await this.context.logActivity('info', `[Orchestrator] Starting task: ${nextTask.description} (${nextTask.id})`);
+      const taskChatId = await this.context.writeChatMessage('assistant', taskMsg, params.stepNumber);
+      
       nextTask.status = 'in_progress';
       await this.saveState(); // Persist progress
 
@@ -57,7 +64,12 @@ export class OrchestratorAgent extends AgentBase {
         if (this.state.totalAgentRuns > this.MAX_AGENT_RUNS) {
            const errorMsg = 'Circuit Breaker triggered: Maximum agent runs exceeded.';
            await this.context.logActivity('error', errorMsg);
+           await this.context.writeChatMessage('assistant', `🛑 **Transfer abgebrochen:** Maximale Anzahl an Agenten-Durchläufen (${this.MAX_AGENT_RUNS}) überschritten.`, params.stepNumber);
            throw new Error(errorMsg);
+        }
+
+        if (nextTask.retries > 0) {
+            await this.context.writeChatMessage('assistant', `🔄 Wiederhole Aufgabe "${nextTask.id}" (Versuch ${nextTask.retries + 1}/${MAX_RETRIES})...`, params.stepNumber);
         }
 
         try {
@@ -83,12 +95,18 @@ export class OrchestratorAgent extends AgentBase {
           nextTask.status = 'completed';
           taskSuccess = true;
           
+          const successMsg = `✅ **Aufgabe abgeschlossen:** ${nextTask.description}. ${Object.keys(subagentResult.newMappings).length} Objekte erfolgreich übertragen.`;
           await this.context.logActivity('success', `[Orchestrator] Task completed successfully: ${nextTask.description}`);
+          await this.context.writeChatMessage('assistant', successMsg, params.stepNumber);
 
         } catch (error: any) {
           nextTask.retries++;
           nextTask.error = error.message;
           await this.context.logActivity('warning', `[Orchestrator] Task ${nextTask.id} failed (Retry ${nextTask.retries}/${MAX_RETRIES}): ${error.message}`);
+          
+          if (nextTask.retries >= MAX_RETRIES) {
+              await this.context.writeChatMessage('assistant', `❌ **Aufgabe fehlgeschlagen:** ${nextTask.description}. Fehler: ${error.message}`, params.stepNumber);
+          }
         }
       }
 
