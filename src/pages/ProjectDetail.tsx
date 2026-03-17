@@ -385,6 +385,10 @@ const ProjectDetail = () => {
     }
   };
 
+  const sidebarMigrationsMemo = useMemo(() => sidebarMigrations, [sidebarMigrations]);
+  const standaloneMigrationsMemo = useMemo(() => standaloneMigrations, [standaloneMigrations]);
+  const projectsMemo = useMemo(() => projects, [projects]);
+
   if (loaderVisible) {
     return (
       <div className="app-shell flex h-screen items-center justify-center p-6 overflow-hidden">
@@ -401,9 +405,9 @@ const ProjectDetail = () => {
     <div className="app-shell flex h-screen flex-col px-6 pt-6 pb-6 overflow-hidden">
       <div className="flex flex-1 gap-6 min-h-0">
         <Sidebar
-          projects={projects}
-          projectMigrations={sidebarMigrations}
-          standaloneMigrations={standaloneMigrations}
+          projects={projectsMemo}
+          projectMigrations={sidebarMigrationsMemo}
+          standaloneMigrations={standaloneMigrationsMemo}
           onSelectMigration={handleSelectMigration}
           onNewMigration={() => {
             setProjectIdForNewMigration(null);

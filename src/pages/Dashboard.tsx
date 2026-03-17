@@ -629,6 +629,20 @@ const Dashboard = () => {
     }
   }, [currentMigration]);
 
+  const standaloneMigrationsWithProcessingStatus = useMemo(() => 
+    standaloneMigrations.map(m => ({
+      ...m,
+      status: processingMigrationId === m.id ? 'processing' : m.status,
+    })), [standaloneMigrations, processingMigrationId]);
+
+  const migrationsWithProcessingStatus = useMemo(() => 
+    migrations.map(m => ({
+      ...m,
+      status: processingMigrationId === m.id ? 'processing' : m.status,
+    })), [migrations, processingMigrationId]);
+
+  const memoizedProjects = useMemo(() => allProjects, [allProjects]);
+
   if (loaderVisible) {
     return (
       <div className="app-shell flex h-screen items-center justify-center p-6 overflow-hidden">
@@ -637,21 +651,11 @@ const Dashboard = () => {
     );
   }
 
-  const standaloneMigrationsWithProcessingStatus = standaloneMigrations.map(m => ({
-    ...m,
-    status: processingMigrationId === m.id ? 'processing' : m.status,
-  }));
-
-  const migrationsWithProcessingStatus = migrations.map(m => ({
-    ...m,
-    status: processingMigrationId === m.id ? 'processing' : m.status,
-  }));
-
   return (
     <div className="app-shell flex h-screen flex-col px-6 pt-6 pb-6 overflow-hidden">
       <div className="flex flex-1 gap-6 min-h-0">
         <Sidebar
-          projects={allProjects}
+          projects={memoizedProjects}
           projectMigrations={migrationsWithProcessingStatus}
           standaloneMigrations={standaloneMigrationsWithProcessingStatus}
           selectedMigration={selectedMigration}
@@ -684,6 +688,7 @@ const Dashboard = () => {
             <div className="app-surface flex flex-1 flex-col overflow-hidden rounded-3xl">
               <header
                 data-sidebar-anchor
+                style={{ "--sidebar-collapsed-size": "80px" } as React.CSSProperties}
                 className="flex items-center justify-between border-b px-6 py-4 shrink-0"
               >
                 <div className="flex items-center gap-6 flex-1 min-w-0">
@@ -860,6 +865,7 @@ const Dashboard = () => {
             <>
               <header
                 data-sidebar-anchor
+                style={{ "--sidebar-collapsed-size": "82px" } as React.CSSProperties}
                 className="app-surface flex items-center justify-between rounded-3xl px-6 py-5"
               >
                 <div>

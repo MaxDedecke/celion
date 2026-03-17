@@ -17,7 +17,7 @@ import {
 import { Button } from "@/components/ui/button";
 import Logo from "./Logo";
 import { cn } from "@/lib/utils";
-import { useEffect, useRef, useState } from "react";
+import { memo, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
@@ -40,7 +40,7 @@ interface SidebarProps {
   totalMigrationsCount?: number;
 }
 
-const Sidebar = ({
+const Sidebar = memo(({
   projects,
   projectMigrations = [],
   standaloneMigrations = [],
@@ -56,47 +56,23 @@ const Sidebar = ({
   totalMigrationsCount = 0,
 }: SidebarProps) => {
   const [isCollapsed, setIsCollapsed] = useState(false);
-  const [collapsedSize, setCollapsedSize] = useState<number>();
   const [llmSettingsOpen, setLlmSettingsOpen] = useState(false);
   const sidebarRef = useRef<HTMLDivElement | null>(null);
   const migrationsScrollRef = useRef<HTMLDivElement | null>(null);
-  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set(projects.map(p => p.id)));
-  const [projectsCollapsed, setProjectsCollapsed] = useState(false);
-  const navigate = useNavigate();
+  const [expandedProjects, setExpandedProjects] = useState<Set<string>>(new Set());
+  const initializedProjectsRef = useRef(false);
 
   useEffect(() => {
-    const sidebarElement = sidebarRef.current;
-    if (!sidebarElement) return;
-
-    const container = sidebarElement.parentElement;
-    if (!container) return;
-
-    const anchorElement = container.querySelector<HTMLElement>("[data-sidebar-anchor]");
-    if (!anchorElement) {
-      setCollapsedSize(undefined);
-      return;
+    if (!initializedProjectsRef.current && projects && projects.length > 0) {
+      setExpandedProjects(prev => {
+        if (prev.size > 0) return prev; // Already has some expanded, don't override
+        return new Set(projects.map(p => p.id));
+      });
+      initializedProjectsRef.current = true;
     }
-
-    const updateSize = () => {
-      const nextSize = anchorElement.getBoundingClientRect().height;
-      if (!Number.isNaN(nextSize) && nextSize > 0) {
-        setCollapsedSize(nextSize);
-      }
-    };
-
-    updateSize();
-
-    if (typeof ResizeObserver === "undefined") {
-      return;
-    }
-
-    const resizeObserver = new ResizeObserver(() => updateSize());
-    resizeObserver.observe(anchorElement);
-
-    return () => {
-      resizeObserver.disconnect();
-    };
-  }, [isCollapsed]);
+  }, [projects]);
+  const [projectsCollapsed, setProjectsCollapsed] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     const scrollElement = migrationsScrollRef.current;
@@ -115,13 +91,12 @@ const Sidebar = ({
     return () => scrollElement.removeEventListener('scroll', handleScroll);
   }, [hasMoreMigrations, isLoadingMoreMigrations, onLoadMoreMigrations]);
 
-  const collapsedDimension = collapsedSize ?? 80;
   const collapsedStyle = isCollapsed
     ? {
-        width: `${collapsedDimension}px`,
-        height: `${collapsedDimension}px`,
-        minWidth: `${collapsedDimension}px`,
-        minHeight: `${collapsedDimension}px`
+        width: "var(--sidebar-collapsed-size, 80px)",
+        height: "var(--sidebar-collapsed-size, 80px)",
+        minWidth: "var(--sidebar-collapsed-size, 80px)",
+        minHeight: "var(--sidebar-collapsed-size, 80px)"
       }
     : undefined;
 
@@ -460,6 +435,6 @@ const Sidebar = ({
       </div>
     </TooltipProvider>
   );
-};
+});
 
 export default Sidebar;

@@ -359,6 +359,10 @@ const Projects = () => {
     }
   };
 
+  const migrationsMemo = useMemo(() => migrations, [migrations]);
+  const standaloneMigrationsMemo = useMemo(() => standaloneMigrations, [standaloneMigrations]);
+  const projectsMemo = useMemo(() => projects, [projects]);
+
   if (loaderVisible) {
     return (
       <div className="app-shell flex h-screen items-center justify-center p-6 overflow-hidden">
@@ -371,9 +375,9 @@ const Projects = () => {
     <div className="app-shell flex h-screen flex-col px-6 pt-6 pb-6 overflow-hidden">
       <div className="flex flex-1 gap-6 min-h-0">
         <Sidebar
-          projects={projects}
-          projectMigrations={migrations}
-          standaloneMigrations={standaloneMigrations}
+          projects={projectsMemo}
+          projectMigrations={migrationsMemo}
+          standaloneMigrations={standaloneMigrationsMemo}
           onSelectMigration={(id) => {
             const migration = [...migrations, ...standaloneMigrations].find(m => m.id === id);
             if (migration && migration.projectId) {

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, Fragment } from "react";
+import { useEffect, useMemo, useState, Fragment, useRef } from "react";
 import { User, SquareArrowOutUpRight, CheckCircle2, XCircle, Play, Copy, Rocket, FileJson, ArrowRight, Clock, Brain, HelpCircle } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -481,15 +481,18 @@ const ChatMessage = ({ message, allMessages, onOpenAgentOutput, onAction, enable
     }
   };
 
+  const containerRef = useRef<HTMLDivElement>(null);
+
   // Scroll to bottom when a dropdown is rendered
   useEffect(() => {
     if (jsonContent?.type === "datasource_dropdown" || jsonContent?.type === "scope_dropdown") {
       const timeoutId = setTimeout(() => {
-        const scrollContainers = document.querySelectorAll('.overflow-y-auto');
-        // Just update the scroll position for the chat containers
-        scrollContainers.forEach(container => {
-          container.scrollTop = container.scrollHeight;
-        });
+        if (containerRef.current) {
+          const scrollContainer = containerRef.current.closest('.overflow-y-auto');
+          if (scrollContainer) {
+            scrollContainer.scrollTop = scrollContainer.scrollHeight;
+          }
+        }
       }, 150);
       return () => clearTimeout(timeoutId);
     }
@@ -581,6 +584,7 @@ const ChatMessage = ({ message, allMessages, onOpenAgentOutput, onAction, enable
 
   return (
     <div
+      ref={containerRef}
       className={cn(
         "flex w-full gap-3 py-2 transition-all duration-300",
         message.role === "user" ? "flex-row-reverse animate-slide-up" : "flex-row animate-fade-in"
