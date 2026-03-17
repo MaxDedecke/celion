@@ -553,7 +553,9 @@ ANTWORTE AUSSCHLIESSLICH IM JSON FORMAT:
             targetEntities,
             sourceSystem,
             targetSystem,
-            targetScopeId
+            targetScopeId,
+            sourceScopeIds: scopeConfig.sourceScopeIds,
+            stepNumber: currentStepNumber
         } as any); // Passing extra params that Orchestrator might pass to Subagent
 
         result = { status: 'success' };

@@ -22,14 +22,16 @@ export class OrchestratorAgent extends AgentBase {
     targetEntities: any[],
     sourceSystem: string,
     targetSystem: string,
-    targetScopeId: string
+    targetScopeId: string,
+    sourceScopeIds?: string[],
+    stepNumber: number
   }): Promise<void> {
     await this.context.logActivity('info', `[Orchestrator] Starting orchestration for migration ${params.migrationId}`);
 
     // 1. Initialize or Load State
     this.state = await this.loadOrInitializeState(params);
 
-    const planSummary = this.state.plan.tasks.map(t => `- **${t.id}**: ${t.description}`).join('\n');
+    const planSummary = this.state.plan.tasks.map(t => `- **${t.id}**: ${t.description} (${t.status})`).join('\n');
     await this.context.writeChatMessage('assistant', `📍 **Ausführungsplan bereit:**\n${planSummary}`, params.stepNumber);
 
     if (!this.hasPendingTasks()) {
@@ -147,10 +149,14 @@ ${JSON.stringify(plan, null, 2)}
 Quell-Entitäten: ${JSON.stringify(params.sourceEntities)}
 Ziel-Entitäten: ${JSON.stringify(params.targetEntities)}
 Ziel-System Spezifikation (Export Instructions): ${JSON.stringify(params.targetSchema?.exportInstructions || {}, null, 2)}
+Ziel-Container ID (bereits in Phase 0 erstellt): ${params.targetScopeId || "Keiner"}
 
 Aufgabe:
 Definiere basierend auf dem groben Plan die konkreten "Sub Goals" (Tasks) und die exakte Reihenfolge (dependsOn), in der die Objekte transferiert werden müssen.
 Besonders wichtig: Analysiere, wann Parent-IDs gecached werden müssen und an den Agenten übergeben werden müssen, und füge diese Info zum Task hinzu (z.B. in der Description oder als neues Feld).
+
+WICHTIG ZUM ZIEL-CONTAINER:
+Falls der Plan vorsieht, ein Objekt zu erstellen, das bereits durch den Ziel-Container (ID: ${params.targetScopeId}) abgedeckt ist (z.B. Erstellen eines Spaces/Projekts, das bereits existiert), markiere diesen Task NICHT als fehlend, sondern plane ihn normal ein. Die Logik im Orchestrator wird diesen Task später automatisch als "bereits erledigt" behandeln, wenn die Mapping-IDs übergeben werden.
 
 Antworte strikt im JSON Format für einen ExecutionPlan:
 {
@@ -182,10 +188,36 @@ Antworte strikt im JSON Format für einen ExecutionPlan:
         await this.context.logActivity('error', '[Orchestrator] Failed to refine plan, using initial plan directly.');
     }
 
+    const idMappings: Record<string, Record<string, string>> = {};
+
+    // GENERIC FIX: If targetScopeId is present, pre-map the source scope to this ID
+    if (params.targetScopeId && params.sourceScopeIds && params.sourceScopeIds.length > 0) {
+        const sourceScopeId = params.sourceScopeIds[0];
+        
+        // Find the first task which usually corresponds to the root scope migration
+        // or look for a task whose targetEntityType matches common container types.
+        const containerTask = plan.tasks.find((t: any) => 
+            t.dependsOn.length === 0 && 
+            (t.targetEntityType.toLowerCase().includes('space') || 
+             t.targetEntityType.toLowerCase().includes('project') || 
+             t.targetEntityType.toLowerCase().includes('workspace') ||
+             t.targetEntityType.toLowerCase().includes('folder'))
+        );
+
+        if (containerTask) {
+            if (!idMappings[containerTask.sourceEntityType]) idMappings[containerTask.sourceEntityType] = {};
+            idMappings[containerTask.sourceEntityType][sourceScopeId] = params.targetScopeId;
+            
+            // Mark the task as completed as it was already handled in Phase 0
+            containerTask.status = 'completed';
+            await this.context.logActivity('info', `[Orchestrator] Auto-completed task ${containerTask.id} because the target container was already created in Phase 0.`);
+        }
+    }
+
     return {
       migrationId: params.migrationId,
       plan,
-      idMappings: {},
+      idMappings,
       globalContext: {},
       lastUpdated: new Date().toISOString(),
       totalAgentRuns: 0
