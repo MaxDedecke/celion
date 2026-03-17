@@ -1,4 +1,4 @@
-"""Celion FastAPI entry point now providing legacy notices only."""
+"""Celion FastAPI entry point."""
 # pyright: reportMissingImports=false
 
 from __future__ import annotations
@@ -28,8 +28,6 @@ import neo4j
 from openai import OpenAI
 from passlib.context import CryptContext
 
-
-LEGACY_MESSAGE = "The legacy Python-based agents have been removed in favor of the frontend implementation."
 
 class CustomEncoder(json.JSONEncoder):
     """Custom JSON encoder to handle UUID and datetime objects."""
@@ -232,24 +230,7 @@ class Project(BaseModel):
     created_at: str
 
 
-class DetectionRequest(BaseModel):
-    """Request payload kept for backward compatibility with legacy clients."""
-
-    url: HttpUrl
-
-
-class LegacyResponse(BaseModel):
-    """Response returned when legacy agent endpoints are invoked."""
-
-    message: str
-
-
 class ProbeEvidence(BaseModel):
-    """Metadata describing the performed credential probe."""
-
-    request_url: Union[HttpUrl, str]
-    method: str
-    used_headers: list[str]
     timestamp: str
 
 
@@ -339,19 +320,6 @@ class RunStepRequest(BaseModel):
     agentParams: Optional[Dict[str, Any]] = None
     stepId: Optional[str] = None
     stepName: Optional[str] = None
-
-
-def _legacy_http_exception() -> HTTPException:
-    """Provide a consistent 410 response when legacy endpoints are used."""
-
-    return HTTPException(status_code=410, detail=LEGACY_MESSAGE)
-
-
-@app.post("/agents/system-detection", response_model=LegacyResponse)
-async def run_system_detection(payload: DetectionRequest) -> LegacyResponse:
-    """Inform callers that the Python discovery agent has been removed."""
-    print(f"run_system_detection called with payload: {payload}")
-    raise _legacy_http_exception()
 
 
 @app.post("/auth/signup")
@@ -455,7 +423,7 @@ async def get_dashboard_stats():
             cur.execute("SELECT count(*) as count FROM public.migrations")
             total_migrations = cur.fetchone()["count"]
 
-            cur.execute("SELECT count(*) as count FROM public.migrations WHERE status = 'completed' AND current_step >= 10")
+            cur.execute("SELECT count(*) as count FROM public.migrations WHERE status = 'completed' AND current_step >= 8")
             completed_migrations = cur.fetchone()["count"]
 
             # 2. Aggregated totals from global_stats (historical / global)
@@ -1517,8 +1485,18 @@ async def trigger_migration_step(id: str, step: int, params: Optional[StepTrigge
                 )
 
             # 2. Create a migration_step record
-            step_name = f"Step {step}"
-            workflow_step_id = f"step-{step}"
+            workflow_step_mapping = {
+                1: ("schema-discovery", "Source Discovery"),
+                2: ("target-schema", "Target Discovery"),
+                3: ("data-staging", "Data Staging"),
+                4: ("mapping-verification", "Mapping Verification"),
+                5: ("quality-enhancement", "Quality Enhancement"),
+                6: ("data-transfer", "Data Transfer"),
+                7: ("verification", "Verification"),
+                8: ("report", "Report"),
+            }
+            
+            workflow_step_id, step_name = workflow_step_mapping.get(step, (f"step-{step}", f"Step {step}"))
 
             # --- Consistency Rollback ---
             # If we are re-running an earlier step, we must clear results of all subsequent steps
@@ -1529,28 +1507,62 @@ async def trigger_migration_step(id: str, step: int, params: Optional[StepTrigge
 
             if not is_continuation:
                 # 1. Clear structured results for steps >= this step
+                # Step 1 (Source Discovery) -> Inventory (step_3_results)
                 if step <= 1:
                     cur.execute("DELETE FROM public.step_3_results WHERE migration_id = %s", (id,))
+                # Step 2 (Target Discovery) -> step_4_results
                 if step <= 2:
                     cur.execute("DELETE FROM public.step_4_results WHERE migration_id = %s", (id,))
+                # Step 3 (Data Staging) -> step_5_results
                 if step <= 3:
                     cur.execute("DELETE FROM public.step_5_results WHERE migration_id = %s", (id,))
+                # Step 4 (Mapping Verification) -> step_6_results
                 if step <= 4:
                     cur.execute("DELETE FROM public.step_6_results WHERE migration_id = %s", (id,))
+                # Step 5 (Quality Enhancement) -> step_7_results
+                if step <= 5:
+                    cur.execute("DELETE FROM public.step_7_results WHERE migration_id = %s", (id,))
+                # Step 6 (Data Transfer) -> step_8_results
+                if step <= 6:
+                    cur.execute("DELETE FROM public.step_8_results WHERE migration_id = %s", (id,))
+                # Step 7 (Verification) -> step_9_results
+                if step <= 7:
+                    cur.execute("DELETE FROM public.step_9_results WHERE migration_id = %s", (id,))
+                # Step 8 (Report) -> step_10_results
+                if step <= 8:
+                    cur.execute("DELETE FROM public.step_10_results WHERE migration_id = %s", (id,))
                 
                 # 2. Reset overall migration complexity if step 1 is retried
                 if step <= 1:
                     cur.execute("UPDATE public.migrations SET complexity_score = 0 WHERE id = %s", (id,))
 
                 # 3. Clear/Reset migration_steps for all steps >= current retry step
+                # Match both step-N and named IDs
                 cur.execute(
                     """
                     DELETE FROM public.migration_steps 
                     WHERE migration_id = %s 
-                    AND workflow_step_id ~ '^step-[0-9]+$'
-                    AND CAST(substring(workflow_step_id from 6) AS INTEGER) >= %s
+                    AND (
+                        (workflow_step_id ~ '^step-[0-9]+$' AND CAST(substring(workflow_step_id from 6) AS INTEGER) >= %s)
+                        OR
+                        (workflow_step_id IN ('schema-discovery') AND %s <= 1)
+                        OR
+                        (workflow_step_id IN ('target-schema') AND %s <= 2)
+                        OR
+                        (workflow_step_id IN ('data-staging') AND %s <= 3)
+                        OR
+                        (workflow_step_id IN ('mapping-verification') AND %s <= 4)
+                        OR
+                        (workflow_step_id IN ('quality-enhancement') AND %s <= 5)
+                        OR
+                        (workflow_step_id IN ('data-transfer') AND %s <= 6)
+                        OR
+                        (workflow_step_id IN ('verification') AND %s <= 7)
+                        OR
+                        (workflow_step_id IN ('report') AND %s <= 8)
+                    )
                     """,
-                    (id, step),
+                    (id, step, step, step, step, step, step, step, step, step),
                 )
 
                 # 4. Clear chat messages from this step onwards
@@ -1695,7 +1707,7 @@ async def create_migration(payload: CreateMigrationPayload) -> Migration:
                     out_connector, out_connector_detail, status, scope_config,
                     current_step, step_status
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 0, 'idle')
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'not_started', %s, 0, 'idle')
                 RETURNING id, name, source_system, target_system, source_url, target_url, in_connector, in_connector_detail, out_connector, out_connector_detail, objects_transferred, mapped_objects, project_id, notes, workflow_state, progress, current_step, step_status, consultant_status, status, created_at, updated_at, scope_config
                 """,
                 (
@@ -1710,7 +1722,6 @@ async def create_migration(payload: CreateMigrationPayload) -> Migration:
                     payload.in_connector_detail,
                     payload.out_connector,
                     payload.out_connector_detail,
-                    "processing",
                     json.dumps(payload.scope_config) if payload.scope_config else None,
                 ),
             )
@@ -1725,7 +1736,7 @@ async def create_migration(payload: CreateMigrationPayload) -> Migration:
             cur.execute(
                 """
                 INSERT INTO public.migration_steps (migration_id, workflow_step_id, name, status)
-                VALUES (%s, 'onboarding', 'Einrichtung', 'running')
+                VALUES (%s, 'onboarding', 'Einrichtung', 'completed')
                 RETURNING id
                 """,
                 (migration_id,),
@@ -3167,24 +3178,6 @@ async def delete_project_member(
         raise HTTPException(status_code=500, detail="Failed to delete project member.") from exc
 
 
-# ============================================================================
-# Legacy Endpoints
-# ============================================================================
-
-@app.get("/auth-flow", response_model=LegacyResponse)
-async def run_auth_flow(
-    base_url: str,
-    system: str,
-    auth_type: str,
-    api_token: Optional[str] = None,
-    username: Optional[str] = None,
-    password: Optional[str] = None,
-) -> LegacyResponse:
-    """Inform callers that the Python auth flow agent has been removed."""
-    print(f"run_auth_flow called with base_url: {base_url}, system: {system}, auth_type: {auth_type}")
-    raise _legacy_http_exception()
-
-
 @app.post("/api/probe", response_model=ProbeResponse)
 async def run_credential_probe(payload: ProbeRequest) -> ProbeResponse:
     """Execute credential probe requests on the server to avoid browser CORS limits."""
@@ -3485,11 +3478,12 @@ async def enqueue_migration_step(payload: RunStepRequest) -> dict[str, Any]:
 
 @app.get("/api/migrations/{id}/results")
 async def get_migration_results(id: str) -> dict[str, Any]:
-    """Fetch all structured results for steps 1 to 9."""
+    """Fetch all structured results for steps 1 to 10."""
     try:
         results = {
             "step_1": [], "step_2": [], "step_3": [], "step_4": [], 
-            "step_5": [], "step_6": [], "step_7": [], "step_8": [], "step_9": []
+            "step_5": [], "step_6": [], "step_7": [], "step_8": [], 
+            "step_9": [], "step_10": []
         }
         with _get_db_connection() as conn, conn.cursor() as cur:
             # Step 1
@@ -3527,6 +3521,10 @@ async def get_migration_results(id: str) -> dict[str, Any]:
             # Step 9
             cur.execute("SELECT * FROM public.step_9_results WHERE migration_id = %s", (id,))
             results["step_9"] = [dict(row) for row in cur.fetchall()]
+
+            # Step 10
+            cur.execute("SELECT * FROM public.step_10_results WHERE migration_id = %s", (id,))
+            results["step_10"] = [dict(row) for row in cur.fetchall()]
             
         return results
     except Exception as exc:
@@ -3625,7 +3623,7 @@ async def update_migration_result(id: str, payload: UpdateResultPayload) -> dict
                     """,
                     (id, payload.entity_name, json.dumps(payload.new_json))
                 )
-            elif payload.step in [4, 5, 6, 7, 8, 9]:
+            elif payload.step in [4, 5, 6, 7, 8, 9, 10]:
                 table_name = f"step_{payload.step}_results"
                 cur.execute(
                     f"""
@@ -3731,20 +3729,6 @@ async def save_llm_settings(settings: dict):
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(exc))
 
-def _cli(url: str) -> int:
-    """Provide a clear CLI notice that legacy agents are no longer available."""
-
-    print(LEGACY_MESSAGE, file=sys.stderr)
-    return 1
-
-
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Celion legacy agent placeholder")
-    parser.add_argument("url", nargs="?", help="Basis-URL des Zielsystems")
-    args = parser.parse_args()
-
-    if args.url:
-        raise SystemExit(_cli(args.url))
-
-    print(LEGACY_MESSAGE, file=sys.stderr)
-    raise SystemExit(1)
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
