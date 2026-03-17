@@ -6,20 +6,9 @@ import psycopg.rows
 from fastapi import APIRouter, HTTPException, Response
 from pydantic import BaseModel
 import json
+from core.database import get_db_connection
 
 router = APIRouter()
-
-def _get_db_connection() -> psycopg.Connection:
-    """Create a new PostgreSQL connection using environment variables."""
-
-    return psycopg.connect(
-        host=os.environ.get("POSTGRES_HOST", "localhost"),
-        port=os.environ.get("POSTGRES_PORT", "5432"),
-        dbname=os.environ.get("POSTGRES_DB", "celion"),
-        user=os.environ.get("POSTGRES_USER", "celion"),
-        password=os.environ.get("POSTGRES_PASSWORD", "celion"),
-        row_factory=psycopg.rows.dict_row,
-    )
 
 class DataSource(BaseModel):
     """Pydantic model for a data source."""
@@ -74,7 +63,7 @@ class UpdateDataSourcePayload(BaseModel):
 async def create_data_source(payload: CreateDataSourcePayload) -> DataSource:
     """Create a new data source in the database."""
     try:
-        with _get_db_connection() as conn, conn.cursor() as cur:
+        with get_db_connection() as conn, conn.cursor() as cur:
             additional_config_json = json.dumps(payload.additional_config) if payload.additional_config else None
             
             cur.execute(
@@ -135,7 +124,7 @@ async def create_data_source(payload: CreateDataSourcePayload) -> DataSource:
 async def get_data_sources(user_id: Optional[str] = None) -> list[DataSource]:
     """Fetch data sources from the database."""
     try:
-        with _get_db_connection() as conn, conn.cursor() as cur:
+        with get_db_connection() as conn, conn.cursor() as cur:
             query = """
                 SELECT id, name, source_type, api_url, auth_type, is_active, 
                        is_global, user_id, additional_config, created_at, updated_at,
@@ -181,7 +170,7 @@ async def get_data_sources(user_id: Optional[str] = None) -> list[DataSource]:
 async def update_data_source(source_id: str, payload: UpdateDataSourcePayload) -> DataSource:
     """Update an existing data source."""
     try:
-        with _get_db_connection() as conn, conn.cursor() as cur:
+        with get_db_connection() as conn, conn.cursor() as cur:
             # First check if exists
             cur.execute("SELECT id FROM public.data_sources WHERE id = %s", (source_id,))
             if not cur.fetchone():
@@ -244,7 +233,7 @@ async def update_data_source(source_id: str, payload: UpdateDataSourcePayload) -
 async def delete_data_source(source_id: str):
     """Delete a data source."""
     try:
-        with _get_db_connection() as conn, conn.cursor() as cur:
+        with get_db_connection() as conn, conn.cursor() as cur:
             # Delete project assignments first (foreign key constraints)
             cur.execute("DELETE FROM public.data_source_projects WHERE data_source_id = %s", (source_id,))
             

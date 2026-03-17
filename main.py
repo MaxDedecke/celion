@@ -13,7 +13,7 @@ import aio_pika
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 
-from core.database import json_dumps
+from core.database import json_dumps, init_db_pool, close_db_pool
 from core.websocket import manager
 from routers import (
     data_sources, auth, projects, tools, 
@@ -77,7 +77,12 @@ async def rabbitmq_listener():
 
 @app.on_event("startup")
 async def startup_event():
+    init_db_pool()
     asyncio.create_task(rabbitmq_listener())
+
+@app.on_event("shutdown")
+async def shutdown_event():
+    close_db_pool()
 
 @app.websocket("/api/v1/ws/migrations/{migration_id}")
 async def websocket_endpoint(websocket: WebSocket, migration_id: str):

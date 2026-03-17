@@ -9,6 +9,7 @@ from datetime import datetime
 from typing import Any, Callable, Dict, Optional
 from openai import OpenAI
 from neo4j import GraphDatabase
+from core.database import get_db_connection
 
 # ----------------------------------------------------------------------------
 # Event Publishing
@@ -51,17 +52,6 @@ def publish_event(migration_id: str, event_type: str, data: dict):
 # ----------------------------------------------------------------------------
 # Database Utilities
 # ----------------------------------------------------------------------------
-
-def _get_db_connection() -> psycopg.Connection:
-    """Create a new PostgreSQL connection using environment variables."""
-    return psycopg.connect(
-        host=os.environ.get("POSTGRES_HOST", "localhost"),
-        port=os.environ.get("POSTGRES_PORT", "5432"),
-        dbname=os.environ.get("POSTGRES_DB", "celion"),
-        user=os.environ.get("POSTGRES_USER", "celion"),
-        password=os.environ.get("POSTGRES_PASSWORD", "celion"),
-        row_factory=psycopg.rows.dict_row,
-    )
 
 def _write_chat_message(conn: psycopg.Connection, migration_id: str, role: str, content: str, step_number: Optional[int] = None):
     """Writes a message to the migration_chat_messages table."""
@@ -946,17 +936,15 @@ def process_migration_step(job_payload: Dict[str, Any]):
         print(f" [!] No handler for step {step_number} in migration {migration_id}")
         return
         
-    db_conn = None
     try:
-        db_conn = _get_db_connection()
-        _update_migration_step_status(db_conn, migration_id, step_number, 'running')
-        
-        step_function(db_conn, migration_id, job_payload)
-        
-        _update_migration_step_status(db_conn, migration_id, step_number, 'completed')
+        with get_db_connection() as db_conn:
+            _update_migration_step_status(db_conn, migration_id, step_number, 'running')
+
+            step_function(db_conn, migration_id, job_payload)
+
+            _update_migration_step_status(db_conn, migration_id, step_number, 'completed')
 
         print(f" [{migration_id}] Step {step_number} completed successfully.")
-
     except Exception as e:
         error_msg = str(e)
         print(f" [!] Error processing step {step_number} for migration {migration_id}: {error_msg}")
@@ -1009,8 +997,7 @@ def callback(ch, method, properties, body):
             return
 
         # Fetch the full job details from the database
-        db_conn = _get_db_connection()
-        try:
+        with get_db_connection() as db_conn:
             with db_conn.cursor() as cur:
                 cur.execute("SELECT payload FROM public.jobs WHERE id = %s", (job_id,))
                 row = cur.fetchone()
@@ -1018,26 +1005,22 @@ def callback(ch, method, properties, body):
                     print(f" [!] Job {job_id} not found in database.")
                     ch.basic_ack(delivery_tag=method.delivery_tag)
                     return
-                
+
                 # Payload is stored as JSON in the database
                 job_payload = row['payload']
                 if isinstance(job_payload, str):
                     job_payload = json.loads(job_payload)
-                
+
                 # Update job status to running
                 cur.execute("UPDATE public.jobs SET status = 'running' WHERE id = %s", (job_id,))
                 db_conn.commit()
-                
+
                 # Now process the actual migration step
                 process_migration_step(job_payload)
-                
+
                 # Update job status to completed
                 cur.execute("UPDATE public.jobs SET status = 'completed' WHERE id = %s", (job_id,))
                 db_conn.commit()
-
-        finally:
-            db_conn.close()
-
         ch.basic_ack(delivery_tag=method.delivery_tag)
     except Exception as e:
         print(f" [!] Error processing message: {e}")
@@ -1046,11 +1029,10 @@ def callback(ch, method, properties, body):
             message_data = json.loads(body)
             job_id = message_data.get('job_id')
             if job_id:
-                db_conn = _get_db_connection()
-                with db_conn.cursor() as cur:
-                    cur.execute("UPDATE public.jobs SET status = 'failed', last_error = %s WHERE id = %s", (str(e), job_id))
-                    db_conn.commit()
-                db_conn.close()
+                with get_db_connection() as db_conn:
+                    with db_conn.cursor() as cur:
+                        cur.execute("UPDATE public.jobs SET status = 'failed', last_error = %s WHERE id = %s", (str(e), job_id))
+                        db_conn.commit()
         except:
             pass
         ch.basic_ack(delivery_tag=method.delivery_tag) # Ack even on fail to avoid infinite loops, but marked as failed in DB
