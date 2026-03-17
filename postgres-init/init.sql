@@ -12,7 +12,7 @@ CREATE TABLE IF NOT EXISTS public.users (
 
 -- Seed a demo user for local development
 INSERT INTO public.users (email, password, full_name)
-VALUES ('demo@celion.local', 'celion', 'Celion Demo User')
+VALUES ('demo@celion.local', '$2b$12$itC2SqhaxIuJmt8dt7fX3OxLiuUyoaU.XPlu7n8bzAd8yFjfcEShG', 'Celion Demo User')
 ON CONFLICT (email) DO NOTHING;
 
 -- Grant necessary privileges to the application role

@@ -1,9 +1,9 @@
 x-postgres-config: &postgres-config
-  POSTGRES_DB: celion
-  POSTGRES_USER: celion
-  POSTGRES_PASSWORD: celion
-  POSTGRES_HOST: postgres-db
-  POSTGRES_PORT: 5432
+  POSTGRES_DB: ${POSTGRES_DB:-celion}
+  POSTGRES_USER: ${POSTGRES_USER:-celion}
+  POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-celion}
+  POSTGRES_HOST: ${POSTGRES_HOST:-postgres-db}
+  POSTGRES_PORT: ${POSTGRES_PORT:-5432}
 
 services:
   frontend:
@@ -31,11 +31,11 @@ services:
       - .env
       - .env.local
     environment:
-      DATABASE_URL: "postgresql://celion:celion@postgres-db:5432/celion"
+      DATABASE_URL: "postgresql://${POSTGRES_USER:-celion}:${POSTGRES_PASSWORD:-celion}@postgres-db:5432/${POSTGRES_DB:-celion}"
       INTERNAL_BACKEND_URL: "http://backend:8000"
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_DEFAULT_USER: celion
-      RABBITMQ_DEFAULT_PASS: celion
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-celion}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-celion}
     volumes:
       - .:/app
       - worker_node_modules:/app/node_modules
@@ -58,9 +58,10 @@ services:
       - .env.local
     environment:
       <<: *postgres-config
-      RABBITMQ_HOST: rabbitmq
-      RABBITMQ_DEFAULT_USER: celion
-      RABBITMQ_DEFAULT_PASS: celion
+      RABBITMQ_HOST: ${RABBITMQ_HOST:-rabbitmq}
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-celion}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-celion}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-*}
     volumes:
       - .:/app
     depends_on:
@@ -74,9 +75,9 @@ services:
   postgres-db:
     image: postgres:15-alpine
     environment:
-      POSTGRES_DB: celion
-      POSTGRES_USER: celion
-      POSTGRES_PASSWORD: celion
+      POSTGRES_DB: ${POSTGRES_DB:-celion}
+      POSTGRES_USER: ${POSTGRES_USER:-celion}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-celion}
     ports:
       - "5432:5432"
     volumes:
@@ -96,7 +97,7 @@ services:
       - "7474:7474"
       - "7687:7687"
     environment:
-      NEO4J_AUTH: neo4j/password
+      NEO4J_AUTH: ${NEO4J_USER:-neo4j}/${NEO4J_PASSWORD:-password}
     volumes:
       - celion_neo4j_data:/data
     networks:
@@ -105,14 +106,14 @@ services:
   keycloak:
     image: quay.io/keycloak/keycloak:latest
     environment:
-      KEYCLOAK_ADMIN: admin
-      KEYCLOAK_ADMIN_PASSWORD: admin
+      KEYCLOAK_ADMIN: ${KEYCLOAK_ADMIN_USER:-admin}
+      KEYCLOAK_ADMIN_PASSWORD: ${KEYCLOAK_ADMIN_PASSWORD:-admin}
       KC_DB: postgres
-      KC_DB_URL_HOST: postgres-db
+      KC_DB_URL_HOST: ${POSTGRES_HOST:-postgres-db}
       # Empfehlung: Eigene DB für Keycloak nutzen, um Konflikte mit App-Tabellen zu vermeiden
-      KC_DB_URL_DATABASE: keycloak
-      KC_DB_USERNAME: celion
-      KC_DB_PASSWORD: celion
+      KC_DB_URL_DATABASE: ${KEYCLOAK_DB:-keycloak}
+      KC_DB_USERNAME: ${POSTGRES_USER:-celion}
+      KC_DB_PASSWORD: ${POSTGRES_PASSWORD:-celion}
     ports:
       - "8888:8080"
     volumes:
@@ -127,8 +128,8 @@ services:
   rabbitmq:
     image: rabbitmq:3-management-alpine
     environment:
-      RABBITMQ_DEFAULT_USER: celion
-      RABBITMQ_DEFAULT_PASS: celion
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER:-celion}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD:-celion}
     ports:
       - "5672:5672"
       - "15672:15672"

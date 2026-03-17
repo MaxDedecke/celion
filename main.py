@@ -26,6 +26,7 @@ from uuid import UUID
 from decimal import Decimal
 import neo4j
 from openai import OpenAI
+from passlib.context import CryptContext
 
 
 LEGACY_MESSAGE = "The legacy Python-based agents have been removed in favor of the frontend implementation."
@@ -46,10 +47,17 @@ def json_dumps(data: Any) -> str:
     return json.dumps(data, cls=CustomEncoder)
 
 
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 app = FastAPI(title="Celion Agent Service", version="1.0.0")
+
+# CORS configuration
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "*")
+allowed_origins = allowed_origins_env.split(",") if allowed_origins_env != "*" else ["*"]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -350,11 +358,12 @@ async def run_system_detection(payload: DetectionRequest) -> LegacyResponse:
 async def sign_up_user(payload: AuthPayload) -> dict[str, Any]:
     """Create a user record directly in PostgreSQL without Supabase."""
 
+    hashed_password = pwd_context.hash(payload.password)
     try:
         with _get_db_connection() as conn, conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO public.users (email, password, full_name) VALUES (%s, %s, %s) RETURNING id, email, password, full_name, created_at",
-                (payload.email, payload.password, payload.full_name),
+                (payload.email, hashed_password, payload.full_name),
             )
             user_row = cur.fetchone()
             conn.commit()
@@ -377,7 +386,7 @@ async def login_user(payload: AuthPayload) -> dict[str, Any]:
             )
             user_row = cur.fetchone()
 
-        if not user_row or user_row.get("password") != payload.password:
+        if not user_row or not pwd_context.verify(payload.password, user_row.get("password")):
             raise HTTPException(status_code=401, detail="Ungültige Zugangsdaten")
 
         return _serialize_user_row(user_row)
