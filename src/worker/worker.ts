@@ -1071,12 +1071,12 @@ async function processJob(job: any) {
                 [migrationId, resolvedTarget.url, resolvedTarget.apiToken, resolvedTarget.email, resolvedTarget.authType]
               );
 
-              await writeChatMessage(migrationId, 'assistant', "Perfekt! Ich habe alles konfiguriert. Wir können jetzt mit der System-Erkennung (Schritt 1) starten.", 0);
+              await writeChatMessage(migrationId, 'assistant', "Perfekt! Ich habe alles konfiguriert. Wir können jetzt mit der Source Discovery (Schritt 1) starten.", 0);
               
               const startAction = JSON.stringify({
                   type: "action",
                   actions: [
-                    { action: "continue", label: "Schritt 1: System-Erkennung starten", variant: "primary" }
+                    { action: "continue", label: "Migration starten", variant: "primary" }
                   ]
               });
               await writeChatMessage(migrationId, 'system', startAction, 0);
