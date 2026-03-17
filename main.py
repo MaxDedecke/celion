@@ -97,7 +97,7 @@ async def websocket_endpoint(websocket: WebSocket, migration_id: str):
 # Include Routers
 app.include_router(data_sources.router, prefix="/api/data_sources", tags=["data_sources"])
 app.include_router(auth.router, tags=["auth"])
-app.include_router(projects.router, prefix="/api", tags=["projects"])
+app.include_router(projects.router, tags=["projects"])
 app.include_router(tools.router, prefix="/api", tags=["tools"])
 app.include_router(neo4j_router.router, prefix="/api/neo4j", tags=["neo4j"])
 app.include_router(stats.router, prefix="/api/stats", tags=["stats"])

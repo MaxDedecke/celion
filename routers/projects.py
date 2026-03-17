@@ -15,7 +15,7 @@ def _strip_eq_prefix(value: Optional[str]) -> Optional[str]:
     return value
 
 
-@router.get("/projects", response_model=list[Project])
+@router.get("/api/projects", response_model=list[Project])
 async def get_projects(
     user_id: Optional[str] = None,
     name: Optional[str] = None,
@@ -27,11 +27,11 @@ async def get_projects(
     try:
         with get_db_connection() as conn, conn.cursor() as cur:
             if select == "id,name":
-                query = "SELECT id, name FROM public.projects"
+                query = "SELECT id, name, description, created_at FROM public.projects"
                 params = []
                 if user_id:
                     query = """
-                        SELECT p.id, p.name 
+                        SELECT p.id, p.name, p.description, p.created_at
                         FROM public.projects p
                         LEFT JOIN public.project_members pm ON p.id = pm.project_id
                         WHERE p.user_id = %s OR pm.user_id = %s
@@ -42,7 +42,15 @@ async def get_projects(
                     query += " ORDER BY created_at DESC"
                     
                 cur.execute(query, tuple(params))
-                return [{"id": str(r["id"]), "name": r["name"]} for r in cur.fetchall()]
+                return [
+                    Project(
+                        id=str(r["id"]),
+                        name=r["name"],
+                        description=r["description"],
+                        created_at=r["created_at"].isoformat() if isinstance(r["created_at"], (datetime, date)) else str(r["created_at"])
+                    )
+                    for r in cur.fetchall()
+                ]
 
             if name:
                 cur.execute(
@@ -90,7 +98,7 @@ async def get_projects(
         raise HTTPException(status_code=500, detail="Failed to fetch projects.") from exc
 
 
-@router.get("/projects/{id}", response_model=Project)
+@router.get("/api/projects/{id}", response_model=Project)
 async def get_project(id: str) -> Project:
     """Fetch a single project from the database."""
     try:
@@ -107,7 +115,7 @@ async def get_project(id: str) -> Project:
                 id=str(row["id"]),
                 name=row["name"],
                 description=row["description"],
-                created_at=row["created_at"].isoformat(),
+                created_at=row["created_at"].isoformat() if isinstance(row["created_at"], (datetime, date)) else str(row["created_at"]),
             )
     except HTTPException:
         raise
@@ -116,7 +124,7 @@ async def get_project(id: str) -> Project:
         raise HTTPException(status_code=500, detail="Failed to fetch project.") from exc
 
 
-@router.post("/projects", response_model=Project)
+@router.post("/api/projects", response_model=Project)
 async def create_project(payload: CreateProjectPayload) -> Project:
     """Create a new project and automatically add the creator as owner."""
     try:
@@ -153,7 +161,7 @@ async def create_project(payload: CreateProjectPayload) -> Project:
                 id=project_id,
                 name=row["name"],
                 description=row["description"],
-                created_at=row["created_at"].isoformat(),
+                created_at=row["created_at"].isoformat() if isinstance(row["created_at"], (datetime, date)) else str(row["created_at"]),
             )
     except HTTPException:
         raise
@@ -162,7 +170,7 @@ async def create_project(payload: CreateProjectPayload) -> Project:
         raise HTTPException(status_code=500, detail="Failed to create project.") from exc
 
 
-@router.patch("/projects/{id}", response_model=Project)
+@router.patch("/api/projects/{id}", response_model=Project)
 async def update_project(id: str, payload: UpdateProjectPayload) -> Project:
     """Update a project by id."""
     if not id:
@@ -202,7 +210,7 @@ async def update_project(id: str, payload: UpdateProjectPayload) -> Project:
                 id=str(row["id"]),
                 name=row["name"],
                 description=row["description"],
-                created_at=row["created_at"].isoformat(),
+                created_at=row["created_at"].isoformat() if isinstance(row["created_at"], (datetime, date)) else str(row["created_at"]),
             )
     except HTTPException:
         raise
@@ -211,7 +219,7 @@ async def update_project(id: str, payload: UpdateProjectPayload) -> Project:
         raise HTTPException(status_code=500, detail="Failed to update project.") from exc
 
 
-@router.delete("/projects/{id}")
+@router.delete("/api/projects/{id}")
 async def delete_project(id: str) -> dict[str, str]:
     """Delete a project and all related records, including Neo4j data for migrations."""
     try:
@@ -243,7 +251,7 @@ async def delete_project(id: str) -> dict[str, str]:
         raise HTTPException(status_code=500, detail="Failed to delete project.") from exc
 
 
-@router.get("/project_members", response_model=list[ProjectMember])
+@router.get("/api/project_members", response_model=list[ProjectMember])
 async def get_project_members(
     project_id: Optional[str] = None,
     user_id: Optional[str] = None,
@@ -277,7 +285,7 @@ async def get_project_members(
                     project_id=str(row["project_id"]),
                     user_id=str(row["user_id"]),
                     role=row["role"],
-                    created_at=row["created_at"].isoformat(),
+                    created_at=row["created_at"].isoformat() if isinstance(row["created_at"], (datetime, date)) else str(row["created_at"]),
                 )
                 for row in rows
             ]
@@ -285,7 +293,7 @@ async def get_project_members(
         print(f"Error fetching project members: {exc}")
         raise HTTPException(status_code=500, detail="Failed to fetch project members.") from exc
 
-@router.post("/project_members", response_model=ProjectMember)
+@router.post("/api/project_members", response_model=ProjectMember)
 async def create_project_member(payload: CreateProjectMemberPayload) -> ProjectMember:
     """Add a member to a project."""
     try:
@@ -315,7 +323,7 @@ async def create_project_member(payload: CreateProjectMemberPayload) -> ProjectM
                 project_id=str(row["project_id"]),
                 user_id=str(row["user_id"]),
                 role=row["role"],
-                created_at=row["created_at"].isoformat(),
+                created_at=row["created_at"].isoformat() if isinstance(row["created_at"], (datetime, date)) else str(row["created_at"]),
             )
     except psycopg.errors.UniqueViolation:
         raise HTTPException(status_code=400, detail="User is already a member of this project.")
@@ -325,7 +333,7 @@ async def create_project_member(payload: CreateProjectMemberPayload) -> ProjectM
         print(f"Error creating project member: {exc}")
         raise HTTPException(status_code=500, detail="Failed to add project member.") from exc
 
-@router.delete("/project_members")
+@router.delete("/api/project_members")
 async def delete_project_member(
     project_id: Optional[str] = None,
     user_id: Optional[str] = None,
@@ -368,7 +376,7 @@ async def delete_project_member(
         print(f"Error deleting project member: {exc}")
         raise HTTPException(status_code=500, detail="Failed to delete project member.") from exc
 
-@router.get("/data_source_projects", response_model=list[DataSourceProject])
+@router.get("/api/data_source_projects", response_model=list[DataSourceProject])
 async def get_data_source_projects(data_source_id: Optional[str] = None) -> list[DataSourceProject]:
     """Fetch data source to project assignments."""
     data_source_id = _strip_eq_prefix(data_source_id)
