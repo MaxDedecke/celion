@@ -129,22 +129,76 @@ const ChatMessageList = ({
       if (msg.role !== 'assistant') return false;
       const content = msg.content.trim();
       
-      // The primary start marker is the generic one written by the worker for Steps 1-10
-      // This is the most reliable way to group attempts.
+      // Generic start markers (German and English)
       if (content.startsWith("Starte Schritt")) return true;
+      if (content.startsWith("Starting Step")) return true;
+      if (content.startsWith("Starting Schritt")) return true;
+      if (content.startsWith("Fortsetzung Schritt")) return true;
+      if (content.startsWith("Fortsetzung Step")) return true;
+      if (content.startsWith("Prüfe **Mapping-Verifizierung**")) return true;
+      
+      // The worker sends messages like "Starting System Detection..." or "Starting Authentication Flow..."
+      if (content.startsWith("Starting ") && (
+        content.includes("Detection") || 
+        content.includes("Flow") || 
+        content.includes("Discovery") || 
+        content.includes("Generation") || 
+        content.includes("Staging") || 
+        content.includes("Fetching") || 
+        content.includes("Transformation") || 
+        content.includes("Loading") || 
+        content.includes("Validation") || 
+        content.includes("Cleanup")
+      )) return true;
+
+      // Also support German translations if they ever appear
+      if (content.startsWith("Starte ") && (
+        content.includes("Erkennung") || 
+        content.includes("Authentifizierung") || 
+        content.includes("Entdeckung") || 
+        content.includes("Schema") || 
+        content.includes("Staging") || 
+        content.includes("Abruf") || 
+        content.includes("Transformation") || 
+        content.includes("Laden") || 
+        content.includes("Validierung") || 
+        content.includes("Bereinigung")
+      )) return true;
       
       // Fallback markers for Onboarding (Step 0) or other special agents
       return (
         content.includes("Celion Onboarding Agent") ||
-        content.includes("Lass uns deine Migration einrichten")
+        content.includes("Lass uns deine Migration einrichten") ||
+        content.includes("Lass uns mit der Einrichtung beginnen")
       );
+    };
+
+    const extractStepTitle = (messages: ChatMessageType[]) => {
+      const firstMsg = messages.find(m => m.role === 'assistant');
+      if (!firstMsg) return null;
+      
+      const content = firstMsg.content.trim();
+      // Match pattern like "Starte Schritt 1: **System Detection**..."
+      const match = content.match(/(?:Starte|Starting|Fortsetzung)\s+Schritt\s+\d+:\s+\*\*(.*?)\*\*/i);
+      if (match) return match[1];
+      
+      // Match pattern like "Starting System Detection..."
+      if (content.startsWith("Starting ") && content.endsWith("...")) {
+        return content.substring(9, content.length - 3);
+      }
+      
+      // Match pattern like "Prüfe **Mapping-Verifizierung**..."
+      const mappingMatch = content.match(/Prüfe\s+\*\*(.*?)\*\*/i);
+      if (mappingMatch) return mappingMatch[1];
+
+      return null;
     };
 
     visibleMessages.forEach((msg, idx) => {
       const step = msg.step_number ?? currentStepNumber;
       
       // Detect if this is a new attempt within the SAME step
-      const isNewAttemptStart = step > 0 && 
+      const isNewAttemptStart = step >= 0 && 
                                step === currentStepNumber && 
                                currentAttemptChunk.length > 0 && 
                                isStartMarker(msg);
@@ -153,17 +207,19 @@ const ChatMessageList = ({
         if (currentAttemptChunk.length > 0 && currentStepNumber !== -1) {
           if (isNewAttemptStart) {
             // Group the previous chunk as a failed attempt because a new attempt started in the same step
+            const extractedTitle = extractStepTitle(currentAttemptChunk);
             items.push({
               id: `attempt-${currentAttemptChunk[0].id}-${idx}`,
               type: 'attempt_group',
               messages: [...currentAttemptChunk],
               step_number: currentStepNumber,
-              attemptNumber: attemptCounter
+              attemptNumber: attemptCounter,
+              title: extractedTitle
             });
             attemptCounter++;
           } else {
             // Normal step transition. The previous step's chunk represents the final, successful (or current) state.
-            // Do not hide it in an accordion.
+            // Do not hide it in an accordion to keep the main flow visible.
             currentAttemptChunk.forEach(m => items.push({ type: 'single', message: m }));
             attemptCounter = 1;
           }
@@ -190,7 +246,7 @@ const ChatMessageList = ({
             <Accordion key={item.id} type="single" collapsible className="w-full">
               <AccordionItem value="item-1" className="border border-primary/10 bg-primary/5 rounded-xl px-4 overflow-hidden mb-2 animate-fade-in">
                 <AccordionTrigger className="py-3 hover:no-underline text-sm font-medium text-muted-foreground flex items-center gap-2">
-                  Fehlgeschlagener Versuch {item.attemptNumber} (Schritt {item.step_number})
+                  Fehlgeschlagener Versuch {item.attemptNumber} {item.title ? `(${item.title})` : `(Schritt ${item.step_number})`}
                 </AccordionTrigger>
                 <AccordionContent className="pt-2 pb-4 flex flex-col gap-2">
                   {item.messages.map((message: ChatMessageType, msgIdx: number) => {
