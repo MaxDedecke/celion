@@ -14,3 +14,7 @@ websockets
 neo4j
 passlib[bcrypt]
 bcrypt==3.2.0
+pytest
+pytest-asyncio
+pytest-mock
+httpx

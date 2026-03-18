@@ -122,6 +122,37 @@ Celion guides you through a structured 8-step process:
 
 ---
 
+## 🧪 Testing
+
+Celion uses automated tests to ensure stability and data integrity. All LLM calls are mocked in the tests to prevent API costs.
+
+### Worker & Frontend (TypeScript)
+Powered by **Vitest**.
+
+```bash
+# Install dependencies
+npm install
+
+# Run tests
+npm test
+
+# Run tests in watch mode
+npm run test:watch
+```
+
+### Backend (Python)
+Powered by **Pytest**.
+
+```bash
+# Install dependencies
+pip install -r requirements.txt
+
+# Run tests
+pytest
+```
+
+---
+
 ## 🤝 Contributing
 
 I welcome contributions! Please feel free to submit Pull Requests or open Issues for bugs and feature requests.
