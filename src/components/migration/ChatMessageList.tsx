@@ -1,5 +1,6 @@
 import { useEffect, useMemo } from "react";
 import ChatMessage, { ChatMessage as ChatMessageType } from "./ChatMessage";
+import TaskExecutionBundle from "./TaskExecutionBundle";
 import { useMessageQueue } from "@/hooks/useMessageQueue";
 import { Brain } from "lucide-react";
 import {
@@ -48,6 +49,135 @@ const ThinkingIndicator = ({ stepTitle, role = "agent" }: { stepTitle?: string, 
     </div>
   </div>
 );
+
+// Helper functions moved outside to be accessible everywhere
+function isStartMarker(msg: ChatMessageType) {
+  if (msg.role !== 'assistant') return false;
+  const content = msg.content.trim();
+  
+  // Generic start markers (German and English)
+  if (content.startsWith("Starte Schritt")) return true;
+  if (content.startsWith("Starting Step")) return true;
+  if (content.startsWith("Starting Schritt")) return true;
+  if (content.startsWith("Fortsetzung Schritt")) return true;
+  if (content.startsWith("Fortsetzung Step")) return true;
+  if (content.startsWith("Prüfe **Mapping-Verifizierung**")) return true;
+  
+  // The worker sends messages like "Starting System Detection..." or "Starting Authentication Flow..."
+  if (content.startsWith("Starting ") && (
+    content.includes("Detection") || 
+    content.includes("Flow") || 
+    content.includes("Discovery") || 
+    content.includes("Generation") || 
+    content.includes("Staging") || 
+    content.includes("Fetching") || 
+    content.includes("Transformation") || 
+    content.includes("Loading") || 
+    content.includes("Validation") || 
+    content.includes("Cleanup")
+  )) return true;
+
+  // Also support German translations if they ever appear
+  if (content.startsWith("Starte ") && (
+    content.includes("Erkennung") || 
+    content.includes("Authentifizierung") || 
+    content.includes("Entdeckung") || 
+    content.includes("Schema") || 
+    content.includes("Staging") || 
+    content.includes("Abruf") || 
+    content.includes("Transformation") || 
+    content.includes("Laden") || 
+    content.includes("Validierung") || 
+    content.includes("Bereinigung")
+  )) return true;
+  
+  // Fallback markers for Onboarding (Step 0) or other special agents
+  return (
+    content.includes("Celion Onboarding Agent") ||
+    content.includes("Lass uns deine Migration einrichten") ||
+    content.includes("Lass uns mit der Einrichtung beginnen")
+  );
+}
+
+function extractStepTitle(messages: ChatMessageType[]) {
+  const firstMsg = messages.find(m => m.role === 'assistant');
+  if (!firstMsg) return null;
+  
+  const content = firstMsg.content.trim();
+  // Match pattern like "Starte Schritt 1: **System Detection**..."
+  const match = content.match(/(?:Starte|Starting|Fortsetzung)\s+Schritt\s+\d+:\s+\*\*(.*?)\*\*/i);
+  if (match) return match[1];
+  
+  // Match pattern like "Starting System Detection..."
+  if (content.startsWith("Starting ") && content.endsWith("...")) {
+    return content.substring(9, content.length - 3);
+  }
+  
+  // Match pattern like "Prüfe **Mapping-Verifizierung**..."
+  const mappingMatch = content.match(/Prüfe\s+\*\*(.*?)\*\*/i);
+  if (mappingMatch) return mappingMatch[1];
+
+  return null;
+}
+
+function bundleSubtasks(messages: ChatMessageType[]): any[] {
+  const result: any[] = [];
+  let currentBundle: {
+    type: 'task_bundle';
+    id: string;
+    title: string;
+    messages: ChatMessageType[];
+    status: 'success' | 'error' | 'in_progress';
+    summary?: string;
+    step_number?: number;
+  } | null = null;
+
+  messages.forEach((msg) => {
+    const content = msg.content.trim();
+    const isTaskStart = content.includes("🚀 **Starte Teilaufgabe:**") || content.includes("🚀 Starte Teilaufgabe:");
+    const isTaskSuccess = content.includes("✅ **Aufgabe abgeschlossen:**") || content.includes("✅ Aufgabe abgeschlossen:");
+    const isTaskFailure = content.includes("❌ **Aufgabe fehlgeschlagen:**") || content.includes("❌ Aufgabe fehlgeschlagen:");
+
+    if (isTaskStart) {
+      if (currentBundle) result.push(currentBundle);
+      
+      // Extract title: remove the prefix and handle potential markdown bolding
+      const title = content.replace(/🚀 \*\*Starte Teilaufgabe:\*\*|🚀 Starte Teilaufgabe:/, '').trim();
+      
+      currentBundle = {
+        type: 'task_bundle',
+        id: `bundle-${msg.id}`,
+        title: title,
+        messages: [msg],
+        status: 'in_progress',
+        step_number: msg.step_number
+      };
+    } else if (currentBundle) {
+      currentBundle.messages.push(msg);
+      if (isTaskSuccess) {
+        currentBundle.status = 'success';
+        currentBundle.summary = content;
+        result.push(currentBundle);
+        currentBundle = null;
+      } else if (isTaskFailure) {
+        currentBundle.status = 'error';
+        currentBundle.summary = content;
+        result.push(currentBundle);
+        currentBundle = null;
+      }
+    } else {
+      result.push({ type: 'single', message: msg });
+    }
+  });
+
+  if (currentBundle) result.push(currentBundle);
+  return result;
+}
+
+type GroupedItem = 
+  | { type: 'single', message: ChatMessageType }
+  | { type: 'attempt_group', id: string, messages: ChatMessageType[], step_number: number, attemptNumber: number, title: string | null }
+  | { type: 'task_bundle', id: string, title: string, messages: ChatMessageType[], status: 'success' | 'error' | 'in_progress', summary?: string, step_number?: number };
 
 const ChatMessageList = ({ 
   messages, 
@@ -124,76 +254,6 @@ const ChatMessageList = ({
     let currentStepNumber = -1;
     let attemptCounter = 1;
 
-    // Helper to check if a message looks like a "Start of Step" message
-    const isStartMarker = (msg: ChatMessageType) => {
-      if (msg.role !== 'assistant') return false;
-      const content = msg.content.trim();
-      
-      // Generic start markers (German and English)
-      if (content.startsWith("Starte Schritt")) return true;
-      if (content.startsWith("Starting Step")) return true;
-      if (content.startsWith("Starting Schritt")) return true;
-      if (content.startsWith("Fortsetzung Schritt")) return true;
-      if (content.startsWith("Fortsetzung Step")) return true;
-      if (content.startsWith("Prüfe **Mapping-Verifizierung**")) return true;
-      
-      // The worker sends messages like "Starting System Detection..." or "Starting Authentication Flow..."
-      if (content.startsWith("Starting ") && (
-        content.includes("Detection") || 
-        content.includes("Flow") || 
-        content.includes("Discovery") || 
-        content.includes("Generation") || 
-        content.includes("Staging") || 
-        content.includes("Fetching") || 
-        content.includes("Transformation") || 
-        content.includes("Loading") || 
-        content.includes("Validation") || 
-        content.includes("Cleanup")
-      )) return true;
-
-      // Also support German translations if they ever appear
-      if (content.startsWith("Starte ") && (
-        content.includes("Erkennung") || 
-        content.includes("Authentifizierung") || 
-        content.includes("Entdeckung") || 
-        content.includes("Schema") || 
-        content.includes("Staging") || 
-        content.includes("Abruf") || 
-        content.includes("Transformation") || 
-        content.includes("Laden") || 
-        content.includes("Validierung") || 
-        content.includes("Bereinigung")
-      )) return true;
-      
-      // Fallback markers for Onboarding (Step 0) or other special agents
-      return (
-        content.includes("Celion Onboarding Agent") ||
-        content.includes("Lass uns deine Migration einrichten") ||
-        content.includes("Lass uns mit der Einrichtung beginnen")
-      );
-    };
-
-    const extractStepTitle = (messages: ChatMessageType[]) => {
-      const firstMsg = messages.find(m => m.role === 'assistant');
-      if (!firstMsg) return null;
-      
-      const content = firstMsg.content.trim();
-      // Match pattern like "Starte Schritt 1: **System Detection**..."
-      const match = content.match(/(?:Starte|Starting|Fortsetzung)\s+Schritt\s+\d+:\s+\*\*(.*?)\*\*/i);
-      if (match) return match[1];
-      
-      // Match pattern like "Starting System Detection..."
-      if (content.startsWith("Starting ") && content.endsWith("...")) {
-        return content.substring(9, content.length - 3);
-      }
-      
-      // Match pattern like "Prüfe **Mapping-Verifizierung**..."
-      const mappingMatch = content.match(/Prüfe\s+\*\*(.*?)\*\*/i);
-      if (mappingMatch) return mappingMatch[1];
-
-      return null;
-    };
-
     visibleMessages.forEach((msg, idx) => {
       const step = msg.step_number ?? currentStepNumber;
       
@@ -218,9 +278,8 @@ const ChatMessageList = ({
             });
             attemptCounter++;
           } else {
-            // Normal step transition. The previous step's chunk represents the final, successful (or current) state.
-            // Do not hide it in an accordion to keep the main flow visible.
-            currentAttemptChunk.forEach(m => items.push({ type: 'single', message: m }));
+            // Normal step transition. Process chunk for subtasks.
+            items.push(...bundleSubtasks(currentAttemptChunk));
             attemptCounter = 1;
           }
           currentAttemptChunk = [];
@@ -232,11 +291,12 @@ const ChatMessageList = ({
     });
 
     if (currentAttemptChunk.length > 0) {
-      currentAttemptChunk.forEach(m => items.push({ type: 'single', message: m }));
+      items.push(...bundleSubtasks(currentAttemptChunk));
     }
     
     return items;
   }, [visibleMessages]);
+
 
   return (
     <div className="flex flex-col gap-2 pb-4 pr-3">
@@ -244,19 +304,43 @@ const ChatMessageList = ({
         if (item.type === 'attempt_group') {
           return (
             <Accordion key={item.id} type="single" collapsible className="w-full">
-              <AccordionItem value="item-1" className="border border-primary/10 bg-primary/5 rounded-xl px-4 overflow-hidden mb-2 animate-fade-in">
+              <AccordionItem value="item-1" className="border border-primary/10 bg-primary/5 rounded-xl px-4 overflow-hidden mb-2 animate-fade-in shadow-sm">
                 <AccordionTrigger className="py-3 hover:no-underline text-sm font-medium text-muted-foreground flex items-center gap-2">
-                  Fehlgeschlagener Versuch {item.attemptNumber} {item.title ? `(${item.title})` : `(Schritt ${item.step_number})`}
+                  <div className="h-6 w-6 rounded-full bg-muted flex items-center justify-center text-[10px]">
+                    {item.attemptNumber}
+                  </div>
+                  <span>Fehlgeschlagener Versuch {item.attemptNumber} {item.title ? `(${item.title})` : `(Schritt ${item.step_number})`}</span>
                 </AccordionTrigger>
                 <AccordionContent className="pt-2 pb-4 flex flex-col gap-2">
-                  {item.messages.map((message: ChatMessageType, msgIdx: number) => {
+                  {bundleSubtasks(item.messages).map((subItem: any, subIdx: number) => {
+                    if (subItem.type === 'task_bundle') {
+                      return (
+                        <TaskExecutionBundle
+                          key={subItem.id}
+                          id={subItem.id}
+                          title={subItem.title}
+                          messages={subItem.messages}
+                          status={subItem.status}
+                          summary={subItem.summary}
+                          allMessages={messages}
+                          onOpenAgentOutput={onOpenAgentOutput}
+                          onAction={handleAction}
+                          currentStep={currentStep}
+                          animatingId={animatingId}
+                          completedAnimations={completedAnimations}
+                          onAnimationComplete={onAnimationComplete}
+                        />
+                      );
+                    }
+
+                    const message = subItem.message;
                     const shouldAnimate = animatingId === message.id && !completedAnimations.has(message.id);
                     return (
                       <div
                         key={message.id}
                         className="animate-fade-in"
                         style={{
-                          animationDelay: `${Math.min(msgIdx * 30, 150)}ms`,
+                          animationDelay: `${Math.min(subIdx * 30, 150)}ms`,
                         }}
                       >
                         <ChatMessage 
@@ -267,6 +351,7 @@ const ChatMessageList = ({
                           enableTypewriter={shouldAnimate}
                           onTypewriterComplete={() => onAnimationComplete(message.id)}
                           currentStep={currentStep}
+                          isBundled={true}
                         />
                       </div>
                     );
@@ -274,6 +359,26 @@ const ChatMessageList = ({
                 </AccordionContent>
               </AccordionItem>
             </Accordion>
+          );
+        }
+
+        if (item.type === 'task_bundle') {
+          return (
+            <TaskExecutionBundle
+              key={item.id}
+              id={item.id}
+              title={item.title}
+              messages={item.messages}
+              status={item.status}
+              summary={item.summary}
+              allMessages={messages}
+              onOpenAgentOutput={onOpenAgentOutput}
+              onAction={handleAction}
+              currentStep={currentStep}
+              animatingId={animatingId}
+              completedAnimations={completedAnimations}
+              onAnimationComplete={onAnimationComplete}
+            />
           );
         }
 

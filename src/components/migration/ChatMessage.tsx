@@ -149,7 +149,7 @@ const DiscoveryReport = ({ data }: { data: any }) => {
 
 // Utility functions for rendering content using hoisted function declarations
 function processLinks(text: string) {
-  const combinedRegex = /\[(.*?)\]\((.*?)\)|(\bhttps?:\/\/[^\s\)]+)/g;
+  const combinedRegex = /\[(.*?)\]\((.*?)\)|(\bhttps?:\/\/[^\s)]+)/g;
   const parts = [];
   let lastIndex = 0;
   let match;
@@ -316,9 +316,10 @@ interface ChatMessageProps {
   enableTypewriter?: boolean;
   onTypewriterComplete?: () => void;
   currentStep?: number;
+  isBundled?: boolean;
 }
 
-const ChatMessage = ({ message, allMessages, onOpenAgentOutput, onAction, enableTypewriter = false, onTypewriterComplete, currentStep }: ChatMessageProps) => {
+const ChatMessage = ({ message, allMessages, onOpenAgentOutput, onAction, enableTypewriter = false, onTypewriterComplete, currentStep, isBundled = false }: ChatMessageProps) => {
   const [showJsonDialog, setShowJsonDialog] = useState(false);
   const [selectedDropdownValue, setSelectedDropdownValue] = useState<string>("");
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -586,7 +587,8 @@ const ChatMessage = ({ message, allMessages, onOpenAgentOutput, onAction, enable
     <div
       ref={containerRef}
       className={cn(
-        "flex w-full gap-3 py-2 transition-all duration-300",
+        "flex w-full gap-3 transition-all duration-300",
+        isBundled ? "py-1" : "py-2",
         message.role === "user" ? "flex-row-reverse animate-slide-up" : "flex-row animate-fade-in"
       )}
     >
