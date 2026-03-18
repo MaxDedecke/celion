@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } f
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import TypewriterText from "./TypewriterText";
+import ReportDisplay from "./ReportDisplay";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useToast } from "@/hooks/use-toast";
 import { Progress } from "@/components/ui/progress";
@@ -601,7 +602,7 @@ const ChatMessage = ({ message, allMessages, onOpenAgentOutput, onAction, enable
       <div className={cn(
         "flex flex-col min-w-0",
         message.role === "user" ? "items-end ml-auto" : "items-start mr-auto",
-        jsonContent?.type === "live-transfer-status" || jsonContent?.entities 
+        jsonContent?.type === "live-transfer-status" || jsonContent?.type === "migration_report" || jsonContent?.entities 
           ? "w-full max-w-none md:max-w-[98%]" 
           : "max-w-[70%] sm:max-w-[60%] md:max-w-[50%]"
       )}>
@@ -616,7 +617,7 @@ const ChatMessage = ({ message, allMessages, onOpenAgentOutput, onAction, enable
         
         <div className={cn(
           "rounded-2xl px-4 py-3 text-sm leading-relaxed border shadow-sm transition-all duration-200",
-          jsonContent?.type === "live-transfer-status" || jsonContent?.entities ? "w-full" : "w-fit",
+          jsonContent?.type === "live-transfer-status" || jsonContent?.type === "migration_report" || jsonContent?.entities ? "w-full" : "w-fit",
           message.role === "user" 
             ? "bg-primary/5 border-primary/5 text-foreground text-left" 
             : "bg-muted/30 border-muted/30 text-foreground text-left hover:border-primary/10 hover:shadow-md",
@@ -635,7 +636,7 @@ const ChatMessage = ({ message, allMessages, onOpenAgentOutput, onAction, enable
                   )
                 )}
               </div>
-              {jsonContent && !["live-transfer-status", "action", "datasource_dropdown", "scope_dropdown"].includes(jsonContent.type) && !jsonContent.entities && (
+              {jsonContent && !["live-transfer-status", "migration_report", "action", "datasource_dropdown", "scope_dropdown"].includes(jsonContent.type) && !jsonContent.entities && (
                 <Button 
                   variant="ghost" 
                   size="icon" 
@@ -652,6 +653,8 @@ const ChatMessage = ({ message, allMessages, onOpenAgentOutput, onAction, enable
               <div className="flex flex-col gap-2">
                 {jsonContent.type === "live-transfer-status" ? (
                   <LiveTransferStatus data={jsonContent} />
+                ) : jsonContent.type === "migration_report" ? (
+                  <ReportDisplay data={jsonContent} />
                 ) : jsonContent.entities ? (
                   <DiscoveryReport data={jsonContent} />
                 ) : jsonContent.type === "action" ? (

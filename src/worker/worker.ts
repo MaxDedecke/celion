@@ -1668,6 +1668,78 @@ async function processJob(job: any) {
       }
       return;
 
+    } else if (agentName === 'runReporting' || agentName === 'runReport') {
+      const context = {
+        migrationId,
+        stepNumber: currentStepNumber,
+        writeChatMessage: async (role, content, stepNum) => await writeChatMessage(migrationId, role, content, stepNum),
+        upsertChatMessage: async (id, role, content, stepNum) => await upsertChatMessage(id, migrationId, role, content, stepNum),
+        logActivity: async (type, title) => await logActivity(migrationId, type, title),
+        getConnector: async (type) => {
+            const { rows } = await pool.query('SELECT api_url, api_key, username, auth_type FROM connectors WHERE migration_id = $1 AND connector_type = $2', [migrationId, type]);
+            return rows[0];
+        },
+        getMigrationDetails: async () => {
+            const { rows } = await pool.query('SELECT name, source_system, target_system, scope_config, context FROM migrations WHERE id = $1', [migrationId]);
+            return rows[0];
+        },
+        dbPool: pool
+      };
+
+      const agent = await StepFactory.createAgent(agentName, context);
+      if (agent) {
+        try {
+          const agentResult = await agent.execute(agentParams);
+          isLogicalFailure = !!agentResult.isLogicalFailure;
+          failureMessage = agentResult.error || "";
+          result = agentResult.result || agentResult;
+        } catch (err) {
+          isLogicalFailure = true;
+          failureMessage = String(err);
+          result = { error: failureMessage };
+        }
+      } else {
+        isLogicalFailure = true;
+        failureMessage = "Agent not found in StepFactory";
+        result = { error: failureMessage };
+      }
+
+      const finishClientReport = await pool.connect();
+      try {
+        await finishClientReport.query('BEGIN');
+        await finishClientReport.query('UPDATE migration_steps SET status = $1, result = $2, status_message = $3 WHERE id = $4', [
+          isLogicalFailure ? 'failed' : 'completed', result, isLogicalFailure ? failureMessage : 'Report generated.', step_id,
+        ]);
+
+        const { rows: migRowsFinal } = await finishClientReport.query('SELECT workflow_state FROM migrations WHERE id = $1', [migrationId]);
+        const migrationDataFinal = migRowsFinal[0];
+        const { nextState, progress, totalSteps, completedCount } = updateWorkflowForStep(migrationDataFinal?.workflow_state, stepRecord.workflow_step_id || step_id, result, isLogicalFailure);
+        const migrationStatus = isLogicalFailure ? 'paused' : (completedCount >= totalSteps ? 'completed' : 'processing');
+        const stepStatusForMigration = isLogicalFailure ? 'failed' : 'completed';
+
+        await finishClientReport.query('UPDATE migrations SET workflow_state = $1, progress = $2, status = $3, step_status = $4, current_step = $5 WHERE id = $6', [
+          nextState, progress, migrationStatus, stepStatusForMigration, currentStepNumber, migrationId,
+        ]);
+        await finishClientReport.query('UPDATE jobs SET status = $1 WHERE id = $2', ['completed', job.id]);
+        
+        await incrementGlobalStats(finishClientReport, { steps: 1, success: isLogicalFailure ? 0 : 1, total_agents: 1 });
+
+        await finishClientReport.query('COMMIT');
+        
+        if (isLogicalFailure) {
+            await writeChatMessage(migrationId, 'assistant', `Schritt ${currentStepNumber} Reporterstellung fehlgeschlagen: ${failureMessage}`, currentStepNumber);
+            await writeRetryAction(migrationId, currentStepNumber);
+        } else {
+            await writeChatMessage(migrationId, 'assistant', `Die Migration ist nun offiziell abgeschlossen. Du kannst den detaillierten Bericht oben einsehen und als PDF herunterladen. Vielen Dank, dass du Celion genutzt hast!`, currentStepNumber);
+        }
+      } catch (e) {
+        await finishClientReport.query('ROLLBACK');
+        throw e;
+      } finally {
+        finishClientReport.release();
+      }
+      return;
+
     } else {
       throw new Error(`Agent ${agentName} is not yet implemented in the worker.`);
     }

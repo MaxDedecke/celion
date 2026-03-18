@@ -16,6 +16,7 @@ import { EnhancementRulesAgent } from '../enhancement/EnhancementRulesAgent';
 import { DataTransferAgent } from '../dataTransfer/DataTransferAgent';
 import { VerificationAgent } from '../verification/VerificationAgent';
 import { FailureAnalysisAgent } from '../failureAnalysis/FailureAnalysisAgent';
+import { ReportingAgent } from '../reporting/ReportingAgent';
 
 export class StepFactory {
   private static provider: LlmProvider | null = null;
@@ -76,6 +77,9 @@ export class StepFactory {
         return new VerificationAgent(provider, context);
       case 'runFailureAnalysis':
         return new FailureAnalysisAgent(provider, context);
+      case 'runReporting':
+      case 'runReport':
+        return new ReportingAgent(provider, context);
       default:
         return null;
     }
