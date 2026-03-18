@@ -23,7 +23,8 @@ async def duplicate_neo4j_data(old_id: str, new_id: str):
 
             # 2. Re-create nodes with the new migration_id
             for node in nodes:
-                labels = ":".join(node["labels"])
+                # Wrap labels in backticks for safety in Cypher
+                labels = ":".join([f"`{l}`" for l in node["labels"]])
                 props = dict(node["props"])
                 props["migration_id"] = str(new_id)
 
@@ -47,8 +48,8 @@ async def duplicate_neo4j_data(old_id: str, new_id: str):
                 if not rel["sExt"] or not rel["tExt"]:
                     continue
 
-                s_labels = ":".join(rel["s_labels"])
-                t_labels = ":".join(rel["t_labels"])
+                s_labels = ":".join([f"`{l}`" for l in rel["s_labels"]])
+                t_labels = ":".join([f"`{l}`" for l in rel["t_labels"]])
 
                 query = f"""
                     MATCH (s:{s_labels} {{external_id: $sExt, migration_id: $newId}})
