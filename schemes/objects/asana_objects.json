@@ -22,7 +22,7 @@
       ]
     },
     {
-      "key": "project",
+      "key": "projects",
       "displayName": "Project / Projekt",
       "endpoint": "/api/1.0/teams/{team_gid}/projects",
       "fields": [
@@ -34,7 +34,7 @@
       ]
     },
     {
-      "key": "section",
+      "key": "sections",
       "displayName": "Section / Abschnitt (in Project)",
       "endpoint": "/api/1.0/projects/{project_gid}/sections",
       "fields": [
@@ -43,7 +43,7 @@
       ]
     },
     {
-      "key": "task",
+      "key": "project_tasks",
       "displayName": "Task / Aufgabe",
       "endpoint": "/api/1.0/projects/{project_gid}/tasks?opt_fields=name,notes,completed,due_on,assignee,custom_fields",
       "fields": [

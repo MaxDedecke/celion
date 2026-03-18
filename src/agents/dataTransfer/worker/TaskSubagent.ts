@@ -45,7 +45,8 @@ Dir stehen Tools zur Verfügung, um Daten zu lesen und zu schreiben.
 1. Nutze als Basis-URL die Ziel-Spezifikationen. Beachte Platzhalter in URLs.
 2. Wenn du einen API-Body (Payload) erstellst, wende das Mapping strikt an. 
 3. **ID-Mapping:** Wenn das Ziel-Schema z.B. eine 'assignee' ID erwartet und das Quell-Feld 'creator_id' war, MUSST du im 'idMappings' nachschauen, wie die alte Quell-ID zur neuen Ziel-ID übersetzt wurde. Setze IMMER die **neue Ziel-ID** ein!
-4. **Ziel-Container / Scope:** Wenn ein Objekt in einem Projekt/Space liegen muss, nutze die ID: ${targetScopeId || "NICHT_DEFINIERT"} an der Stelle in URL oder Body, wo die Projekt-ID gefordert wird (häufig als Platzhalter im Schema definiert).
+48  4. **Ziel-Container / Scope:** Wenn ein Objekt in einem Projekt/Space liegen muss, nutze die ID: ${targetScopeId || "NICHT_DEFINIERT"} an der Stelle in URL oder Body, wo die Projekt-ID gefordert wird (häufig als Platzhalter im Schema definiert).
+49  5. **WICHTIG (BODY REQUIRED):** Wenn du 'push_mapped_data' aufrufst, MUSST du für POST/PUT-Requests zwingend den Parameter 'body' mit allen gemappten Feldern (insbesondere 'name' bei Ordnern/Listen/Tasks) befüllen. Der Body darf niemals fehlen oder leer sein!
 
 ### ZUR VERFÜGUNG STEHENDE DATEN:
 **Mapping-Regeln für diese Aufgabe:**
@@ -101,7 +102,7 @@ ${JSON.stringify(targetSchema?.objects?.[task.targetEntityType] || targetSchema,
                     sourceId: { type: "string", description: "Die ID des Objekts aus dem Quellsystem (wichtig für das spätere ID-Mapping)." },
                     method: { type: "string", enum: ["POST", "PUT", "PATCH"], description: "HTTP Methode." },
                     url: { type: "string", description: "Relativer Endpunkt (z.B. '/api/v2/task') oder absolute URL." },
-                    body: { type: "object", description: "Der fertig strukturierte JSON-Payload, den das Zielsystem laut Spec erwartet." }
+                    body: { type: "object", description: "WICHTIG: Der fertig strukturierte JSON-Payload, den das Zielsystem erwartet. Für POST/PUT zwingend erforderlich (z.B. { 'name': 'Projekt 1' }). Darf nicht leer sein!" }
                   },
                   required: ["sourceId", "method", "url", "body"]
                }
@@ -177,7 +178,10 @@ ${JSON.stringify(targetSchema?.objects?.[task.targetEntityType] || targetSchema,
                    // Only fetch nodes that have NOT been transferred yet
                    const res = await session.run(
                                        `MATCH (n:\`${sourceSystem}\`) 
-                                        WHERE n.migration_id = $migrationId                         AND (toLower(n.entity_type) = toLower($entityType) OR toLower(n.entity_type) = toLower($entityType) + "s")
+                                        WHERE n.migration_id = $migrationId 
+                                        AND (toLower(n.entity_type) = toLower($entityType) 
+                                             OR toLower(n.entity_type) = toLower($entityType) + "s"
+                                             OR toLower(n.entity_type) CONTAINS toLower($entityType))
                         AND n.target_id IS NULL
                         OPTIONAL MATCH (n)-[r]->(p) WHERE p.target_id IS NOT NULL
                         RETURN properties(n) as node, collect({type: type(r), parent_target_id: p.target_id}) as relations
@@ -204,6 +208,7 @@ ${JSON.stringify(targetSchema?.objects?.[task.targetEntityType] || targetSchema,
             } 
             else if (toolCall.function.name === 'push_mapped_data') {
                logs.push(`[Tool] Pushing ${args.requests.length} mapped items to Target API...`);
+               console.log(`[Worker] push_mapped_data args: ${JSON.stringify(args, null, 2)}`);
                await this.context.logActivity('info', `Sende ${args.requests.length} transformierte Elemente an das Zielsystem...`);
                
                // Get Target Connector Info
@@ -240,6 +245,12 @@ ${JSON.stringify(targetSchema?.objects?.[task.targetEntityType] || targetSchema,
                            }
                        }
 
+                       // GENERIC FIX: Ensure body is an object for POST requests if missing
+                       if (req.method === 'POST' && !req.body) {
+                           req.body = {};
+                           logs.push(`[Worker] Initialized empty body for POST request as it was missing.`);
+                       }
+
                        // GENERIC FIX: If the schema defines a parent template and it's missing or incomplete in the POST body, inject it
                        if (req.method === 'POST' && req.body && targetScopeId) {
                            const templates = targetSchema?.exportInstructions?.requestTemplates || {};
@@ -272,6 +283,8 @@ ${JSON.stringify(targetSchema?.objects?.[task.targetEntityType] || targetSchema,
                            if (!apiRes.ok) {
                                const errText = await apiRes.text();
                                console.error(`[Worker] API Call failed: ${apiRes.status} - ${errText}`);
+                               console.error(`[Worker] API Call URL: ${finalUrl}`);
+                               console.error(`[Worker] API Call Body: ${JSON.stringify(req.body, null, 2)}`);
                                await this.context.writeChatMessage('assistant', `⚠️ API-Call fehlgeschlagen: **${apiRes.status}** beim Übertragen von Objekt ${req.sourceId}. Details: ${errText.substring(0, 100)}...`, this.context.stepNumber);
                                results.push({ sourceId: req.sourceId, success: false, status: apiRes.status, error: errText });
                            } else {

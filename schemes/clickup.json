@@ -70,11 +70,39 @@
       { "id": "space", "name": "Neuer Space in existierendem Workspace" }
     ],
     "sequence": [
-      "space",
-      "folder",
-      "list",
-      "task"
+      "spaces",
+      "folders",
+      "lists_in_folders",
+      "tasks"
     ],
-    "logic": "1. Erstelle den Space im Team über 'POST /api/v2/team/{team_id}/space'. 2. Erstelle Folder innerhalb des Spaces über 'POST /api/v2/space/{space_id}/folder'. 3. Erstelle Listen innerhalb der Folder über 'POST /api/v2/folder/{folder_id}/list' oder direkt im Space über 'POST /api/v2/space/{space_id}/list'. 4. Erstelle Tasks in den Listen über 'POST /api/v2/list/{list_id}/task'. WICHTIG: Nutze die 'id' der neu erstellten Parent-Container aus dem Graphen für die API-Aufrufe der Kinder."
+    "logic": "1. Erstelle den Space im Team über 'POST /api/v2/team/{team_id}/space'. 2. Erstelle Folder innerhalb des Spaces über 'POST /api/v2/space/{space_id}/folder'. 3. Erstelle Listen innerhalb der Folder über 'POST /api/v2/folder/{folder_id}/list' oder direkt im Space über 'POST /api/v2/space/{space_id}/list'. 4. Erstelle Tasks in den Listen über 'POST /api/v2/list/{list_id}/task'. WICHTIG: Nutze die 'id' der neu erstellten Parent-Container aus dem Graphen für die API-Aufrufe der Kinder.",
+    "requestTemplates": {
+      "folders": {
+        "method": "POST",
+        "url": "/api/v2/space/{space_id}/folder",
+        "body_structure": {
+          "name": "{name}"
+        }
+      },
+      "lists_in_folders": {
+        "method": "POST",
+        "url": "/api/v2/folder/{folder_id}/list",
+        "body_structure": {
+          "name": "{name}"
+        }
+      },
+      "tasks": {
+        "method": "POST",
+        "url": "/api/v2/list/{list_id}/task",
+        "body_structure": {
+          "name": "{name}",
+          "description": "{notes}",
+          "status": "to do",
+          "priority": 3,
+          "due_date": "{due_date}",
+          "start_date": "{start_date}"
+        }
+      }
+    }
   }
 }

@@ -2,7 +2,7 @@
   "system": "ClickUp",
   "objects": [
     {
-      "key": "team",
+      "key": "teams",
       "displayName": "Workspace",
       "endpoint": "/api/v2/team",
       "fields": [
@@ -12,7 +12,7 @@
       ]
     },
     {
-      "key": "space",
+      "key": "spaces",
       "displayName": "Space",
       "endpoint": "/api/v2/team/{team_id}/space",
       "fields": [
@@ -23,7 +23,7 @@
       ]
     },
     {
-      "key": "folder",
+      "key": "folders",
       "displayName": "Folder / Ordner",
       "endpoint": "/api/v2/space/{space_id}/folder",
       "fields": [
@@ -32,7 +32,7 @@
       ]
     },
     {
-      "key": "list",
+      "key": "lists_in_folders",
       "displayName": "List / Liste (in Folder)",
       "endpoint": "/api/v2/folder/{folder_id}/list",
       "fields": [
@@ -43,7 +43,7 @@
       ]
     },
     {
-      "key": "list_in_space",
+      "key": "lists_in_spaces",
       "displayName": "List / Liste (direkt in Space)",
       "endpoint": "/api/v2/space/{space_id}/list",
       "fields": [
@@ -52,7 +52,7 @@
       ]
     },
     {
-      "key": "task",
+      "key": "tasks",
       "displayName": "Task / Aufgabe (inkl. Subtasks)",
       "endpoint": "/api/v2/team/{team_id}/task?include_closed=true&subtasks=true",
       "fields": [
