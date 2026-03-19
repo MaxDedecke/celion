@@ -61,6 +61,10 @@
       "database",
       "block"
     ],
+    "idExtractionPaths": [
+      "id",
+      "results[0].id"
+    ],
     "logic": "1. Erstelle die Hauptseite (Parent) über 'POST /v1/pages'. 2. Erstelle Datenbanken oder Unterseiten innerhalb dieser Seite. 3. Inhalte werden als 'children' Blöcke über 'PATCH /v1/blocks/{block_id}/children' hinzugefügt. Achte STRIKT auf das spezifische Block-JSON-Format von Notion (z.B. { 'type': 'paragraph', 'paragraph': { 'rich_text': [...] } }).",
     "requestTemplates": {
       "page": {
@@ -93,6 +97,14 @@
           },
           "properties": "{...}"
         }
+      },
+      "block_children": {
+        "method": "PATCH",
+        "url": "/v1/blocks/{block_id}/children",
+        "body_structure": {
+          "children": []
+        },
+        "critical_note": "Beim Hinzufügen von Blöcken zu einer Seite oder einem anderen Block MUSS das Wurzelelement im Body 'children' heißen und ein Array von Block-Objekten enthalten."
       }
     }
   }

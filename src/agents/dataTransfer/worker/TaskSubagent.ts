@@ -73,7 +73,7 @@ ${JSON.stringify(targetSchema?.objects?.[task.targetEntityType] || targetSchema,
       type: "function",
       function: {
         name: "fetch_source_data",
-        description: `Lädt die Quell-Daten für den Entitätstyp '${task.sourceEntityType}' aus der lokalen Graph-Datenbank.`,
+        description: `Lädt die Quell-Daten für den Entitätstyp '${task.sourceEntityType}' aus der lokalen Graph-Datenbank. TIPP: Die Antwort enthält auch '_relations', worin du z.B. die 'parent_target_id' findest, falls das Elternelement bereits migriert wurde. Nutze diese ID für den Ziel-API-Call (z.B. in der URL).`,
         parameters: {
           type: "object",
           properties: {
@@ -245,10 +245,10 @@ ${JSON.stringify(targetSchema?.objects?.[task.targetEntityType] || targetSchema,
                            }
                        }
 
-                       // GENERIC FIX: Ensure body is an object for POST requests if missing
-                       if (req.method === 'POST' && !req.body) {
+                       // GENERIC FIX: Ensure body is an object for POST/PATCH requests if missing
+                       if ((req.method === 'POST' || req.method === 'PATCH') && !req.body) {
                            req.body = {};
-                           logs.push(`[Worker] Initialized empty body for POST request as it was missing.`);
+                           logs.push(`[Worker] Initialized empty body for ${req.method} request as it was missing.`);
                        }
 
                        // GENERIC FIX: If the schema defines a parent template and it's missing or incomplete in the POST body, inject it
@@ -268,7 +268,38 @@ ${JSON.stringify(targetSchema?.objects?.[task.targetEntityType] || targetSchema,
                                    // Clone and replace placeholder
                                    const injectedParent = JSON.parse(JSON.stringify(parentTemplate).replace("{targetScopeId}", targetScopeId));
                                    req.body.parent = injectedParent;
-                                   logs.push(`[Worker] Auto-injected or fixed parent structure from schema template for ${targetSystem}`);
+                                   logs.push(`[Worker] Auto-injected or fixed parent structure from schema template.`);
+                               }
+                           }
+                       }
+
+                       // GENERIC FIX: Automatic Body Repair based on Request Templates
+                       // If a template has exactly one root key (e.g. 'children', 'data') and the agent didn't provide it, wrap it.
+                       const templates = targetSchema?.exportInstructions?.requestTemplates || {};
+                       const matchingTemplate: any = Object.values(templates).find((t: any) => {
+                           if (t.method !== req.method) return false;
+                           // Simple pattern match: replace {placeholder} with wildcard
+                           const pattern = t.url.replace(/\{[^}]+\}/g, '.*');
+                           const regex = new RegExp(`^${pattern}$`);
+                           return regex.test(req.url);
+                       });
+
+                       if (matchingTemplate && matchingTemplate.body_structure) {
+                           const rootKeys = Object.keys(matchingTemplate.body_structure);
+                           if (rootKeys.length === 1) {
+                               const wrapperKey = rootKeys[0];
+                               // If the current body doesn't have the wrapper key, and it's either an array or doesn't have other keys from the template
+                               if (!req.body[wrapperKey]) {
+                                   if (Array.isArray(req.body)) {
+                                       req.body = { [wrapperKey]: req.body };
+                                       logs.push(`[Worker] Auto-wrapped request body in '${wrapperKey}' (detected from template).`);
+                                   } else if (Object.keys(req.body).length > 0) {
+                                       // It's an object but missing the root key. 
+                                       // Only wrap if it's NOT already containing the keys that SHOULD be inside the wrapper
+                                       // (This is a heuristic, but safe for Notion's 'children')
+                                       req.body = { [wrapperKey]: [req.body] };
+                                       logs.push(`[Worker] Auto-wrapped object body in '${wrapperKey}' array (detected from template).`);
+                                   }
                                }
                            }
                        }
@@ -289,8 +320,37 @@ ${JSON.stringify(targetSchema?.objects?.[task.targetEntityType] || targetSchema,
                                results.push({ sourceId: req.sourceId, success: false, status: apiRes.status, error: errText });
                            } else {
                                const apiData = await apiRes.json();
-                               // Auto-extract ID from common response fields
-                               const newTargetId = apiData.id || apiData.gid || apiData.key || (apiData.data?.id) || (apiData.data?.gid);
+                               
+                               // GENERIC ID EXTRACTION: Try paths from schema or defaults
+                               let newTargetId: string | null = null;
+                               const extractionPaths = targetSchema?.exportInstructions?.idExtractionPaths || [
+                                   "id", "gid", "key", "data.id", "data.gid"
+                               ];
+
+                               for (const path of extractionPaths) {
+                                   // Simple path resolver (e.g. "results[0].id" or "data.id")
+                                   try {
+                                       const parts = path.split('.');
+                                       let current: any = apiData;
+                                       for (const part of parts) {
+                                           if (current === undefined || current === null) break;
+                                           if (part.includes('[') && part.includes(']')) {
+                                               const [key, indexPart] = part.split('[');
+                                               const index = parseInt(indexPart.replace(']', ''));
+                                               current = current[key]?.[index];
+                                           } else {
+                                               current = current[part];
+                                           }
+                                       }
+                                       if (current && typeof current === 'string') {
+                                           newTargetId = current;
+                                           if (path !== extractionPaths[0]) {
+                                               logs.push(`[Worker] Extracted ID ${newTargetId} using path '${path}'.`);
+                                           }
+                                           break;
+                                       }
+                                   } catch (e) { /* skip path */ }
+                               }
                                
                                if (newTargetId) {
                                   newMappings[req.sourceId] = String(newTargetId);
