@@ -98,6 +98,20 @@ ${JSON.stringify(rulesWithEnhancements, null, 2)}
                 await this.context.writeChatMessage('assistant', warningMsg, stepNumber);
              }
           }
+
+          const result = { 
+            status: 'success', 
+            message: 'Quality Enhancement erfolgreich abgeschlossen.',
+            processedRules: rulesWithEnhancements.length,
+            verification_report: report,
+            summary: report?.summary || 'Quality Enhancement erfolgreich abgeschlossen.'
+          };
+          
+          return {
+            success: true,
+            result,
+            isLogicalFailure: false
+          };
         }
       } catch (e) {
         console.error("[QualityEnhancementAgent] Failed to parse enhancement verification result", e);
@@ -111,7 +125,8 @@ ${JSON.stringify(rulesWithEnhancements, null, 2)}
     const result = { 
         status: 'success', 
         message: 'Quality Enhancement erfolgreich abgeschlossen.',
-        processedRules: rulesWithEnhancements.length
+        processedRules: rulesWithEnhancements.length,
+        summary: 'Quality Enhancement abgeschlossen (keine Enhancements konfiguriert).'
     };
     
     return {

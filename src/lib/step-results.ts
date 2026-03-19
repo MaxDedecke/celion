@@ -230,3 +230,19 @@ export async function saveStep9Result(pool: Pool, migrationId: string, result: a
     ]
   );
 }
+
+export async function saveStep10Result(pool: Pool, migrationId: string, result: any) {
+  await pool.query(
+    `INSERT INTO public.step_10_results (migration_id, summary, raw_json)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (migration_id) DO UPDATE SET
+       summary = EXCLUDED.summary,
+       raw_json = EXCLUDED.raw_json,
+       created_at = now()`,
+    [
+      migrationId, 
+      result.summary || 'Abschlussbericht erstellt.', 
+      result
+    ]
+  );
+}

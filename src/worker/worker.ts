@@ -149,7 +149,8 @@ import {
   saveStep6Result, 
   saveStep7Result,
   saveStep8Result,
-  saveStep9Result
+  saveStep9Result,
+  saveStep10Result
 } from '../lib/step-results';
 
 const ensureWorkflowState = (state: any = {}) => {
@@ -1246,7 +1247,7 @@ async function processJob(job: any) {
       }
 
       if (!isLogicalFailure && result && !result.isEarlyReturnForPlan) {
-        await saveStep4Result(pool, migrationId, result);
+        await saveStep6Result(pool, migrationId, result);
       }
 
       const finishClient4 = await pool.connect();
@@ -1702,6 +1703,10 @@ async function processJob(job: any) {
         isLogicalFailure = true;
         failureMessage = "Agent not found in StepFactory";
         result = { error: failureMessage };
+      }
+
+      if (!isLogicalFailure) {
+        await saveStep10Result(pool, migrationId, result);
       }
 
       const finishClientReport = await pool.connect();
