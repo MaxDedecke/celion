@@ -74,99 +74,14 @@ export async function* runIntroductionAgent(
         const verifyRes = await context.verifySystemAndAuth('source', ds.id, ds.source_type);
 
         if (verifyRes.success) {
-          const newData = { ...data, source: { dataSourceId: ds.id, system: ds.source_type, name: ds.name } };          yield* yieldText("✅ Verbindung zum System erfolgreich.");
+          const newData = { ...data, source: { dataSourceId: ds.id, system: ds.source_type, name: ds.name } };
+          yield* yieldText("✅ Verbindung zum System erfolgreich.");
           yield* yieldText("✅ Authentifizierung mit den API Credentials war erfolgreich.");
-          yield* yieldText("Möchtest du alles migrieren oder nur bestimmte Bereiche?");
-          yield* yieldText(JSON.stringify({
-            type: "action",
-            actions: [
-              { label: "Alles migrieren", action: "send_chat:Alles", variant: "primary" },
-              { label: "Bestimmte Bereiche", action: "send_chat:Spezifisch", variant: "outline" }
-            ]
-          }));
-          yield* yieldStateUpdate('await_scope_decision', newData);
+          yield* yieldText("Ich lade nun den Scope Discovery Agent, der dir hilft, die richtigen Bereiche für die Migration auszuwählen...");
+          yield* yieldStateUpdate('llm_scope_discovery', newData);
         } else {
           yield* yieldText(`Fehler bei der Verbindung: ${verifyRes.message}\nBitte überprüfe die Datenquelle.`);
         }
-      }
-      break;
-    }
-
-    case 'await_scope_decision':
-      if (userMessage.toLowerCase().includes("alles")) {
-        const newData = { ...data };
-        newData.source.scope = "Alles";
-        newData.source.scopeIds = [];
-        yield* yieldText("Alles klar. Nun zum Zielsystem:");
-        yield* yieldText(JSON.stringify({
-          type: "datasource_dropdown",
-          mode: "target",
-          label: "Bitte wähle ein Zielsystem aus...",
-          options: [
-            ...(context.dataSources || []).filter(ds => ds.id !== data.source?.dataSourceId).map(ds => ({ id: ds.id, label: `${ds.name} (${ds.source_type}) - ${ds.api_url}` })),
-            { id: "new", label: "+ Neue Datenquelle erstellen" }
-          ]
-        }));
-        yield* yieldStateUpdate('await_target', newData);
-      } else if (userMessage.toLowerCase().includes("spezifisch") || userMessage.toLowerCase().includes("bestimmte bereiche")) {
-        yield* yieldText("Ich lade die verfügbaren Bereiche...");
-        if (context.fetchScopeData) {
-          try {
-            const scopes = await context.fetchScopeData(data.source.system, data.source.dataSourceId);
-            if (scopes.length === 0) {
-              yield* yieldText("Keine Bereiche gefunden, migriere alles.");
-              const newData = { ...data };
-              newData.source.scope = "Alles";
-              newData.source.scopeIds = [];
-              yield* yieldText("Nun zum Zielsystem:");
-              yield* yieldText(JSON.stringify({
-                type: "datasource_dropdown",
-                mode: "target",
-                label: "Bitte wähle ein Zielsystem...",
-                options: [
-                  ...(context.dataSources || []).filter(ds => ds.id !== data.source?.dataSourceId).map(ds => ({ id: ds.id, label: `${ds.name} (${ds.source_type}) - ${ds.api_url}` })),
-                  { id: "new", label: "+ Neue Datenquelle erstellen" }
-                ]
-              }));
-              yield* yieldStateUpdate('await_target', newData);
-            } else {
-              yield* yieldText(JSON.stringify({
-                type: "scope_dropdown",
-                label: "Welchen Bereich möchtest du migrieren?",
-                options: scopes.map(s => ({ id: s.id, label: s.name }))
-              }));
-              yield* yieldStateUpdate('await_scope_selection', data);
-            }
-          } catch (e: any) {
-            yield* yieldText(`Fehler beim Laden: ${e.message}`);
-          }
-        }
-      } else {
-        yield* yieldText("Bitte wähle 'Alles' oder 'Bestimmte Bereiche'.");
-      }
-      break;
-
-    case 'await_scope_selection': {
-      const idMatch = userMessage.match(/\[ID:([^\]]+)\]/);
-      const labelMatch = userMessage.match(/den Bereich '([^']+)'/);
-      
-      if (idMatch) {
-        const newData = { ...data };
-        newData.source.scope = labelMatch ? labelMatch[1] : idMatch[1];
-        newData.source.scopeIds = [idMatch[1]];
-        yield* yieldText(`Bereich "${newData.source.scope}" ausgewählt. Nun zum Zielsystem:`);
-        yield* yieldText(JSON.stringify({
-          type: "datasource_dropdown",
-          mode: "target",
-          label: "Bitte wähle ein Zielsystem aus...",
-          options: [
-            ...(context.dataSources || []).filter(ds => ds.id !== data.source?.dataSourceId).map(ds => ({ id: ds.id, label: `${ds.name} (${ds.source_type}) - ${ds.api_url}` })),
-            { id: "new", label: "+ Neue Datenquelle erstellen" }
-          ]
-        }));
-        yield* yieldStateUpdate('await_target', newData);
-      } else {
-        yield* yieldText("Bitte wähle einen Bereich.");
       }
       break;
     }

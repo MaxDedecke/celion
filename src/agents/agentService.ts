@@ -1,4 +1,5 @@
 export { runIntroductionAgent } from './introductionAgent/runIntroductionAgent';
+export { runScopeDiscoveryAgent } from './introductionAgent/runScopeDiscoveryAgent';
 export { runSystemDetection } from './systemDetection/runSystemDetection';
 export { runAuthFlow } from './authFlow/runAuthFlow';
 export { runSourceDiscovery } from './sourceDiscovery/runSourceDiscovery';

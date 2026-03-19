@@ -1,6 +1,6 @@
 import { Pool } from 'pg';
 import amqp from 'amqplib';
-import { runIntroductionAgent, runAnswerAgent} from '../agents/agentService';
+import { runIntroductionAgent, runAnswerAgent, runScopeDiscoveryAgent} from '../agents/agentService';
 import { AGENT_WORKFLOW_STEPS } from '../constants/agentWorkflow';
 import { StepFactory } from '../agents/core/StepFactory';
 
@@ -827,10 +827,10 @@ async function processJob(job: any) {
         [userId]
       );
 
-      const fetchScopeData = async (system: string, dataSourceId: string, apiToken?: string, url?: string, email?: string): Promise<{id: string, name: string}[]> => {
-          let token = apiToken;
-          let apiUrl = url;
-          let userEmail = email;
+      const fetchScopeData = async (system: string, dataSourceId: string, params?: { search_term?: string, entity_type?: string, apiToken?: string, apiUrl?: string, email?: string }): Promise<{id: string, name: string}[]> => {
+          let token = params?.apiToken || "";
+          let apiUrl = params?.apiUrl || "";
+          let userEmail = params?.email || "";
           
           if (dataSourceId && dataSourceId !== 'new') {
             const { rows: dsRows } = await pool.query(
@@ -877,6 +877,9 @@ async function processJob(job: any) {
           } else if (sys === 'gitlab') {
             // GitLab can be self-hosted or gitlab.com
             endpoint = getBaseUrl(apiUrl) + '/api/v4/projects';
+            if (params?.search_term) {
+              endpoint += `?search=${encodeURIComponent(params.search_term)}`;
+            }
             headers['PRIVATE-TOKEN'] = token;
           } else if (sys === 'notion') {
             // Notion API is fixed
@@ -891,10 +894,19 @@ async function processJob(job: any) {
           const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
           try {
+            let body = undefined;
+            if (sys === 'notion') {
+              const filter: any = { property: "object", value: params?.entity_type || "database" };
+              body = JSON.stringify({ 
+                query: params?.search_term,
+                filter
+              });
+            }
+
             const response = await fetch(endpoint, { 
                headers,
                method: sys === 'notion' ? 'POST' : 'GET',
-               body: sys === 'notion' ? JSON.stringify({ filter: { property: "object", value: "database" } }) : undefined,
+               body,
                signal: controller.signal
             });
             clearTimeout(timeoutId);
@@ -905,7 +917,7 @@ async function processJob(job: any) {
             if (sys === 'asana') return (data.data || []).map((w: any) => ({ id: w.gid, name: w.name }));
             if (sys === 'jiracloud') return (Array.isArray(data) ? data : data.values || []).map((p: any) => ({ id: p.id || p.key, name: p.name }));
             if (sys === 'gitlab') return (Array.isArray(data) ? data : []).map((p: any) => ({ id: p.id, name: p.name }));
-            if (sys === 'notion') return (data.results || []).map((p: any) => ({ id: p.id, name: p.title?.[0]?.plain_text || 'Unnamed' }));
+            if (sys === 'notion') return (data.results || []).map((p: any) => ({ id: p.id, name: p.properties?.title?.title?.[0]?.plain_text || p.title?.[0]?.plain_text || 'Unnamed' }));
             
             return [];
           } catch (e: any) {
@@ -931,7 +943,7 @@ async function processJob(job: any) {
           }
           if (!resolvedSystem) throw new Error("System konnte nicht ermittelt werden.");
           
-          await fetchScopeData(resolvedSystem, dataSourceId, apiToken, url, email);
+          await fetchScopeData(resolvedSystem, dataSourceId, { apiToken, apiUrl: url, email });
 
           // Save dummy step 1 and step 2 results so "Erkenntnisse" view gets populated
           const step1Result = {
@@ -958,15 +970,31 @@ async function processJob(job: any) {
         }
       };
 
-      const messageGenerator = runIntroductionAgent(userMessage, {
-          ...agentContext,
-          migrationId,
-          migrationName,
-          dataSources,
-          fetchScopeData,
-          verifySystemAndAuth,
-          onboardingState
-      });
+      let messageGenerator: any;
+      if (onboardingState?.step === 'llm_scope_discovery') {
+          const { rows: historyRows } = await pool.query(
+            "SELECT role, content FROM migration_chat_messages WHERE migration_id = $1 ORDER BY created_at ASC",
+            [migrationId]
+          );
+          messageGenerator = runScopeDiscoveryAgent(userMessage, {
+              history: historyRows,
+              migrationId,
+              sourceSystem: onboardingState.data.source.system,
+              dataSourceId: onboardingState.data.source.dataSourceId,
+              querySourceScopes: (params) => fetchScopeData(onboardingState.data.source.system, onboardingState.data.source.dataSourceId, params),
+              onboardingState
+          });
+      } else {
+          messageGenerator = runIntroductionAgent(userMessage, {
+              ...agentContext,
+              migrationId,
+              migrationName,
+              dataSources,
+              fetchScopeData,
+              verifySystemAndAuth,
+              onboardingState
+          });
+      }
       
       for await (const message of messageGenerator) {
         if (message.content && message.content.length > 0 && message.content[0].text) {
@@ -976,6 +1004,66 @@ async function processJob(job: any) {
               const newState = JSON.parse(stateStr);
               migrationContextObj.onboardingState = newState;
               await pool.query('UPDATE migrations SET context = $1 WHERE id = $2', [JSON.stringify(migrationContextObj), migrationId]);
+
+              // AUTO-TRIGGER DISCOVERY AGENT
+              if (newState.step === 'llm_scope_discovery') {
+                  console.log(`[Worker] Auto-triggering ScopeDiscoveryAgent for migration ${migrationId}...`);
+                  const { rows: histRows } = await pool.query(
+                    "SELECT role, content FROM migration_chat_messages WHERE migration_id = $1 ORDER BY created_at ASC",
+                    [migrationId]
+                  );
+                  const discoveryGenerator = runScopeDiscoveryAgent("INIT_SEARCH", {
+                      history: histRows,
+                      migrationId,
+                      sourceSystem: newState.data.source.system,
+                      dataSourceId: newState.data.source.dataSourceId,
+                      querySourceScopes: (params) => fetchScopeData(newState.data.source.system, newState.data.source.dataSourceId, params),
+                      onboardingState: newState
+                  });
+                  try {
+                      for await (const discMsg of discoveryGenerator) {
+                          if (discMsg.content?.[0]?.text) {
+                              const discText = discMsg.content[0].text;
+                              if (discText.startsWith("AUSGABE_TOOL_CALL:SET_SCOPE_AND_CONTINUE:")) {
+                                  // ignore for INIT
+                              } else if (discText.trim().startsWith('{') && (discText.includes('"type":') || discText.includes('"action":'))) {
+                                  await writeChatMessage(migrationId, 'system', discText, 0);
+                              } else {
+                                  await writeChatMessage(migrationId, 'assistant', discText, 0);
+                              }
+                          }
+                      }
+                  } catch (err) {
+                      console.error(`[Worker] Auto-trigger discovery failed:`, err);
+                      await writeChatMessage(migrationId, 'assistant', "Ich hatte ein technisches Problem beim Laden der Bereiche. Bitte schreibe mir kurz, wonach ich suchen soll.", 0);
+                  }
+              }
+          } else if (text.startsWith("AUSGABE_TOOL_CALL:SET_SCOPE_AND_CONTINUE:")) {
+              const argsStr = text.replace("AUSGABE_TOOL_CALL:SET_SCOPE_AND_CONTINUE:", "");
+              const args = JSON.parse(argsStr);
+              
+              // Update onboarding state data with scope selection
+              const newData = { ...onboardingState.data };
+              newData.source.scope = args.scope;
+              newData.source.scopeIds = args.scopeIds;
+              
+              const newState = { step: 'await_target', data: newData };
+              migrationContextObj.onboardingState = newState;
+              await pool.query('UPDATE migrations SET context = $1 WHERE id = $2', [JSON.stringify(migrationContextObj), migrationId]);
+              
+              await writeChatMessage(migrationId, 'assistant', `Bereich "${args.scope}" ausgewählt. Nun zum Zielsystem:`);
+              // Note: We can't use yield* here as we are in for await loop, we need to call writeChatMessage instead
+              const dropdownMsg = JSON.stringify({
+                type: "datasource_dropdown",
+                mode: "target",
+                label: "Bitte wähle ein Zielsystem aus...",
+                options: [
+                  ...(dataSources || []).filter((ds: any) => ds.id !== newData.source?.dataSourceId).map((ds: any) => ({ id: ds.id, label: `${ds.name} (${ds.source_type}) - ${ds.api_url}` })),
+                  { id: "new", label: "+ Neue Datenquelle erstellen" }
+                ]
+              });
+              await writeChatMessage(migrationId, 'system', dropdownMsg, 0);
+
           } else if (text.startsWith("AUSGABE_TOOL_CALL:FINISH_ONBOARDING:")) {
               const argsStr = text.replace("AUSGABE_TOOL_CALL:FINISH_ONBOARDING:", "");
               const args = JSON.parse(argsStr);
