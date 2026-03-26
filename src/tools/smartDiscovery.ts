@@ -3,8 +3,8 @@ import { HttpResponse, SmartDiscoveryParams, SmartDiscoveryResponse } from "@/ty
 import { httpClient } from "./httpRequest";
 
 export async function smartDiscovery(params: SmartDiscoveryParams): Promise<SmartDiscoveryResponse> {
-  const { url, method, headers, body, paginationConfig } = params;
-  
+  const { url, method, headers, body, paginationConfig, itemKeys } = params;
+
   const uniqueIds = new Set<string>();
   let pagesFetched = 0;
   let sampleData: any = null;
@@ -25,7 +25,7 @@ export async function smartDiscovery(params: SmartDiscoveryParams): Promise<Smar
         pagesFetched, 
         limit
       );
-      
+
       const response: HttpResponse = await httpClient({
         url: paginatedUrl,
         method,
@@ -39,12 +39,13 @@ export async function smartDiscovery(params: SmartDiscoveryParams): Promise<Smar
 
       pagesFetched++;
       const responseBody = response.body;
-      
+
       if (pagesFetched === 1) {
         sampleData = responseBody;
       }
 
-      const items = extractItems(responseBody);
+      const items = extractItems(responseBody, itemKeys);
+
       
       // Deduplicate by ID
       items.forEach((item: any) => {
@@ -151,14 +152,23 @@ function injectPaginationParams(
   return { url: finalUrl, body: updatedBody };
 }
 
-function extractItems(body: any): any[] {
+function extractItems(body: any, customKeys?: string[]): any[] {
   if (Array.isArray(body)) return body;
   if (body && typeof body === 'object') {
-    // Common patterns: body.items, body.data, body.tasks, etc.
-    for (const key of ['items', 'results', 'data', 'tasks', 'elements', 'values', 'members', 'users', 'teams', 'spaces', 'folders', 'lists']) {
+    // Priority 1: Use custom keys provided by the caller (from schema)
+    if (customKeys && customKeys.length > 0) {
+        for (const key of customKeys) {
+            if (Array.isArray(body[key])) return body[key];
+        }
+    }
+
+    // Priority 2: Generic fallback keys
+    const genericKeys = ['items', 'results', 'data', 'tasks', 'elements', 'members', 'users', 'teams', 'spaces', 'folders', 'lists'];
+    for (const key of genericKeys) {
       if (Array.isArray(body[key])) return body[key];
     }
-    // Deep search for first array if no common key matches?
+
+    // Priority 3: Deep search for first array if no common key matches
     for (const key in body) {
       if (Array.isArray(body[key])) return body[key];
     }

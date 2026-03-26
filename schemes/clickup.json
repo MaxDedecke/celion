@@ -35,6 +35,7 @@
       "task_attachments": "/api/v2/task/{task_id}/attachment",
       "view_tasks": "/api/v2/view/{view_id}/task"
     },
+    "itemKeys": ["tasks", "teams", "spaces", "folders", "lists", "members"],
     "pagination": {
       "type": "page_limit",
       "paramPage": "page",

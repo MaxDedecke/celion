@@ -31,9 +31,12 @@ export class CapabilityDiscoveryAgent extends AgentBase {
 
     const email = connector.username || "";
     const token = connector.api_key || "";
-    const base64Credentials = btoa(`${email}:${token}`);
+    const base64Credentials = Buffer.from(`${email}:${token}`).toString('base64');
     const availableEndpoints = discoveryScheme?.discovery?.endpoints || {};
+    const itemKeys = discoveryScheme?.discovery?.itemKeys || [];
     const endpointKeys = Object.keys(availableEndpoints);
+    const fallbackBaseUrl = this.getBaseUrl(sourceUrl);
+    const effectiveBaseUrl = discoveryScheme?.apiBaseUrl || fallbackBaseUrl;
 
     // --- Phase 1: Planning & Verification Agent ---
     await this.context.writeChatMessage('assistant', 'Phase 1: Erstelle und verifiziere Discovery-Plan...', stepNumber);
@@ -43,7 +46,7 @@ Du bist der Planning Agent für eine Datenmigration.
 Deine Aufgabe ist es, einen sequentiellen Ausführungsplan für API-Aufrufe zu erstellen, um ein vollständiges Inventar der Datenmengen (Counts für Tasks, Listen, Projekte etc.) für den ausgewählten Scope zu ermitteln.
 
 ### API BASE URL:
-${discoveryScheme?.apiBaseUrl || "Nicht definiert"}
+${effectiveBaseUrl || "Nicht definiert"}
 
 ### SYSTEM SCHEMA (Verfügbare Endpunkte):
 ${JSON.stringify(availableEndpoints, null, 2)}
@@ -166,7 +169,7 @@ Du bist der Execution Agent für eine Datenmigration.
 Deine Aufgabe ist es, den übergebenen 'Execution Plan' SCHRITT FÜR SCHRITT abzuarbeiten und dabei das Tool 'smart_discovery' zu verwenden.
 
 ### API BASE URL:
-${discoveryScheme?.apiBaseUrl || "Nicht definiert"}
+${effectiveBaseUrl || "Nicht definiert"}
 
 ### DEIN PLAN:
 ${JSON.stringify(executionPlan.plan, null, 2)}
@@ -260,7 +263,7 @@ Sobald alle Schritte ausgeführt und alle Daten gesammelt wurden, antworte mit f
                  let toolResult: any;
 
                  if (functionName === 'smart_discovery') {
-                     toolResult = await this.handleSmartDiscoveryToolCall(args, token, base64Credentials, discoveryScheme);
+                     toolResult = await this.handleSmartDiscoveryToolCall(args, token, base64Credentials, discoveryScheme, fallbackBaseUrl, itemKeys);
                  } else {
                      toolResult = { error: `Unknown tool: ${functionName}` };
                  }
@@ -298,7 +301,7 @@ Sobald alle Schritte ausgeführt und alle Daten gesammelt wurden, antworte mit f
     };
   }
 
-  private async handleSmartDiscoveryToolCall(args: any, token: string, base64Credentials: string, discoveryScheme: any): Promise<any> {
+  private async handleSmartDiscoveryToolCall(args: any, token: string, base64Credentials: string, discoveryScheme: any, fallbackBaseUrl?: string, itemKeys?: string[]): Promise<any> {
       const requestHeaders: Record<string, string> = {};
 
       const isGenericId = (url: string) => {
@@ -310,9 +313,13 @@ Sobald alle Schritte ausgeführt und alle Daten gesammelt wurden, antworte mit f
       }
 
       let finalUrl = args.url;
-      // Prepend apiBaseUrl if it's a relative URL
-      if (!finalUrl.startsWith('http') && discoveryScheme?.apiBaseUrl) {
-          const baseUrl = discoveryScheme.apiBaseUrl.replace(/\/$/, '');
+      
+      // Resolve base URL from discovery scheme OR fallback
+      const effectiveBaseUrl = discoveryScheme?.apiBaseUrl || fallbackBaseUrl;
+
+      // Prepend base URL if it's a relative URL
+      if (!finalUrl.startsWith('http') && effectiveBaseUrl) {
+          const baseUrl = effectiveBaseUrl.replace(/\/$/, '');
           const path = finalUrl.startsWith('/') ? finalUrl : `/${finalUrl}`;
           finalUrl = `${baseUrl}${path}`;
       }
@@ -350,7 +357,8 @@ Sobald alle Schritte ausgeführt und alle Daten gesammelt wurden, antworte mit f
               url: finalUrl,
               method: args.method || 'GET',
               headers: requestHeaders,
-              paginationConfig: discoveryScheme?.discovery?.pagination
+              paginationConfig: discoveryScheme?.discovery?.pagination,
+              itemKeys: itemKeys
           });
 
           if (toolResult.sampleData) {
@@ -364,5 +372,15 @@ Sobald alle Schritte ausgeführt und alle Daten gesammelt wurden, antworte mit f
           return { error: toolErr.message };
         }
       }
+  }
+
+  private getBaseUrl(url: string | null | undefined): string | undefined {
+    if (!url) return undefined;
+    try {
+      const urlObj = new URL(url);
+      return `${urlObj.protocol}//${urlObj.hostname}`;
+    } catch (e) {
+      return url.replace(/\/$/, '');
+    }
   }
 }

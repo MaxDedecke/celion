@@ -90,6 +90,7 @@ export interface HttpRequestParams {
 
 export interface SmartDiscoveryParams extends HttpRequestParams {
   paginationConfig?: any | null; // Using any to avoid circular dependency or complex import if needed
+  itemKeys?: string[];
 }
 
 export interface SmartDiscoveryResponse {

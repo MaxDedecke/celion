@@ -14,10 +14,14 @@
   "discovery": {
     "endpoints": {
       "projects": "/rest/api/3/project",
-      "issues": "/rest/api/3/search",
+      "boards": "/rest/agile/1.0/board?projectKeyOrId={project_id}",
+      "sprints": "/rest/agile/1.0/board/{board_id}/sprint",
+      "issues": "/rest/api/3/search?jql=project={project_id}",
+      "board_issues": "/rest/agile/1.0/board/{board_id}/issue",
       "users": "/rest/api/3/users/search",
       "workflows": "/rest/api/3/workflow"
     },
+    "itemKeys": ["issues", "projects", "values", "views"],
     "pagination": {
       "type": "startAt_maxResults",
       "paramStart": "startAt",
@@ -27,18 +31,23 @@
   },
   "headers": {
     "accept": "application/json",
-    "contentType": "application/json"
+    "contentType": "application/json",
+    "X-Atlassian-Token": "no-check"
   },
   "agentInstructions": "Führe die Inventur für Jira Cloud durch. Projekte und Issues bilden die Kernstruktur. JQL (Jira Query Language) kann über den Search-Endpunkt verwendet werden.",
   "navigationGuide": {
-    "hierarchy": "Site -> Project -> Issue",
+    "hierarchy": "Site -> Project -> Board -> Issue (Sprints, Users, Workflows are global/contextual)",
     "phase0_scope_identification": [
       "1. Rufe '/rest/api/3/project' auf, um alle Projekte zu erhalten.",
       "2. Finde das Projekt, das dem 'sourceScope' entspricht, und speichere seine 'id' oder 'key' als 'project_id' in deinem Scope-Report."
     ],
     "phase1_exploration_and_staging": [
-      "1. Nutze '/rest/api/3/search' mit JQL (z.B. 'project={project_id}'), um alle Issues des Projekts abzurufen.",
-      "2. Beachte die Pagination mittels 'startAt' und 'maxResults'."
+      "1. Rufe '/rest/agile/1.0/board?projectKeyOrId={project_id}' auf, um die Boards des Projekts zu finden.",
+      "2. Nutze die 'id' des primären Boards für '/rest/agile/1.0/board/{board_id}/issue', um alle Issues zu erfassen.",
+      "3. Falls keine Boards gefunden werden, nutze den Fallback: '/rest/api/3/search?jql=project={project_id}'.",
+      "4. Nutze '/rest/api/3/users/search' (ohne Parameter), um die Nutzerliste zu erfassen.",
+      "5. Nutze '/rest/api/3/workflow', um die verfügbaren Status-Workflows zu identifizieren.",
+      "WICHTIG: Wenn der Status-Code 401/403 ist, prüfe die Credentials. Wenn das Ergebnis leer ist, prüfe ob das Projekt '{project_id}' tatsächlich Issues enthält."
     ]
   },
   "exportInstructions": {

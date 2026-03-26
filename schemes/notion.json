@@ -23,6 +23,7 @@
       "block_children": "/v1/blocks/{block_id}/children",
       "comments": "/v1/comments?block_id={block_id}"
     },
+    "itemKeys": ["results"],
     "pagination": {
       "type": "cursor",
       "paramCursor": "start_cursor",
